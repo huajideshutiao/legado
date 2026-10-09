@@ -36,7 +36,9 @@ import io.legado.app.help.registerNativeFileCacheProvider
 import io.legado.app.help.registerNativeSourceCacheProvider
 import io.legado.app.help.registerOhosMainThread
 import io.legado.app.help.service.registerNativeUpdateBookCallback
+import io.legado.app.help.service.registerOhosCacheBookServiceNotifications
 import io.legado.app.help.service.registerOhosServiceLauncher
+import io.legado.app.help.service.registerOhosWebServiceNotifications
 import io.legado.app.help.source.registerNativeSourceHelpAccessor
 import io.legado.app.help.source.registerNativeSourceProviders
 import io.legado.app.help.source.registerNativeVerificationUiProvider
@@ -287,6 +289,11 @@ fun registerOhosProviders() {
     // CacheBook callback 须在 ServiceLauncher 之前 (缓存流程未注册时 CacheBookCallbacks.get() 直接 error)
     registerNativeCacheBookCallback()
     registerOhosServiceLauncher()
+    // 8.6b 缓存书籍 / Web 服务的通知: 各自的通知态由既有信号驱动 (缓存: 启动器 + EventBus.UP_DOWNLOAD;
+    // Web 服务: EventBus.WEB_SERVICE), 不新造调度。缓存那个要包一层已注册的 ServiceLauncher,
+    // 故必须在其之后; Web 服务那个须早于任何一次服务启停 (用户操作触发)。
+    registerOhosCacheBookServiceNotifications()
+    registerOhosWebServiceNotifications()
     // 注册业务层 CookieStoreProvider (commonMain SharedCookieStore, Room cookieDao 持久化)
     // 与 desktop registerDefaultJvmCookieStoreProvider / app registerAndroidCookieStoreProvider
     // / iOS registerDefaultIosCookieStoreProvider 对齐

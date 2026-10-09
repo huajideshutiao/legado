@@ -2,7 +2,9 @@
 
 package io.legado.app.help.notification
 
+import io.legado.app.constant.EventBus
 import io.legado.app.help.log.iosConsoleLog
+import io.legado.app.utils.postEvent
 import platform.Foundation.NSError
 import platform.UserNotifications.UNAuthorizationOptionAlert
 import platform.UserNotifications.UNAuthorizationOptionSound
@@ -22,7 +24,9 @@ import platform.UserNotifications.UNUserNotificationCenter
  * # 设计要点
  * - 权限请求: [registerIosNotificationProgress] 中异步请求 alert+sound 权限 (不阻塞, 首次弹系统权限对话框)
  * - 通知 ID: 固定 [NOTIFICATION_ID] ("legado-progress"), 复用同一条通知 (覆盖式更新, 与 Android 通知 ID 一致)
- * - showProgress: 创建 [UNMutableNotificationContent] (title + body=进度文本) + [UNNotificationRequest]
+ * - 取消动作: 通知挂 [IosNotificationCategories.UpdateBook] 分类, 该分类带一个"取消"按钮
+ *   (对照 app 端该通知上的 IntentAction.stop 动作, 处理见 [cancelIosUpdateBookRefresh])
+ * - showProgress: 创建 [UNMutableNotificationContent] (title + body=进度文本 + 分类) + [UNNotificationRequest]
  *   (trigger=null 立即触发), add 到 center; 失败退化 NSLog
  * - cancel: removeDeliveredNotificationsWithIdentifiers (移除已展示的通知) +
  *   removePendingNotificationRequestsWithIdentifiers (移除待发送的, 防止 trigger 延迟)
@@ -64,6 +68,8 @@ class IosNotificationProgress : NotificationProgress {
             val contentObj = UNMutableNotificationContent().apply {
                 setTitle(title)
                 setBody(progressText)
+                // 分类提供"取消"按钮 (须先经 IosNotificationPublisher.installCategories 注册)
+                setCategoryIdentifier(IosNotificationCategories.UpdateBook)
             }
             // trigger=null 立即触发 (非定时); 固定 identifier 覆盖式更新 (与 Android 通知 ID 复用一致)
             val request = UNNotificationRequest.requestWithIdentifier(
@@ -86,21 +92,42 @@ class IosNotificationProgress : NotificationProgress {
     }
 
     override fun cancel() {
-        // 移除已展示的通知 + 待发送的请求 (防止 trigger 延迟)
-        runCatching {
-            val center = UNUserNotificationCenter.currentNotificationCenter()
-            center.removeDeliveredNotificationsWithIdentifiers(listOf(NOTIFICATION_ID))
-            center.removePendingNotificationRequestsWithIdentifiers(listOf(NOTIFICATION_ID))
-        }.onFailure {
-            iosConsoleLog("[ios-notification] cancel failed (fallback)")
-        }
+        cancelIosProgressNotification()
         iosConsoleLog("[ios-notification] cancel")
     }
 
     companion object {
         /** 固定通知标识 (复用同一条通知, 与 Android 通知 ID 概念一致)。 */
         private const val NOTIFICATION_ID = "legado-progress"
+
+        /**
+         * 撤掉进度通知: 移除已展示的通知 + 待发送的请求 (防止 trigger 延迟)。
+         *
+         * 不依赖 [NotificationProgresses] 注册: 通知上的"取消"动作可能落在"应用被杀后由系统
+         * 在后台拉起"的路径上, 该时机 provider 未必已注册。
+         */
+        fun cancelIosProgressNotification() {
+            runCatching {
+                val center = UNUserNotificationCenter.currentNotificationCenter()
+                center.removeDeliveredNotificationsWithIdentifiers(listOf(NOTIFICATION_ID))
+                center.removePendingNotificationRequestsWithIdentifiers(listOf(NOTIFICATION_ID))
+            }.onFailure {
+                iosConsoleLog("[ios-notification] cancel failed (fallback)")
+            }
+        }
     }
+}
+
+/**
+ * 更新目录进度通知上的"取消"动作 (对照 app 端 `UpdateBookService` 的 IntentAction.stop 分支:
+ * `postEvent(EventBus.STOP_UP_BOOK, "")` + `stopSelf()`, 服务销毁时撤掉通知)。
+ *
+ * 取消任务复用共享层既有链路: [EventBus.STOP_UP_BOOK] 事件由 `UpdateBookShared` 监听并取消
+ * upToc / 强制刷新 / 预下载任务 (对照 app 端 MainViewModel 同名监听), 本函数不另写取消逻辑。
+ */
+fun cancelIosUpdateBookRefresh() {
+    postEvent(EventBus.STOP_UP_BOOK, "")
+    IosNotificationProgress.cancelIosProgressNotification()
 }
 
 /**

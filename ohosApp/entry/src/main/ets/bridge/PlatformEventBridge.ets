@@ -16,6 +16,7 @@
  * - 电话状态: { type: 'callStateChange', state: 'idle' | 'ringing' | 'offHook' }
  * - 系统对话框结果: { type: 'dialogResult', requestId, dialogResult } (系统对话框桥的响应侧)
  * - 通知按钮点击: { type: 'notificationAction', notificationId, action }
+ * - 长时任务取消: { type: 'continuousTaskCancel', reason }
  *
  * 后加的三类经 [emitPlatformEvent] 走同一通道 (不再各建一套回送函数)。
  *
@@ -185,13 +186,19 @@ export interface NotificationActionEvent {
   action: string;         // 按钮动作标识 (原版 addAction 的 pendingIntent action, 如 'stop')
 }
 
+/** 长时任务取消事件载荷 (与 Kotlin OhosPlatformEventPayload 对齐, type=continuousTaskCancel)。 */
+export interface ContinuousTaskCancelEvent {
+  type: string;  // 'continuousTaskCancel'
+  reason: number; // 取消原因 (backgroundTaskManager.ContinuousTaskCancelReason)
+}
+
 /** 后加的平台事件载荷集合 (共用 [emitPlatformEvent])。 */
 export type ExtraPlatformEvent =
   AudioDeviceChangeEvent | AudioFocusChangeEvent | PhoneCallStateEvent | NetworkAvailableEvent |
-  NotificationActionEvent;
+  NotificationActionEvent | ContinuousTaskCancelEvent;
 
 /**
- * 推送一条后加类型的平台事件 (媒体设备变化/音频焦点/电话状态/网络可用/通知按钮点击)。
+ * 推送一条后加类型的平台事件 (媒体设备变化/音频焦点/电话状态/网络可用/通知按钮点击/长时任务取消)。
  *
  * 为什么不让调用方各自建模块级回送函数: 事件回送回调只有本模块持有, 各功能模块
  * (MediaBridgeHandler 的音频设备断开/音频打断、SystemEventSources 的电话与网络) 只需

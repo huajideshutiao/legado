@@ -2,6 +2,7 @@
 
 package io.legado.app.napi
 
+import io.legado.app.constant.AppLog
 import io.legado.app.help.config.NativeSystemTheme
 import io.legado.app.help.glide.progress.OnProgressListener
 import io.legado.app.help.media.AudioFocusChange
@@ -13,6 +14,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.ui.OhosPlatformCapabilities
 import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.utils.KS_JSON
+import io.legado.app.web.WebServerManager
 import io.legado.app.web.refreshOhosWebServerAddresses
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -45,6 +47,8 @@ import kotlinx.serialization.Serializable
  *   → [OhosNativeBridge.onDialogResult] (系统对话框桥的响应侧, 见 [OhosNativeBridge.invokeDialogSync])
  * - 通知按钮点击: `{ "type":"notificationAction", "notificationId":104, "action":"stop" }`
  *   → [io.legado.app.ui.OhosPlatformCapabilities.onNotificationAction] (通知 actionButtons 的点击侧)
+ * - 长时任务取消: `{ "type":"continuousTaskCancel", "reason":3 }`
+ *   → 停掉 Web 服务 (长时任务已取消 = 服务不再被保活)
  *
  * 后四类是同一次扩展加上的 (媒体/电话/网络), 仍走同一个 napi 入口与同一个解析器;
  * dialogResult 是系统对话框桥的响应侧 (请求侧复用 window tsfn), 同样走本入口。
@@ -253,6 +257,16 @@ internal object OhosPlatformEventChannel {
                 notificationId = payload.notificationId,
                 action = payload.action.orEmpty(),
             )
+
+            // 长时任务被系统/用户取消 (删除长时任务通知等) → 服务已无法保活, 停掉它
+            // (对照 app 端 WebService 收到 IntentAction.stop 的 stopSelf; 由 ArkTS 侧
+            // registerContinuousTaskCancelListener → emitPlatformEvent 回送)
+            "continuousTaskCancel" -> {
+                AppLog.putDebug("长时任务已取消, 停止 Web 服务 reason=${payload.reason}", tag = "ohos-background-task")
+                if (WebServerManager.isRun) {
+                    OhosPlatformCapabilities.setWebService(false)
+                }
+            }
         }
     }
 }
@@ -262,7 +276,7 @@ internal object OhosPlatformEventChannel {
  *
  * @param type 事件类型: "httpProgress" | "lifecycle" | "colorMode" |
  *   "audioDeviceChange" | "audioFocusChange" | "callStateChange" | "networkAvailable" | "dialogResult" |
- *   "notificationAction"
+ *   "notificationAction" | "continuousTaskCancel"
  * @param url httpProgress: 请求 url (与 addListener 的 url 对应)
  * @param bytesReceived httpProgress: 已接收字节数
  * @param totalBytes httpProgress: 总字节数 (<=0 表示未知, 如分块传输无 Content-Length)
@@ -276,6 +290,7 @@ internal object OhosPlatformEventChannel {
  * @param dialogResult dialogResult: 系统对话框结果 JSON (`{ok,index}` / `{ok,confirmed}` / `{ok,cancelled}`)
  * @param notificationId notificationAction: 通知 id (与 ArkTS NOTIFICATION_ROUTES、[io.legado.app.constant.NotificationId] 同一张 id 表)
  * @param action notificationAction: 按钮动作标识 (原版 `addAction` 的 pendingIntent action, 如 "stop")
+ * @param reason continuousTaskCancel: 长时任务取消原因 (ArkTS backgroundTaskManager.ContinuousTaskCancelReason 原值)
  */
 @Serializable
 internal data class OhosPlatformEventPayload(
@@ -293,4 +308,5 @@ internal data class OhosPlatformEventPayload(
     val dialogResult: String? = null,
     val notificationId: Int = 0,
     val action: String? = null,
+    val reason: Int = 0,
 )

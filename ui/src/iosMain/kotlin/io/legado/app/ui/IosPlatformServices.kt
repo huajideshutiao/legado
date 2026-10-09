@@ -8,9 +8,11 @@ import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.file.pickDocuments
 import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
 import io.legado.app.help.log.NativeCrashLogs
+import io.legado.app.help.notification.IosNotificationCategories
+import io.legado.app.help.notification.cancelIosUpdateBookRefresh
 import io.legado.app.help.openURL
+import io.legado.app.help.service.IosCacheBookNotifications
 import io.legado.app.help.topMostViewController
-import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.root.BrowserService
 import io.legado.app.ui.root.CrashLogProvider
 import io.legado.app.ui.root.ExternalRequestService
@@ -64,12 +66,10 @@ import platform.UserNotifications.UNAuthorizationStatusAuthorized
 import platform.UserNotifications.UNAuthorizationStatusProvisional
 import platform.UserNotifications.UNMutableNotificationContent
 import platform.UserNotifications.UNNotification
-import platform.UserNotifications.UNNotificationAction
-import platform.UserNotifications.UNNotificationActionOptionNone
-import platform.UserNotifications.UNNotificationCategory
-import platform.UserNotifications.UNNotificationCategoryOptionCustomDismissAction
 import platform.UserNotifications.UNNotificationDefaultActionIdentifier
 import platform.UserNotifications.UNNotificationDismissActionIdentifier
+import platform.UserNotifications.UNNotificationPresentationOptionList
+import platform.UserNotifications.UNNotificationPresentationOptionNone
 import platform.UserNotifications.UNNotificationRequest
 import platform.UserNotifications.UNNotificationResponse
 import platform.UserNotifications.UNUserNotificationCenter
@@ -393,8 +393,10 @@ internal object IosNotificationService : NotificationService {
     }
 
     /**
-     * 发表不带自定义动作的同 id 通知 (覆盖式更新; 对照原版 `upExportNotification` 结束态分支 ——
-     * 该状态的通知上没有动作按钮)。
+     * 发表不带自定义动作的同 id 通知 (覆盖式更新)。
+     *
+     * 用于结束态 (对照原版 `upExportNotification` 结束态分支与 `upCacheBookFinishNotification`
+     * —— 两条在该状态都没有动作按钮)。
      */
     internal fun notifyWithoutActions(id: Int, title: String, content: String) {
         IosNotificationPublisher.publish(identifierOf(id), title, content, route = routeOf(id))
@@ -424,42 +426,28 @@ internal object IosNotificationService : NotificationService {
     /** 通知 id → 通知分类 (只有挂自定义动作的通知才需要; 返回 null 即通知上无动作按钮)。 */
     private fun categoryOf(id: Int): String? = when (id) {
         NotificationId.ExportBookService -> IosNotificationCategories.Export
+        NotificationId.CacheBookService -> IosNotificationCategories.CacheBook
+        NotificationId.CheckSourceService -> IosNotificationCategories.CheckSource
         else -> null
     }
-}
 
-/**
- * iOS 通知分类 (带自定义动作的通知必须先注册分类再发送, 否则通知上不出现动作按钮)。
- *
- * 注册见 [IosNotificationPublisher.installCategories], 由
- * [io.legado.app.help.config.registerIosProviders] 在启动早期调用; 发送时经
- * [UNMutableNotificationContent.setCategoryIdentifier] 把分类挂到通知内容上。
- */
-internal object IosNotificationCategories {
+    /**
+     * 通知标识 → 前台呈现选项 (0 = UNNotificationPresentationOptionNone, 即前台不展示)。
+     *
+     * 对照 app 端: 导出/缓存/校验三条在原版都是 `startForeground` 的前台服务通知, 应用在前台时
+     * 同样常驻通知栏 ("从通知取消"因此在前台可达); 更新目录通知在原版应用可见时被
+     * `AndroidUpdateBookCallback` 主动 stopService 撤掉, 故前台不呈现。
+     *
+     * 只呈现这三个标识 ([UNNotificationPresentationOptionList] = 仅进通知中心, 不弹横幅/
+     * 不响铃/不加角标): 其余通知保持不展示。
+     */
+    internal fun foregroundPresentationOptions(identifier: String?): ULong = when (identifier) {
+        identifierOf(NotificationId.ExportBookService),
+        identifierOf(NotificationId.CacheBookService),
+        identifierOf(NotificationId.CheckSourceService) -> UNNotificationPresentationOptionList
 
-    /** 导出通知分类 (进行中态挂 [ExportCancel] 动作)。 */
-    const val Export = "legado.export"
-
-    /** 导出通知的"取消"动作标识 (对照原版导出通知上的 IntentAction.stop 动作)。 */
-    const val ExportCancel = "legado.export.cancel"
-
-    /** 全部分类 ([UNUserNotificationCenter.setNotificationCategories] 为整体替换, 一次提交全集)。 */
-    fun all(): Set<UNNotificationCategory> = setOf(
-        UNNotificationCategory.categoryWithIdentifier(
-            identifier = Export,
-            actions = listOf(
-                // 不带 Foreground: 取消在后台完成即可, 与 app 端动作直达 Service (不拉 Activity) 同语义
-                UNNotificationAction.actionWithIdentifier(
-                    identifier = ExportCancel,
-                    title = syncGetString("cancel"),
-                    options = UNNotificationActionOptionNone,
-                ),
-            ),
-            intentIdentifiers = emptyList(),
-            // 清掉通知同样停导出 (对照原版 setDeleteIntent): 未挂该选项系统不投递清通知响应
-            options = UNNotificationCategoryOptionCustomDismissAction,
-        ),
-    )
+        else -> UNNotificationPresentationOptionNone
+    }
 }
 
 /**
@@ -544,7 +532,7 @@ internal const val IosNotificationRouteKey = "legadoRoute"
  *
  * 不新写路由解析: 复用 `route:` 前缀约定 (见 [IosLaunchRequests.parse]), 与系统
  * deep link / 文件关联走同一条链, 消费方仍是唯一的 `LaunchRequestBus` 消费者。
- * `willPresent` 返回 0 (不展示前台横幅) 保持原行为 —— 此前没有 delegate, 系统默认即不展示。
+ * 各"取消"动作只调已有的平台取消入口 / 共享层取消链路 (逐分支见下), 不在此另写取消逻辑。
  */
 private object IosNotificationDelegate : NSObject(), UNUserNotificationCenterDelegateProtocol {
 
@@ -553,15 +541,30 @@ private object IosNotificationDelegate : NSObject(), UNUserNotificationCenterDel
         didReceiveNotificationResponse: UNNotificationResponse,
         withCompletionHandler: () -> Unit,
     ) {
+        val content = didReceiveNotificationResponse.notification.request.content
         when (didReceiveNotificationResponse.actionIdentifier) {
-            // 通知上的"取消"动作, 与用户显式清掉通知 (分类挂 CustomDismissAction 才投递)
-            IosNotificationCategories.ExportCancel,
-            UNNotificationDismissActionIdentifier -> IosPlatformCapabilities.cancelExport()
+            IosNotificationCategories.ExportCancel -> IosPlatformCapabilities.cancelExport()
+
+            // 对照 app 端 UpdateBookService 的 IntentAction.stop (postEvent + 撤通知)
+            IosNotificationCategories.UpdateBookCancel -> cancelIosUpdateBookRefresh()
+
+            // 对照 app 端 CacheBookService 的 IntentAction.stop (stopSelf → onDestroy 停全部下载)
+            IosNotificationCategories.CacheBookCancel -> IosCacheBookNotifications.cancelDownloads()
+
+            // 对照 app 端 CheckSourceService 的 IntentAction.stop (stopSelf → onDestroy)
+            IosNotificationCategories.CheckSourceCancel ->
+                IosPlatformCapabilities.cancelCheckSource()
+
+            // 用户显式清掉通知: 只有挂了 CustomDismissAction 的分类会投递本动作
+            // (本仓仅导出分类挂了, 对照该通知原版的 setDeleteIntent)
+            UNNotificationDismissActionIdentifier ->
+                if (content.categoryIdentifier == IosNotificationCategories.Export) {
+                    IosPlatformCapabilities.cancelExport()
+                }
 
             // 点通知本体: 解出 userInfo 里的路由
             UNNotificationDefaultActionIdentifier -> {
-                val route = didReceiveNotificationResponse.notification.request.content
-                    .userInfo[IosNotificationRouteKey] as? String
+                val route = content.userInfo[IosNotificationRouteKey] as? String
                 navigateToRoute(route)?.let(IosLaunchRequests::post)
             }
         }
@@ -573,8 +576,14 @@ private object IosNotificationDelegate : NSObject(), UNUserNotificationCenterDel
         willPresentNotification: UNNotification,
         withCompletionHandler: (ULong) -> Unit,
     ) {
-        // 0 = UNNotificationPresentationOptionNone: 前台不弹横幅 (与原行为一致)
-        withCompletionHandler(0uL)
+        // 前台呈现按通知标识判定 (见 [IosNotificationService.foregroundPresentationOptions]):
+        // 原版是前台服务通知的三条在前台也进通知中心 (不弹横幅), 使用户在前台也能从通知取消;
+        // 其余通知返回 0 (UNNotificationPresentationOptionNone) 即前台不展示 (维持原行为)。
+        withCompletionHandler(
+            IosNotificationService.foregroundPresentationOptions(
+                willPresentNotification.request.identifier
+            )
+        )
     }
 }
 

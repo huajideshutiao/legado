@@ -62,6 +62,7 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.toJson
 import io.legado.app.utils.textCharsetCodec
 import io.legado.app.web.WebServerManager
+import kotlin.concurrent.Volatile
 import kotlinx.cinterop.useContents
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
@@ -879,6 +880,12 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
         IosCheckSource.start(selection)
     }
 
+    // 校验中重进书源管理页 (对照 app 端 CheckSourceService 的 IntentAction.resume: 重发一次进度,
+    // 进度事件与通知一并恢复; 共享路由靠该事件点亮进度条)
+    override fun resumeCheckSource() {
+        IosCheckSource.resume()
+    }
+
     override fun cancelCheckSource() {
         IosCheckSource.stop()
         Debug.finishChecking()
@@ -1049,12 +1056,17 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
  * iOS 端书源校验调度 (对照 desktop `DesktopCheckSource` / 鸿蒙 `OhosCheckSource`)。
  *
  * iOS 无 Android Service, 用协程 + [onEachParallel] 限流并发跑 [CheckSourceShared.checkSource]
- * (业务全流程已下沉), 进度经 EventBus 通知 UI。
+ * (业务全流程已下沉), 进度既发事件 (通知 UI) 也进通知栏 (对照 app 端 CheckSourceService:
+ * 通知 id / 标题 / 取消动作与 app 端同一套, 两处文案的取舍见 [upNotification])。
  */
 private object IosCheckSource {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var checkJob: Job? = null
+
+    /** 最近一次进度参数 (对照 app 端 CheckSourceService 的 notificationMsg/originSize: 重进页时重发)。 */
+    @Volatile
+    private var lastProgress: Triple<String, Int, Int>? = null
 
     fun start(selection: List<BookSourcePart>) {
         if (checkJob?.isActive == true) {
@@ -1066,6 +1078,8 @@ private object IosCheckSource {
         val appDb = AppDbProviders.get()
         var finishCount = 0
         checkJob = scope.launch {
+            // 初始帧 (对照 app 端 CheckSourceService.check 的 onStart 分支: 尚无书源名)
+            upNotification("", 0, ids.size)
             flow<BookSource> {
                 for (origin in ids) {
                     appDb.bookSourceDao.getBookSource(origin)?.let { emit(it) }
@@ -1074,12 +1088,14 @@ private object IosCheckSource {
                 CheckSourceShared.checkSource(it)
             }.onEach { source ->
                 finishCount++
-                postEvent(EventBus.CHECK_SOURCE, "${source.bookSourceName} $finishCount/${ids.size}")
+                upNotification(source.bookSourceName, finishCount, ids.size)
                 appDb.bookSourceDao.update(source)
             }.onCompletion {
                 // 对照 CheckSourceService.onDestroy
+                lastProgress = null
                 Debug.finishChecking()
                 postEvent(EventBus.CHECK_SOURCE_DONE, 0)
+                IosNotificationService.cancelNotification(NotificationId.CheckSourceService)
             }.collect { }
         }
         checkJob?.invokeOnCompletion { error ->
@@ -1087,10 +1103,42 @@ private object IosCheckSource {
         }
     }
 
+    /** 校验中重新进入书源管理页时重发进度 (对照 app 端 `CheckSourceService` 的 IntentAction.resume)。 */
+    fun resume() {
+        if (checkJob?.isActive != true) return
+        val (name, count, total) = lastProgress ?: return
+        upNotification(name, count, total)
+    }
+
     fun stop() {
         checkJob?.cancel()
         checkJob = null
+        lastProgress = null
         Debug.finishChecking()
         postEvent(EventBus.CHECK_SOURCE_DONE, 0)
+        // 对照 app 端 CheckSourceService.onDestroy 的 notificationManager.cancel
+        IosNotificationService.cancelNotification(NotificationId.CheckSourceService)
     }
+
+    /**
+     * 进度事件 + 进度通知 (对照 app 端 CheckSourceService.upNotification: 同一次进度两处使用)。
+     *
+     * 事件正文沿用各端既有格式 (与 desktop/鸿蒙 同一串, 共享路由的进度标签按它显示);
+     * 通知正文取 app 端同 key 文案 `progress_show` (与 app 端通知正文逐字同源)。
+     */
+    private fun upNotification(name: String, count: Int, total: Int) {
+        lastProgress = Triple(name, count, total)
+        postEvent(EventBus.CHECK_SOURCE, progressText(name, count, total))
+        IosNotificationService.notify(
+            NotificationId.CheckSourceService,
+            syncGetString("check_book_source"),
+            syncGetString("progress_show", name, count, total).trim(),
+        )
+    }
+
+    /**
+     * 进度事件正文 (首帧无书源名, 去掉前导空格, 对照 app 端 `progress_show` 首帧 trim)。
+     */
+    private fun progressText(name: String, count: Int, total: Int): String =
+        "$name $count/$total".trim()
 }

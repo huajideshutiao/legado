@@ -175,10 +175,14 @@ export interface LegadoNativeBridge {
    * 使 KMP OhosNativeBridge.showNotification / cancelNotification 跨线程 dispatch 到此 [callback]。
    *
    * @param callback 接收 JSON payload:
-   *   - SHOW:    `{ action: 'SHOW', id, title, content, progress, max, ongoing?, buttons? }`
-   *     (ongoing=true 置 isOngoing/tapDismissed=false/isAlertOnce; buttons 每项 `{ text, action }`
-   *     渲染成 actionButtons, 点击由宿主经 platformEvent type='notificationAction' 回送)
-   *   - CANCEL:  `{ action: 'CANCEL', id }`
+   *   - SHOW:    `{ action: 'SHOW', id, title, content, progress, max, ongoing?, alertOnce?, buttons?,
+   *     clickAction?, continuousTask? }`
+   *     (ongoing=true 置 isOngoing/tapDismissed=false; alertOnce=true 置 isAlertOnce; buttons 每项
+   *     `{ text, action }` 渲染成 actionButtons; clickAction 非空时把点击目标换成携带
+   *     `{notificationId, action}` 的 Want; continuousTask 非空时申请同名长时任务 —— 点击均由宿主
+   *     经 platformEvent type='notificationAction' 回送)
+   *   - CANCEL:  `{ action: 'CANCEL', id, stopContinuousTask? }` (`stopContinuousTask=true` 时一并取消
+   *     长时任务; 长时任务被系统/用户取消时宿主经 platformEvent type='continuousTaskCancel' 回送)
    *   内部分支调 notificationManager.publish / notificationManager.cancel
    */
   registerNotificationCallback(callback: (json: string) => void): void;
@@ -382,7 +386,7 @@ export interface LegadoNativeBridge {
    * 由 OhosPlatformEventChannel 按 type 分发 (httpProgress → OhosDownloadProgressEvents,
    * lifecycle → OhosAppLifecycle)。事件方向恒为 ArkTS → Kotlin, 无 tsfn。
    *
-   * @param event 事件 JSON `{ type: 'httpProgress' | 'lifecycle' | ... | 'notificationAction', ... }`
+   * @param event 事件 JSON `{ type: 'httpProgress' | 'lifecycle' | ... | 'notificationAction' | 'continuousTaskCancel', ... }`
    */
   platformEvent(event: string): void;
 

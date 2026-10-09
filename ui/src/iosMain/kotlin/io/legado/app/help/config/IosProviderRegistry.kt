@@ -34,6 +34,7 @@ import io.legado.app.help.registerNativeExploreKindsCacheProvider
 import io.legado.app.help.registerNativeFileCacheProvider
 import io.legado.app.help.registerNativeSourceCacheProvider
 import io.legado.app.help.service.registerIosBackgroundTasks
+import io.legado.app.help.service.registerIosCacheBookServiceNotifications
 import io.legado.app.help.service.registerIosServiceLauncher
 import io.legado.app.help.service.registerNativeUpdateBookCallback
 import io.legado.app.help.source.registerNativeSourceHelpAccessor
@@ -272,6 +273,9 @@ fun registerIosProviders() {
     // CacheBook callback 须在 ServiceLauncher 之前 (缓存流程未注册时 CacheBookCallbacks.get() 直接 error)
     registerNativeCacheBookCallback()
     registerIosServiceLauncher()
+    // 缓存书籍服务通知镜像须紧跟在启动器注册之后 (本函数把已注册的启动器包一层通知态;
+    // 对照 app 端通知随 CacheBookService 生死, iOS 无 Service 故镜像在启停入口上)
+    registerIosCacheBookServiceNotifications()
     // 音频播控 Commander (IosAudioPlayCommander, 与 ServiceLauncher 同级的播放编排入口)
     registerIosAudioPlayCommanders()
     // 系统媒体控制 (NowPlaying / RemoteCommandCenter / 锁屏控制卡片)

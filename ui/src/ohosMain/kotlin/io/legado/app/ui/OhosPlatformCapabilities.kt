@@ -22,6 +22,9 @@ import io.legado.app.help.file.OhosDirAuthorizations
 import io.legado.app.help.copyToClipboard as copyTextToClipboard
 import io.legado.app.help.readFromClipboard
 import io.legado.app.help.openURL
+import io.legado.app.help.notification.cancelOhosUpdateBookRefresh
+import io.legado.app.help.service.OhosCacheBookNotifications
+import io.legado.app.help.service.OhosWebServiceNotifications
 import io.legado.app.help.source.OhosCheckSource
 import io.legado.app.help.storage.effectiveBookExportDir
 import io.legado.app.help.toast.Toasters
@@ -367,6 +370,8 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
             progress = 0,
             max = 0,
             ongoing = !finish,
+            // 对照原版 setOnlyAlertOnce(!finish)
+            alertOnce = !finish,
             buttons = if (finish) {
                 emptyList()
             } else {
@@ -376,15 +381,45 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     }
 
     /**
-     * 通知按钮动作入口 (通知 actionButtons 点击 → 统一平台事件通道 type="notificationAction")。
+     * 通知按钮/点击动作入口 (通知 actionButtons 或点击动作 → 统一平台事件通道 type="notificationAction")。
      *
-     * (id, action) 逐字对照原版按钮的 pendingIntent: `servicePendingIntent<ExportBookService>(IntentAction.stop)`
-     * —— id 指明哪个通知 (哪个“服务”), action 是原版的 Intent action 字面量。
+     * (id, action) 逐字对照原版各通知的 pendingIntent: `servicePendingIntent<XxxService>(IntentAction.stop)`
+     * 与 WebService 的 `"copyHostAddress"` —— id 指明哪个通知 (哪个“服务”), action 是原版的
+     * Intent action 字面量。
      */
     fun onNotificationAction(notificationId: Int, action: String) {
-        if (notificationId == NotificationId.ExportBookService && action == IntentAction.stop) {
-            cancelExport()
+        when (notificationId) {
+            NotificationId.ExportBookService ->
+                if (action == IntentAction.stop) cancelExport()
+
+            NotificationId.UpdateBookService ->
+                if (action == IntentAction.stop) cancelOhosUpdateBookRefresh()
+
+            NotificationId.CacheBookService ->
+                if (action == IntentAction.stop) OhosCacheBookNotifications.cancelDownloads()
+
+            NotificationId.CheckSourceService ->
+                if (action == IntentAction.stop) cancelCheckSource()
+
+            NotificationId.WebService -> when (action) {
+                // 对照原版 WebService.onStartCommand 的 IntentAction.stop → stopSelf()
+                IntentAction.stop -> setWebService(false)
+                OhosWebServiceNotifications.ACTION_COPY_HOST_ADDRESS -> copyWebServiceAddress()
+            }
         }
+    }
+
+    /**
+     * 通知点击 → 复制服务地址 (对照 app 端 `WebService.onStartCommand` 的 "copyHostAddress"
+     * 分支: `sendToClip(hostAddress)`)。
+     */
+    private fun copyWebServiceAddress() {
+        val address = WebServerManager.hostAddress
+        if (address.isEmpty()) {
+            AppLog.put("Web 服务地址为空, 未复制")
+            return
+        }
+        copyToClipboard(address)
     }
 
     /**
@@ -688,6 +723,12 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     override fun checkBookSource(selection: List<BookSourcePart>) {
         if (selection.isEmpty()) return
         OhosCheckSource.start(selection)
+    }
+
+    // 校验中重进书源管理页 (对照 app 端 CheckSourceService 的 IntentAction.resume: 重发一次进度,
+    // 进度事件与通知一并恢复; 共享路由靠该事件点亮进度条)
+    override fun resumeCheckSource() {
+        OhosCheckSource.resume()
     }
 
     override fun cancelCheckSource() {

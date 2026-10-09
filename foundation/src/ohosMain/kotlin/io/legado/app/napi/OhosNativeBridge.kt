@@ -168,10 +168,19 @@ object OhosNativeBridge {
      * @param content 通知正文 (已含进度文本, 如 "下载中 (50/100)")
      * @param progress 当前进度
      * @param max 最大进度 (<=0 视为不确定进度)
-     * @param ongoing 进行中分支标记 (对照原版导出通知 `setOngoing(true)` + `setOnlyAlertOnce(true)`):
-     *   ArkTS 侧一次性置 `isOngoing=true` / `tapDismissed=false` / `isAlertOnce=true`; 缺省 (false)
-     *   三个字段都不下发, 由系统按默认处理
+     * @param ongoing 进行中分支标记 (对照原版导出通知 `setOngoing(true)`): ArkTS 侧置
+     *   `isOngoing=true` / `tapDismissed=false` (进行中通知不可点掉); 缺省 (false) 两个字段都不下发,
+     *   由系统按默认处理 (`tapDismissed` 默认 true 即原版 `setAutoCancel(true)`)
+     * @param alertOnce 只提醒一次 (对照原版 `setOnlyAlertOnce(true)`): ArkTS 侧置 `isAlertOnce`;
+     *   缺省 (false) 不下发, 每次更新按系统通知模式提醒 (原版未调该方法的通知即此行为)
      * @param buttons 通知按钮 (对照原版 `addAction`); 缺省空 = 无按钮
+     * @param clickAction 点击通知本体的动作标识 (原版 contentIntent 直达某 Service action 的场景,
+     *   如 WebService 的 "copyHostAddress"): 非空时 ArkTS 侧把点击目标构建为携带
+     *   `{notificationId, action}` 的 Want (同按钮), 回传路径与按钮一致; 缺省 (null) 时点击仍走
+     *   id→route 表
+     * @param continuousTask 长时任务类型配置项 (module.json5 的 backgroundModes 项, 如
+     *   "multiDeviceConnection"): 非空时 ArkTS 侧在发布通知后申请同名长时任务 (鸿蒙无前台服务,
+     *   不申请则进程退后台会被挂起), 取消时须同步传 [stopContinuousTask]; 缺省不申请
      */
     fun showNotification(
         id: Int,
@@ -180,7 +189,10 @@ object OhosNativeBridge {
         progress: Int,
         max: Int,
         ongoing: Boolean = false,
+        alertOnce: Boolean = false,
         buttons: List<NotificationButton> = emptyList(),
+        clickAction: String? = null,
+        continuousTask: String? = null,
     ) {
         val json = KS_JSON.encodeToString(
             NotificationPayload(
@@ -191,7 +203,10 @@ object OhosNativeBridge {
                 progress = progress,
                 max = max,
                 ongoing = ongoing.takeIf { it },
+                alertOnce = alertOnce.takeIf { it },
                 buttons = buttons.takeIf { it.isNotEmpty() },
+                clickAction = clickAction?.takeIf { it.isNotEmpty() },
+                continuousTask = continuousTask?.takeIf { it.isNotEmpty() },
             )
         )
         val progressText = if (max > 0) "$content ($progress/$max)" else content
@@ -207,10 +222,16 @@ object OhosNativeBridge {
      * 取消通知。未注册 tsfn 时丢弃 (见 [dispatchTsfn])。
      *
      * @param id 通知 id (与 showNotification 传入的 id 一致)
+     * @param stopContinuousTask 该通知背靠长时任务时传 true: ArkTS 侧一并取消长时任务
+     *   (对照 app 端 WebService 的 `stopSelf()` 同时停掉前台服务与其常驻通知); 缺省不动长时任务
      */
-    fun cancelNotification(id: Int) {
+    fun cancelNotification(id: Int, stopContinuousTask: Boolean = false) {
         val json = KS_JSON.encodeToString(
-            NotificationPayload(action = NotificationAction.CANCEL, id = id)
+            NotificationPayload(
+                action = NotificationAction.CANCEL,
+                id = id,
+                stopContinuousTask = stopContinuousTask.takeIf { it },
+            )
         )
         dispatchTsfn(
             synchronized(lock) { notificationTsfn },
@@ -1813,8 +1834,9 @@ object OhosNativeBridge {
     )
 
     /**
-     * notification 跨语言传递 payload。show 携带 title/content/progress/max (+ 可选的进行中标记与
-     * 按钮), cancel 仅 id; 可选字段缺省时不下发。
+     * notification 跨语言传递 payload。show 携带 title/content/progress/max (+ 可选的进行中标记 /
+     * 只提醒一次 / 按钮 / 点击动作 / 长时任务类型), cancel 携带 id (+ 可选的"一并取消长时任务");
+     * 可选字段缺省时不下发。
      */
     @Serializable
     private data class NotificationPayload(
@@ -1825,7 +1847,11 @@ object OhosNativeBridge {
         val progress: Int? = null,
         val max: Int? = null,
         val ongoing: Boolean? = null,
+        val alertOnce: Boolean? = null,
         val buttons: List<NotificationButton>? = null,
+        val clickAction: String? = null,
+        val continuousTask: String? = null,
+        val stopContinuousTask: Boolean? = null,
     )
 
     /** notification 操作类型 (ArkTS 侧据 action 分支 show/cancel)。 */

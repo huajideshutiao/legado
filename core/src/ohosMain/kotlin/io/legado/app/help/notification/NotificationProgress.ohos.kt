@@ -1,8 +1,12 @@
 package io.legado.app.help.notification
 
-import kotlin.concurrent.Volatile
-
+import io.legado.app.constant.EventBus
+import io.legado.app.constant.IntentAction
+import io.legado.app.constant.NotificationId
+import io.legado.app.napi.NotificationButton
 import io.legado.app.napi.OhosNativeBridge
+import io.legado.app.ui.compose.platform.syncGetString
+import io.legado.app.utils.postEvent
 
 /**
  * [NotificationProgress] 的鸿蒙 (OHOS) 实现 (KP7+ 已真实化)。
@@ -20,31 +24,31 @@ import io.legado.app.napi.OhosNativeBridge
  *
  * `cancel()` 同理, action=CANCEL → `notificationManager.cancel(id)`
  *
+ * # 通知形态 (对照 app 端 `UpdateBookService` 的通知)
+ * 常驻 (`setOngoing(true)`) + 只提醒一次 (`setOnlyAlertOnce(true)`) + "取消"按钮
+ * (`addAction(..., IntentAction.stop)`); 取消动作由宿主经统一平台事件通道回传
+ * (type="notificationAction", 见 [cancelOhosUpdateBookRefresh])。
+ *
  * # 通知 id 管理
- * id 用 `title.hashCode()` 稳定生成 (同一 title 多次 showProgress 更新同一通知);
- * [cancel] 取消上次 [showProgress] 记录的 id (interface 无 title 参数, 需缓存 lastId)。
+ * 固定用 [NotificationId.UpdateBookService] (与 app 端该通知同一 id): 进度从"更新目录"
+ * 切到"强制刷新"只换标题, 不另起一条通知。
  *
  * # 降级策略
  * [OhosNativeBridge] 未注册 tsfn 时内部丢弃命令 (兼容当前未接入 napi 阶段)。
  *
  * # 权限与配置
- * - module.json5 需声明 `ohos.permission.NOTIFICATION` 权限
- * - 首次发布前需调 `notificationManager.requestEnableNotification()` 请求用户授权
- *   (在 EntryAbility.onCreate 注册回调后一次性请求)
+ * module.json5 不声明通知权限 (本机 SDK 无 `ohos.permission.NOTIFICATION`); 未获用户授权时
+ * publish 以 1600004/1600020 被拒, 由 ArkTS 侧记日志 (见 EntryAbility 的 publish catch)。
  *
  * # 进度显示
- * 当前用 BasicText 显示 "content (progress/max)" 文本 (与 desktop 端一致);
- * 后续可升级 ProgressBarTemplate 显示真实进度条 (复杂度更高, 待 KP8+)。
+ * 正文用 "content (progress/max)" 文本 (与 desktop 端一致); progress/max 同时下发给 ArkTS
+ * 侧的 downloadTemplate 进度条 (对照 app 端 `setLiveProgress`)。
  *
  * 降级策略对齐 desktop 端 [io.legado.app.help.notification.DesktopNotificationProgress]
  * 无 SystemTray 时退化为记日志; iOS 端用 NSLog 降级。
  * 模式参考 `registerAndroidMediaNotificationProvider`。
  */
 class OhosNotificationProgress : NotificationProgress {
-
-    /** 上次 showProgress 的通知 id (cancel 用, title.hashCode() 稳定生成)。 */
-    @Volatile
-    private var lastId: Int? = null
 
     override fun showProgress(title: String, content: String, progress: Int, max: Int) {
         // 拼接进度文本: "content (progress/max)" 或 "content" (与 desktop 端 DesktopNotificationProgress 一致)
@@ -53,20 +57,36 @@ class OhosNotificationProgress : NotificationProgress {
         } else {
             content
         }
-        // id 用 title.hashCode() 稳定生成 (同一 title 多次更新覆盖同一通知)
-        val id = title.hashCode()
-        lastId = id
-        OhosNativeBridge.showNotification(id, title, progressText, progress, max)
+        OhosNativeBridge.showNotification(
+            id = NotificationId.UpdateBookService,
+            title = title,
+            content = progressText,
+            progress = progress,
+            max = max,
+            // 常驻 + 只提醒一次 + 取消按钮, 对照 app 端 UpdateBookService 通知的三个 setter
+            ongoing = true,
+            alertOnce = true,
+            buttons = listOf(
+                NotificationButton(text = syncGetString("cancel"), action = IntentAction.stop)
+            ),
+        )
     }
 
     override fun cancel() {
-        // interface 无 title 参数, 用缓存的 lastId 取消; 未调过 showProgress 时 no-op
-        val id = lastId
-        if (id != null) {
-            OhosNativeBridge.cancelNotification(id)
-            lastId = null
-        }
+        OhosNativeBridge.cancelNotification(NotificationId.UpdateBookService)
     }
+}
+
+/**
+ * 更新目录进度通知上的"取消"动作 (对照 app 端 `UpdateBookService` 的 IntentAction.stop 分支:
+ * `postEvent(EventBus.STOP_UP_BOOK, "")` + `stopSelf()`, 服务销毁时撤掉通知)。
+ *
+ * 取消任务复用共享层既有链路: [EventBus.STOP_UP_BOOK] 事件由 `UpdateBookShared` 监听并取消
+ * upToc / 强制刷新 / 预下载任务 (对照 app 端 MainViewModel 同名监听), 本函数不另写取消逻辑。
+ */
+fun cancelOhosUpdateBookRefresh() {
+    postEvent(EventBus.STOP_UP_BOOK, "")
+    OhosNativeBridge.cancelNotification(NotificationId.UpdateBookService)
 }
 
 /**

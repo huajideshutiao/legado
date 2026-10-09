@@ -82,12 +82,16 @@
         "startWindowIcon": "$media:app_icon_foreground",
         "startWindowBackground": "$color:start_window_background",
         "exported": true,
-        // 长时任务类型与实现一致: 全仓只有 MediaBridgeHandler.ets 的 switchBackgroundTask
-        // 调 backgroundTaskManager.startBackgroundRunning, 且只传 BackgroundMode.AUDIO_PLAYBACK
-        // (缓存/更新书籍、Web 服务均未走长时任务), 故只声明 audioPlayback 不加其它类型。
+        // 长时任务类型与实现一致: 两处调 backgroundTaskManager.startBackgroundRunning ——
+        // MediaBridgeHandler.ets 的 switchBackgroundTask 传 BackgroundMode.AUDIO_PLAYBACK,
+        // EntryAbility.ets 的 startWebServiceContinuousTask 传 ["multiDeviceConnection"]
+        // (Web 服务要在后台持续监听局域网连接: 数据传输类型自带"超过10分钟不更新进度即取消"的限制,
+        // 空闲等待连接的服务器满足不了; 计算任务/星闪类型的适用范围见长时任务文档的"使用场景"表,
+        // WLAN 相关业务仅对系统应用开放)。两处都必须在此声明, 否则申请被拒。
         // 该 API 的 @permission 为 ohos.permission.KEEP_BACKGROUND_RUNNING (已在上面声明)。
         "backgroundModes": [
-          "audioPlayback"
+          "audioPlayback",
+          "multiDeviceConnection"
         ],
         "skills": [
           {
