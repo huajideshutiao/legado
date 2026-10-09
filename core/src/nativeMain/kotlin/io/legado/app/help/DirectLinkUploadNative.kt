@@ -17,9 +17,15 @@ import kotlinx.coroutines.currentCoroutineContext
  *
  * 错误一律抛出 (未配置 url / 规则缺 body / 空响应都是配置问题, 由调用方 toast 原文),
  * 不做"失败返回 null"式的静默降级。
+ *
+ * [rule] 默认取当前生效规则; 直链上传配置页的"测试"按钮传入表单里尚未保存的规则。
  */
-suspend fun upLoadToDirectLink(fileName: String, file: Any, contentType: String): String {
-    val rule = getRuleShared()
+suspend fun upLoadToDirectLink(
+    fileName: String,
+    file: Any,
+    contentType: String,
+    rule: DirectLinkUploadRule = getRuleShared(),
+): String {
     val url = rule.uploadUrl
     if (url.isBlank()) {
         throw NoStackTraceException("上传url未配置")

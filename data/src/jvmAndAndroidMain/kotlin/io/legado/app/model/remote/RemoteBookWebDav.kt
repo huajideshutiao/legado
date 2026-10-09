@@ -3,11 +3,10 @@ package io.legado.app.model.remote
 import io.legado.app.constant.AppPattern.archiveFileRegex
 import io.legado.app.constant.AppPattern.bookFileRegex
 import io.legado.app.constant.BookType
-import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.AppWebDavShared
 import io.legado.app.lib.webdav.Authorization
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavFile
@@ -20,9 +19,15 @@ import kotlinx.coroutines.runBlocking
  * WebDav 远程书籍管理 (下沉自 app 端 `model/remote/RemoteBookWebDav.kt`)。
  *
  * Android 专属依赖已换成 KMP 抽象, 行为不变:
- * `AppConfig.defaultBookTreeUri` → [PreferenceProviders]; `FileBook.saveBookFile` →
- * [FileBookProviders]; `book.update()` → [AppDbProviders]; `bookUrl.toUri()` +
- * content scheme 分支 → [uploadLocalBook] expect/actual。
+ * `FileBook.saveBookFile` → [FileBookProviders]; `book.update()` → [AppDbProviders];
+ * `bookUrl.toUri()` + content scheme 分支 → [uploadLocalBook] expect/actual。
+ *
+ * # 已上移出本类的部分
+ * [getRemoteBook] / [downloadRemoteBook] 的实现现置于共享层 [AppWebDavShared] (四端共用),
+ * 本类仅保留 [RemoteBookManager] 的实现位并转发。
+ * [upload] 暂留本类: 它走 [uploadLocalBook] 的 content scheme 分支 (读不到就报错),
+ * 而共享上传件在取不到文件系统路径时回退 [FileBookProviders.getBookInputStream] (会转去
+ * “重新解压/重新下载”), 两者在失败路径上不同; 合并会改变 Android 的失败行为, 故不并。
  */
 class RemoteBookWebDav(
     val rootBookUrl: String,
@@ -62,24 +67,18 @@ class RemoteBookWebDav(
             remoteBooks
         }
 
-    override suspend fun getRemoteBook(path: String): RemoteBook? = withNetworkCheck {
-        val webDavFile = WebDav(path, authorization).getWebDavFile()
-            ?: return@withNetworkCheck null
-        RemoteBook.create(webDavFile)
-    }
+    override suspend fun getRemoteBook(path: String): RemoteBook? =
+        AppWebDavShared.getRemoteBook(path, authorization)
 
-    override suspend fun downloadRemoteBook(remoteBook: RemoteBook): String {
-        // 对照原版 AppConfig.defaultBookTreeUri (stringPrefClearOnEmpty, 空即未设置)
-        if (PreferenceProviders.get().getString(PreferKey.defaultBookTreeUri).isEmpty()) {
-            throw NoStackTraceException("没有设置书籍保存位置!")
-        }
-        return withNetworkCheck {
-            val webdav = WebDav(remoteBook.path, authorization)
-            webdav.downloadInputStream().let { inputStream ->
-                FileBookProviders.get().saveBookFile(inputStream, remoteBook.filename)
-            }
-        }
-    }
+    /**
+     * 下载远端书籍到本地保存位置。
+     *
+     * 实现已上移到共享层 [AppWebDavShared.downloadRemoteBook] (四端同一份: 保存位置前置检查
+     * + 网络检查 + 经 [FileBookProviders] 落盘), 本类只保留 [RemoteBookManager] 的实现位
+     * 并把本实例的凭据传过去 (自定义服务器不能用共享层默认配置)。
+     */
+    override suspend fun downloadRemoteBook(remoteBook: RemoteBook): String =
+        AppWebDavShared.downloadRemoteBook(remoteBook, authorization)
 
     override suspend fun upload(book: Book) = withNetworkCheck {
         val putUrl = "$rootBookUrl${book.originName}"

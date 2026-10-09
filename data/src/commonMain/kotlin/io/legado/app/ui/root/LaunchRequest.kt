@@ -89,6 +89,19 @@ sealed interface LaunchRequest {
 }
 
 /**
+ * routeName → [LaunchRequest.NavigateTo] 的统一构造点
+ * (通知点击 / 桌面快捷方式 / 跨进程 alias 入口共用)。
+ *
+ * 各端的入参形态不同 (Android 是两个 Intent extra, iOS / 鸿蒙 是一个 `route:` 前缀串),
+ * 故前缀剥离留在各端; 但"非空 routeName 才成请求"这条判定与请求构造只此一份
+ * (路由名与 ArkTS 侧 `route:` 字面量对齐, 不得改)。
+ *
+ * @return routeName 为空时返回 null (不投递空路由)
+ */
+fun navigateToRoute(routeName: String?, bookUrl: String? = null): LaunchRequest.NavigateTo? =
+    routeName?.takeIf { it.isNotEmpty() }?.let { LaunchRequest.NavigateTo(it, bookUrl) }
+
+/**
  * 外部请求事件总线 (各端投递侧 → 共享 UI 消费侧)。
  * 无限队列保留订阅前请求，并按投递顺序交给唯一应用根消费者。
  */

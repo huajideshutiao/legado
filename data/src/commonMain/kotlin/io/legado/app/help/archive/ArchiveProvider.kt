@@ -34,6 +34,23 @@ interface ArchiveProvider {
     fun deCompress(archivePath: String): List<String>
 
     /**
+     * 列举压缩包内条目名 (不含目录条目)。
+     *
+     * 对应 app 端 [io.legado.app.utils.ArchiveUtils.getArchiveFilesName]。
+     *
+     * # 必须照原样保留的语义 (调用方依赖, 不是可自由发挥的接口)
+     * - **[filter] 为 null 时恒返回空列表**: 底层实现是 `if (filter != null && filter(name))`,
+     *   即没有过滤条件就一条都不返回。调用方一律传非 null 过滤条件, 不得为此改判据。
+     * - **读失败返回空列表而非抛异常**: 与 app 端把解码异常吞成 `emptyList()` 同语义,
+     *   调用方据“空列表”弹“不支持的压缩包条目”提示。
+     *
+     * @param archivePath 压缩文件绝对路径
+     * @param filter 条目名过滤条件; null 时按上述语义返回空列表
+     * @return 命中 [filter] 的条目名列表
+     */
+    fun getFilesName(archivePath: String, filter: ((String) -> Boolean)?): List<String>
+
+    /**
      * 从 [bytes] (压缩文件字节内容) 中读取指定 [path] 条目的字节。
      *
      * 对应 app 端 LibArchiveUtils.getByteArrayContent (libarchive 统一处理 zip/rar/7z)。

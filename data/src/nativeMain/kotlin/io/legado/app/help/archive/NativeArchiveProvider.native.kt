@@ -1,5 +1,6 @@
 package io.legado.app.help.archive
 
+import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.SecurityException
 import io.legado.app.help.FileUtilsCommon
@@ -157,6 +158,40 @@ object NativeArchiveProvider : ArchiveProvider {
                 zip.close()
             }
         }.getOrNull()
+    }
+
+    /**
+     * 列举压缩包内条目名 (仅 zip/cbz)。
+     *
+     * 复用 [RemoteZipCore] 的 central directory 解析, 不整包解压。
+     *
+     * # 与 app 端差异
+     * - rar/7z/bz2/xz/lzma 无 native 解码器 (见本文件 deCompress 的同类限制), 无条目可列,
+     *   返回空列表并由 [AppLog] 记下原因 (不静默); 调用方对空列表的展示与 app 端读失败一致
+     * - [filter] 为 null 直接返回空列表, 对齐 app 端 `LibArchiveUtils.getFilesName` 语义
+     */
+    override fun getFilesName(archivePath: String, filter: ((String) -> Boolean)?): List<String> {
+        if (filter == null) return emptyList()
+        val file = File(archivePath)
+        val name = file.name
+        if (!name.endsWith(".zip", true) && !name.endsWith(".cbz", true)) {
+            AppLog.put("iOS/鸿蒙端仅支持 zip/cbz 列出条目, 不支持 $name")
+            return emptyList()
+        }
+        return runCatching {
+            val bytes = file.readBytes()
+            val zip = RemoteZipCore(bytesRangedSource(bytes), name, bytes.size.toLong())
+            try {
+                zip.ensureMeta().values
+                    .map { it.entry.name }
+                    .filter { !it.endsWith("/") && filter(it) }
+            } finally {
+                zip.close()
+            }
+        }.getOrElse {
+            AppLog.put("列举压缩包条目失败: $archivePath\n${it.message}", it)
+            emptyList()
+        }
     }
 
     private fun collectFiles(dir: File, out: MutableList<String>) {

@@ -1,5 +1,6 @@
 package io.legado.app.web
 
+import io.legado.app.ui.compose.platform.syncGetString
 import kotlinx.cinterop.CPointerVar
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
@@ -39,3 +40,25 @@ internal actual fun localIPv4Addresses(): List<String> = memScoped {
     }
     addresses.ifEmpty { listOf(LOOPBACK) }
 }
+
+/**
+ * 鸿蒙网络可用事件 → 刷新 Web 服务地址 (对照 app 端 `WebService` 里
+ * `networkChangedListener.onNetworkChanged` 那段中共享的一半: 重算地址 + 发事件)。
+ *
+ * 事件由 ArkTS 侧 `@ohos.net.connection` 的 `on('netAvailable')` 经统一平台事件通道回送
+ * (见 OhosPlatformEvents.kt 的 `networkAvailable` 分支)。不重启服务器 (HttpServer 绑
+ * 0.0.0.0, IP 变了不影响服务器, 只影响展示给用户的地址)。
+ *
+ * 与 Android 的差别 (如实): Android 在 `WebService` 存活期注册网络回调, 服务没开就没有监听;
+ * 鸿蒙无常驻 Service, 监听挂在进程级, 故这里显式加 [WebServerManager.isRun] 闸门,
+ * 保证"服务没开时不改状态也不发事件", 与 Android 观感一致。
+ */
+fun refreshOhosWebServerAddresses() {
+    if (!WebServerManager.isRun) return
+    val port = WebServerManager.getPort()
+    val addresses = localIPv4Addresses().map { "http://$it:$port" }
+    WebServerManager.updateAddresses(addresses, syncGetString(UNAVAILABLE_KEY))
+}
+
+/** 无可用地址时的占位文案 key (原版 R.string.network_connection_unavailable)。 */
+private const val UNAVAILABLE_KEY = "network_connection_unavailable"

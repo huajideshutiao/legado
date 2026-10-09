@@ -2,7 +2,6 @@ package io.legado.app.help.service
 
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
-import io.legado.app.data.AppDbProviders
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.file.FileDownloaders
 import io.legado.app.help.notification.NotificationProgresses
@@ -24,8 +23,9 @@ import kotlinx.coroutines.launch
  * 设计要点 (对照 jvmMain DesktopServiceLauncher): 持有 [CoroutineScope]
  * (SupervisorJob + Default dispatcher, 子任务异常不互相影响);
  * start/remove/stopCacheBookService 接入已下沉的 [CacheBookShared] (对照 app 端
- * CacheBookService); start/stopUpdateBookService 接入 [UpdateBookShared]
- * (Native 无 MainViewModel, 从 DB 查所有书后 scheduleAutoUpdate);
+ * CacheBookService); `startUpdateBookService` / `stopUpdateBookService` 均为零调用点死代码,
+ * 已于 2026-09 删除 (Native 无 MainViewModel; 书架自动更新走共享触发链, 不在本启动器;
+ * 取消刷新任务走 BookshelfViewModel → UpdateBookShared);
  * startDownloadService 用 [FileDownloaders] 写文件 (iOS 沙盒 Documents 替代 user.home,
  * 鸿蒙 {user.dir}/legado_data/files)。
  *
@@ -36,18 +36,6 @@ import kotlinx.coroutines.launch
 class NativeServiceLauncher(
     private val scope: CoroutineScope,
 ) : ServiceLauncher {
-
-    /**
-     * UpdateBook 编排核心 (commonMain 下沉件), 持有实例以复用 across startUpdateBookService /
-     * stopUpdateBookService 调用 (与 app 端 MainViewModel 持有 UpdateBookShared 一致)。
-     *
-     * callback 优先取 [UpdateBookCallbacks.getDefault] (iOS / 鸿蒙端经 [registerNativeUpdateBookCallback]
-     * 注册的真实 [NativeUpdateBookCallback], 桥接 NotificationProgresses + Toasters);
-     * 未注册时 fallback 到 null (UpdateBookShared 内部对 null callback 做容错)。
-     */
-    private val updateBookShared: UpdateBookShared by lazy {
-        UpdateBookShared(scope, UpdateBookCallbacks.getDefault() ?: NativeUpdateBookCallback)
-    }
 
     override fun startCacheBookService(bookUrl: String, start: Int, end: Int) {
         scope.launch {
@@ -69,23 +57,6 @@ class NativeServiceLauncher(
         CacheBookShared.cacheBookMap[bookUrl]?.stop()
         postEvent(EventBus.UP_DOWNLOAD, "")
         // Native 端无 stopSelf; downloadJob 重启由调用方监听 isRun 自行管理
-    }
-
-    override fun startUpdateBookService() {
-        // 接入已下沉的 UpdateBookShared (commonMain 编排核心):
-        // 从 DB 查所有书后调 scheduleAutoUpdate 触发自动更新 (替代原 println stub)。
-        // scheduleAutoUpdate 内部按 canUpdate + lastCheckTime 时间窗过滤, 自动跳过本地书 /
-        // 不可更新书 / 最近 10 分钟已检查的书, 与 app 端 MainViewModel.scheduleAutoUpdate 行为一致。
-        scope.launch {
-            // 协程内直接 suspend 调用 (原 runBlocking 嵌套有死锁风险)
-            val books = AppDbProviders.get().bookDao.all()
-            updateBookShared.scheduleAutoUpdate(books)
-        }
-    }
-
-    override fun stopUpdateBookService() {
-        // 取消所有更新任务 (对照 app 端 MainViewModel.cancelRefreshJobs, 但无 stopService)
-        updateBookShared.cancelRefreshJobs()
     }
 
     override fun startDownloadService(url: String, fileName: String) {
@@ -139,7 +110,7 @@ class NativeServiceLauncher(
  * [io.legado.app.help.config.registerOhosProviders] 中
  * `registerIosToaster`/`registerOhosToaster` + `registerIosNotificationProgress`/`registerOhosNotificationProgress`
  * 之后、`registerIosServiceLauncher`/`registerOhosServiceLauncher` 之前调用
- * (NativeServiceLauncher 构造 updateBookShared 时经 [UpdateBookCallbacks.getDefault] 取本实现)。
+ * (BookshelfViewModel / UpdateBookShared 经 [UpdateBookCallbacks.getDefault] 取本实现)。
  *
  * 替代原 iosMain IosUpdateBookCallback + registerIosUpdateBookCallback (行为完全一致,
  * 已下沉到 nativeMain 共用, 避免平台 actual 重复)。
@@ -182,9 +153,8 @@ object NativeUpdateBookCallback : UpdateBookCallback {
  * Native (iOS / 鸿蒙) 宿主启动早期注册真实 [UpdateBookCallback] (覆盖原 stub)。
  *
  * 调用时机: 在 `registerIosToaster`/`registerOhosToaster` + `registerIosNotificationProgress`/
- * `registerOhosNotificationProgress` 之后 (本 callback 委托这两个 provider)、
- * `registerIosServiceLauncher`/`registerOhosServiceLauncher` 之前
- * ([NativeServiceLauncher.updateBookShared] lazy 构造时经 [UpdateBookCallbacks.getDefault] 取本实现)。
+ * `registerOhosNotificationProgress` 之后 (本 callback 委托这两个 provider)。
+ * 与 ServiceLauncher 的注册顺序无关 (ServiceLauncher 不再持有 UpdateBookShared)。
  *
  * 替代原 iosMain IosUpdateBookCallback + registerIosUpdateBookCallback (行为完全一致,
  * 已下沉到 nativeMain 共用, 避免平台 actual 重复)。

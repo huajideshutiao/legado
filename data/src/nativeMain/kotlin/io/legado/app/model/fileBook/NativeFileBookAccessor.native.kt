@@ -39,8 +39,10 @@ import io.legado.app.utils.File
  *   (commonMain TextFileCore); PDF/CBZ 解析器未下沉, 走 [UnsupportedFileBook] 抛明确异常, 不静默空返回
  * - zip 解析用 commonMain [RemoteZipCore] + [ZipEntryReader] (无 java.util.zip)
  * - bookUrl 用 `file://` + 绝对路径 (与 NativeLocalBookLocator.parseLocalPath 对齐)
- * - saveBookFile(str) 网络路径用 AnalyzeUrlCore.getByteArrayAwait (native 响应体本就整块进内存,
- *   走 getInputStreamAwait 无额外收益)
+ * - saveBookFile(str) 的 webDav 分支与 "下载到本地" / "刷新远端更新" 链路共用同一流式入口
+ *   [saveBookFileFromWebDav] (内部走既有 WebDav.downloadTo 直接写盘, 不经 InputStream 整份读入内存);
+ *   网络路径用 AnalyzeUrlCore.getByteArrayAwait
+ *   (native 响应体本就整块进内存, 走 getInputStreamAwait 无额外收益)
  * - importRemoteBook 的 zip 分支用 WebDav.readRange + RemoteZipCore (与 desktop RemoteZipWrapper 语义一致)
  */
 class NativeFileBookAccessor : FileBookAccessor {
@@ -210,17 +212,46 @@ class NativeFileBookAccessor : FileBookAccessor {
         fileName: String,
         source: BaseSource?
     ): String {
-        // webDav 走 WebDav 下载流; 网络 URL 走 AnalyzeUrlCore 取字节
+        // 网络 URL 走 AnalyzeUrlCore 取字节
         // (native 响应体本就整块进内存, getByteArrayAwait 与流式等价)
-        val inputStream = if (!str.startsWith(BookType.webDavTag)) {
-            AnalyzeUrlCore(
-                str, source = source, callTimeout = 0,
-                coroutineContext = currentCoroutineContext()
-            ).getByteArrayAwait().toInputStream()
-        } else {
-            WebDav.fromPath(str.substring(BookType.webDavTag.length)).downloadInputStream()
+        if (str.startsWith(BookType.webDavTag)) {
+            // webDav 整书下载与 "下载到本地" / "刷新远端更新" 链路共用同一流式入口
+            // (见 [saveBookFileFromWebDav]; 旧实现直接内联 downloadTo, 两份等价实现归一)
+            return saveBookFileFromWebDav(
+                WebDav.fromPath(str.substring(BookType.webDavTag.length)), fileName
+            )
         }
-        return saveBookFile(inputStream, fileName)
+        val bytes = AnalyzeUrlCore(
+            str, source = source, callTimeout = 0,
+            coroutineContext = currentCoroutineContext()
+        ).getByteArrayAwait()
+        return saveBookFile(bytes.toInputStream(), fileName)
+    }
+
+    /**
+     * 流式保存 WebDav 远端书籍文件 ("下载到本地" / "刷新远端更新" 链路)。
+     *
+     * native 端无 SAF: 交给既有的 [WebDav.downloadTo] (savedPath, replaceExisting)
+     * 边下边写 `{filesDir}/books/{fileName}` (内部 mkdirs + okio 流式写, 见 WebDav.native.kt),
+     * 不再经 [saveBookFile] (inputStream 重载) 的 `readFully()` 把整份文件读进内存 ——
+     * 峰值内存与文件大小无关。
+     *
+     * replaceExisting=true: 保持 [saveBookFile] (inputStream 重载) 的覆盖写语义
+     * (downloadTo 在 replaceExisting=false 且文件已存在时直接返回, 不覆盖)。
+     * 传输中途失败会留下残缺文件, 故失败时删净 (旧路径 "先读满再写" 失败时不留文件;
+     * 不删干净的话残缺文件会被后续导入当成本地书读入)。
+     *
+     * 返回引用形式 (`file://` + 绝对路径) 与 [saveBookFile] (inputStream 重载) 一致。
+     */
+    override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
+        val file = File("$booksDir/$fileName")
+        try {
+            webDav.downloadTo(file.path, true)
+        } catch (e: Throwable) {
+            runCatching { file.delete() }
+            throw e
+        }
+        return "file://" + file.absolutePath
     }
 
     override fun saveBookFile(inputStream: InputStream, fileName: String): String {

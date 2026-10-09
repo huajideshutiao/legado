@@ -24,7 +24,8 @@ import okio.buffer
  * - [readText]: [File.readText] (UTF-8), 文件不存在抛 IllegalStateException
  * - [listFiles]: [File.listFiles]?.map { it.path } (目录不存在返回 null)
  * - [copyFile]: [File.copyTo] (overwrite, 父目录 mkdirs, 与 JVM 流式 copyTo 等价)
- * - [zipFiles]: [NativeZipCodec.zipFiles] (STORED 无压缩, 生成的 zip 可被 JVM/Android/桌面解压)
+ * - [zipFiles]: [NativeZipCodec.zipFiles] (DEFLATE 固定 Huffman, 压不小/回读校验不过时回落 STORED,
+ *   生成的 zip 可被 JVM/Android/桌面解压)
  * - [unZipToPath]: [NativeZipCodec.unZipToPath] (支持 STORED + DEFLATE, 可解压 JVM 端备份 zip)
  *
  * # 下沉说明
@@ -145,13 +146,14 @@ actual object BackupFileOps {
     }
 
     /**
-     * zip 压缩 (委托 [NativeZipCodec.zipFiles], STORED 无压缩)。
+     * zip 压缩 (委托 [NativeZipCodec.zipFiles])。
      *
      * 生成的 zip 可被 jvmAndAndroidMain [io.legado.app.utils.compress.ZipUtils.unZipToPath]
      * / 标准 zip 工具解压, 解除备份 P1 阻塞 (BackupShared.backUp 调用链打通)。
      *
      * 实现细节见 [NativeZipCodec] (纯 Kotlin 写 ZIP 文件格式, 不依赖 minizip / zlib /
-     * Compression.framework; 压缩用 STORED 无压缩, 备份场景 JSON 文本体积代价可接受)。
+     * Compression.framework; 每个 entry 用 DEFLATE 固定 Huffman 压缩, 压不小或回读校验不过时
+     * 回落 STORED —— 不是“只支持 STORED”)。
      */
     actual fun zipFiles(srcPaths: List<String>, zipPath: String): Boolean {
         return NativeZipCodec.zipFiles(srcPaths, zipPath)

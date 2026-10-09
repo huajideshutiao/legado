@@ -7,8 +7,8 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.KmpRequestBuilder
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.tts.IosReadAloudHost
-import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.alloc
+import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
@@ -22,10 +22,23 @@ import kotlinx.coroutines.withContext
 import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionCategoryOptionMixWithOthers
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
+import platform.AVFAudio.AVAudioSessionInterruptionNotification
+import platform.AVFAudio.AVAudioSessionInterruptionOptionKey
+import platform.AVFAudio.AVAudioSessionInterruptionOptionShouldResume
+import platform.AVFAudio.AVAudioSessionInterruptionTypeBegan
+import platform.AVFAudio.AVAudioSessionInterruptionTypeEnded
+import platform.AVFAudio.AVAudioSessionInterruptionTypeKey
+import platform.AVFAudio.AVAudioSessionRouteChangeNotification
+import platform.AVFAudio.AVAudioSessionRouteChangeReasonKey
+import platform.AVFAudio.AVAudioSessionRouteChangeReasonOldDeviceUnavailable
 import platform.AVFAudio.AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation
 import platform.AVFAudio.setActive
 import platform.Foundation.NSData
 import platform.Foundation.NSError
+import platform.Foundation.NSNotification
+import platform.Foundation.NSNotificationCenter
+import platform.Foundation.NSNumber
+import platform.Foundation.NSOperationQueue
 import platform.Foundation.create
 import platform.MediaPlayer.MPChangePlaybackPositionCommandEvent
 import platform.MediaPlayer.MPMediaItemArtwork
@@ -225,11 +238,72 @@ object IosMediaNotificationController : NowPlayingSink {
 }
 
 /**
- * 注册 iOS 端系统媒体控制 (卡片写入端 + 朗读宿主)。
+ * 注册 iOS 端系统媒体控制 (卡片写入端 + 朗读宿主 + 音频会话事件源)。
  *
  * 这里不激活音频会话: 会话在真正开播时才激活, 见 [NowPlayingSink.setAudioFocus]。
  */
 fun registerIosMediaNotificationController() {
     SystemMediaControl.registerSink(IosMediaNotificationController)
     SystemMediaControl.registerReadAloudHost(IosReadAloudHost)
+    registerIosAudioSessionObservers()
+    registerIosCallStateObserver()
+}
+
+/**
+ * iOS 音频焦点与音频路由事件源 (对照 app 端 `AudioFocusController` 的系统回调与
+ * `BecomingNoisyReceiver`)。
+ *
+ * 只挂一次观测者, 全程在册:
+ * - `AVAudioSessionInterruptionNotification`: Began → [AudioFocusChange.LossTransient],
+ *   Ended 且带 `ShouldResume` → [AudioFocusChange.Gain]; Ended 不带 `ShouldResume` 不派发
+ *   (系统明确说"不要自己恢复", 此时应维持暂停)。
+ *   iOS 无 `AUDIOFOCUS_LOSS` (永久丢失) 与 `CAN_DUCK` 等价枚举, 故这两档不会到达。
+ * - `AVAudioSessionRouteChangeNotification`: 旧设备不可用 (拔耳机/蓝牙断开) →
+ *   [SystemMediaControl.onAudioBecomingNoisy]。
+ *
+ * 通知的 `userInfo` 是 NSDictionary, 数值经 Kotlin/ObjC 桥接后可能是 NSNumber 或
+ * 装箱过的数值类型, 故用 [intValue] 两种形态都取。
+ */
+private fun registerIosAudioSessionObservers() {
+    val center = NSNotificationCenter.defaultCenter
+    center.addObserverForName(
+        AVAudioSessionInterruptionNotification,
+        `object` = null,
+        queue = NSOperationQueue.mainQueue,
+    ) { notification ->
+        val info = notification ?: return@addObserverForName
+        val type = info.intValue(AVAudioSessionInterruptionTypeKey) ?: return@addObserverForName
+        when (type.toULong()) {
+            AVAudioSessionInterruptionTypeBegan ->
+                SystemMediaControl.onAudioFocusChange(AudioFocusChange.LossTransient)
+
+            AVAudioSessionInterruptionTypeEnded -> {
+                val options = info.intValue(AVAudioSessionInterruptionOptionKey)
+                    ?.toULong() ?: 0uL
+                if (options and AVAudioSessionInterruptionOptionShouldResume != 0uL) {
+                    SystemMediaControl.onAudioFocusChange(AudioFocusChange.Gain)
+                }
+            }
+        }
+    }
+    center.addObserverForName(
+        AVAudioSessionRouteChangeNotification,
+        `object` = null,
+        queue = NSOperationQueue.mainQueue,
+    ) { notification ->
+        val info = notification ?: return@addObserverForName
+        val reason = info.intValue(AVAudioSessionRouteChangeReasonKey)
+            ?: return@addObserverForName
+        if (reason.toULong() == AVAudioSessionRouteChangeReasonOldDeviceUnavailable) {
+            SystemMediaControl.onAudioBecomingNoisy()
+        }
+    }
+}
+
+/** 从通知 userInfo 取数值 (NSNumber 与 Kotlin 装箱数值两种形态都接)。 */
+private fun NSNotification.intValue(key: String): Int? = when (val value = userInfo?.get(key)) {
+    is NSNumber -> value.intValue
+    is Int -> value
+    is Long -> value.toInt()
+    else -> null
 }

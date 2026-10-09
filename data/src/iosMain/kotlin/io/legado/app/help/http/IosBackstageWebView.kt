@@ -8,6 +8,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.UserAgentProviders
 import io.legado.app.help.getUserAgent
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.http.WebViewSnifferScripts
 import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +18,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSError
 import platform.Foundation.NSHTTPCookie
@@ -31,6 +36,8 @@ import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationAction
 import platform.WebKit.WKNavigationActionPolicy
 import platform.WebKit.WKNavigationDelegateProtocol
+import platform.WebKit.WKUserScript
+import platform.WebKit.WKUserScriptInjectionTime
 import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
 import platform.darwin.NSObject
@@ -51,10 +58,19 @@ import kotlin.coroutines.resume
  *   替代安卓全局 CookieManager 的隐式共享;
  * - **取源码**: `evaluateJavaScript` 直接回传 JS 原生值, 不像安卓需 unescapeJson + 去引号。
  *
- * 已知缺口: `sourceRegex` 资源级嗅探需同步拦截每个子请求, WKWebView 只有主框架导航的
- * decidePolicyForNavigationAction 与自定义 scheme 的 WKURLSchemeHandler, 无等价能力,
- * 该场景抛 [UnsupportedOperationException] 由调用方 runCatching 回退 HTTP 直连;
- * 自签证书也无 `onReceivedSslError` 等价旁路。`overrideUrlRegex` 走 decidePolicy 精确命中。
+ * **`sourceRegex` (资源正则) 的能力与代价**:
+ * WKWebView 不向宿主暴露 http/https 子资源请求 (`decidePolicyForNavigationAction` 只管主框架导航,
+ * `WKURLSchemeHandler` 只接管自定义 scheme), 无法像安卓 `SnifferWebClient.onLoadResource`
+ * 那样同步拦截每个子请求。按桌面 macOS 端既有做法降级实现: 建 WebView 时挂
+ * **文档开始前**注入的 JS hook (改写 fetch / XMLHttpRequest.open, 记录到 `window.__legadoSniff`),
+ * 再轮询 `hook 记录 + performance resource 条目` 逐条与 sourceRegex 比对, 命中即返回该地址
+ * (两段脚本与 mac 端共用一份: [WebViewSnifferScripts]; 与 `overrideUrlRegex` 走
+ * decidePolicy 精确命中不同, sourceRegex 是"轮询发现即返回", 比安卓拦截语义滞后一个轮询周期)。
+ *
+ * 已知代价 (与 mac 端同一套降级, 如实记录): 这样**拿不到浏览器自设的 Referer/UA 与 HttpOnly
+ * Cookie** (防盗链场景可能取不到能播的地址; mac 端另用 playHeaders 以 UA=宿主 UA/Referer=解析页
+ * 兜底, iOS 端无此兜底), 也**无法拦截/替换响应** (命中后不能吞掉该请求)。
+ * 自签证书仍无 `onReceivedSslError` 等价旁路。
  */
 private object IosBackstageWebViewFactory : BackstageWebViewFactory {
 
@@ -124,9 +140,6 @@ private class IosBackstageWebViewHandle(
     private var hitUrl: String? = null
 
     override suspend fun getStrResponse(): StrResponse {
-        if (!sourceRegex.isNullOrBlank()) {
-            throw UnsupportedOperationException("iOS 端不支持 sourceRegex 资源嗅探, 已回退 HTTP 直连")
-        }
         // cookie 读取会走 DB (SharedCookieStore 内部 runBlocking), 必须在切主线程之前做完
         val pendingCookie = readStoredCookie()
         return withTimeout(AppConst.timeLimit) {
@@ -149,13 +162,31 @@ private class IosBackstageWebViewHandle(
         val webView = createWebView()
         injectCookies(webView, pendingCookie)
         start(webView)
-        return if (overrideUrlRegex.isNullOrBlank()) runHtml(webView) else runSniffer(webView)
+        // sourceRegex / overrideUrlRegex 任一非空都走嗅探 (前者靠 JS hook + 轮询, 后者靠导航命中)
+        return if (overrideUrlRegex.isNullOrBlank() && sourceRegex.isNullOrBlank()) {
+            runHtml(webView)
+        } else {
+            runSniffer(webView)
+        }
     }
 
     private fun createWebView(): WKWebView {
         // 默认 websiteDataStore 即 defaultDataStore(): cookie/localStorage 与前台 IosWebViewSlot
         // 共用一份持久存储, 对齐安卓全局 CookieManager
         val configuration = WKWebViewConfiguration()
+        // sourceRegex 需要"文档开始前"注入 hook (改写页面发起请求的入口并记录到页面全局),
+        // 故建 WebView 时挂用户脚本 (安卓等平台靠宿主子资源回调, 无此步);
+        // 脚本与桌面 macOS 端共用一份 [WebViewSnifferScripts]
+        if (!sourceRegex.isNullOrBlank()) {
+            configuration.userContentController.addUserScript(
+                WKUserScript(
+                    source = WebViewSnifferScripts.SNIFF_HOOK_JS,
+                    injectionTime =
+                        WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocumentStart,
+                    forMainFrameOnly = true,
+                )
+            )
+        }
         // 不入视图层级的 WKWebView 照常发起网络请求并执行 JS (仅渲染/rAF 会被 WebKit 节流),
         // 故无需 attach; frame 给 iPhone 逻辑尺寸让响应式页面按移动端布局
         val view = WKWebView(CGRectMake(0.0, 0.0, 375.0, 667.0), configuration)
@@ -208,8 +239,19 @@ private class IosBackstageWebViewHandle(
         throw NoStackTraceException("js执行超时")
     }
 
-    /** 对应 app 端 SnifferWebClient: 命中 overrideUrlRegex 即以该地址作为结果。 */
+    /**
+     * 对应 app 端 SnifferWebClient: 命中 overrideUrlRegex (导航地址) 或 sourceRegex
+     * (资源地址) 即以该地址作为结果。
+     *
+     * sourceRegex 走 [WebViewSnifferScripts] 的 document-start hook + 轮询收集 (与桌面 macOS 端
+     * 同一套做法): 每轮把 hook 记录与 performance resource 条目合并回来逐条比对, 命中即返回。
+     * 拿不到浏览器自设的 Referer/UA 与 HttpOnly Cookie, 也无法拦截/替换响应 (见类 KDoc "已知代价")。
+     * 超时不另抛专用异常: 与既有 overrideUrlRegex 路径同款 —— 外层
+     * `withTimeout(AppConst.timeLimit)` 到点抛 TimeoutCancellationException, 走既有失败路径。
+     */
     private suspend fun runSniffer(webView: WKWebView): StrResponse {
+        val source = sourceRegex?.takeIf { it.isNotBlank() }?.toRegex()
+        val seen = HashSet<String>()
         var waited = 0L
         var injected = false
         while (true) {
@@ -221,9 +263,33 @@ private class IosBackstageWebViewHandle(
                 // 原版在 onPageStarted 延时后 loadUrl("javascript:...")
                 javaScript?.takeIf { it.isNotEmpty() }?.let { evaluate(webView, it) }
             }
+            if (source != null) {
+                collectResourceHit(webView, source, seen)?.let { hit ->
+                    // 与 overrideUrlRegex / 安卓 SnifferWebClient 同口径: url 取原始解析页, body 取命中地址
+                    return StrResponse(url ?: hit, hit)
+                }
+            }
             delay(POLL_INTERVAL_MS)
             waited += POLL_INTERVAL_MS
         }
+    }
+
+    /**
+     * 轮询收集 hook + performance 记录, 返回第一个命中 [source] 的新地址 (无命中返回 null)。
+     * 解析方式与桌面 macOS 端 `MacWebViewEngine.runSniffer` 完全一致 (JSON 字符串数组)。
+     */
+    private suspend fun collectResourceHit(
+        webView: WKWebView,
+        source: Regex,
+        seen: MutableSet<String>,
+    ): String? {
+        val body = evaluate(webView, WebViewSnifferScripts.SNIFF_COLLECT_JS) ?: return null
+        val urls = runCatching { Json.parseToJsonElement(body).jsonArray }.getOrNull() ?: return null
+        for (element in urls) {
+            val target = element.jsonPrimitive.contentOrNull ?: continue
+            if (seen.add(target) && source.matches(target)) return target
+        }
+        return null
     }
 
     /** didFinish/didFail 先到就返回, 否则等到 delayTime (原版从 onPageStarted 起算, 不等页面完成)。 */

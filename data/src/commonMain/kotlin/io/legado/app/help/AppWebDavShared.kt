@@ -15,6 +15,11 @@ import io.legado.app.help.AppWebDavShared.rootWebDavUrl
 import io.legado.app.help.AppWebDavShared.upConfig
 import io.legado.app.help.AppWebDavShared.uploadBookProgress
 import io.legado.app.help.book.LocalBookLocators
+import io.legado.app.help.book.getRemoteUrl
+import io.legado.app.model.fileBook.FileBookProviders
+import io.legado.app.model.fileBook.androidSaveRef
+import io.legado.app.model.remote.RemoteBook
+import io.legado.app.model.remote.uploadLocalBook
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
@@ -306,24 +311,118 @@ object AppWebDavShared {
     /**
      * 上传整本书籍文件到 WebDav (对照 app 端 RemoteBookWebDav.upload + BookInfoViewModel.uploadBook)。
      *
-     * 用 [LocalBookLocators] 取本地文件路径 (替代 app 端 `book.bookUrl.toUri()` 的
-     * Android Uri 解析), 上传到 `books/` 子目录, 写回 book.origin 为 webDavTag + URL。
+     * 用 [LocalBookLocators] 取本地文件路径, 取不到时回退仓库现有的
+     * [uploadLocalBook] 通道 (Android 实现自读 `content://` 流后按字节上传) —— 平台差异完全落在既有
+     * expect/actual 内, 共享层不需要新的平台钩子。
      *
-     * @param book 书籍实体 (须为本地书, 否则 getLocalPath 返回 null 抛异常)
+     * @param book 书籍实体 (须为本地书, 否则上传会失败报错)
      * @param serverID 远程服务器 ID (默认 null, 与 app 端 defaultBookWebDav 一致)
+     * @param auth 目标 WebDav 凭据; 不传则用共享层当前配置 (自定义服务器须显式传入,
+     *   否则会误传到默认坚果云)。
      */
     @Throws(Exception::class)
-    suspend fun uploadBook(book: Book, serverID: Long? = null) {
-        val auth = authorization ?: throw NoStackTraceException("webDav没有配置")
-        val localPath = LocalBookLocators.get().getLocalPath(book)
-            ?: throw NoStackTraceException("本地文件路径不存在")
+    suspend fun uploadBook(
+        book: Book,
+        serverID: Long? = null,
+        auth: Authorization? = authorization,
+    ) {
+        val serverAuth = auth ?: throw NoStackTraceException("webDav没有配置")
         val putUrl = "$exportsWebDavUrl${book.originName}"
-        WebDav(putUrl, auth).upload(localPath)
+        val webDav = WebDav(putUrl, serverAuth)
+        val localPath = LocalBookLocators.get().getLocalPath(book)
+        if (localPath != null) {
+            webDav.upload(localPath)
+        } else {
+            // content:// 等无文件系统路径的引用: 走既有平台通道 (Android 自读流后按字节上传)
+            webDav.uploadLocalBook(book.bookUrl)
+        }
         book.origin = BookType.webDavTag + CustomUrl(putUrl)
             .putAttribute("serverID", serverID)
             .toString()
         book.lastCheckTime = systemCurrentTimeMillis()
         AppDbProviders.get().bookDao.update(book)
+    }
+
+    /**
+     * 断言已配置书籍保存位置。
+     *
+     * 对照 app 端 RemoteBookWebDav.downloadRemoteBook 的前置检查:
+     * 没设保存位置就下载会落不到地方, 故先报错而不是等着写文件时失败。
+     */
+    @Throws(NoStackTraceException::class)
+    fun checkBookSaveDir() {
+        if (PreferenceProviders.get().getString(PreferKey.defaultBookTreeUri).isEmpty()) {
+            throw NoStackTraceException("没有设置书籍保存位置!")
+        }
+    }
+
+    /**
+     * 读取远端书籍条目元数据 (对照 app 端 RemoteBookWebDav.getRemoteBook)。
+     *
+     * @param auth 目标 WebDav 凭据; 不传则用共享层当前配置 (自定义服务器须显式传入,
+     *   否则会误传到默认坚果云)
+     * @return 远端不存在时为 null
+     */
+    @Throws(NoStackTraceException::class)
+    suspend fun getRemoteBook(
+        remoteBookUrl: String,
+        auth: Authorization? = authorization,
+    ): RemoteBook? {
+        val serverAuth = auth ?: throw NoStackTraceException("webDav没有配置")
+        if (!isNetworkAvailable()) throw NoStackTraceException("网络不可用")
+        val webDavFile = WebDav(remoteBookUrl, serverAuth).getWebDavFile() ?: return null
+        return RemoteBook.create(webDavFile)
+    }
+
+    /**
+     * 下载远端书籍文件到本地保存位置 (对照 app 端 RemoteBookWebDav.downloadRemoteBook)。
+     *
+     * 下载走文件访问器的流式入口 [io.legado.app.model.fileBook.FileBookAccessor.saveBookFileFromWebDav]
+     * (各端复用既有的 `WebDav.downloadTo(savedPath, replaceExisting)` 边下边写), 不再经
+     * `saveBookFile(inputStream, fileName)`: native 端那个重载会把整份文件读进内存, 大文件会吃满内存。
+     *
+     * @param remoteBook 远端条目 ([getRemoteBook] 的返回值)
+     * @param auth 目标 WebDav 凭据; 不传则用共享层当前配置 (自定义服务器须显式传入)
+     * @return 保存后的文件引用 (各端 accessor 决定: SAF 为 `content://`, 其余为路径/存储引用)
+     */
+    @Throws(Exception::class)
+    suspend fun downloadRemoteBook(
+        remoteBook: RemoteBook,
+        auth: Authorization? = authorization,
+    ): String {
+        checkBookSaveDir()
+        if (!isNetworkAvailable()) throw NoStackTraceException("网络不可用")
+        val serverAuth = auth ?: throw NoStackTraceException("webDav没有配置")
+        val webDav = WebDav(remoteBook.path, serverAuth)
+        return FileBookProviders.get().saveBookFileFromWebDav(webDav, remoteBook.filename)
+    }
+
+    /**
+     * 从 WebDav 拉本地书的远端更新 (对照 app 端 BookInfoViewModel.refreshWebDavBook)。
+     *
+     * 仅依赖共享层: 远端条目读取 ([getRemoteBook]) + 下载 ([downloadRemoteBook]) + 数据库。
+     * 保存引用转 `bookUrl` 走 [androidSaveRef] (平台分类: SAF 的 `content://` 原样保留,
+     * 其余取文件路径), 对照 app 端 `if (uri.isContentScheme()) uri.toString() else uri.path!!`。
+     *
+     * @param auth 目标 WebDav 凭据; 不传则用共享层当前配置
+     */
+    @Throws(Exception::class)
+    suspend fun refreshWebDavBook(
+        book: Book,
+        auth: Authorization? = authorization,
+    ) {
+        val remoteUrl = book.getRemoteUrl() ?: return
+        val remoteBook = getRemoteBook(remoteUrl, auth)
+        if (remoteBook == null) {
+            // 远端已删: 退回纯本地书 (保留已下载的本地文件)
+            book.origin = BookType.localTag
+            return
+        }
+        if (remoteBook.lastModify > book.lastCheckTime) {
+            val savedRef = downloadRemoteBook(remoteBook, auth)
+            book.bookUrl = androidSaveRef(savedRef)
+            book.lastCheckTime = remoteBook.lastModify
+        }
     }
 
     /**

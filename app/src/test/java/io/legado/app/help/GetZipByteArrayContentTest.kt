@@ -31,6 +31,25 @@ class GetZipByteArrayContentTest {
 
         override fun deCompress(archivePath: String): List<String> = emptyList()
 
+        // filter 为 null 恒返回空列表 (与 app 端 LibArchiveUtils.getFilesName 同语义)
+        override fun getFilesName(
+            archivePath: String,
+            filter: ((String) -> Boolean)?,
+        ): List<String> {
+            if (filter == null) return emptyList()
+            return runCatching {
+                ZipInputStream(ByteArrayInputStream(java.io.File(archivePath).readBytes())).use { zis ->
+                    val names = arrayListOf<String>()
+                    var entry = zis.nextEntry
+                    while (entry != null) {
+                        if (!entry.isDirectory && filter(entry.name)) names.add(entry.name)
+                        entry = zis.nextEntry
+                    }
+                    names
+                }
+            }.getOrElse { emptyList() }
+        }
+
         override fun getByteArrayContent(bytes: ByteArray, path: String): ByteArray? {
             receivedBytes = bytes
             ZipInputStream(ByteArrayInputStream(bytes)).use { zis ->

@@ -427,11 +427,24 @@ kotlin {
                 implementation(sharedLibs.findLibrary("runtime-jvm").get())
             }
         }
+        // jvm + native 共用的源集 (手工声明: 本仓 applyDefaultHierarchyTemplate=false)。
+        // 承载只有 concurrent 级 (jvm/native 都有 actual, js/wasm 没有) 才可见的 API:
+        // kotlinx-atomicfu 的 ParkingSupport/ParkingHandle 声明在 atomicfu 的 concurrentMain
+        // 片段里, 对 commonMain 不可见 (见 src/concurrentMain/.../ThreadBridge.concurrent.kt)。
+        // 位置须在 androidMain/jvmMain/nativeMain 之前 (下面用 dependsOn 引用它)。
+        val concurrentMain = maybeCreate("concurrentMain").apply {
+            dependsOn(commonMain.get())
+            dependencies {
+                // ThreadBridge 的线程挂起/唤醒原语 (ParkingSupport / ParkingHandle / @ExperimentalThreadBlockingApi)
+                implementation(libs.kotlinx.atomicfu)
+            }
+        }
         // 实体源码 src/roomEntitiesMain/kotlin 直接挂 commonMain (与 :shared 同款:
         // roomEntitiesMain 只是目录约定, 非独立 KMP 源集; 鸿蒙构建换派生副本)
         androidMain {
             // 共享 JVM+Android 源码根 (与 :shared 同款模式)
             kotlin.srcDir("src/jvmAndAndroidMain/kotlin")
+            dependsOn(concurrentMain)
             dependencies {
                 sharedJvmAndroidDeps()
                 implementation(libs.kotlinx.coroutines.android)
@@ -443,6 +456,7 @@ kotlin {
         }
         jvmMain {
             kotlin.srcDir("src/jvmAndAndroidMain/kotlin")
+            dependsOn(concurrentMain)
             dependencies {
                 sharedJvmAndroidDeps()
                 implementation(libs.kxml2)
@@ -455,7 +469,7 @@ kotlin {
         }
         val nativeMain = if (enableIosTarget || enableOhosTarget) {
             maybeCreate("nativeMain").apply {
-                dependsOn(commonMain.get())
+                dependsOn(concurrentMain)
                 kotlin.exclude(
                     *nativeInteropSourcePatterns.toTypedArray(),
                 )

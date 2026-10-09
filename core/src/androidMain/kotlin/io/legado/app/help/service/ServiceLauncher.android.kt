@@ -16,9 +16,13 @@ import io.legado.app.constant.IntentAction
  *   类加载器提供
  * - shared androidMain 不依赖 splitties, 通过构造函数接收 [Context]
  * - 启动参数对齐 app 端 Service 的 IntentAction + extras 约定:
- *   - CacheBookService: action=start, extras bookUrl/start/end (Int)
- *   - UpdateBookService: action=start/stop
+ *   - CacheBookService: action=start/stop/remove, start 带 extras bookUrl/start/end (Int)
  *   - DownloadService: action=start, extras url/fileName
+ *
+ * # startUpdateBookService / stopUpdateBookService 已删除 (2026-09)
+ * 原两个接口方法与本类实现均零调用点 —— 书架自动更新走的是已下沉的共享触发链
+ * (进书架页 → 分组流发射 → UpdateBookShared.scheduleAutoUpdate), 取消刷新任务走
+ * MainViewModel / BookshelfViewModel → UpdateBookShared, 均不停靠本启动器。
  *
  * 模式参考 `registerAndroidMediaNotificationProvider`。
  */
@@ -53,22 +57,6 @@ class AndroidServiceLauncher(
         ).apply {
             putExtra("bookUrl", bookUrl)
         }
-        context.startService(intent)
-    }
-
-    override fun startUpdateBookService() {
-        val intent = createServiceIntent(
-            "io.legado.app.service.UpdateBookService",
-            IntentAction.start
-        )
-        context.startService(intent)
-    }
-
-    override fun stopUpdateBookService() {
-        val intent = createServiceIntent(
-            "io.legado.app.service.UpdateBookService",
-            IntentAction.stop
-        )
         context.startService(intent)
     }
 

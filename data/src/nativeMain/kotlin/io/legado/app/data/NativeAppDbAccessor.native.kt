@@ -31,12 +31,16 @@ import io.legado.app.data.dao.TxtTocRuleDao
  * 仅类名 (IosAppDbAccessor / OhosAppDbAccessor)
  * 与注册函数不同, 故下沉到 nativeMain 共用, 平台源集用 typealias 别名 + 各自 register 函数。
  *
- * # 事务行为 (Native 端仍是降级实现)
+ * # 事务行为
  *
- * [runInTransactionSuspending] 直接执行 block 不做事务包裹, 每个 DAO 操作本身原子,
- * 最坏情况部分失败 (调用方 SourceHelp.deleteBookSourcesByKeys 有 chunked 兜底, 影响可控)。
- * TODO: Room 3 的 useWriterConnection + immediateTransaction 在 Native 端可用, 待验证后接真事务
- * (jvm/android 两端已走该路径, 见 DesktopAppDbAccessor / WebBookProvidersImpl)。
+ * [runInTransactionSuspending] 走 Room 3 真事务, 实现下沉在 commonMain
+ * [AppDatabase.runInImmediateTransaction] (desktop 端 DesktopAppDbAccessor 复用同一函数):
+ * useWriterConnection 把写连接放进协程上下文 (ConnectionElement), block 内的 suspend DAO
+ * 会复用同一连接加入事务; immediateTransaction 对应 BEGIN IMMEDIATE, 抛异常自动回滚。
+ *
+ * 鸿蒙端的 room3 是 CPF fork (androidx.room3:room3-*-ohosarm64:3.0.0-alpha01-0.3.0),
+ * 本文件只经 klib 元数据核对过 immediateTransaction/useWriterConnection 声明存在,
+ * 未做编译验证; iOS 端用的官方 room3 变体同理。
  *
  * 模式参考 desktop `DesktopAppDbAccessor` 实现。
  */
@@ -80,10 +84,10 @@ class NativeAppDbAccessor : AppDbAccessor {
     override val keyboardAssistsDao: KeyboardAssistsDao get() = appDb.keyboardAssistsDao
 
     // ---- AppDbAccessor 事务 ----
-    // suspend 版本: Native 端无 room-ktx, 降级为直接执行 block (与非 suspend 版本行为一致)
-    // 供 UpdateBookShared 等 suspend 调用方使用, block 内可直接调 suspend DAO, 无需 runBlocking
-    // (Native 端 runBlocking 有死锁风险, 用 suspend 版本规避)
+    // suspend 版本走 Room KMP 真事务, 与 desktop 端复用同一下沉实现
+    // (commonMain AppDatabase.runInImmediateTransaction: useWriterConnection 把写连接放进
+    // 协程上下文, immediateTransaction 对应 BEGIN IMMEDIATE, 抛异常自动回滚)。
     override suspend fun <R> runInTransactionSuspending(block: suspend () -> R): R {
-        return block()
+        return appDb.runInImmediateTransaction(block)
     }
 }

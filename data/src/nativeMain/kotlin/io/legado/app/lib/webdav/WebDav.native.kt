@@ -12,7 +12,6 @@ import io.legado.app.utils.InputStream
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.findNS
 import io.legado.app.utils.findNSPrefix
-import io.legado.app.utils.toInputStream
 import io.ktor.client.HttpClient
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
@@ -39,6 +38,12 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.EmptyCoroutineContext
 import io.legado.app.utils.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.launch
 import okio.FileSystem
 import okio.Path.Companion.toPath
 
@@ -61,8 +66,9 @@ import okio.Path.Companion.toPath
  * **与 jvmAndAndroidMain 的行为差异**:
  * - `httpUrl` 不做 OkHttp `toHttpUrl()` 级别的 URL 规范化 (默认端口/路径合并等),
  *   仅简单 replace 协议 (davs->https, dav->http); 功能等价, 但 URL 字符串可能不同
- * - `downloadInputStream()` 返回 ByteArrayInputStream 风格 (全量 bytes 装入内存),
- *   jvmAndAndroidMain 为流式 byteStream(); 大文件场景内存占用更高
+ * - `downloadInputStream()` 经后台协程预读 + 有界缓冲实现流式 (见
+ *   [PrefetchingWebDavInputStream]); jvmAndAndroidMain 是 OkHttp `body.byteStream()` 直透,
+ *   两者都是流式消费, 差别仅在我们多一层内存拷贝 (换内存上界)
  * - `downloadTo(savedPath, ...)` / `upload(localPath, ...)` 用 [kotlin.io.File]
  *   (Kotlin/Native 标准库支持, iOS/鸿蒙均可用)
  * - `lastModify` 解析用纯 Kotlin 实现 (Howard Hinnant days_from_civil 反算),
@@ -112,6 +118,15 @@ actual open class WebDav actual constructor(
 
         /** 流式下载 (downloadTo) 的读写缓冲块大小 (64KB)。 */
         private const val DEFAULT_BUFFER_SIZE = 64 * 1024
+
+        /** 流式输入流 ([downloadInputStream]) 的单次预读块大小 (64KB)。 */
+        private const val WEBDAV_PREFETCH_CHUNK_SIZE = 64 * 1024
+
+        /**
+         * 流式输入流 ([downloadInputStream]) 的预读缓冲块数上限 (4 块 = 256KB)。
+         * 网络比消费快时靠它限住内存 (上界 = 4 × 64KB), 通道满时生产者挂起 (背压)。
+         */
+        private const val WEBDAV_PREFETCH_CAPACITY = 4
     }
 
     // 简单 replace 协议, 不做 OkHttp toHttpUrl() 级别的 URL 规范化
@@ -440,28 +455,35 @@ actual open class WebDav actual constructor(
     }
 
     /**
-     * 下载文件输入流
+     * 下载文件输入流 (流式)
      *
-     * **nativeMain 端降级**: 返回 ByteArrayInputStream 风格 (全量 bytes 装入内存),
-     * jvmAndAndroidMain 为 OkHttp 流式 byteStream(); 大文件场景内存占用更高。
+     * **nativeMain 端实现**: 流式, 不再把整个响应体读进内存。
+     * 背景: commonMain 的 [InputStream] 门面是同步接口 ([read]/[skip]/[available]/[close]),
+     * 无法直接承载 suspend 的 Ktor `ByteReadChannel`。做法是**后台协程预读** ——
+     * 见 [PrefetchingWebDavInputStream]: 网络读取在后台进行, 预读块进有界通道 (满则背压),
+     * 同步 `read` 只从通道取, 内存上界 = 通道容量 × 块大小 (256KB), 与文件大小无关
+     * (对齐 [downloadTo] 的流式内存特性, 也消除 jvmAndAndroidMain `body.byteStream()` 的差异)。
      *
-     * 保持全量入内存: commonMain [InputStream] expect 只有 read/read/skip/available/close 抽象,
-     * 无底层通道可挂; 大文件下载请走 [downloadTo] (流式写文件)。
+     * 拿不到流/读取出错 (网络断开等) 时在 `read` 处抛 [WebDavException]
+     * (与原实现的“下载失败抛 WebDavException”契约一致)。
      */
     @Throws(WebDavException::class, CancellationException::class)
     actual suspend fun downloadInputStream(): InputStream {
         val url = httpUrl ?: throw WebDavException("WebDav下载出错\nurl为空")
-        val bytes = kotlin.runCatching {
-            withContext(Dispatchers.Default) {
-                webDavClient.get(url) {
-                    header(authorization.name, authorization.data)
-                }.bodyAsBytes()
+        val stream = PrefetchingWebDavInputStream(WEBDAV_PREFETCH_CAPACITY)
+        // 后台协程负责拉流与分块投递 (网络等待不占用调用线程); 消费端 close 时取消
+        stream.start(CoroutineScope(Dispatchers.Default)) { sink ->
+            val channel: ByteReadChannel = webDavClient.get(url) {
+                header(authorization.name, authorization.data)
+            }.bodyAsChannel()
+            val chunk = ByteArray(WEBDAV_PREFETCH_CHUNK_SIZE)
+            while (true) {
+                val n = channel.readAvailable(chunk, 0, chunk.size)
+                if (n == -1) break
+                if (n > 0) sink.send(chunk.copyOf(n))
             }
-        }.onFailure {
-            currentCoroutineContext().ensureActive()
-            throw WebDavException("WebDav下载失败\n${it.message}")
-        }.getOrThrow()
-        return bytes.toInputStream()
+        }
+        return stream
     }
 
     /**
@@ -660,4 +682,138 @@ actual open class WebDav actual constructor(
     /** 兼容 jvmAndAndroidMain checkResult 中 ${url} 引用 (java.net.URL toString) */
     private val url: String get() = httpUrl ?: path
 
+}
+
+
+/**
+ * 后台预读 + 有界通道的 [InputStream]: 把 suspend 的流式读取接到同步 read 接口上。
+ *
+ * [WebDav.downloadInputStream] 用它取代“整套 bytes 进内存”: 内存上界 = 通道容量 × 块大小,
+ * 与文件大小无关。
+ *
+ * # 机制 (复用本仓既有原语, 未新增依赖)
+ * - 预读跑在后台协程: 每读出一块 [SendChannel.send] 进有界通道, 通道满则挂起 (背压, 不丢块)
+ * - 同步 [read] 只从通道取; 取不到时用 [runBlockingInScope] 阻塞当前线程等下一块
+ *   (native 无 BlockingQueue/LockSupport; 阻塞语义与 jvm 端 InputStream.read 一致)
+ * - 预读失败: 关闭通道并带上原因, 消费端 [read] 抛 [WebDavException]
+ * - [close]: 取消通道与预读协程 (Ktor 的 channel 读取可取消), 阻塞中的 send 立即退出
+ *
+ * # 注意
+ * - `available()` 只报当前块剩余量 (是“不阻塞可读字节数”的下界), 不代表剩余总长;
+ *   判结束必须靠 [read] 返回 -1 (与 java.io.InputStream 契约一致)
+ * - 流非线程安全 (与 JVM InputStream 契约一致)
+ */
+private class PrefetchingWebDavInputStream(
+    capacity: Int,
+) : InputStream() {
+
+    /** 预读块通道: capacity 即缓冲块数上限 (背压靠它)。 */
+    private val chunks = Channel<ByteArray>(capacity)
+
+    /** 当前消费中的块与块内偏移。 */
+    private var current: ByteArray? = null
+    private var currentOffset = 0
+
+    private var closed = false
+
+    private var prefetchJob: Job? = null
+
+    /** 单字节读取的复用缓冲 (流非线程安全)。 */
+    private val oneByte = ByteArray(1)
+
+    /** 启动后台预读。[producer] 往 [SendChannel] 投块, 返回后视为读尽。 */
+    fun start(scope: CoroutineScope, producer: suspend (SendChannel<ByteArray>) -> Unit) {
+        val job = scope.launch {
+            try {
+                producer(chunks)
+                chunks.close()
+            } catch (e: CancellationException) {
+                // close() 取消: 不算失败
+                chunks.cancel(e)
+            } catch (e: Throwable) {
+                // 读流失败: 把原因带到消费端, 由 read 抛 WebDavException
+                chunks.close(e)
+            }
+        }
+        prefetchJob = job
+        if (closed) {
+            chunks.cancel()
+            job.cancel()
+        }
+    }
+
+    override fun read(): Int {
+        val one = oneByte
+        return if (read(one, 0, 1) < 0) -1 else one[0].toInt() and 0xff
+    }
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int {
+        if (off < 0 || len < 0 || off > b.size - len) {
+            throw IndexOutOfBoundsException("offset=$off length=$len size=${b.size}")
+        }
+        if (len == 0) return 0
+        check(!closed) { "Stream closed" }
+        if (current == null && !advance()) return -1
+        val chunk = current ?: return -1
+        val n = minOf(len, chunk.size - currentOffset)
+        chunk.copyInto(b, off, currentOffset, currentOffset + n)
+        currentOffset += n
+        if (currentOffset == chunk.size) {
+            current = null
+            currentOffset = 0
+        }
+        return n
+    }
+
+    /**
+     * 取下一块进 [current]。
+     *
+     * @return 取到 true; 通道正常关闭 (读尽) false; 预读失败抛 [WebDavException]
+     */
+    private fun advance(): Boolean {
+        val result = runBlockingInScope(EmptyCoroutineContext) { chunks.receiveCatching() }
+        val chunk = result.getOrNull()
+        if (chunk != null) {
+            current = chunk
+            currentOffset = 0
+            return true
+        }
+        result.exceptionOrNull()?.let { throw WebDavException("WebDav下载失败\n${it.message}") }
+        return false
+    }
+
+    /** 跳过 n 字节 (块内偏移 + 整块丢弃), 返回实际跳过量 (与 java.io 契约一致)。 */
+    override fun skip(n: Long): Long {
+        if (n <= 0) return 0
+        var remaining = n
+        while (remaining > 0) {
+            if (current == null && !advance()) break
+            val chunk = current ?: break
+            val step = minOf(remaining, (chunk.size - currentOffset).toLong())
+            currentOffset += step.toInt()
+            remaining -= step
+            if (currentOffset == chunk.size) {
+                current = null
+                currentOffset = 0
+            }
+        }
+        return n - remaining
+    }
+
+    /** 当前块剩余可读字节数 (下界, 不含通道中未取的块; 与 java.io 契约一致)。 */
+    override fun available(): Int {
+        val chunk = current ?: return 0
+        return chunk.size - currentOffset
+    }
+
+    /** 取消预读并释放缓冲; 可重复调用。 */
+    override fun close() {
+        if (closed) return
+        closed = true
+        current = null
+        currentOffset = 0
+        // 先取消通道 (阻塞在 send 的生产者立即退出), 再取消协程 (中断 Ktor 的网络读取)
+        chunks.cancel()
+        prefetchJob?.cancel()
+    }
 }

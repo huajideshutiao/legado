@@ -4,6 +4,8 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.media.PhoneCallPauseHandler
+import io.legado.app.help.media.PhoneCallState
 import io.legado.app.help.media.ReadAloudRemoteHost
 import io.legado.app.help.media.SleepTimer
 import io.legado.app.model.ActiveReadAloudHostPorts
@@ -173,6 +175,33 @@ abstract class ReadAloudHostShared(
 
     /** 定时关闭剩余分钟 (对照 `BaseReadAloudService.timeMinute`)。 */
     val timeMinute: Int get() = sleepTimer.minutes
+
+    // ===== 来电暂停 (对照 app 端 `BaseReadAloudService` 的 ReadAloudPhoneStateListener) =====
+
+    /**
+     * 来电三态状态机 (平台事件源翻译成 [PhoneCallState] 后调 [onPhoneCallState])。
+     *
+     * `onPause` 不传 abandonFocus: 本类平台无音频焦点对象, 暂停只需停 TTS/播放器。
+     */
+    private val phoneCallHandler = PhoneCallPauseHandler(
+        isPaused = { isPause },
+        onPause = { pause() },
+        onResume = { resume() },
+    )
+
+    /**
+     * 派发一次电话状态变更 (iOS `CXCallObserver` / 鸿蒙 `callStateChange` 事件源调用)。
+     *
+     * 消费门槛与 app 端逐字一致 (两个开关都为真); 开关于事件到达时现读 —— 无 Service 的
+     * 平台上没有 onDestroy 时机, 而平台观察者注册一次后全程在, 故用读数代替注销。
+     */
+    fun onPhoneCallState(state: PhoneCallState) {
+        val prefs = PreferenceProviders.get()
+        val needHandle = prefs.getBoolean(PreferKey.ignoreAudioFocus, false) &&
+            prefs.getBoolean(PreferKey.pauseReadAloudWhilePhoneCalls, false)
+        if (!needHandle) return
+        phoneCallHandler.onCallStateChanged(state)
+    }
 
     /** 设定定时关闭 (对照 `ReadAloud.setTimer` → `BaseReadAloudService` 的 SleepTimer)。 */
     fun setTimer(minute: Int) {

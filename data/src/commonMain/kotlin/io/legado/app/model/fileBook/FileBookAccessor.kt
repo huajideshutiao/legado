@@ -101,6 +101,26 @@ interface FileBookAccessor {
     fun saveBookFileFromPath(filePath: String, fileName: String): String =
         throw UnsupportedOperationException("saveBookFileFromPath not supported on this platform")
 
+    /**
+     * 流式保存 WebDav 远端书籍文件 (边下边写)。
+     *
+     * 与 [saveBookFile] (inputStream 重载) 同语义: 保存目录与返回引用形式完全一致。
+     * 区别只在"不再把整份文件经 InputStream 读进内存": 各端都用既有的
+     * [io.legado.app.lib.webdav.WebDav.downloadTo] (savedPath, replaceExisting)
+     * 直接流式写盘, 大文件峰值内存与文件大小无关。
+     *
+     * 供 [io.legado.app.help.AppWebDavShared.downloadRemoteBook] ("下载到本地" /
+     * "刷新远端更新") 使用 —— 该链路原先走 [saveBookFile] (inputStream 重载), 而 native 端
+     * 的 inputStream 重载内部 `readFully()` 会把整份文件读进内存。
+     *
+     * 契约: 传输中途失败必须删净残缺文件 (不留半截书, 否则会被后续导入当成本地书读入)。
+     *
+     * @param webDav 已构造好的远端客户端 (含凭据)
+     * @param fileName 保存文件名
+     * @return 保存后的文件引用 (各端 accessor 决定: SAF 为 `content://`, 其余为路径/存储引用)
+     */
+    suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String
+
     /** 下载远程书籍文件并更新 Book (对应 `FileBook.downloadRemoteBook`)。 */
     fun downloadRemoteBook(book: Book): Boolean
 

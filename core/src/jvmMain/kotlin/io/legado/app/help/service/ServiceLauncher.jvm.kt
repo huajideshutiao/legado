@@ -2,7 +2,6 @@ package io.legado.app.help.service
 
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
-import io.legado.app.data.AppDbProviders
 import io.legado.app.help.file.FileDownloaders
 import io.legado.app.help.file.desktopAppRootDir
 import io.legado.app.help.notification.NotificationProgresses
@@ -29,9 +28,9 @@ import java.nio.file.Paths
  * - **removeCacheBookService**: 调 `CacheBookShared.cacheBookMap[bookUrl]?.stop()` +
  *   postEvent (对照 app 端 CacheBookService.removeDownload, 桌面端无 stopSelf)
  * - **stopCacheBookService**: 调 [CacheBookShared.close] (对照 app 端 CacheBookService.onDestroy)
- * - **startUpdateBookService / stopUpdateBookService**: 接入已下沉的 [UpdateBookShared],
- *   start 从 DB 查全部书调 [UpdateBookShared.scheduleAutoUpdate], stop 调
- *   [UpdateBookShared.cancelRefreshJobs] (对照 app 端 MainViewModel 同名方法)
+ * - **startUpdateBookService / stopUpdateBookService 已删 (2026-09)**: 零调用点死代码; 书架自动更新走共享触发链
+ *   (进书架页 → 分组流发射 → UpdateBookShared.scheduleAutoUpdate), 取消刷新任务走
+ *   BookshelfViewModel → UpdateBookShared, 均不停靠本启动器。
  * - **startDownloadService**: 真实下载, 用 [FileDownloaders] 写文件到
  *   `{desktopAppRootDir}/downloads/fileName`, 完成后交系统默认程序打开
  *   (对照 app 端 DownloadService 下载完 openFileUri; 打不开时 openFileWithSystem 内部记 AppLog,
@@ -52,14 +51,6 @@ import java.nio.file.Paths
 class DesktopServiceLauncher(
     private val scope: CoroutineScope,
 ) : ServiceLauncher {
-
-    /**
-     * UpdateBook 编排核心 (commonMain 下沉件), 跨 start/stopUpdateBookService 复用同一实例
-     * (与 app 端 MainViewModel 持有 UpdateBookShared 一致)。
-     */
-    private val updateBookShared: UpdateBookShared by lazy {
-        UpdateBookShared(scope, UpdateBookCallbacks.getDefault() ?: DesktopUpdateBookCallback)
-    }
 
     override fun startCacheBookService(bookUrl: String, start: Int, end: Int) {
         // 接入已下沉的 CacheBookShared: 创建模型 + 入队 + 启动处理 job
@@ -90,20 +81,6 @@ class DesktopServiceLauncher(
         CacheBookShared.cacheBookMap[bookUrl]?.stop()
         postEvent(EventBus.UP_DOWNLOAD, "")
         // 桌面端无 stopSelf; downloadJob 重启由桌面端阅读 VM 监听 isRun 自行管理
-    }
-
-    override fun startUpdateBookService() {
-        // 接入已下沉的 UpdateBookShared (commonMain 编排核心): 从 DB 查所有书后调
-        // scheduleAutoUpdate 触发自动更新 (内部按 canUpdate + lastCheckTime 时间窗过滤)。
-        scope.launch {
-            val books = AppDbProviders.get().bookDao.all()
-            updateBookShared.scheduleAutoUpdate(books)
-        }
-    }
-
-    override fun stopUpdateBookService() {
-        // 对照 app 端 MainViewModel.cancelRefreshJobs (桌面端无 stopService)
-        updateBookShared.cancelRefreshJobs()
     }
 
     override fun startDownloadService(url: String, fileName: String) {

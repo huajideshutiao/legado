@@ -86,6 +86,9 @@ import java.util.Locale
  */
 object FileBookAccessorImpl : FileBookAccessor {
 
+    /** SAF 保存位置下 WebDav 下载的中转目录名 (`{cacheDir}/webDav`, 临时文件用后即删)。 */
+    private const val WEB_DAV_TEMP_DIR = "webDav"
+
     // ---------- BaseFileBook 默认实现 ----------
 
     /**
@@ -304,6 +307,47 @@ object FileBookAccessorImpl : FileBookAccessor {
     @Throws(SecurityException::class)
     override fun saveBookFileFromPath(filePath: String, fileName: String): String =
         saveBookFile(File(filePath).inputStream(), fileName)
+
+    /**
+     * 流式保存 WebDav 远端书籍文件 ("下载到本地" / "刷新远端更新" 链路)。
+     *
+     * 复用既有的 [WebDav.downloadTo] (savedPath, replaceExisting) 边下边写, 不再经
+     * `saveBookFile(inputStream, fileName)` 的 Stream→Stream 拷贝 (该重载本身已是流式,
+     * 但无法直写文件路径)。
+     *
+     * 两种保存位置的处理:
+     * - **非 SAF (文件路径)**: downloadTo 直写 `{defaultBookTreeDir}/{fileName}`, 失败时删净残缺文件;
+     * - **SAF (`content://`)**: downloadTo 只能按文件路径写, 故先流式下到 `cacheDir/webDav` 下的
+     *   临时文件, 再复用 [saveBookFile] (inputStream 重载) 的既有权通道拷进 SAF 文档
+     *   (仍是流式, 内存有界; 临时文件无论成败都删)。
+     * 返回引用形式与 [saveBookFile] (inputStream 重载) 完全一致 (content:// 或 file://)。
+     */
+    @Throws(SecurityException::class)
+    override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
+        val treeUri = AppConfig.defaultBookTreeUri?.toUri() ?: throw InvalidBooksDirException(
+            androidAppString("no_books_dir")
+        )
+        if (!treeUri.isContentScheme()) {
+            val file = File(treeUri.path!!).getFile(fileName)
+            try {
+                webDav.downloadTo(file.absolutePath, true)
+            } catch (e: Throwable) {
+                // 传输中途失败会留下残缺文件; 旧路径 (先读满再写) 失败时不留文件,
+                // 不删干净的话残缺文件会被后续导入当成本地书读入
+                kotlin.runCatching { file.delete() }
+                throw e
+            }
+            return Uri.fromFile(file).toString()
+        }
+        // SAF: downloadTo 写不了 content:// 文档, 先流式下到缓存临时文件再交给 SAF 通道拷入
+        val tempFile = File(File(App.instance.cacheDir, WEB_DAV_TEMP_DIR).apply { mkdirs() }, fileName)
+        try {
+            webDav.downloadTo(tempFile.absolutePath, true)
+            return saveBookFile(tempFile.inputStream(), fileName)
+        } finally {
+            kotlin.runCatching { tempFile.delete() }
+        }
+    }
 
     /** 下载远程书籍文件并更新 Book (原 `FileBook.downloadRemoteBook`)。 */
     override fun downloadRemoteBook(book: Book): Boolean {

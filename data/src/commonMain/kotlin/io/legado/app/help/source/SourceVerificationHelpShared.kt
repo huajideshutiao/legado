@@ -28,9 +28,9 @@ import kotlin.time.Duration.Companion.seconds
  * - [CacheManager] / [IntentData] / [AppLog] / [NoStackTraceException] 均在 shared commonMain。
  *
  * 平台相关 (JVM `LockSupport.parkNanos` / `unpark` / `Thread`) 经 [currentThreadMarker] /
- * [parkThread] / [unparkThread] expect/actual 桥接 (见文件底部 expect 声明,
- * jvmAndAndroidMain actual 委托 `LockSupport` 保持原行为; ios/ohos actual 用 `platformSleep`
- * 占位, 轮询循环自然唤醒)。
+ * [parkThread] / [unparkThread] expect/actual 桥接 (声明在同包 ThreadBridge.kt,
+ * jvmAndAndroidMain actual 委托 `LockSupport`, nativeMain actual 委托 kotlinx-atomicfu
+ * `ParkingSupport`, 两端均可被 unpark 提前唤醒)。
  *
  * UI 部分 (VerificationCodeDialog.display / 启动 WebViewActivity) 经 [VerificationUiProvider]
  * 注入, 由 app 端薄壳 `SourceVerificationHelp` 转发, 不在此处直接依赖。
@@ -43,7 +43,7 @@ object SourceVerificationHelpShared {
     /** 等待用户输入验证结果的轮询间隔 (1 分钟, 对应原 waitTime)。 */
     private val waitTime = 1.minutes.inWholeNanoseconds
 
-    /** 等待登录界面关闭的轮询间隔 (native 端无 unpark, 靠轮询醒, 故比 waitTime 短)。 */
+    /** 等待登录界面关闭的轮询间隔 (1 秒; 短于验证结果的 [waitTime], 关闭后尽快放行)。 */
     private val loginPollTime = 1.seconds.inWholeNanoseconds
 
     /**
@@ -185,8 +185,8 @@ object SourceVerificationHelpShared {
     /**
      * 内存轮询等待验证结果 (对应原 getVerificationResult 中 while 循环 + `LockSupport.parkNanos`)。
      *
-     * 每 [waitTime] 纳秒 park 一次 (JVM 端可被 [notifyResultArrived] 的 unpark 提前唤醒,
-     * Native 端靠超时后重新轮询 getResult 自然唤醒, 行为等价)。
+     * 每 [waitTime] 纳秒 park 一次 (两端均可被 [notifyResultArrived] 的 unpark 提前唤醒;
+     * 未被唤醒时超时后重新轮询 getResult)。
      *
      * @return 验证结果字符串 (非空)
      * @throws NoStackTraceException 若结果为空字符串
@@ -204,8 +204,8 @@ object SourceVerificationHelpShared {
     }
 
     /**
-     * 内存轮询等待 [cacheKey] 出现结果, 每 [pollNanos] park 一次 (JVM 端可被 [unparkThread]
-     * 提前唤醒, native 端靠轮询超时自然唤醒)。验证结果与登录结束共用此循环。
+     * 内存轮询等待 [cacheKey] 出现结果, 每 [pollNanos] park 一次 (两端均可被 [unparkThread]
+     * 提前唤醒)。验证结果与登录结束共用此循环。
      *
      * @param timeoutNanos 0 = 不限时 (原验证流程行为), >0 时超时返回 null
      */
@@ -229,26 +229,3 @@ object SourceVerificationHelpShared {
         return CacheManager.getFromMemory(cacheKey) as? String
     }
 }
-
-/* ---- 线程阻塞/唤醒跨平台桥接 (expect) ---- */
-
-/**
- * 当前线程的跨平台标记 (JVM 为 `Thread`, Native 为占位)。
- * 用于 [SourceVerificationHelpShared.registerWaitingThread] /
- * [SourceVerificationHelpShared.notifyResultArrived]。
- */
-internal expect fun currentThreadMarker(): Any
-
-/**
- * 阻塞当前线程指定纳秒, 或被 [unparkThread] 提前唤醒 (JVM 行为)。
- * Native 平台降级为不可中断的 sleep, 靠
- * [SourceVerificationHelpShared.waitVerificationResult] 的轮询循环在超时后重新检查
- * 结果自然唤醒。
- */
-internal expect fun parkThread(nanos: Long)
-
-/**
- * 唤醒 [currentThreadMarker] 标记的线程 (JVM 委托 `LockSupport.unpark`)。
- * Native 平台为空操作 (靠轮询超时唤醒)。
- */
-internal expect fun unparkThread(marker: Any?)

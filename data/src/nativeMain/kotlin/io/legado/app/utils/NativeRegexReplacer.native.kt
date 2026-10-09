@@ -93,7 +93,8 @@ object NativeRegexReplacer : RegexReplacer {
                                 "替换超时,3秒后还未结束将重启应用\n替换规则$regex\n替换内容:$source"
                             val exception = RegexTimeoutException(timeoutMsg)
                             block.cancel(exception)
-                            // Android 专属副作用经 RegexErrorHandler 注入; native 端未注册时静默跳过
+                            // 平台副作用经 RegexErrorHandler 注入 (native 端由 NativeRegexErrorHandler
+                            // 提供 Toasters 长提示 + 崩溃落盘 + 手动重启告警; 未注册时静默跳过)
                             val handler = RegexErrorHandlers.getOrNull()
                             handler?.onTimeoutToast(timeoutMsg)
                             handler?.saveCrashInfo(exception)

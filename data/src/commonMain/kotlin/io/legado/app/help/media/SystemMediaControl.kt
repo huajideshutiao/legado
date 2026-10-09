@@ -1,5 +1,6 @@
 package io.legado.app.help.media
 
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
 import io.legado.app.help.config.PreferenceProviders
@@ -115,6 +116,62 @@ object SystemMediaControl {
         this.sink = sink
     }
 
+    // ===== 音频焦点与拔耳机 (iOS / 鸿蒙 事件源 → 本中枢) =====
+
+    /**
+     * 音频焦点状态机 (iOS 的 AVAudioSession 中断 / 鸿蒙 AVPlayer 的音频打断事件灌进这里)。
+     *
+     * Android 不走这条: 它自己持 `AudioFocusController` (app 端壳 + 同一份状态机),
+     * 且 `ignoreAudioFocus` 时连系统焦点都不申请。
+     */
+    private val audioFocusHandler = AudioFocusHandler(
+        logTag = "Media",
+        isPaused = { !isPlaying },
+        // abandonFocus=true (永久丢失) 时顺带归还平台焦点/停音频会话, 对照 Android 的
+        // `pauseSession(abandonFocus = true)`; 短暂丢失保留焦点以便 gain 后自动续播
+        onPause = { abandonFocus ->
+            if (abandonFocus) sink?.setAudioFocus(active = false, exclusive = !ignoreAudioFocus)
+            pauseSounding()
+        },
+        onResume = { resumePausedSessions() },
+    )
+
+    /** 焦点事件源就绪时重置"待恢复"标记 (对照 app 端 `AudioFocusController.request()`)。 */
+    fun onAudioFocusRequested() {
+        audioFocusHandler.onRequest()
+    }
+
+    /** 派发一次音频焦点变更 (平台事件源翻译成 [AudioFocusChange] 后调用)。 */
+    fun onAudioFocusChange(change: AudioFocusChange) {
+        audioFocusHandler.onFocusChange(change)
+    }
+
+    /**
+     * 拔耳机 / 蓝牙音频设备断开: 暂停当前出声的一方 (对照 app 端 `BecomingNoisyReceiver`)。
+     *
+     * 与 Android 同语义: 直接暂停并归还焦点, 不记"待恢复"标记 (不会自动续播)。
+     */
+    fun onAudioBecomingNoisy() {
+        AppLog.put("音频输出设备断开,暂停")
+        if (!isPlaying) return
+        sink?.setAudioFocus(active = false, exclusive = !ignoreAudioFocus)
+        pauseSounding()
+    }
+
+    /** 暂停当前出声的一方 (朗读优先, 与 [togglePlayPause] 同口径; 有声书在播则连带暂停)。 */
+    private fun pauseSounding() {
+        val host = readAloudHost
+        if (host?.isRun == true && !host.isPause) host.pause()
+        if (audioRunning && AudioPlayShared.status == Status.PLAY) AudioPlayShared.pause()
+    }
+
+    /** 恢复当前暂停中的一方 (焦点 regain 后的自动续播; 未在跑的一方不拉起来)。 */
+    private fun resumePausedSessions() {
+        val host = readAloudHost
+        if (host?.isRun == true && host.isPause) host.resume()
+        if (audioRunning && AudioPlayShared.status == Status.PAUSE) AudioPlayShared.resume()
+    }
+
     /** 宿主启动早期注册朗读宿主。 */
     fun registerReadAloudHost(host: ReadAloudRemoteHost) {
         this.readAloudHost = host
@@ -159,7 +216,11 @@ object SystemMediaControl {
         // 对照 app 端 AudioFocusController 的调用点: 只有 play 申请、pause 归还;
         // LOADING (拉流) 与 STOP (stopPlay / 切章) 保持当前焦点不动
         when (status) {
-            Status.PLAY -> sink?.setAudioFocus(true, exclusive = !ignoreAudioFocus)
+            Status.PLAY -> {
+                onAudioFocusRequested()
+                sink?.setAudioFocus(true, exclusive = !ignoreAudioFocus)
+            }
+
             Status.PAUSE -> sink?.setAudioFocus(false, exclusive = !ignoreAudioFocus)
             else -> Unit
         }
@@ -186,6 +247,7 @@ object SystemMediaControl {
                 isAudioBook = false,
             )
         )
+        if (isPlaying) onAudioFocusRequested()
         sink?.setAudioFocus(isPlaying, exclusive = !ignoreAudioFocus)
     }
 

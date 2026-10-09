@@ -34,12 +34,6 @@ interface ServiceLauncher {
      */
     fun removeCacheBookService(bookUrl: String)
 
-    /** 启动更新书籍服务 (对应 app 端 `UpdateBookService`)。 */
-    fun startUpdateBookService()
-
-    /** 停止更新书籍服务。 */
-    fun stopUpdateBookService()
-
     /**
      * 启动下载服务 (对应 app 端 `DownloadService`)。
      * 安卓实现走系统 `DownloadManager`, 桌面端用 [io.legado.app.help.file.FileDownloader] 写文件。
