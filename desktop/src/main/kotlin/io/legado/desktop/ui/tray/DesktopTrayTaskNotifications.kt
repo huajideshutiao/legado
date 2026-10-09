@@ -22,10 +22,12 @@ import kotlinx.coroutines.flow.onEach
  *
  * 桌面端无 Android Service, 两条任务的"服务存活"分别由既有信号界定, 不新造调度:
  * - **缓存书籍**: 与 iOS 端同一形制, 把已注册的 [ServiceLauncher] 包一层 (见
- *   [CacheBookTrayLauncher]) —— 只有经启动器启动缓存的路径才进通知
- *   (阅读页"离线缓存"直接走 [CacheBookShared], 原版那条路径也起服务, 本仓现状各端一致不起);
+ *   [CacheBookTrayLauncher]) —— 起缓存服务的路径才进通知 (书架管理页、阅读页"离线缓存"
+ *   都经该启动器; 目录更新后的自动预下载与阅读中的前后章预下载不经它, 与 app 端一致不进通知);
  *   进度取共享层既有事件 [EventBus.UP_DOWNLOAD] / [EventBus.UP_DOWNLOAD_STATE]
- *   (原版由服务每秒轮询取同一批 `CacheBook` 计数, 故文案/口径一致)
+ *   (原版由服务每秒轮询取同一批 `CacheBook` 计数, 故文案/口径一致),
+ *   收尾判据是"调度 job 的起止事件到达时下载池已无在途任务" (对照 app 端 `CacheBookService.download()`
+ *   里 `startProcessJob` 返回后 `stopSelf()` → `onDestroy`; 入队失败/无可下载项时池空, 即为此条)
  * - **书源校验**: 进度事件 ([EventBus.CHECK_SOURCE] / [EventBus.CHECK_SOURCE_DONE]) 即任务边界
  *   (原版通知随服务生死, 桌面端校验跑在进程级协程域, 事件是该域的唯一对外信号)
  *
@@ -45,13 +47,13 @@ object DesktopTrayTaskNotifications {
     private var cacheServiceStarted = false
 
     /**
-     * 本次服务期内队列曾非空。
+     * 本次会话的调度真的接到过活 (对照 app 端 `CacheBookService.download()` 已进入 `startProcessJob`)。
      *
-     * 启动到委托侧入队之间 (以及上一轮排空后的收尾事件) 队列本就是空的, 那一段不能当
-     * "已完成" 收尾, 否则新一轮刚启动就会被收掉。
+     * 启动到委托侧入队之间的"无在途任务"不能当收尾 (书模型刚建立的那一瞬同样是无在途),
+     * 故进度事件只在本次调度接到过活之后才能据"无在途"收尾。
      */
     @Volatile
-    private var cacheQueueSeen = false
+    private var cacheJobSeen = false
 
     /** 托盘安装后调用一次 (见 desktop `Main.kt`); 幂等。 */
     fun install() {
@@ -66,35 +68,61 @@ object DesktopTrayTaskNotifications {
             )
         )
         FlowBus.with(EventBus.UP_DOWNLOAD).onEach { refreshCacheBook() }.launchIn(scope)
-        FlowBus.with(EventBus.UP_DOWNLOAD_STATE).onEach { refreshCacheBook() }.launchIn(scope)
+        FlowBus.with(EventBus.UP_DOWNLOAD_STATE).onEach { onCacheScheduleStateChanged() }.launchIn(scope)
         FlowBus.with(EventBus.CHECK_SOURCE).onEach { upCheckSource() }.launchIn(scope)
         FlowBus.with(EventBus.CHECK_SOURCE_DONE).onEach { downCheckSource() }.launchIn(scope)
     }
 
-    /** 缓存服务启动 (对照 app 端 `CacheBookService.onCreate` → isRun=true + startForeground)。 */
+    /** 缓存服务启动 (对照 app 端 `CacheBookService.onCreate` → isRun=true + 前台通知上屏)。 */
     private fun onCacheServiceStarted() {
         cacheServiceStarted = true
-        cacheQueueSeen = false
+        cacheJobSeen = false
         DesktopMediaTray.cacheBook = cacheBookBinding()
     }
 
     /** 缓存服务停止 (对照 app 端 `CacheBookService.onDestroy`)。 */
     private fun onCacheServiceStopped() {
         cacheServiceStarted = false
-        cacheQueueSeen = false
+        cacheJobSeen = false
         DesktopMediaTray.cacheBook = null
     }
 
-    /** 缓存进度变化: 跟进度, 队列排空则收尾 (对照 app 端 startProcessJob 跑完后 stopSelf)。 */
+    /**
+     * 缓存进度/池状态变化: 跟进度; 本次调度接到过活之后, 无在途任务即收尾。
+     *
+     * 与 [onCacheScheduleStateChanged] 各自覆盖对方拿不到事件的一侧: 调度一事未接到的会话
+     * (入队失败/无可下载项) 没有进度事件, 只能由调度事件判; 池里留着别人建的模型而调度已跑完时
+     * 只有进度事件会到。
+     */
     private fun refreshCacheBook() {
         if (!cacheServiceStarted) return
-        if (CacheBookShared.isRun) {
-            cacheQueueSeen = true
-            DesktopMediaTray.cacheBook = cacheBookBinding()
+        if (!CacheBookShared.isRun && cacheJobSeen) {
+            onCacheServiceStopped()
             return
         }
-        if (!cacheQueueSeen) return
-        onCacheServiceStopped()
+        DesktopMediaTray.cacheBook = cacheBookBinding()
+    }
+
+    /**
+     * 共享调度 job 起/止 (对照 app 端 `CacheBookService.download()`: `CacheBook.startProcessJob()`
+     * 返回就 `stopSelf()` → `onDestroy`)。
+     *
+     * 判据取"无在途任务": 入队失败 (书不在库) 与无可下载项的书都会让该状态成立, 因此这两条失败
+     * 路径也必然收尾; 有排队/在途任务时该事件只是进度刷新 (启动到委托侧入队之间不会出现本事件:
+     * 委托是先入队、后跑调度)。
+     *
+     * 其它来源的调度事件 (上一轮会话的遗留、书架自动更新起过调度) 在极窄窗口内落到新一轮启动之后时,
+     * 会把新一轮会话一并收掉 (与 iOS/鸿蒙镜像同一暴露面); 该窗口不会超过委托侧取书这一步, 且收尾只
+     * 影响托盘呈现 —— 下载本身继续, 下一次经启动器起缓存会重新上屏。
+     */
+    private fun onCacheScheduleStateChanged() {
+        if (!cacheServiceStarted) return
+        if (!CacheBookShared.isRun) {
+            onCacheServiceStopped()
+            return
+        }
+        cacheJobSeen = true
+        DesktopMediaTray.cacheBook = cacheBookBinding()
     }
 
     /**
@@ -167,8 +195,9 @@ private class CacheBookTrayLauncher(
 
     override fun removeCacheBookService(bookUrl: String) {
         delegate.removeCacheBookService(bookUrl)
-        // 单本移除: 队列还有活则通知继续跟进度 (对照 app 端 removeDownload 的"队列空才 stopSelf")
-        if (!CacheBookShared.isRun) onServiceStopped()
+        // 单本移除: 下载池空了才等同服务停止 (对照 app 端 removeDownload 的"池空才 stopSelf");
+        // 池里还有书时通知继续跟进度 (进度由 UP_DOWNLOAD 事件刷新)
+        if (CacheBookShared.cacheBookMap.isEmpty()) onServiceStopped()
     }
 
     override fun startDownloadService(url: String, fileName: String) {

@@ -52,8 +52,9 @@ private val visibilityScope = CoroutineScope(SupervisorJob() + Dispatchers.Defau
  *
  * # 长时任务
  * 不申请保活 (长时任务文档"使用场景"表无一可用类型): "更新目录/强制刷新"是批量元数据请求,
- * 不是"非托管形式的上传、下载"(dataTransfer 的官方场景), 且该类型有进度/吞吐硬要求
- * (官方 FAQ: 上传+下载速度持续 60 秒低于 16kB/s 即杀掉长时任务), 与请求-响应型流量对不上;
+ * 不是"非托管形式的上传、下载"(dataTransfer 的官方场景), 且该类型要求应用持续更新进度
+ * (首次发布后 10 分钟无更新即被删通知停任务, 之后每次更新把时限重置为 15 分钟),
+ * 与请求-响应型流量对不上;
  * `taskKeeping` (计算任务) 有设备/ACL 门槛 (API<=20 仅 PC/2in1, API>=21 非 PC 需受限 ACL 权限
  * `ohos.permission.KEEP_BACKGROUND_RUNNING_SYSTEM`)。
  *

@@ -15,6 +15,9 @@ import {
   acquireWorkTask,
   releaseWorkTask,
   publishTransferProgress,
+  completeTransferProgress,
+  verifyWorkTasks,
+  isTransferHolderOwner,
   notifySystemCancelled,
   notifyAbilityDestroyed
 } from '../bridge/ContinuousTaskArbiter';
@@ -513,6 +516,11 @@ export default class EntryAbility extends UIAbility {
               payload.title ?? '', payload.content ?? '', payload.progress ?? 0, payload.max ?? 0
             );
           } else {
+            // 业务正常收尾的那一条 (如缓存的"缓存完成"): 若收尾的正是持有 dataTransfer 的业务,
+            // 先把实况窗进度写到 100 (系统时限放宽到 30 分钟), 再释放长时任务
+            if (isTransferHolderOwner(payload.id.toString())) {
+              await completeTransferProgress();
+            }
             await releaseWorkTask(this.context, payload.id.toString());
           }
         } catch (e) {
@@ -999,5 +1007,10 @@ export default class EntryAbility extends UIAbility {
     // 应用退到后台 → Kotlin OhosAppLifecycle (阅读页监听器调 ReaderScreenModel.onPause:
     // 计时结束 + 落库上传 + 取消预下载, 对齐 iOS UIApplicationDidEnterBackgroundNotification)。
     emitAppLifecycle('onBackground');
+    // 进后台正是保活要紧的时刻: 按系统真实状态自检一次长时任务是否还在
+    // (系统可能在没有任何回调的情况下挂起/取消; 取消回调只回传部分原因)
+    verifyWorkTasks(this.context).catch((e: Error): void => {
+      console.error('[Legado] verify continuous task state failed: ' + JSON.stringify(e));
+    });
   }
 }

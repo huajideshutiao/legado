@@ -35,9 +35,9 @@ import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.service.ServiceLaunchers
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.ActiveReadBookRegistry
-import io.legado.app.model.CacheBookShared
 import io.legado.app.model.ReadBookPlatforms
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
@@ -1190,26 +1190,10 @@ fun ReaderRoute(
                     book = book,
                     onApply = { start, end ->
                         screenModel.clearDialogEvent()
-                        val bookSource = screenModel.viewModel.bookSource.value
-                        val cacheBook = bookSource?.let {
-                            runCatching { CacheBookShared.getOrCreate(it, book) }.getOrNull()
-                        }
-                        if (cacheBook == null) {
-                            Toasters.get().toast("离线缓存启动失败: 书源不可用")
-                        } else {
-                            // 与原版一致: 输入为章节号, CacheBook 下标从 0 起 (start-1/end-1),
-                            // 结束章节 clamp 到 lastChapterIndex (原版在 CacheBookService.addDownloadData 内)
-                            val startIndex = start.coerceAtLeast(1) - 1
-                            val endIndex = (end.coerceAtLeast(0) - 1).coerceAtMost(book.lastChapterIndex)
-                            if (startIndex > endIndex) {
-                                Toasters.get().toast("离线缓存章节范围无效")
-                            } else {
-                                cacheBook.addDownload(startIndex, endIndex)
-                                scope.launch(IoDispatcher) {
-                                    CacheBookShared.startProcessJob()
-                                }
-                            }
-                        }
+                        // 对话框给出的是章节号, 下标从 0 起 (start-1/end-1); 结束章节的 clamp
+                        // 由缓存服务负责 (CacheBookService.addDownloadData / 各端启动器)
+                        ServiceLaunchers.get()
+                            .startCacheBookService(book.bookUrl, start - 1, end - 1)
                     },
                     onDismiss = { screenModel.clearDialogEvent() },
                 )

@@ -23,8 +23,8 @@ import kotlinx.coroutines.flow.onEach
  * `onDestroy` 收尾成"缓存完成"; 取消动作 = `IntentAction.stop` → `stopSelf()`。
  * iOS 无 Service, 通知态改由两个既有信号驱动, 不新造调度:
  * - **服务态**: 缓存服务启停入口 ([ServiceLauncher], 见 [IosCacheBookServiceLauncher]) ——
- *   与 app 端一致, 只有"从书架管理页启动缓存"这条路径才进通知 (预下载/阅读页单章缓存
- *   在原版并不启动该 Service, 因此同样不进通知)
+ *   与 app 端一致, 起缓存服务的路径才进通知 (书架管理页、阅读页"离线缓存"都经该启动器;
+ *   目录更新后的自动预下载与阅读中的前后章预下载在原版也不启动该 Service, 不进通知)
  * - **进度**: 共享层既有事件 [EventBus.UP_DOWNLOAD] / [EventBus.UP_DOWNLOAD_STATE]
  *   (原版由 Service 每秒轮询取同一批 `CacheBookShared` 计数, 故文案/口径一致)
  *

@@ -25,8 +25,8 @@ import kotlinx.coroutines.flow.onEach
  * `onDestroy` 收尾成"缓存完成"; 取消动作 = `IntentAction.stop` → `stopSelf()`。
  * 鸿蒙无 Service, 通知态由两个既有信号驱动, 不新造调度:
  * - **服务态**: 缓存服务启停入口 ([ServiceLauncher], 见 [OhosCacheBookServiceLauncher]) ——
- *   与 app 端一致, 只有"从书架管理页启动缓存"这条路径才进通知 (阅读页离线缓存对话框在原版
- *   也不启该 Service, 同样不进通知)
+ *   与 app 端一致, 起缓存服务的路径才进通知 (书架管理页、阅读页"离线缓存"都经该启动器;
+ *   目录更新后的自动预下载与阅读中的前后章预下载在原版也不启动该 Service, 不进通知)
  * - **进度**: 共享层既有事件 [EventBus.UP_DOWNLOAD] / [EventBus.UP_DOWNLOAD_STATE]
  *   (原版由 Service 每秒轮询取同一批 [CacheBookShared] 计数, 故文案/口径一致)
  *
@@ -41,13 +41,16 @@ internal object OhosCacheBookNotifications {
      *
      * 选 `dataTransfer` 的依据 (长时任务文档"使用场景"表): "非托管形式的上传、下载, 如在浏览器
      * 后台上传或下载数据" —— 缓存就是非托管(不交 @ohos.request)的持续下载, 且进度确定
-     * ([CacheBookShared.downloadProgress] 的 完成/总数)。该类型的额外硬要求: "在数据传输时,
-     * 应用需要更新进度, 如果进度长时间 (首次更新超过 10 分钟) 未更新, 数据传输的长时任务会被取消。
-     * 更新进度的通知类型必须为实况窗" —— 由 ArkTS 侧把每次进度写进系统代理创建的那条实况窗通知
-     * (见 ContinuousTaskArbiter.publishTransferProgress; 首次更新在申请的同一次调用里完成)。
+     * ([CacheBookShared.downloadProgress] 的 完成/总数)。该类型的额外硬要求: 应用必须持续更新
+     * 进度, 且更新必须是实况窗 —— 文案与进度写入系统代理创建的那条实况窗通知的
+     * `downloadTemplate`, 并按系统时限的节奏心跳式续推 (见 ContinuousTaskArbiter;
+     * 首次发布后 10 分钟无更新即被删通知停任务, 之后每次更新把时限重置为 15 分钟,
+     * 进度 100 时为 30 分钟)。
      *
-     * ⚠ 平台还有吞吐要求 (官方 FAQ: 上传+下载速度持续 60 秒低于 16kB/s 会杀掉长时任务),
-     * 书源慢到该量级时保活会丢 —— 丢的只是保活, 下载本身继续跑。
+     * ⚠ 保活随时可能被系统挂起或取消 (低速、一致性管控等), 且多数原因不回传应用: 系统只回传
+     * "移除通知"与"冻结"两类原因, 开源侧只有 SYSTEM_CANCEL_DATA_TRANSFER_LOW_SPEED /
+     * SYSTEM_SUSPEND_DATA_TRANSFER_LOW_SPEED 两个原因码、没有任何阈值实现 (触发方是系统调度
+     * 服务)。丢的只是保活, 下载本身继续跑。
      */
     const val CONTINUOUS_TASK_MODE = "dataTransfer"
 

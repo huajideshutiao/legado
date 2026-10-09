@@ -23,7 +23,8 @@ import kotlinx.coroutines.launch
  * 设计要点 (对照 jvmMain DesktopServiceLauncher): 持有 [CoroutineScope]
  * (SupervisorJob + Default dispatcher, 子任务异常不互相影响);
  * start/remove/stopCacheBookService 接入已下沉的 [CacheBookShared] (对照 app 端
- * CacheBookService); `startUpdateBookService` / `stopUpdateBookService` 均为零调用点死代码,
+ * CacheBookService: 一次启动 = 一次会话, 入队失败也照样把调度跑到结束);
+ * `startUpdateBookService` / `stopUpdateBookService` 均为零调用点死代码,
  * 已于 2026-09 删除 (Native 无 MainViewModel; 书架自动更新走共享触发链, 不在本启动器;
  * 取消刷新任务走 BookshelfViewModel → UpdateBookShared);
  * startDownloadService 用 [FileDownloaders] 写文件 (iOS 沙盒 Documents 替代 user.home,
@@ -39,10 +40,13 @@ class NativeServiceLauncher(
 
     override fun startCacheBookService(bookUrl: String, start: Int, end: Int) {
         scope.launch {
-            if (enqueueCacheBook(bookUrl, start, end)) {
-                // 启动 startProcessJob (对照 app 端 CacheBookService.download)
-                CacheBookShared.startProcessJob()
-            }
+            // 入队结果由 iOS 后台续跑消费 (见 [enqueueCacheBook]), 本方法不使用
+            enqueueCacheBook(bookUrl, start, end)
+            // 取不到书 (不在书架/已删/无书源) 时池为空, 本行让 job 立即结束: 与原版
+            // addDownloadData 的 onFinally 无条件 download() (内部 startProcessJob 返回后 stopSelf)
+            // 一致 —— "服务起来了但没有可入队的书" 同样以调度 job 结束收尾, 不留悬空会话
+            // (对照 jvmMain DesktopServiceLauncher.startCacheBookService)
+            CacheBookShared.startProcessJob()
         }
     }
 
@@ -206,7 +210,7 @@ fun registerOhosServiceLauncher(scope: CoroutineScope = CoroutineScope(Superviso
  *
  * [NativeServiceLauncher.startCacheBookService] 是 fire-and-forget 的, 等不到入队结果;
  * iOS 后台续跑 ([io.legado.app.help.service.IosBackgroundTasks]) 必须知道入队是否真的成功,
- * 故把这段抽出来两边共用。
+ * 故把这段抽出来两边共用 (启动器不消费返回值: 调度一律跑到结束)。
  *
  * @param end <0 表示下载到最后一章 (对照 app 端 CacheBookService.addDownloadData)
  * @return false = 这个 bookUrl 已取不到书 (不在书架 / 已删)

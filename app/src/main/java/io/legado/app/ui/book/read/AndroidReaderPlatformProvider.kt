@@ -37,7 +37,6 @@ import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.model.CacheBook
 import io.legado.app.model.ReadAloud
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.page.AutoPagerCompose

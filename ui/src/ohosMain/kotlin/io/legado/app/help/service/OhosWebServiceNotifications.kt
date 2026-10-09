@@ -44,18 +44,20 @@ internal object OhosWebServiceNotifications {
      * Web 服务的长时任务类型 (module.json5 的 backgroundModes 项, 必须与之逐字一致)。
      *
      * 选"多设备互联"的理由 (长时任务文档"使用场景"表逐项对照, 该表无"局域网 HTTP 服务"一行):
-     * - `dataTransfer` (数据传输: 非托管形式的上传/下载): 文档额外要求"应用需要更新进度, 若首次
-     *   超过 10 分钟未更新则长时任务被取消, 且更新通知类型必须为实况窗" —— 空闲等连接的服务
-     *   满足不了, 10 分钟后必被取消
+     * - `dataTransfer` (数据传输: 非托管形式的上传/下载): 额外要求应用持续更新进度、且更新必须
+     *   是实况窗 —— 首次发布后 10 分钟无更新即被删通知停任务, 之后每次更新把时限重置为 15 分钟;
+     *   空闲等连接的服务满足不了
      * - `taskKeeping` (计算任务): API 20 及之前仅 PC/2in1 设备开放, API 21 起非 PC 设备还需
      *   受限 ACL 权限 `ohos.permission.KEEP_BACKGROUND_RUNNING_SYSTEM`
      * - `wifiInteraction` (WLAN 相关业务): 仅对系统应用开放
      * - `multiDeviceConnection` (多设备互联, 场景举例: 分布式业务连接、投播): 本服务就是"另一台
      *   设备的浏览器连到本机"的跨设备会话, 是表内唯一不以特定传输方式/特定数据流为前提的连接类类型
      *
-     * ⚠ 系统会对长时任务的业务真实性做一致性校验 (接入规范: "保证应用后台执行的业务与申请的任务
-     * 类型一致"), 本机无鸿蒙设备, 该模式是否通过校验**未经真机验证**; 被管控时只影响保活
-     * (服务仍可前台使用, 失败会记日志)。
+     * ⚠ 开源侧只校验"该后台模式是否在 module.json5 声明", 不存在业务一致性校验的实现: 被挂起或
+     * 取消表现为原因码 (SYSTEM_CANCEL_* / SYSTEM_SUSPEND_*, 触发方在系统调度服务, 不在开源代码里),
+     * 且只有"移除通知"与"冻结"两类原因会回传应用。故保活只在监听真的在跑时申请、一停就立刻释放
+     * (见 [refresh]: 服务态每次变化都重述通知与保活, 不依赖取消回调)。本机无鸿蒙设备, 该模式在真机上
+     * 是否被管控**未经真机验证**; 被管控时只影响保活 (服务仍可前台使用, 失败会记日志)。
      */
     const val CONTINUOUS_TASK_MODE = "multiDeviceConnection"
 
@@ -82,6 +84,9 @@ internal object OhosWebServiceNotifications {
      *
      * 运行中按 [CONTINUOUS_TASK_MODE] 申请长时任务 (= 原版的前台服务保活), 停止时一并取消
      * (两者是同一件事的两面: 系统为长时任务自己发的那条通知不可修改, 故业务通知单发一条)。
+     *
+     * 保活的申请/释放严格跟随 [WebServerManager.isRun] (即监听真的在跑), 不依赖长时任务取消
+     * 回调: 回调只回传部分原因, 且回调到达时只管业务自身的状态, 不停服务。
      */
     fun refresh() = synchronized(lock) {
         if (!WebServerManager.isRun) {

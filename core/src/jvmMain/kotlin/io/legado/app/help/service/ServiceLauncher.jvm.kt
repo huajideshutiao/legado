@@ -23,8 +23,8 @@ import java.nio.file.Paths
  * # 设计要点
  * - 持有 [CoroutineScope] (SupervisorJob + Default dispatcher), 子任务异常不互相影响
  * - **startCacheBookService**: 接入已下沉的 [CacheBookShared], 创建 CacheBookModelShared +
- *   addDownload + 在 scope 内 launch startProcessJob (对照 app 端 CacheBookService.addDownloadData +
- *   download)
+ *   addDownload + 把 startProcessJob 跑到结束 (对照 app 端 CacheBookService.addDownloadData +
+ *   download: 一次启动 = 一次会话, 入队失败也照样把调度跑到结束)
  * - **removeCacheBookService**: 调 `CacheBookShared.cacheBookMap[bookUrl]?.stop()` +
  *   postEvent (对照 app 端 CacheBookService.removeDownload, 桌面端无 stopSelf)
  * - **stopCacheBookService**: 调 [CacheBookShared.close] (对照 app 端 CacheBookService.onDestroy)
@@ -42,8 +42,7 @@ import java.nio.file.Paths
  * - startCacheBookService 的 chapterList 加载 + 目录为空时拉取详情/目录逻辑
  *   (app 端 CacheBookService.addDownloadData 内 mutex.withLock 段) 由桌面端
  *   阅读 VM 的 cacheBook()/addDownload() 在调用 startCacheBookService 前
- *   自行处理, 本方法仅做 addDownload + startProcessJob (与桌面端原 DesktopCacheBook 配合
- *   桌面端阅读 VM 的现有分工一致)。
+ *   自行处理, 本方法仅做 addDownload + startProcessJob (与桌面端阅读 VM 的现有分工一致)。
  * - downloadJob 重启逻辑 (app 端 CacheBookService.removeDownload 内
  *   `if (downloadJob == null && CacheBook.isRun) download()`) 桌面端由
  *   阅读 VM 监听 isRun 自行管理, 本方法不直接重启。
@@ -53,19 +52,23 @@ class DesktopServiceLauncher(
 ) : ServiceLauncher {
 
     override fun startCacheBookService(bookUrl: String, start: Int, end: Int) {
-        // 接入已下沉的 CacheBookShared: 创建模型 + 入队 + 启动处理 job
+        // 接入已下沉的 CacheBookShared: 创建模型 + 入队 + 把处理 job 跑到结束
         // (对照 app 端 CacheBookService.addDownloadData + download)
         scope.launch {
-            val cacheBook = CacheBookShared.getOrCreate(bookUrl) ?: return@launch
-            // end<0 表示下载到最后一章 (app 端 CacheBookService.addDownloadData 内
-            // `if (end < 0) book.lastChapterIndex else min(end, book.lastChapterIndex)`)
-            val actualEnd = if (end < 0) {
-                cacheBook.book.lastChapterIndex
-            } else {
-                minOf(end, cacheBook.book.lastChapterIndex)
+            val cacheBook = CacheBookShared.getOrCreate(bookUrl)
+            if (cacheBook != null) {
+                // end<0 表示下载到最后一章 (app 端 CacheBookService.addDownloadData 内
+                // `if (end < 0) book.lastChapterIndex else min(end, book.lastChapterIndex)`)
+                val actualEnd = if (end < 0) {
+                    cacheBook.book.lastChapterIndex
+                } else {
+                    minOf(end, cacheBook.book.lastChapterIndex)
+                }
+                cacheBook.addDownload(start, actualEnd)
             }
-            cacheBook.addDownload(start, actualEnd)
-            // 启动 startProcessJob (对照 app 端 CacheBookService.download)
+            // 取不到书 (不在书架/已删/无书源) 时池为空, 本行让 job 立即结束: 与原版
+            // addDownloadData 的 onFinally 无条件 download() (内部 startProcessJob 返回后 stopSelf)
+            // 一致 —— "服务起来了但没有可入队的书" 同样以调度 job 结束收尾, 不留悬空会话
             CacheBookShared.startProcessJob()
         }
     }

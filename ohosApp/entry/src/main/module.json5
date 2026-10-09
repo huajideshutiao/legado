@@ -88,7 +88,9 @@
         //   multiDeviceConnection: Web 服务 (局域网内另一台设备连接本机服务)
         //   dataTransfer: 缓存书籍那种持续下载 (平台对它有额外硬要求: 应用必须持续更新进度,
         //     且更新通知必须是实况窗 —— 见 ContinuousTaskArbiter.publishTransferProgress)
-        // 未在此声明的类型申请会被拒; 反过来, 声明了但业务与类型对不上会被系统一致性校验管控。
+        // 未在此声明的类型申请会被拒; 系统只校验到"该模式是否在配置里声明"这一步, 开源侧不存在
+        // 业务一致性校验的实现, 被挂起/取消表现为原因码 (SYSTEM_CANCEL_* / SYSTEM_SUSPEND_*,
+        // 触发方在系统调度服务).
         // 该 API 的 @permission 为 ohos.permission.KEEP_BACKGROUND_RUNNING (已在上面声明)。
         "backgroundModes": [
           "audioPlayback",

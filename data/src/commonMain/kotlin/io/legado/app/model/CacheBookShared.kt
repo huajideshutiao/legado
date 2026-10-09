@@ -191,8 +191,9 @@ object CacheBookShared {
      * 只中断本函数的 join 等待, 不中断循环, 排队书籍最终处理完并从 map 移除,
      * 避免残留 "运行中" 状态导致 UI 恒显停止图标。单实例语义与原 mutex 等价
      * (同一时刻至多一个循环), 差异仅是新调用方 join 活跃循环而非排队重跑。
-     * flow 循环: 只要 map 非空且协程活跃就持续遍历, 对每个非 loading 的 model
-     * 调用 [CacheBookModelShared.download]; 无可下载项时 delay(1000) 避免空转。
+     * flow 循环: 只要 map 非空且协程活跃就持续遍历, 对 [CacheBookModelShared.hasWaitingDownloads]
+     * 或 [CacheBookModelShared.isIdle] 的 model 调用 [CacheBookModelShared.download]
+     * (后者只会走清理分支把空模型移出 map); 无可处理项时 delay(1000) 避免空转。
      */
     suspend fun startProcessJob() {
         val job = synchronized(processLock) {
@@ -208,7 +209,7 @@ object CacheBookShared {
                 var emitted = false
 
                 cacheBookMap.forEach { (_, model) ->
-                    if (model.hasWaitingDownloads()) {
+                    if (model.hasWaitingDownloads() || model.isIdle()) {
                         emit(model)
                         emitted = true
                     }
@@ -325,6 +326,15 @@ object CacheBookShared {
 
         fun hasWaitingDownloads(): Boolean = synchronized(lock) {
             return !isLoading && waitDownloadSet.isNotEmpty()
+        }
+
+        /**
+         * 无待下载项、无在途任务、无待重试 —— 与 [download] 内移除空模型的条件一致
+         * (锁不可重入, 那处无法直接调本方法); 调度循环据此把空模型取出来走清理分支。
+         */
+        fun isIdle(): Boolean = synchronized(lock) {
+            return !isLoading && waitDownloadSet.isEmpty() &&
+                onDownloadSet.isEmpty() && retryingCount == 0
         }
 
         fun setLoading() = synchronized(lock) {

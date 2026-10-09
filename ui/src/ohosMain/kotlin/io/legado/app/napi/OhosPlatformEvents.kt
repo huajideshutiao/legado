@@ -9,13 +9,13 @@ import io.legado.app.help.glide.progress.OnProgressListener
 import io.legado.app.help.media.AudioFocusChange
 import io.legado.app.help.media.PhoneCallState
 import io.legado.app.help.media.SystemMediaControl
+import io.legado.app.help.service.OhosWebServiceNotifications
 import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.tts.OhosReadAloudHost
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.ui.OhosPlatformCapabilities
 import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.utils.KS_JSON
-import io.legado.app.web.WebServerManager
 import io.legado.app.web.refreshOhosWebServerAddresses
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -259,16 +259,17 @@ internal object OhosPlatformEventChannel {
                 action = payload.action.orEmpty(),
             )
 
-            // 长时任务被系统/用户取消 (删除长时任务通知、系统一致性校验判定不合规等)。被取消方的
-            // 业务通知 id 在 notificationId 里: 只有 Web 服务那种"靠长时任务存活"的业务要停掉自己
-            // (对照 app 端 WebService 收到 IntentAction.stop 的 stopSelf); 缓存/更新/导出等业务继续跑,
-            // 只是本轮不再保活 (ArkTS 仲裁器已按接入规范抑制立即重申请)
+            // 长时任务被挂起/取消。系统只回传"移除通知"与"冻结"两类原因, 其余原因 (低速、一致性
+            // 管控等) 不回传 —— 所以业务一律只认自己的状态, 不停在"收到回调才停业务"上。被取消方的
+            // 业务通知 id 在 notificationId 里: 这里只按业务当前状态重述通知与保活
+            // (ArkTS 仲裁器对刚被取消的 owner 按接入规范抑制立即重申请)
             "continuousTaskCancel" -> {
                 AppLog.put(
                     "长时任务已取消, 业务通知 id=${payload.notificationId} reason=${payload.reason}"
                 )
-                if (payload.notificationId == NotificationId.WebService && WebServerManager.isRun) {
-                    OhosPlatformCapabilities.setWebService(false)
+                // Web 服务: 监听还在跑就不停服务与通知 (保活随状态重述), 停了才撤通知并释放保活
+                if (payload.notificationId == NotificationId.WebService) {
+                    OhosWebServiceNotifications.refresh()
                 }
             }
         }
