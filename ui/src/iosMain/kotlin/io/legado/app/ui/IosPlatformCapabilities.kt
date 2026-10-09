@@ -3,6 +3,7 @@
 package io.legado.app.ui
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
@@ -20,8 +21,6 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.tts.IosReadAloudHost
 import io.legado.app.service.defaultTtsEngineConfig
-import io.legado.app.ui.root.AppNavigatorProviders
-import io.legado.app.ui.root.AppOverlay
 import io.legado.app.help.book.toShelfJsonMap
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
@@ -38,9 +37,12 @@ import io.legado.app.help.upLoadToDirectLink
 import io.legado.app.model.CheckSourceShared
 import io.legado.app.model.Debug
 import io.legado.app.model.ExportBookUtils
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.import.ImportFileItem
+import io.legado.app.ui.book.info.WebFileImportShared
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.DefaultDialogTransitionSpec
 import io.legado.app.ui.root.DialogTransitionSpec
@@ -87,6 +89,8 @@ import platform.UIKit.UIAlertControllerStyleAlert
 import platform.UIKit.UIApplication
 import platform.UIKit.setAlternateIconName
 import platform.UIKit.UIScreen
+import platform.UIKit.UIDevice
+import platform.UIKit.UIUserInterfaceIdiomPad
 import platform.UIKit.UITextField
 import platform.WebKit.WKWebsiteDataStore
 import platform.darwin.dispatch_async
@@ -103,18 +107,6 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     private var exportBooksJob: Job? = null
 
     override val capabilityScope: CoroutineScope get() = scope
-
-    override fun showHttpTtsEditDialog(engine: HttpTTS?) {
-        AppNavigatorProviders.get().showOverlay(
-            AppOverlay.Dialog(
-                "httpTtsEdit",
-                payload = engine?.id?.toString(),
-                // 表单登录 → push WebView 路由盖住本窗口时保留 Overlay, 由内容自管挂起/恢复
-                // (对照原版 DialogFragment 被新 Activity 盖住仍存活, 返回后表单原样)
-                keepOnPush = true,
-            )
-        )
-    }
 
     override fun onHttpTtsEdited(engine: HttpTTS) {
         if (IosReadAloudHost.isRun && defaultTtsEngineConfig() == engine.id.toString()) {
@@ -324,6 +316,11 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     override fun isLandscape(): Boolean =
         UIScreen.mainScreen.bounds.useContents { size.width > size.height }
 
+    // 对照 ChapterProvider.upLayout 的 appCtx.isPad ("平板/横屏双页" auto 分支);
+    // iOS 用 UIDevice.userInterfaceIdiom 判定 (iPad 专用/通用应用在 iPad 上为 Pad)
+    override fun isTablet(): Boolean =
+        UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad
+
     // ===== Web 服务 (WebServerManager + NativeWebServerPlatform 已在 registerIosProviders 注册) =====
 
     // ===== 关于页 =====
@@ -336,6 +333,171 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
         val path = bookUrl.removePrefix("file://")
         runCatching { IosSecurityScopedStorage.withAccess(path) { File(it).length() } }
             .getOrDefault(0L)
+    }
+
+    // ===== webFile 下载导入 (对照 BookInfoActivity 同名方法) =====
+    //
+    // 平台无关编排 (构建 webFile 列表 / 下载 / 导入本地 / 压缩包条目) 已下沉:
+    // 取件与文件名推导在 WebFileImportShared, 下载导入/压缩包导入在 SharedPlatformCapabilities
+    // (目录落库统一走 BookChapterLoader.fetchFromSource)。
+    // 本端只保留两处 UIKit 形态: 条目选择框与"不支持格式时交系统程序打开"
+    // (对照 app 端 `activity.selector` / alert 的 open_fun 分支)。
+
+    /** 对照 BookInfoActivity.onReadClick isWebFile 分支: 构建 webFile 列表后弹条目选择框。 */
+    override fun handleWebFileRead(
+        book: Book,
+        onWaitDialog: (Boolean) -> Unit,
+        onAction: (String) -> Unit,
+        onSuccess: ((Book) -> Unit)?,
+    ) {
+        scope.launch {
+            // 对照 BaseReadViewModel.loadWebFile: 本地书无书源, 其余按 origin 查源
+            val source = if (book.origin != BookType.localTag) {
+                appDb.bookSourceDao.getBookSource(book.origin)
+            } else null
+            val webFiles = WebFileImportShared.buildWebFiles(book, source)
+            withContext(Dispatchers.Main) {
+                if (webFiles.isEmpty()) {
+                    Toasters.get().toast("Unexpected webFileData")
+                    return@withContext
+                }
+                presentWebFileSelect(book, webFiles, onWaitDialog, onAction, onSuccess)
+            }
+        }
+    }
+
+    /** 条目选择框 (对照 app 端 `activity.selector(download_and_import_file, webFiles)`)。 */
+    private fun presentWebFileSelect(
+        book: Book,
+        webFiles: List<FileBook.WebFile>,
+        onWaitDialog: (Boolean) -> Unit,
+        onAction: (String) -> Unit,
+        onSuccess: ((Book) -> Unit)?,
+    ) {
+        presentSelectList(
+            title = syncGetString("download_and_import_file"),
+            items = webFiles.map { it.name },
+        ) { index ->
+            val webFile = index?.let { webFiles.getOrNull(it) } ?: return@presentSelectList
+            when {
+                webFile.isSupported ->
+                    importWebFile(book, webFile, onWaitDialog, onAction) { onSuccess?.invoke(it) }
+
+                webFile.isSupportDecompress ->
+                    downloadWebFile(book, webFile, onWaitDialog, onAction) { path ->
+                        getArchiveFilesName(path) { fileNames ->
+                            if (fileNames.size == 1) {
+                                importBookFromArchive(path, fileNames[0], book, onWaitDialog) {
+                                    onSuccess?.invoke(it)
+                                }
+                            } else {
+                                presentArchiveEntrySelect(
+                                    path, fileNames, book, onWaitDialog, onSuccess,
+                                )
+                            }
+                        }
+                    }
+
+                else -> presentUnsupportedWebFileAlert(book, webFile, onWaitDialog, onAction)
+            }
+        }
+    }
+
+    /** 压缩包内选章 (对照 app 端 `showDecompressFileImportAlert`)。 */
+    private fun presentArchiveEntrySelect(
+        archiveFilePath: String,
+        fileNames: List<String>,
+        book: Book,
+        onWaitDialog: (Boolean) -> Unit,
+        onSuccess: ((Book) -> Unit)?,
+    ) {
+        if (fileNames.isEmpty()) {
+            Toasters.get().toast(syncGetString("unsupport_archivefile_entry"))
+            return
+        }
+        presentSelectList(
+            title = syncGetString("import_select_book"),
+            items = fileNames,
+        ) { index ->
+            val name = index?.let { fileNames.getOrNull(it) } ?: return@presentSelectList
+            importBookFromArchive(archiveFilePath, name, book, onWaitDialog) {
+                onSuccess?.invoke(it)
+            }
+        }
+    }
+
+    /** 不支持的格式: 下载后交系统程序打开 (对照 app 端 alert 的 open_fun 分支)。 */
+    private fun presentUnsupportedWebFileAlert(
+        book: Book,
+        webFile: FileBook.WebFile,
+        onWaitDialog: (Boolean) -> Unit,
+        onAction: (String) -> Unit,
+    ) {
+        val alert = UIAlertController.alertControllerWithTitle(
+            title = syncGetString("draw"),
+            message = syncGetString("file_not_supported", webFile.name),
+            preferredStyle = UIAlertControllerStyleAlert,
+        )
+        alert.addAction(
+            UIAlertAction.actionWithTitle(
+                title = syncGetString("open_fun"),
+                style = UIAlertActionStyleDefault,
+                handler = { _ ->
+                    downloadWebFile(book, webFile, onWaitDialog, onAction) { path ->
+                        // iOS 无"交系统程序打开"通道 (UIApplication.openURL 打不开本地文件),
+                        // 用系统分享面板把文件交给其它 app (与导出书籍同款出口)
+                        presentShareSheet(
+                            listOf(NSURL.fileURLWithPath(path.removePrefix("file://")))
+                        )
+                    }
+                },
+            )
+        )
+        alert.addAction(
+            UIAlertAction.actionWithTitle(
+                title = syncGetString("cancel"),
+                style = UIAlertActionStyleCancel,
+                handler = { _ -> },
+            )
+        )
+        presentAlert(alert)
+    }
+
+    // 对照 RemoteBookActivity.startRead 的 archive 分支: 在书籍保存目录里找已下载的压缩包,
+    // 找到就交文件关联分发链, 没找到就弹确认框由调用方重新下载后重试。
+    // native 端无"压缩包内选章阅读"UI, 与 NativeImportBook.openReader 同口径走
+    // FileAssociationDispatch 的直接导入链 (平台能力上限, 不假装与 app 端等价)
+    override fun startReadRemoteArchive(fileName: String, onNeedDownload: () -> Unit) {
+        scope.launch {
+            // 与 NativeFileBookAccessor 的书籍保存目录同源 ({filesDir}/books)
+            val path = AppFilesDirs.get().filesDir + "/books/" + fileName
+            if (File(path).exists()) {
+                FileAssociationDispatch.dispatch(path)
+                return@launch
+            }
+            withContext(Dispatchers.Main) {
+                val alert = UIAlertController.alertControllerWithTitle(
+                    title = syncGetString("draw"),
+                    message = syncGetString("archive_not_found"),
+                    preferredStyle = UIAlertControllerStyleAlert,
+                )
+                alert.addAction(
+                    UIAlertAction.actionWithTitle(
+                        title = syncGetString("ok"),
+                        style = UIAlertActionStyleDefault,
+                        handler = { _ -> onNeedDownload() },
+                    )
+                )
+                alert.addAction(
+                    UIAlertAction.actionWithTitle(
+                        title = syncGetString("cancel"),
+                        style = UIAlertActionStyleCancel,
+                        handler = { _ -> },
+                    )
+                )
+                presentAlert(alert)
+            }
+        }
     }
 
     // ===== 书架管理: 导出开关 =====
@@ -615,6 +777,96 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
                 return
             }
         if (saved) Toasters.get().toast("已导出 $defaultName")
+    }
+
+    /**
+     * 单选列表弹窗 (webFile/压缩包条目选择框): 选中回调传条目下标, 取消或拿不到宿主传 null。
+     *
+     * iOS 无 Android 的 selector 控件, 用 UIAlertController 的多个 action 表达 (条目多时系统自带滚动);
+     * 不用 ActionSheet 形态: iPad 上 ActionSheet 需要 popover 锚点, 无锚点会崩。
+     */
+    private fun presentSelectList(
+        title: String,
+        items: List<String>,
+        onSelected: (Int?) -> Unit,
+    ) {
+        val alert = UIAlertController.alertControllerWithTitle(
+            title = title,
+            message = null,
+            preferredStyle = UIAlertControllerStyleAlert,
+        )
+        items.forEachIndexed { index, item ->
+            alert.addAction(
+                UIAlertAction.actionWithTitle(
+                    title = item,
+                    style = UIAlertActionStyleDefault,
+                    handler = { _ -> onSelected(index) },
+                )
+            )
+        }
+        alert.addAction(
+            UIAlertAction.actionWithTitle(
+                title = syncGetString("cancel"),
+                style = UIAlertActionStyleCancel,
+                handler = { _ -> onSelected(null) },
+            )
+        )
+        presentAlert(alert)
+    }
+
+    /** 在顶层 vc 上弹 UIAlertController (拿不到宿主时静默放弃, 与 [presentTextInput] 同语义)。 */
+    private fun presentAlert(alert: UIAlertController) {
+        dispatch_async(dispatch_get_main_queue()) {
+            val vc = topMostViewController() ?: return@dispatch_async
+            vc.presentViewController(alert, animated = true, completion = null)
+        }
+    }
+
+    /**
+     * 云端有新备份时的确认框 (标题/正文与 app 端 `MainActivity.backupSync` 的
+     * `alert(R.string.restore, R.string.webdav_after_local_restore_confirm)` 逐字同源)。
+     *
+     * 判定不在本方法内: 调用方拿到
+     * [io.legado.app.help.StartupMaintenanceShared.NewBackupCheckResult.NewBackup] 后才调本方法,
+     * 点确定在 IO 作用域内走共享恢复入口 [AppWebDavShared.restoreWebDav] (与 app 端
+     * `MainViewModel.restoreWebDav` 同一个入口), 失败与 app 端同一口径落日志 + toast。
+     *
+     * @param name 云端备份文件名 (判定结果携带的 `displayName`)
+     */
+    fun presentWebDavNewBackupConfirm(name: String) {
+        val alert = UIAlertController.alertControllerWithTitle(
+            title = syncGetString("restore"),
+            message = syncGetString("webdav_after_local_restore_confirm"),
+            preferredStyle = UIAlertControllerStyleAlert,
+        )
+        alert.addAction(
+            UIAlertAction.actionWithTitle(
+                title = syncGetString("ok"),
+                style = UIAlertActionStyleDefault,
+                handler = { _ ->
+                    scope.launch {
+                        try {
+                            AppWebDavShared.restoreWebDav(name)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            // 对照 app 端 restoreWebDav 的 onError (AppLog + toastOnUi),
+                            // 与共享 BackupConfigRoute 恢复分支同一文案
+                            AppLog.put("WebDav恢复出错\n${e.message}", e)
+                            Toasters.get().toast("WebDav恢复出错\n${e.message}")
+                        }
+                    }
+                },
+            )
+        )
+        alert.addAction(
+            UIAlertAction.actionWithTitle(
+                title = syncGetString("cancel"),
+                style = UIAlertActionStyleCancel,
+                handler = { _ -> },
+            )
+        )
+        presentAlert(alert)
     }
 
     /**

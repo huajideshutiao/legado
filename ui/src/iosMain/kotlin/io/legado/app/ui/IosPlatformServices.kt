@@ -3,6 +3,7 @@
 package io.legado.app.ui
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.NotificationId
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.file.pickDocuments
 import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
@@ -17,6 +18,7 @@ import io.legado.app.ui.root.FilePickerService
 import io.legado.app.ui.root.KeyboardController
 import io.legado.app.ui.root.LaunchRequest
 import io.legado.app.ui.root.LaunchRequestBus
+import io.legado.app.ui.root.navigateToRoute
 import io.legado.app.ui.root.MediaService
 import io.legado.app.ui.root.NotificationService
 import io.legado.app.ui.root.OrientationPolicy
@@ -46,20 +48,26 @@ import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSNotificationName
 import platform.Foundation.NSSelectorFromString
 import platform.Foundation.NSURL
-import platform.Photos.PHAccessLevelReadWrite
+import platform.Photos.PHAccessLevelAddOnly
 import platform.Photos.PHAuthorizationStatusAuthorized
 import platform.Photos.PHAuthorizationStatusLimited
 import platform.Photos.PHPhotoLibrary
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
+import platform.UIKit.UIInterfaceOrientationMaskPortrait
+import platform.UIKit.UIInterfaceOrientationMaskPortraitUpsideDown
 import platform.UIKit.popoverPresentationController
 import platform.UserNotifications.UNAuthorizationOptionAlert
 import platform.UserNotifications.UNAuthorizationOptionSound
 import platform.UserNotifications.UNAuthorizationStatusAuthorized
 import platform.UserNotifications.UNAuthorizationStatusProvisional
 import platform.UserNotifications.UNMutableNotificationContent
+import platform.UserNotifications.UNNotification
 import platform.UserNotifications.UNNotificationRequest
+import platform.UserNotifications.UNNotificationResponse
 import platform.UserNotifications.UNUserNotificationCenter
+import platform.UserNotifications.UNUserNotificationCenterDelegateProtocol
+import platform.darwin.NSObject
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 
@@ -185,8 +193,11 @@ private object IosPermissionService : PermissionService {
             notificationGranted
         }
 
+        // add-only: 本应用只写相册 (UIImageWriteToSavedPhotosAlbum), 从不读 ——
+        // 故只声明 NSPhotoLibraryAddUsageDescription, 权限级别必须同为 add-only。
+        // (用 ReadWrite 会要求 NSPhotoLibraryUsageDescription, 缺失即被系统终止进程)
         IosPermission.Photos -> PHPhotoLibrary
-            .authorizationStatusForAccessLevel(PHAccessLevelReadWrite)
+            .authorizationStatusForAccessLevel(PHAccessLevelAddOnly)
             .let { it == PHAuthorizationStatusAuthorized || it == PHAuthorizationStatusLimited }
 
         IosPermission.Camera ->
@@ -210,8 +221,9 @@ private object IosPermissionService : PermissionService {
                     .requestAuthorizationWithOptions(
                         UNAuthorizationOptionAlert or UNAuthorizationOptionSound
                     ) { granted, _ -> notificationGranted = granted }
+                // 同上: add-only 与已声明的 NSPhotoLibraryAddUsageDescription 对应
                 IosPermission.Photos -> PHPhotoLibrary
-                    .requestAuthorizationForAccessLevel(PHAccessLevelReadWrite) { }
+                    .requestAuthorizationForAccessLevel(PHAccessLevelAddOnly) { }
 
                 IosPermission.Camera ->
                     AVCaptureDevice.requestAccessForMediaType(AVMediaTypeVideo) { }
@@ -255,7 +267,8 @@ private fun String.toIosPermission(): IosPermission? {
 // UIKit 窗口控制: KeepScreenOn 经 UIApplication.isIdleTimerDisabled (对照 Android FLAG_KEEP_SCREEN_ON);
 // 状态栏显隐由 SwiftUI 根视图 .statusBarHidden 控制 (iOS 13+, SwiftUI 下 VC 级 prefersStatusBarHidden
 // 不生效, 见 iosApp/iOSApp.swift 的 onReceive 监听), 经 NSNotificationCenter 桥接;
-// 方向 iOS 不支持编程强制, 均为 no-op
+// 方向经 UIWindowScene.requestGeometryUpdateWithPreferences 请求前台场景切换允许方向
+// (iOS 16+, 与视频页全屏共用 IosSceneOrientation.kt 一份实现; 阅读页/漫画页方向锁见 setOrientation)
 
 /** 状态栏显隐通知名 (与 iosApp/iOSApp.swift 的 Notification.Name 一致)。 */
 internal const val IosStatusBarHiddenNotification = "legado.statusBarHidden"
@@ -274,7 +287,19 @@ private object IosWindowController : WindowController {
     }
 
     override fun setOrientation(policy: OrientationPolicy) {
-        // iOS 不支持编程强制方向 (UIDevice.setValue 已弃用且受 Info.plist 限制), no-op
+        // 阅读页/漫画页方向锁 (对照原版 BaseReadActivity.setOrientation 的 "0"~"4" 分支,
+        // 逐项映射见 WindowPolicy.readerOrientationPolicy 与 AndroidPlatformServices.setOrientation):
+        // Unspecified/Sensor → 本应用 Info.plist 声明的全集 (Unspecified 即路由离开阅读页时的恢复),
+        // Portrait → 仅竖屏, Landscape → 仅两横向, ReversePortrait → 倒竖屏。
+        // 请求通道与视频页全屏共用一份 (见 requestSceneOrientation)。
+        val mask = when (policy) {
+            OrientationPolicy.Unspecified -> appSupportedOrientationMask()
+            OrientationPolicy.Portrait -> UIInterfaceOrientationMaskPortrait
+            OrientationPolicy.Landscape -> landscapeMask()
+            OrientationPolicy.Sensor -> appSupportedOrientationMask()
+            OrientationPolicy.ReversePortrait -> UIInterfaceOrientationMaskPortraitUpsideDown
+        }
+        requestSceneOrientation(mask, "阅读页方向")
     }
 
     override fun setSystemBars(policy: SystemBarsPolicy) {
@@ -353,37 +378,116 @@ private object IosNotificationService : NotificationService {
 
     override fun notify(id: Int, title: String, content: String) {
         val identifier = identifierOf(id)
+        IosNotificationPublisher.publish(identifier, title, content, route = routeOf(id))
+    }
+
+    override fun cancelNotification(id: Int) {
+        val identifier = identifierOf(id)
+        IosNotificationPublisher.cancel(identifier)
+    }
+
+    private fun identifierOf(id: Int): String = "legado-$id"
+
+    /**
+     * 通知 id → 点击后的目标路由 (逐字对齐 app 端各通知 contentIntent 里的 route extra)。
+     *
+     * id 与 route 字符串两端都必须与 Android 一致 (NotificationId 常量与
+     * `OhosLaunchRequests` 的 routeName 词表); 无对应页面的 id 返回 null (只拉起应用)。
+     */
+    private fun routeOf(id: Int): String? = when (id) {
+        NotificationId.ReadAloudService -> "last_read"
+        NotificationId.AudioPlayService -> "audio_play"
+        NotificationId.ExportBookService -> "bookshelf_manage"
+        NotificationId.CheckSourceService -> "book_source_manage"
+        else -> null
+    }
+}
+
+/**
+ * iOS 本地通知发送/取消 (带跳转路由的可选参数)。
+ *
+ * 为什么另开一个 object: [NotificationService] 接口 (commonMain) 只有 id/title/content 三参,
+ * 而"点通知跳指定页"必须携带路由。接口签名不在本次改动范围, 故把带路由的重载放在这里 ——
+ * 媒体通知等需要携带路由的调用方直接调本对象。
+ */
+object IosNotificationPublisher {
+
+    /**
+     * 发送 (或覆盖) 一条本地通知。
+     *
+     * @param route 非空时写进 userInfo 的 [IosNotificationRouteKey], 用户点击后由
+     *   [IosNotificationDelegate] 解出并投递成 `route:` 前缀串 (与外部启动请求同一条解析链)
+     */
+    fun publish(identifier: String, title: String, body: String, route: String? = null) {
         runCatching {
             val center = UNUserNotificationCenter.currentNotificationCenter()
-            val body = UNMutableNotificationContent().apply {
+            val payload = UNMutableNotificationContent().apply {
                 setTitle(title)
-                setBody(content)
+                setBody(body)
+                if (!route.isNullOrEmpty()) {
+                    setUserInfo(mapOf(IosNotificationRouteKey to route))
+                }
             }
             // trigger=null 立即触发; 先移除同 id 已展示通知, 模拟"更新同一条"
             val request = UNNotificationRequest.requestWithIdentifier(
                 identifier = identifier,
-                content = body,
+                content = payload,
                 trigger = null,
             )
             center.removeDeliveredNotificationsWithIdentifiers(listOf(identifier))
             center.addNotificationRequest(request) { error ->
                 if (error != null) {
-                    AppLog.put("IosNotificationService.notify 失败: ${error.localizedDescription}")
+                    AppLog.put("iOS 通知发送失败: ${error.localizedDescription}")
                 }
             }
-        }.onFailure { AppLog.put("IosNotificationService.notify 失败: ${it.message}") }
+        }.onFailure { AppLog.put("iOS 通知发送失败: ${it.message}") }
     }
 
-    override fun cancelNotification(id: Int) {
-        val identifier = identifierOf(id)
+    fun cancel(identifier: String) {
         runCatching {
             val center = UNUserNotificationCenter.currentNotificationCenter()
             center.removeDeliveredNotificationsWithIdentifiers(listOf(identifier))
             center.removePendingNotificationRequestsWithIdentifiers(listOf(identifier))
-        }
+        }.onFailure { AppLog.put("iOS 通知取消失败: ${it.message}") }
     }
 
-    private fun identifierOf(id: Int): String = "legado-$id"
+    /** 挂上 delegate (须在宿主 didFinishLaunching 内尽早调用; ARC 持有, 故存全局引用)。 */
+    fun installDelegate() {
+        UNUserNotificationCenter.currentNotificationCenter().delegate = IosNotificationDelegate
+    }
+}
+
+/** 通知 userInfo 里承载路由的 key (与 [IosNotificationPublisher.publish] 对应)。 */
+internal const val IosNotificationRouteKey = "legadoRoute"
+
+/**
+ * 通知点击处理: 解出 userInfo 里的路由, 交回既有的外部启动请求解析链。
+ *
+ * 不新写路由解析: 复用 `route:` 前缀约定 (见 [IosLaunchRequests.parse]), 与系统
+ * deep link / 文件关联走同一条链, 消费方仍是唯一的 `LaunchRequestBus` 消费者。
+ * `willPresent` 返回 0 (不展示前台横幅) 保持原行为 —— 此前没有 delegate, 系统默认即不展示。
+ */
+private object IosNotificationDelegate : NSObject(), UNUserNotificationCenterDelegateProtocol {
+
+    override fun userNotificationCenter(
+        center: UNUserNotificationCenter,
+        didReceiveNotificationResponse: UNNotificationResponse,
+        withCompletionHandler: () -> Unit,
+    ) {
+        val route = didReceiveNotificationResponse.notification.request.content
+            .userInfo[IosNotificationRouteKey] as? String
+        navigateToRoute(route)?.let(IosLaunchRequests::post)
+        withCompletionHandler()
+    }
+
+    override fun userNotificationCenter(
+        center: UNUserNotificationCenter,
+        willPresentNotification: UNNotification,
+        withCompletionHandler: (ULong) -> Unit,
+    ) {
+        // 0 = UNNotificationPresentationOptionNone: 前台不弹横幅 (与原行为一致)
+        withCompletionHandler(0uL)
+    }
 }
 
 private object IosExternalRequestService : ExternalRequestService {
@@ -411,8 +515,7 @@ object IosLaunchRequests {
         val value = uri.trim()
         if (value.isEmpty()) return null
         if (value.startsWith(ROUTE_PREFIX)) {
-            return value.removePrefix(ROUTE_PREFIX).takeIf { it.isNotEmpty() }
-                ?.let(LaunchRequest::NavigateTo)
+            return navigateToRoute(value.removePrefix(ROUTE_PREFIX))
         }
         return when (value.substringBefore("://", missingDelimiterValue = "").lowercase()) {
             // "文件" app / 其他应用共享进来的本地文件与 Android content/file 同语义
@@ -432,3 +535,18 @@ object IosLaunchRequests {
 /** Swift 侧入口: 解析并投递外部启动请求 (对照 [io.legado.app.handleLegadoDeepLink])。 */
 fun handleIosLaunchRequest(uri: String): Boolean =
     IosLaunchRequests.parse(uri)?.let(IosLaunchRequests::post) ?: false
+
+/**
+ * Swift 侧入口: 把通知中心 delegate 装到 Kotlin 的 [IosNotificationDelegate]。
+ *
+ * 暴露成**顶层函数**而非让 Swift 直接写 `IosNotificationPublisher.shared.installDelegate()`:
+ * 本仓 Swift 只调顶层函数 (`...Kt.xxx`) 这一种导出形状, 对象单例的导出名无法在本机编译验证。
+ *
+ * 调用时机: 宿主的 `application(_:didFinishLaunchingWithOptions:)` 返回**之前** ——
+ * `UNUserNotificationCenter.delegate` 是单一全局槽位, 只有这时机才能接住"进程被回收后
+ * 用户点通知冷启动"那一次投递 (晚于返回则可能被系统丢弃)。
+ * [MainViewController] 里那次调用是保底, 同槽位重复赋值无副作用。
+ */
+fun installIosNotificationDelegate() {
+    IosNotificationPublisher.installDelegate()
+}

@@ -62,7 +62,8 @@ import platform.UIKit.UIImageWriteToSavedPhotosAlbum
  * 渲染, 此处只持有状态 + 导航回调); 差异仅 getBatteryLevel 用 UIDevice 真实电量。
  *
  * 朗读已接入: 短按经 [IosReadAloudHost] (ReadAloudControllerShared) 启动/暂停/恢复,
- * 长按弹共享朗读控制面板, 退出阅读页停朗读 (iOS 无后台控制面)。
+ * 长按弹共享朗读控制面板; 退出阅读页停朗读 (iOS 无前台 Service 维持阅读实例;
+ * 播放期间的锁屏/控制中心播控卡片由 SystemMediaControl 接管, 见 IosMediaNotificationController)。
  *
  * # 不实现
  * - 沉浸式色彩: 纯色阅读背景时菜单栏跟随阅读背景色+文字色 (shared createReadMenuColors,
@@ -152,7 +153,8 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
     }
 
     /** 阅读页销毁: 停止自动翻页并释放控制器/协程; 收起浮动菜单 + 停朗读, 避免残留 (对照原版 onDestroy → textActionMenu.dismiss)。
-     *  iOS 无前台 Service/后台控制面, 离开阅读页即无朗读控制入口, 显式停止。 */
+     *  iOS 无前台 Service 维持阅读实例 (朗读在进程内编排), 离开阅读页即失去阅读上下文, 显式停止;
+     *  播放期间的锁屏/控制中心播控卡片 (SystemMediaControl) 随 stop 一并撤下。 */
     override fun onExit(screenModel: ReaderScreenModel) {
         autoPageStop(screenModel)
         (screenModel.menuController.state as? IosReadMenuState)?.dispose()

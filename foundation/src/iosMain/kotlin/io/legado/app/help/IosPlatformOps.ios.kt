@@ -45,9 +45,12 @@ fun topMostViewController(): UIViewController? {
 /**
  * 查找当前 active 的 key [UIWindow]。
  *
- * iOS 13+ `UIApplication.keyWindow` deprecated (多 scene), 但多数场景仍可用;
- * 若为 nil 返回 null 让调用方降级 (遍历 connectedScenes 复杂度高,
- * 且 Kotlin/Native UIScene API 映射不全, 此处简化)。
+ * iOS 13+ `UIApplication.keyWindow` deprecated (多 scene); 本应用 `UIApplicationSupportsMultipleScenes`
+ * = false (单场景), 该属性仍指向唯一窗口, 拿不到时返回 null 让调用方降级。
+ *
+ * 这里不遍历 `connectedScenes`: 单场景下两者等价, 而 keyWindow 只是一次属性读取。
+ * (UIWindowScene 相关 API 在 Kotlin/Native 侧是齐的 —— 需要场景对象时直接遍历
+ * connectedScenes 取前台场景即可, 见视频全屏的方向请求。)
  */
 @Suppress("DEPRECATION")
 fun findKeyWindow(): UIWindow? {

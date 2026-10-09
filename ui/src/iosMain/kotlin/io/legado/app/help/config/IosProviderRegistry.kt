@@ -21,6 +21,7 @@ import io.legado.app.help.image.NativeBitmapProvider
 import io.legado.app.help.image.registerIosBookImageLoader
 import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.log.registerNativeAppLogHost
+import io.legado.app.help.regex.registerNativeRegexErrorHandler
 import io.legado.app.help.http.registerDefaultIosCookieStoreProvider
 import io.legado.app.help.http.registerNativeHttpProvider
 import io.legado.app.help.http.registerSharedCookieJarBridge
@@ -130,6 +131,10 @@ fun registerIosProviders() {
     // 1.1 AppLog 宿主 (日志落盘到 {filesDir}/logs, 供 CrashLogProvider 收集;
     // 须在 AppFilesDirs 之后 (日志目录从 filesDir 派生)、任何 AppLog.put 之前)
     registerNativeAppLogHost()
+
+    // 1.15 正则替换超时处理器 (超时提示走 Toasters, 崩溃落盘走 NativeCrashLogWriter;
+    // 须在 Toaster/AppLog/AppFilesDirs 之后、registerNativeWebBookProviders() 之前)
+    registerNativeRegexErrorHandler()
 
     // 2. 配置 provider (AppConfigAccessor 委托 1.07 已注册的 PreferenceProvider)
     registerNativeAppConfigAccessor()
@@ -256,8 +261,8 @@ fun registerIosProviders() {
     // 源验证 UI provider (最小实现: 不支持路径明确报错+Toast, 纯打开链接走 OpenUrlProviders;
     // 未注册时 JS 验证入口裸抛 IllegalStateException)
     registerNativeVerificationUiProvider()
-    // UpdateBook callback 须在 Toaster + NotificationProgress 之后 (本 callback 委托这两个 provider)、
-    // ServiceLauncher 之前 (NativeServiceLauncher.updateBookShared lazy 构造时取 UpdateBookCallbacks.getDefault)
+    // UpdateBook callback 须在 Toaster + NotificationProgress 之后 (本 callback 委托这两个 provider);
+    // 消费方在懒构造更新引擎时取 UpdateBookCallbacks.getDefault, 故须先于其创建
     registerNativeUpdateBookCallback()
     // CacheBook callback 须在 ServiceLauncher 之前 (缓存流程未注册时 CacheBookCallbacks.get() 直接 error)
     registerNativeCacheBookCallback()

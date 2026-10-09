@@ -29,6 +29,22 @@ iosApp/
 鸿蒙侧对应脚本为 `scripts/GenerateOhosIcons.kt`, 输出到
 `ohosApp/AppScope/resources/base/media/`。
 
+## iOS 宿主侧接线 (与 Kotlin 侧的分工)
+
+以下四项的**宿主侧**已在 `iOSApp.swift` / `Info.plist` / `project.yml` 就位, 与之配套的
+Kotlin 侧改动不属本工程 (见各条说明):
+
+| 能力 | 宿主侧已做的事 | Kotlin 侧还需什么 |
+| --- | --- | --- |
+| 通知点击跳转 | `AppDelegate` 兼 `UNUserNotificationCenterDelegate`, `didReceive` 认 `legadoRoute`/`route`/`uri` 三种 userInfo 键并交 `handleIosLaunchRequest(uri:)` | **冲突待拍板**: Kotlin `IosNotificationPublisher.installDelegate()` 写的是同一个 `UNUserNotificationCenter.delegate` 槽位且后执行, 当前生效的是 Kotlin 那份; 要留宿主侧这份需删掉 Kotlin 的 `installDelegate()` 调用 (理由见 `iOSApp.swift` 注释) |
+| 主屏快捷项 | `Info.plist` 静态三项 (bookshelf/lastRead/readAloud) + `LegadoSceneDelegate` 接住 | readAloud 类型上到宿主后的落地动作 |
+| iCloud | `NSUbiquitousContainers` (容器 `iCloud.io.legado.app.ios`) | `IosICloud.enable()` 注册调用 + entitlements/付费账号 |
+| 本地网络 | `NSLocalNetworkUsageDescription` | 无 |
+
+`LegadoSceneDelegate` 是 `UIWindowSceneDelegate`, 只为了接 SwiftUI 生命周期没有入口的
+两件事 (主屏快捷项 + 场景 URL); 场景本体仍由 SwiftUI 托管 (Apple `UIApplicationDelegateAdaptor`
+文档的官方写法: 在 `configurationForConnecting` 里只填 `delegateClass`)。
+
 ## App 显示名本地化
 
 iOS 的 App 名以各 `<lang>.lproj/InfoPlist.strings` 的 `CFBundleDisplayName` 为准,

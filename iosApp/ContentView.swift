@@ -12,8 +12,9 @@
 //    └── ContentView (UIViewControllerRepresentable)
 //          └── MainViewControllerKt.MainViewController() (Kotlin, shared framework)
 //                └── ComposeUIViewController
-//                      └── AppTheme { IosBookshelfScreen() }
-//                            └── SharedBookshelfScreen (shared/sharedUiMain)
+//                      └── AppTheme { LegadoApp(navigator, screenModelStore) }
+//                            └── shared RouteContent 按 AppRoute 分发全部路由
+//                                  (零薄壳: 平台薄壳 Composable 已删, 见 README.md)
 //  ```
 //
 //  ## Kotlin / Swift 互操作

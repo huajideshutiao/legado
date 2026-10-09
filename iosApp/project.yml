@@ -47,6 +47,8 @@ targets:
           - "README.md"
           - "*.xcodeproj"
           - "build"
+          # Share Extension 是独立 target, 它的源码不能编进主 App (否则两份入口类)
+          - "ShareExtension"
     info:
       path: Info.plist
       properties:
@@ -103,8 +105,28 @@ targets:
         # 沙盒 Documents 在"文件"App 与 Finder 可见 (导出/另存为落地点)
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
+        # iCloud Documents 容器元数据 (对照 core iosMain help/sync/IosICloud.kt 的"启用四步"第 3 步)。
+        # 容器标识必须与该文件的 CONTAINER_ID 及 entitlements 里的
+        # com.apple.developer.icloud-container-identifiers 逐字一致; 对不上
+        # URLForUbiquityContainerIdentifier 恒返回 null。
+        # ⚠️ 只加本键打不开 iCloud: 还缺三样 —— 付费账号给 App ID 勾 iCloud capability
+        # (Key-value storage + iCloud Documents)、iosApp.entitlements 并设
+        # CODE_SIGN_ENTITLEMENTS、以及 Kotlin 侧 IosICloud.enable() 那一行注册调用。
+        # 缺任一样时本键是死数据 (容器 URL 仍 null, 代码已按 null 兜底)。
+        # ⚠️ 本段与 Info.plist 双写 (xcodegen generate 用本段重写 Info.plist)
+        NSUbiquitousContainers:
+          iCloud.io.legado.app.ios:
+            NSUbiquitousContainerIsDocumentScopePublic: true
+            NSUbiquitousContainerSupportedFolderLevels: "Any"
+            NSUbiquitousContainerName: legado
         # 保存图片到相册权限说明 (图片长按菜单"保存到相册"; iOS 14+ 缺此 key 调用会直接崩)
         NSPhotoLibraryAddUsageDescription: 保存阅读页图片到系统相册需要访问你的照片库
+        # 本地网络权限说明 (iOS 14+)。内置 Web 服务在 0.0.0.0 起 HTTP 监听
+        # (core commonMain WebServerManager), 局域网设备连上来后我方回包属于
+        # "向本地网络地址发出流量", 系统会要求本地网络访问授权; 缺此键时该授权弹窗
+        # 没有说明文案 (Apple: "Any app that uses the local network, directly or
+        # indirectly, should include this description")。
+        NSLocalNetworkUsageDescription: 局域网内的设备访问本机的 legado Web 服务需要本地网络权限
         # legado:// / yuedu:// deep link (一键导入书源/替换规则/主题等),
         # 对照 app 端 AndroidManifest AssociationActivity intent-filter (scheme legado/yuedu)。
         # 回调链: SwiftUI onOpenURL (iOSApp.swift) → shared framework
@@ -186,6 +208,28 @@ targets:
               - zip
               - rar
               - 7z
+        # 主屏快捷项 (长按图标), 对照 app 端动态快捷方式 ShortCuts.buildShortCuts 的三项
+        # (bookshelf / lastRead / readAloud)。
+        # 标题只是缺本地化资源时的兜底: 真值在各 <lang>.lproj/InfoPlist.strings
+        # (Apple: "You can, optionally, internationalize a quick action title by employing
+        # your app's InfoPlist.strings file", 键名 = 这里写的占位串)。
+        # 三项的 route 均对应 shared 已有的 NavigateTo 分支 (LegadoApp.handleLaunchRequest:
+        # "last_read" 开最近阅读, 书架/朗读不带 route 或走 action 分支)。
+        # 只能静态声明: iOS 端无 Android 那样的"带 extra 的快捷方式 intent", 故
+        # readAloud 的 action=readAloud 语义无法用本键表达 (详见测试报告"需 Kotlin 侧补"段)。
+        # ⚠️ 本段与 Info.plist 双写 (xcodegen generate 用本段重写 Info.plist)
+        UIApplicationShortcutItems:
+          - UIApplicationShortcutItemType: bookshelf
+            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeBookmark
+            UIApplicationShortcutItemTitle: legado.shortcut.bookshelf
+          - UIApplicationShortcutItemType: lastRead
+            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeTime
+            UIApplicationShortcutItemTitle: legado.shortcut.last_read
+            UIApplicationShortcutItemUserInfo:
+              route: last_read
+          - UIApplicationShortcutItemType: readAloud
+            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeAudio
+            UIApplicationShortcutItemTitle: legado.shortcut.read_aloud
         # 应用图标与交替图标 (换桌面图标, 对照 Android Launcher1/4/5):
         # 主图标 AppIcon.png (默认), 交替图标 Icon1/Icon4/Icon5.png, 经
         # UIApplication.setAlternateIconName 切换 (见 shared IosPlatformCapabilities.changeLauncherIcon)。
@@ -267,3 +311,63 @@ targets:
     scheme:
       testTargets: []
       gatherCoverageData: false
+
+  # ===== Share Extension 基建 (**刻意未接线**) =====
+  #
+  # 目标: 让 legado 出现在其它 App「分享」面板的接收候选里 (对照 Android
+  # AssociationActivity 的 SEND intent-filter / 鸿蒙 module.json5 的分享声明)。
+  #
+  # 为什么现在只有基建、不接进 App: 接进去也没用, 反而多一个"能出现在分享面板、
+  # 点了没反应"的僵尸入口。未做的三处:
+  #
+  #   1. 没把本 target 加进 iosApp 的 dependencies (即不 embed、不进 App 包)。
+  #      接线时在 iosApp.settings.configs 同级加:
+  #        dependencies:
+  #          - target: ShareExtension
+  #            embed: true
+  #
+  #   2. 没声明 App Group entitlement。这是**硬前提**: 分享扩展**不能拉起宿主 App**
+  #      (扩展进程里没有通往宿主的 openURL 通道, Apple 限制), 业界唯一交付通道是把
+  #      文件写进 App Group 共享容器、宿主下次启动扫该容器取件。而 App Group 靠
+  #      entitlement 落地, 本仓产物是**未签名 ipa**, 拿不到任何 entitlement
+  #      (与 iCloud 容器同样原因, 见上面 NSUbiquitousContainers 段), 故通道当前不可用。
+  #
+  #   3. 没在宿主侧加取件扫描 (Kotlin IosLaunchRequests / LaunchRequestBus 里扫容器
+  #      目录 → LaunchRequest.ImportFile)。第 2 条不通时加它也是空活。
+  #
+  # 等有签名能力时, 按 1→2→3 顺序接线即可, 本 target 与入口类不用重写。
+  #
+  # 补充: "接收外部文件"并非只有分享面板一条路。主 App 的 Info.plist 已有
+  # CFBundleDocumentTypes + LSSupportsOpeningDocumentsInPlace + UIFileSharingEnabled,
+  # 那条「用其他 App 打开 / 存储到文件」通道**不需要任何 entitlement**, 现在就是通的
+  # (投递点见 iOSApp.swift 的 ExternalUriIngress)。
+  ShareExtension:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: ShareExtension
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Legado
+        # 版本号与主 App 保持一致 (App Store 校验要求扩展与宿主同版本);
+        # ⚠️ 根工程的 syncIosVersion 只写主 App 的 project.yml/Info.plist,
+        # **不会**同步到本段 —— 接线时要么把本段一并纳入那个任务, 要么改成
+        # 引用共享的 $(MARKETING_VERSION)/$(CURRENT_PROJECT_VERSION)。
+        CFBundleShortVersionString: "3.26.081614"
+        CFBundleVersion: "17376"
+        # 分享扩展点 + 入口类 (类名 = PRODUCT_MODULE_NAME.ShareViewController)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          # 一次最多收 1 个文件 (书籍/压缩包都是单文件交付)
+          NSExtensionActivationRule:
+            NSExtensionActivationSupportsFileWithMaxCount: 1
+    settings:
+      base:
+        PRODUCT_NAME: ShareExtension
+        PRODUCT_BUNDLE_IDENTIFIER: shutiao.reader.ShareExtension
+        SWIFT_VERSION: "5.9"
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_BITCODE: NO

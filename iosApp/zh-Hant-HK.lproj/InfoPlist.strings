@@ -1,3 +1,10 @@
 /* App 显示名 (对照 app 端 res/values-zh-rHK/strings.xml 的 app_name) */
 "CFBundleDisplayName" = "閲讀";
 "CFBundleName" = "閲讀";
+
+/* 主屏快捷项标题 (Info.plist UIApplicationShortcutItemTitle 的占位串在这里取真值);
+   译文与 ui/src/commonMain/composeResources/values-zh-rHK/strings.xml 的
+   bookshelf / last_read / read_aloud 逐字一致 (对照 app 端 res/values-zh-rHK/strings.xml)。 */
+"legado.shortcut.bookshelf" = "書架";
+"legado.shortcut.last_read" = "最後閲讀";
+"legado.shortcut.read_aloud" = "朗讀";

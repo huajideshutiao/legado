@@ -8,15 +8,21 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.window.ComposeUIViewController
+import io.legado.app.constant.AppLog
 import io.legado.app.help.config.NativeSystemTheme
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadConfigProviders
+import io.legado.app.help.StartupMaintenanceShared
+import io.legado.app.help.AppVersionProvider
+import io.legado.app.help.AppVersionProviders
+import io.legado.app.help.AppWebDavShared
 import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
 import io.legado.app.ui.book.info.SharedBlurCoverBgCoil
 import io.legado.app.ui.browser.IosWebViewSlot
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.IosPlatformCapabilities
 import io.legado.app.ui.IosPlatformServices
+import io.legado.app.ui.IosNotificationPublisher
 import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
 import io.legado.app.ui.book.audio.SharedAudioPlayPlatformProvider
 import io.legado.app.ui.book.manga.IosMangaReaderPlatform
@@ -46,6 +52,9 @@ import io.legado.app.ui.root.LegadoApp
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.ScreenModelStore
+import io.legado.app.web.startIosNetworkMonitor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import platform.UIKit.UIViewController
 
 /**
@@ -67,6 +76,22 @@ fun MainViewController(): UIViewController {
     AudioPlayPlatformProviders.register(SharedAudioPlayPlatformProvider)
     MangaReaderScreenModel.Providers.register(IosMangaReaderPlatform)
     VideoPlayPlatformProviders.register(IosVideoPlayPlatformProvider)
+    // 通知点击处理 (解出 userInfo 里的路由 → LaunchRequestBus 导航)。
+    // 须在 UI 首帧之前挂上: 冷启动时用户点通知, 系统可能在首帧前就派发 response。
+    IosNotificationPublisher.installDelegate()
+    // 网络变化监听 (对照 Android NetworkChangedListener): 网来了就重算 Web 服务地址。
+    // 进程级挂一次, 幂等; 真正改状态在共享层, 服务没开时是 no-op。
+    startIosNetworkMonitor()
+    // 当前版本号 provider (供启动期默认数据补齐按版本推进; iOS 无 PackageManager,
+    // 取 CFBundleShortVersionString 经 versionNameToVersionCode 解析 —— 与下方 "更新日志" 弹窗
+    // 用的是同一个版本指纹, 保证两边对"当前是哪个版本"的口径一致)。
+    // 在这里 (组合之前, 非 @Composable 上下文) 注册: 下方 LaunchedEffect 内才注册会让"谁先读版本号"
+    // 变成隐式约定, 而启动维护协程与弹窗协程是并发的。
+    AppVersionProviders.register(object : AppVersionProvider {
+        override val versionCode: Long
+            get() = IosPlatformCapabilities.getAppVersionName()
+                ?.let { versionNameToVersionCode(it) } ?: 0L
+    })
     return ComposeUIViewController {
         // 注入 3 个 iOS Compose UI Provider (对照 desktop Main.kt 阶段2)
         val themeStoreProvider = remember { SharedThemeStoreProvider() }
@@ -116,10 +141,45 @@ fun MainViewController(): UIViewController {
                             navigator = navigator,
                             screenModelStore = screenModelStore,
                         )
+                        // 启动期维护 (下沉件 StartupMaintenanceShared, 与 Android/桌面同一份):
+                        // 默认数据补齐 + 缓存清理 + WebDav 进度同步。必须排在下方"升级更新日志"之前
+                        // —— 那个弹窗自己会写回版本号, 其写回的是另一份存储的 key, 但保持这个顺序
+                        // 与另外两端一致, 避免以后有人把两处合成一份时踩到"弹窗先关门"。
+                        // 异步、不阻塞首帧 (LaunchedEffect 自身就是后台协程)。
                         // 升级更新日志 (对照原版 MainActivity.upVersion): 首启弹帮助, 升级弹更新日志;
                         // iOS 无构建类型感知, isDebug 恒 false (对齐 release 行为);
-                        // 版本名取不到时不推进版本号, 下次启动再判
+                        // 版本名取不到时不推进版本号, 下次启动再判。
+                        //
+                        // 启动期维护必须在同一协程内排在弹窗之前: 弹窗会写回 appVersionCode,
+                        // 而维护的预置项补齐也拿这个键当门 —— 两个 LaunchedEffect 并发时谁先写谁关门,
+                        // 结果是预置项可能被永久跳过。Android (onCreate → onPostCreate) 与桌面
+                        // (注册内含 initDesktopDefaultData → 再 upVersion) 本来就是这个串行序。
                         LaunchedEffect(Unit) {
+                            StartupMaintenanceShared.initDefaultData()
+                            // cacheExtraMayHaveWork=false: iOS 的 clearCacheExtra 是空实现
+                            StartupMaintenanceShared.clearInvalidCacheIfDue(cacheExtraMayHaveWork = false)
+                            StartupMaintenanceShared.syncBookProgressOnStartup()
+                            // 云端有新备份时弹本端确认框 (对照 app 端 MainActivity.backupSync):
+                            // 标题 restore / 正文 webdav_after_local_restore_confirm, 用户确认后走共享恢复
+                            // 入口 AppWebDavShared.restoreWebDav; 判定函数在"判定成立"时已回写"已提示过的
+                            // 时间戳"(用户这次拒绝也不会重复弹), 故这里只在拿到 NewBackup 时弹。
+                            // lastBackUp 会走网络, 下沉件自身不切线程, 故判定与认证都留在 IO。
+                            val newBackup = withContext(Dispatchers.IO) {
+                                // 认证先补一次: lastBackUp 首行是 authorization ?: return, app 端那份认证
+                                // 来自 AppWebDav 的初始化块, 本端只有 syncBookProgress 开启时上一行才认证过
+                                // (关闭时为 null → 判定恒 None, 提示永不出现), 故这里与
+                                // syncBookProgressOnStartup 同款补认证 (已认证则跳过, 不重复建目录)
+                                if (AppWebDavShared.authorization == null) {
+                                    runCatching { AppWebDavShared.upConfig() }
+                                        .onFailure {
+                                            AppLog.put("启动期 WebDav 认证失败\n${it.message}", it)
+                                        }
+                                }
+                                StartupMaintenanceShared.checkNewWebDavBackup()
+                            }
+                            if (newBackup is StartupMaintenanceShared.NewBackupCheckResult.NewBackup) {
+                                IosPlatformCapabilities.presentWebDavNewBackupConfirm(newBackup.name)
+                            }
                             IosPlatformCapabilities.getAppVersionName()?.let { versionName ->
                                 upVersion(
                                     versionNameToVersionCode(versionName),

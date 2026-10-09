@@ -21,6 +21,9 @@ import io.legado.app.help.media.AvPlayerItemStatusObserver
 import io.legado.app.help.media.maxLoadedTimeRangeEndMs
 import io.legado.app.ui.IosStatusBarHiddenKey
 import io.legado.app.ui.IosStatusBarHiddenNotification
+import io.legado.app.ui.appSupportedOrientationMask
+import io.legado.app.ui.landscapeMask
+import io.legado.app.ui.requestSceneOrientation
 import io.legado.app.utils.hasPlayableScheme
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -213,8 +216,8 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
     }
 
     /**
-     * iOS 没有"系统级全屏真实态"可读 (无编程改方向 / 无窗口全屏能力), 返回 null =
-     * 全屏是页面意图驱动, 共享层沿用 `UiState.isSystemFullScreen` 渲染。
+     * iOS 没有"系统级全屏真实态"可读 (无窗口全屏能力; 方向只是请求, 不是可读的真实态),
+     * 返回 null = 全屏是页面意图驱动, 共享层沿用 `UiState.isSystemFullScreen` 渲染。
      */
     @Composable
     override fun rememberSystemFullScreen(): Boolean? = null
@@ -262,9 +265,9 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
     }
 
     /**
-     * 系统级全屏 (对照 Android 横屏 / 鸿蒙锁向): iOS 无编程改方向能力, 能落地的只有
-     * 状态栏显隐这一条通道, 但它必须**真的有动作** —— 上一版本方法是接口默认空实现,
-     * 点一下只翻 `UiState.isSystemFullScreen`, 页面按全屏重排而系统栏纹丝不动,
+     * 系统级全屏 = 锁横屏 + 隐状态栏 (对照 Android 的 SENSOR_LANDSCAPE、鸿蒙的 2=LANDSCAPE + 隐两栏)。
+     * 状态栏那半条必须**真的有动作** —— 上一版本方法是接口默认空实现, 点一下只翻
+     * `UiState.isSystemFullScreen`, 页面按全屏重排而系统栏纹丝不动,
      * 观感上就是"进得去、画面没变、退不出去"。
      *
      * 退全屏入口: iOS 无系统返回通道 (PlatformCapabilities.supportsSystemBack=false),
@@ -273,6 +276,11 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
      */
     override fun applySystemFullScreen(enabled: Boolean) {
         setStatusBarHidden(enabled)
+        // 方向请求与阅读页/漫画页方向锁共用一份实现 (见 IosSceneOrientation.kt)
+        requestSceneOrientation(
+            if (enabled) landscapeMask() else appSupportedOrientationMask(),
+            "视频全屏",
+        )
     }
 
     /** 全屏观感统一通道: 经 SwiftUI 根视图 .statusBarHidden 桥, 与 WindowPolicy.setSystemBars 同源 */

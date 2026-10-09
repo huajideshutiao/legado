@@ -56,21 +56,31 @@
 import SwiftUI
 import shared  // Kotlin Multiplatform shared framework (Kotlin 侧入口与 provider 注册)
 
+/// shared 侧外部请求约定 (Swift 侧入口共用一份字面量, 避免拼错):
+/// `IosLaunchRequests` 只把 `route:` 前缀的 uri 当路由, 而快捷项 userInfo 里存的是
+/// 裸 routeName (与 app 端 intent extra `route` 同名), 前缀在 Swift 侧补。
+private let legadoRouteUriPrefix = "route:"
+/// 快捷项 userInfo 里承载裸 routeName 的键 (与 app 端 intent extra 同名)。
+/// 通知那条链的 userInfo 键由 Kotlin `IosNotificationRouteKey` 独占, Swift 不再参与。
+private let legadoRouteUserInfoKey = "route"
+
 /// 外部 URI 投递闸门 (deep link / 文档打开 的全部系统投递入口都汇到 `handle`)。
 ///
 /// # 为什么要闸门
 ///
-/// 「把外部东西交给 legado」在 iOS 上有两个可能的投递点, 且本仓环境无法实测
-/// (无 macOS/Xcode, 也无法拉 Apple 文档原文核验):
+/// 「把外部东西交给 legado」在 iOS 上有三个可能的投递点, 且本仓环境无法实测
+/// (无 macOS/Xcode):
 /// - SwiftUI `View.onOpenURL` —— 现有 legado:// 深链已经跑在这条路上
 /// - `AppDelegate.application(_:open:options:)` —— 文档类型打开的传统投递点
+/// - `UISceneDelegate.scene(_:openURLContexts:)` —— 补上自定义 scene delegate 后
+///   (为接主屏快捷项) 才会出现的第三个点, 见 [LegadoSceneDelegate]
 ///
-/// 两者到底是"只走一条"还是"两条都发"无本地依据 (Apple 文档页拓取 404, 也起不了模拟器),
-/// 所以**两条都接**。同一次打开被两条通道各投一次时, 由 shared 导航层确定性去重:
-/// `LegadoApp.pushIfNeeded` 比对栈顶路由与来路是否结构性相等, 相等即不再叠第二层。
-/// 这里**不做时间窗抑制** —— 上一版用 8 秒窗口抹, 会把"退出后立刻再开同一个文件"
-/// 与"8 秒内重点同一个 legado:// 深链"一起吞掉 (表现为什么也不会发生),
+/// 三者到底"只走一条"还是"都发"无本地依据, 所以**都接**。同一次打开被多条通道各投一次时,
+/// 由 shared 导航层确定性去重: `LegadoApp.pushIfNeeded` 比对栈顶路由与来路是否结构性相等,
+/// 相等即不再叠第二层。这里**不做时间窗抑制** —— 上一版用 8 秒窗口抹, 会把"退出后立刻
+/// 再开同一个文件"与"8 秒内重点同一个 legado:// 深链"一起吞掉 (表现为什么也不会发生),
 /// 拿时间窗解"同一载荷到了两次"是兜底而不是方案。
+/// ⚠️ 未查证: 三个点是否真会重复投, 真机上以 `external URI arrived again` 日志行为准;
 ///
 /// # 为什么不做 stop 配对 security-scoped 授权
 ///
@@ -80,7 +90,8 @@ import shared  // Kotlin Multiplatform shared framework (Kotlin 侧入口与 pro
 /// 所以**故意不配对**: 把 URL 收进 `scopedURLs` 持有, 授权随会话有效, 进程退出自然回收。
 /// 如果反过来在 `handle` 里 start 完就 stop, 会把能播的场景做成必失败。
 ///
-/// 两个入口都在主线程, 所以本闸门无需加锁。
+/// 所有入口 (onOpenURL / application(_:open:) / scene(_:openURLContexts:)) 都在主线程,
+/// 所以本闸门无需加锁。
 private enum ExternalUriIngress {
 
     /// 取证用: 上一次投递的键与时刻。**只用来打时间差日志**, 不参与任何判定 ——
@@ -89,7 +100,7 @@ private enum ExternalUriIngress {
     private static var lastAt: TimeInterval = 0
     private static var scopedURLs: [Foundation.URL] = []
 
-    /// 系统投递一条外部 URI。两条通道都投递时两条都路由, 重复层由 shared 抹。
+    /// 系统投递一条外部 URI (URL 形态: onOpenURL / AppDelegate / scene openURLContexts)。
     static func handle(_ url: Foundation.URL) {
         let now = ProcessInfo.processInfo.systemUptime
         let key = dedupeKey(url)
@@ -128,10 +139,105 @@ private enum ExternalUriIngress {
     }
 }
 
+/// 主屏快捷项与场景 URL 的投递闸门。
+///
+/// # 为什么需要它
+/// 主屏快捷项 (`UIApplicationShortcutItems`) 在场景化生命周期下**不走** AppDelegate:
+/// - 应用未加载: 快捷项随 `UIScene.ConnectionOptions.shortcutItem` 到达;
+/// - 应用已在后台: 系统调 `UIWindowSceneDelegate.windowScene(_:performActionFor:completionHandler:)`。
+/// SwiftUI 生命周期对两者都没有等价入口, 所以只能补一个 `UIWindowSceneDelegate`
+/// (Apple `UIApplicationDelegateAdaptor` 文档明确写了这条路径, 且只需在
+/// `configurationForConnecting` 里填 `delegateClass`、不填 sceneClass/storyboard,
+/// 场景本体仍由 SwiftUI 托管)。
+///
+/// # 场景 URL 一并接管
+/// `scene(_:openURLContexts:)` 也接上同一闸门 —— 本仓无法在 Windows 上实测
+/// "补了自定义 scene delegate 之后 SwiftUI 的 `onOpenURL` 还会不会发", 故两处都接;
+/// 同一载荷到两次由 [ExternalUriIngress] 的去重链与 shared 导航层抹掉。
+/// ⚠️ 未查证: `onOpenURL` 与 `scene(_:openURLContexts:)` 是否会被 `ExternalUriIngress`
+/// 的"上次键 + 上次时刻"日志行报成连续两次, 以真机日志为准。
+private enum ShortcutIngress {
+
+    /// 冷启动相位已投递过的快捷项 (type + route 结构相等即视为同一枚)。
+    /// 冷启动时同一枚快捷项可能同时经 `configurationForConnecting` 与
+    /// `scene(_:willConnectTo:options:)` 到达 (Apple 未保证只走一条)。
+    /// 用载荷结构比较去重, **不做时间窗** —— 时间窗会把"退出后立刻再点同一个快捷项"
+    /// 一起吞掉 (与 [ExternalUriIngress] 删时间窗同一理由)。
+    private static var lastColdStartPayload: String?
+
+    /// 快捷项 → 既有 `route:` 投递口 (与深链/文件关联同一个 Swift→Kotlin 入口)。
+    ///
+    /// 无 `route` 的项 (书架) 就是"打开 App"本身, 与 app 端书架快捷项
+    /// (`ShortCuts.buildBookShelfShortCutInfo` 不带任何 extra) 语义一致, 直接算已处理。
+    @discardableResult
+    static func handle(_ shortcutItem: UIApplicationShortcutItem, coldStart: Bool) -> Bool {
+        let route = routeOf(shortcutItem)
+        if coldStart {
+            let payload = shortcutItem.type + "|" + (route ?? "")
+            if payload == lastColdStartPayload {
+                NSLog("[Legado] cold-start shortcut arrived again, dropped: %@", payload)
+                return true
+            }
+            lastColdStartPayload = payload
+        }
+        guard let route, !route.isEmpty else {
+            // 书架项: 打开 App 即完成, 不需要导航
+            return true
+        }
+        _ = IosPlatformServicesKt.handleIosLaunchRequest(uri: legadoRouteUriPrefix + route)
+        return true
+    }
+
+    /// 快捷项里携带的路由串: 静态项取 `UIApplicationShortcutItemUserInfo` 的
+    /// route 键 (与 app 端 intent extra 同名)。
+    private static func routeOf(_ shortcutItem: UIApplicationShortcutItem) -> String? {
+        shortcutItem.userInfo?[legadoRouteUserInfoKey] as? String
+    }
+}
+
+/// UIWindowSceneDelegate 适配器: 只补 SwiftUI 生命周期没有等价入口的两件事
+/// (主屏快捷项 + 场景 URL 投递), 场景本体仍由 SwiftUI 托管。
+/// 由 [AppDelegate.application(_:configurationForConnecting:options:)] 关联。
+final class LegadoSceneDelegate: NSObject, UIWindowSceneDelegate {
+
+    /// 新场景连接 (冷启动): 快捷项与 URL 都随 `connectionOptions` 到来。
+    func scene(
+        _ scene: UIScene,
+        willConnectTo session: UISceneSession,
+        options connectionOptions: UIScene.ConnectionOptions
+    ) {
+        if let shortcutItem = connectionOptions.shortcutItem {
+            ShortcutIngress.handle(shortcutItem, coldStart: true)
+        }
+        for context in connectionOptions.urlContexts {
+            ExternalUriIngress.handle(context.url)
+        }
+    }
+
+    /// 应用已在运行时点快捷项。
+    func windowScene(
+        _ windowScene: UIWindowScene,
+        performActionFor shortcutItem: UIApplicationShortcutItem,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        completionHandler(ShortcutIngress.handle(shortcutItem, coldStart: false))
+    }
+
+    /// 场景 URL 投递点 (与 `onOpenURL` 同一闸门, 重复由 shared 导航层抹)。
+    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        for context in URLContexts {
+            ExternalUriIngress.handle(context.url)
+        }
+    }
+}
+
 /// UIApplicationDelegate 适配器。
 ///
 /// `BGTaskScheduler.registerForTaskWithIdentifier` 必须在 `didFinishLaunching` 返回前调用,
 /// SwiftUI 生命周期没有等价钩子, 故用 `@UIApplicationDelegateAdaptor` 把 delegate 挂回来。
+///
+/// 本类**不**实现 `UNUserNotificationCenterDelegate`: 通知点击回调完整归 Kotlin
+/// (`IosNotificationDelegate`), Swift 侧只负责在对的时机把它装上 (见下)。
 class AppDelegate: NSObject, UIApplicationDelegate {
     func application(
         _ application: UIApplication,
@@ -144,15 +250,45 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // 同样拿到 provider)。BGTaskScheduler 的注册必须在 didFinishLaunching 返回前完成,
         // 故后台任务注册收在 registerIosProviders 内部而非 Swift 侧另起一行。
         IosProviderRegistryKt.registerIosProviders()
+        // 通知中心 delegate 必须在 didFinishLaunching 返回前装好 (Apple 硬要求: 任何可能与
+        // delegate 交互的操作之前就要赋好; 进程被回收后用户点通知的冷启动那一次投递最容易
+        // 丢)。逻辑全在 Kotlin, 这里只把 Kotlin 的 delegate 提前装上;
+        // MainViewController() 里那次同槽位重复赋值是保底, 无副作用。
+        IosPlatformServicesKt.installIosNotificationDelegate()
         return true
+    }
+
+    /// 关联 [LegadoSceneDelegate]: 只填 `delegateClass` (不填 sceneClass/storyboard),
+    /// 场景本体仍由 SwiftUI 托管 (Apple `UIApplicationDelegateAdaptor` 文档的官方写法)。
+    ///
+    /// 未查证项: 若设备上存着上一版本 (无自定义 scene delegate) 的 `UISceneSession`,
+    /// 系统可能复用它而不调本方法 —— 该次启动的快捷项因此接不到; 本仓无 macOS 无法实测,
+    /// 真机验证时需先删掉 App 重装一次再试长按快捷项。
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(
+            name: nil,
+            sessionRole: connectingSceneSession.role
+        )
+        if connectingSceneSession.role == .windowApplication {
+            configuration.delegateClass = LegadoSceneDelegate.self
+        }
+        // 冷启动走快捷项时这里也能拿到同一枚项 (与 scene(_:willConnectTo:options:) 二取一,
+        // 两处都接、由 ShortcutIngress 按载荷抹掉重复)
+        if let shortcutItem = options.shortcutItem {
+            ShortcutIngress.handle(shortcutItem, coldStart: true)
+        }
+        return configuration
     }
 
     /// 文档类型 / URL scheme 的传统投递点。
     ///
-    /// 与 `onOpenURL` 开的是同一扇门的两张不同票: 在场景化生命周期下 Apple 到底只发一张
-    /// 还是两张都发无本地依据 (Apple 文档页拓取 404, 本机无 Xcode 可实跑), 故两条都接;
-    /// 同一次打开被投两次时由 shared 导航层抹掉 (`LegadoApp.pushIfNeeded` 比栈顶路由),
-    /// **不在这里做时间窗抑制**。详见闸门自述。
+    /// 与 `onOpenURL` / `scene(_:openURLContexts:)` 是同一扇门的三张不同票: 在场景化生命周期下
+    /// Apple 到底只发哪几张无本地依据, 故都接; 同一次打开被投多次时由 shared 导航层抹掉
+    /// (`LegadoApp.pushIfNeeded` 比栈顶路由), **不在这里做时间窗抑制**。详见闸门自述。
     func application(
         _ application: UIApplication,
         open url: Foundation.URL,
@@ -196,8 +332,9 @@ struct iOSApp: App {
                 ) { note in
                     statusBarHidden = note.userInfo?["hidden"] as? Bool ?? false
                 }
-                // 外部 URI 入口之一 (另一个见上面 AppDelegate.application(_:open:options:)):
-                // 两条都接不是为了重复处理, 而是本仓无 macOS 可实测"系统到底走哪条";
+                // 外部 URI 入口之一 (另两个见上面 AppDelegate.application(_:open:options:)
+                // 与 LegadoSceneDelegate.scene(_:openURLContexts:), 共三处):
+                // 三处都接不是为了重复处理, 而是本仓无 macOS 可实测"系统到底走哪条";
                 // 重复投递由 shared 的 LegadoApp.pushIfNeeded 按"栈顶已是同一载荷"抹掉
                 // (时间窗已删 —— 它会把 8 秒内重同一个 legado:// 深链一起吞掉)。
                 // 分流: legado:// 与 yuedu:// → 既有深链导入链 (行为零变更);

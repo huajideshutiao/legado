@@ -16,6 +16,7 @@ import io.legado.app.ui.book.manga.entities.MangaCellState
 import io.legado.app.ui.book.manga.render.MangaSkiaImage
 import io.legado.app.ui.book.manga.render.mangaProgressText
 import io.legado.app.ui.book.manga.render.preloadMangaImage
+import io.legado.app.ui.book.read.IosReaderPlatformProvider
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.imageExtension
 import io.legado.app.utils.File
@@ -26,6 +27,10 @@ import kotlinx.coroutines.withContext
 // iOS 漫画阅读平台能力: 图片流复用 shared 提取器, 渲染走 Skia 三端共用的 MangaSkiaImage
 // (本端只负责把 DownloadProgressRegistry 的下载进度接到转圈环心)
 object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
+
+    // 信息条电量: 不覆写时走接口默认值 100, 与 Android/桌面(读真实电量)以及本端小说阅读页
+    // (UIDevice 真实电量) 都不一致。这里直接复用小说阅读页那一份实现, 保证两页口径唯一。
+    override fun getBatteryLevel(): Int = IosReaderPlatformProvider.getBatteryLevel()
 
     @Composable
     override fun Image(

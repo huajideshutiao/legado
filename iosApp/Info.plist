@@ -104,9 +104,39 @@
     <key>LSSupportsOpeningDocumentsInPlace</key>
     <true/>
 
+    <!-- iCloud Documents 容器元数据 (对照 core iosMain help/sync/IosICloud.kt 的"启用四步"第 3 步)。
+         容器标识必须与该文件的 CONTAINER_ID 及 entitlements 里的
+         com.apple.developer.icloud-container-identifiers 逐字一致; 对不上
+         URLForUbiquityContainerIdentifier 恒返回 null。
+         ⚠️ 只加本键打不开 iCloud: 还缺三样 —— 付费账号给 App ID 勾 iCloud capability
+         (Key-value storage + iCloud Documents)、iosApp.entitlements 并设
+         CODE_SIGN_ENTITLEMENTS、以及 Kotlin 侧 IosICloud.enable() 那一行注册调用。
+         缺任一样时本键是死数据 (容器 URL 仍 null, 代码已按 null 兜底)。
+         ⚠️ 本文件与 project.yml 双写: xcodegen generate 会用 project.yml 重写本文件 -->
+    <key>NSUbiquitousContainers</key>
+    <dict>
+        <key>iCloud.io.legado.app.ios</key>
+        <dict>
+            <key>NSUbiquitousContainerIsDocumentScopePublic</key>
+            <true/>
+            <key>NSUbiquitousContainerSupportedFolderLevels</key>
+            <string>Any</string>
+            <key>NSUbiquitousContainerName</key>
+            <string>legado</string>
+        </dict>
+    </dict>
+
     <!-- 保存图片到相册权限说明 (阅读页图片长按菜单"保存到相册"; iOS 14+ 缺此 key 调用会直接崩) -->
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>保存阅读页图片到系统相册需要访问你的照片库</string>
+
+    <!-- 本地网络权限说明 (iOS 14+)。内置 Web 服务在 0.0.0.0 起 HTTP 监听
+         (core commonMain WebServerManager), 局域网设备连上来后我方回包属于
+         "向本地网络地址发出流量", 系统会要求本地网络访问授权; 缺此键时该授权弹窗
+         没有说明文案 (Apple: "Any app that uses the local network, directly or
+         indirectly, should include this description")。 -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>局域网内的设备访问本机的 legado Web 服务需要本地网络权限</string>
 
     <!-- legado:// / yuedu:// deep link (对照 app 端 AssociationActivity intent-filter) -->
     <key>CFBundleURLTypes</key>
@@ -233,6 +263,49 @@
                 <string>rar</string>
                 <string>7z</string>
             </array>
+        </dict>
+    </array>
+
+    <!-- 主屏快捷项 (长按图标), 对照 app 端动态快捷方式 ShortCuts.buildShortCuts 的三项
+         (bookshelf / lastRead / readAloud)。
+         标题只是缺本地化资源时的兜底: 真值在各 <lang>.lproj/InfoPlist.strings
+         (Apple: "You can, optionally, internationalize a quick action title by employing
+         your app's InfoPlist.strings file", 键名 = 这里写的占位串)。
+         三项的 route 均对应 shared 已有的 NavigateTo 分支 (LegadoApp.handleLaunchRequest:
+         "last_read" 开最近阅读, 书架/朗读不带 route 或走 action 分支)。
+         只能静态声明: iOS 端无 Android 那样的"带 extra 的快捷方式 intent", 故
+         readAloud 的 action=readAloud 语义无法用本键表达。
+         ⚠️ 本文件与 project.yml 双写: xcodegen generate 会用 project.yml 重写本文件 -->
+    <key>UIApplicationShortcutItems</key>
+    <array>
+        <dict>
+            <key>UIApplicationShortcutItemType</key>
+            <string>bookshelf</string>
+            <key>UIApplicationShortcutItemIconType</key>
+            <string>UIApplicationShortcutIconTypeBookmark</string>
+            <key>UIApplicationShortcutItemTitle</key>
+            <string>legado.shortcut.bookshelf</string>
+        </dict>
+        <dict>
+            <key>UIApplicationShortcutItemType</key>
+            <string>lastRead</string>
+            <key>UIApplicationShortcutItemIconType</key>
+            <string>UIApplicationShortcutIconTypeTime</string>
+            <key>UIApplicationShortcutItemTitle</key>
+            <string>legado.shortcut.last_read</string>
+            <key>UIApplicationShortcutItemUserInfo</key>
+            <dict>
+                <key>route</key>
+                <string>last_read</string>
+            </dict>
+        </dict>
+        <dict>
+            <key>UIApplicationShortcutItemType</key>
+            <string>readAloud</string>
+            <key>UIApplicationShortcutItemIconType</key>
+            <string>UIApplicationShortcutIconTypeAudio</string>
+            <key>UIApplicationShortcutItemTitle</key>
+            <string>legado.shortcut.read_aloud</string>
         </dict>
     </array>
 
