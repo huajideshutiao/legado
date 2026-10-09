@@ -5,6 +5,7 @@ package io.legado.app.ui
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.NotificationId
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
@@ -47,6 +48,7 @@ import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.DefaultDialogTransitionSpec
 import io.legado.app.ui.root.DialogTransitionSpec
+import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteTransitionSpec
 import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.toRouteRef
@@ -107,6 +109,9 @@ import platform.darwin.dispatch_get_main_queue
 object IosPlatformCapabilities : NativePlatformCapabilities {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var exportBooksJob: Job? = null
+
+    /** 导出进度通知正文 (对照 app 端 ExportBookService.notificationContentText)。 */
+    private var notificationContentText = syncGetString("service_starting")
 
     override val capabilityScope: CoroutineScope get() = scope
 
@@ -514,6 +519,45 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 
     // ===== 书架管理: 导出 JSON =====
 
+    /**
+     * 更新导出进度通知 (对照 app 端 ExportBookService.upExportNotification)。
+     *
+     * 通知 id 用 [NotificationId.ExportBookService], 点击后由 IosNotificationService 的
+     * id→route 表跳到书架管理页; 同 id 覆盖式更新, 即"同一条通知"从进行中变结束态。
+     *
+     * @param finish true = 结束态 (对照原版该分支的 setOngoing(false) + setAutoCancel(true)):
+     *   通知上不带"取消"动作
+     */
+    private fun upExportNotification(finish: Boolean = false) {
+        val title = syncGetString("export_book")
+        if (finish) {
+            IosNotificationService.notifyWithoutActions(
+                NotificationId.ExportBookService, title, notificationContentText,
+            )
+            return
+        }
+        PlatformServiceProviders.get().notifications.notify(
+            NotificationId.ExportBookService,
+            title,
+            notificationContentText,
+        )
+    }
+
+    /**
+     * 取消正在跑的导出并撤掉导出通知 (对照原版 ExportBookService 的 IntentAction.stop 分支:
+     * `notificationManager.cancel(NotificationId.ExportBook)` + `stopSelf()` —— 后者使服务的
+     * lifecycleScope 取消, 导出协程随之停止)。
+     *
+     * 由通知上的"取消"动作与"清掉通知"两处经 [IosNotificationDelegate] 调用; 该时机可能落在
+     * "应用被杀后由系统在后台拉起"的路径上 (UI 未创建), 通知能力直接取 [IosNotificationService],
+     * 不经 [PlatformServiceProviders]。
+     */
+    internal fun cancelExport() {
+        exportBooksJob?.cancel()
+        exportBooksJob = null
+        IosNotificationService.cancelNotification(NotificationId.ExportBookService)
+    }
+
     // 导出书籍正文, 直接写进有效导出目录 (用户选过 → 偏好键, 否则惯例目录
     // Documents/export —— iOS 的 Documents 经"文件"App 可见, 用户自己就能找到),
     // 不经系统分享面板 (对照 app 端 ExportBookService 的落盘语义)
@@ -538,9 +582,15 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
             val exportType = prefs.getInt(PreferKey.exportType, 0)
             var exported = 0
             try {
-                books.forEach { book ->
+                books.forEachIndexed { index, book ->
                     try {
                         currentCoroutineContext().ensureActive()
+                        notificationContentText = syncGetString(
+                            "export_book_notification_content",
+                            book.name,
+                            books.size - index - 1,
+                        )
+                        upExportNotification()
                         val file = NativeBookExporter.exportBookFile(book, exportDir, usedPaths, exportType)
                         exported++
                         if (prefs.getBoolean(PreferKey.exportToWebDav, false)) {
@@ -556,6 +606,8 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
             } finally {
                 lease.close()
             }
+            notificationContentText = "导出完成"
+            upExportNotification(finish = true)
             if (exported > 0) {
                 Toasters.get().toast("导出完成\n可在「文件」App 中查看")
             }
@@ -682,9 +734,15 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
             val usedPaths = mutableSetOf<String>()
             var exported = 0
             try {
-                books.forEach { book ->
+                books.forEachIndexed { index, book ->
                     try {
                         currentCoroutineContext().ensureActive()
+                        notificationContentText = syncGetString(
+                            "export_book_notification_content",
+                            book.name,
+                            books.size - index - 1,
+                        )
+                        upExportNotification()
                         val bookFiles = if (book.isImage) {
                             listOf(NativeBookExporter.exportBookFile(book, exportDir, usedPaths, 1))
                         } else {
@@ -714,6 +772,8 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
             } finally {
                 lease.close()
             }
+            notificationContentText = "导出完成"
+            upExportNotification(finish = true)
             if (exported > 0) {
                 Toasters.get().toast("导出完成\n可在「文件」App 中查看")
             }

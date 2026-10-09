@@ -273,8 +273,8 @@ struct Index {
       } catch (e) {
         hilog.warn(DOMAIN, 'LegadoCompose', 'initSystemBridgeUiContext failed (toast unavailable): %{public}s', JSON.stringify(e));
       }
-      // 系统对话框桥: 注入 UIContext (UIContext.getPromptAction().showDialog 需要), 供
-      // 候选列表 / 是-否确认框使用 (KMP 侧经 window tsfn 发请求, 见 SysDialogBridgeHandler)。
+      // 对话框桥: 注入 UIContext (UIContext.getPromptAction().showDialog / openCustomDialog 需要), 供
+      // 候选列表 / 是-否确认框 / 多字段输入框使用 (KMP 侧经 window tsfn 发请求, 见 SysDialogBridgeHandler)。
       // 独立 try: 失败不应阻断 Compose 控制器创建 (仅对话框不可用, 调用方按未选择降级)。
       try {
         initSysDialogBridgeUiContext(this.getUIContext());

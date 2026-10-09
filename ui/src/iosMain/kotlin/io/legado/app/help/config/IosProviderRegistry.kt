@@ -53,6 +53,7 @@ import io.legado.app.model.registerIosReadBookPlatform
 import io.legado.app.model.registerNativeCacheBookCallback
 import io.legado.app.model.script.registerNativeJsEngines
 import io.legado.app.model.webBook.registerNativeWebBookProviders
+import io.legado.app.ui.IosNotificationPublisher
 import io.legado.app.ui.IosShareInbox
 import io.legado.app.ui.book.changesource.registerNativeChangeBookSourcePlatform
 import io.legado.app.ui.book.manage.registerNativeBookshelfManagePlatform
@@ -256,6 +257,9 @@ fun registerIosProviders() {
     // 备份/恢复钩子 (lastBackup 时间戳 + 恢复完成提示; zip 复制/解压走 BackupFileOps 默认实现)
     registerNativeBackupRestoreHook()
     registerIosNotificationProgress()
+    // 通知分类 (带自定义动作的通知必须先注册分类再发送, 否则通知上不出现动作按钮):
+    // 发送侧在 IosNotificationPublisher, 动作处理在 IosNotificationDelegate
+    IosNotificationPublisher.installCategories()
     // UI provider (Toast/OpenUrl/UserAgent), 供 JsExtensionsCommon 调用, 顺序无关, 须在任何 JS eval 之前
     registerIosOpenUrlProvider()
     registerNativeUserAgentProvider()

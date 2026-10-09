@@ -10,6 +10,7 @@ import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
 import io.legado.app.help.log.NativeCrashLogs
 import io.legado.app.help.openURL
 import io.legado.app.help.topMostViewController
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.root.BrowserService
 import io.legado.app.ui.root.CrashLogProvider
 import io.legado.app.ui.root.ExternalRequestService
@@ -63,6 +64,12 @@ import platform.UserNotifications.UNAuthorizationStatusAuthorized
 import platform.UserNotifications.UNAuthorizationStatusProvisional
 import platform.UserNotifications.UNMutableNotificationContent
 import platform.UserNotifications.UNNotification
+import platform.UserNotifications.UNNotificationAction
+import platform.UserNotifications.UNNotificationActionOptionNone
+import platform.UserNotifications.UNNotificationCategory
+import platform.UserNotifications.UNNotificationCategoryOptionCustomDismissAction
+import platform.UserNotifications.UNNotificationDefaultActionIdentifier
+import platform.UserNotifications.UNNotificationDismissActionIdentifier
 import platform.UserNotifications.UNNotificationRequest
 import platform.UserNotifications.UNNotificationResponse
 import platform.UserNotifications.UNUserNotificationCenter
@@ -373,12 +380,24 @@ private object IosMediaService : MediaService {
 }
 
 // 通知: UNUserNotificationCenter 本地通知 (授权已在 registerIosNotificationProgress 请求过);
-// id 转固定 identifier 复用同一条 (对照 Android NotificationManager.notify(id, ...))
-private object IosNotificationService : NotificationService {
+// id 转固定 identifier 复用同一条 (对照 Android NotificationManager.notify(id, ...))。
+// 非 private: 通知动作可能经"应用被杀后由系统在后台拉起"的路径到达 (该路径 UI 未创建,
+// PlatformServiceProviders 未注册), 取消动作直接取本对象。
+internal object IosNotificationService : NotificationService {
 
     override fun notify(id: Int, title: String, content: String) {
         val identifier = identifierOf(id)
-        IosNotificationPublisher.publish(identifier, title, content, route = routeOf(id))
+        IosNotificationPublisher.publish(
+            identifier, title, content, route = routeOf(id), category = categoryOf(id),
+        )
+    }
+
+    /**
+     * 发表不带自定义动作的同 id 通知 (覆盖式更新; 对照原版 `upExportNotification` 结束态分支 ——
+     * 该状态的通知上没有动作按钮)。
+     */
+    internal fun notifyWithoutActions(id: Int, title: String, content: String) {
+        IosNotificationPublisher.publish(identifierOf(id), title, content, route = routeOf(id))
     }
 
     override fun cancelNotification(id: Int) {
@@ -401,6 +420,46 @@ private object IosNotificationService : NotificationService {
         NotificationId.CheckSourceService -> "book_source_manage"
         else -> null
     }
+
+    /** 通知 id → 通知分类 (只有挂自定义动作的通知才需要; 返回 null 即通知上无动作按钮)。 */
+    private fun categoryOf(id: Int): String? = when (id) {
+        NotificationId.ExportBookService -> IosNotificationCategories.Export
+        else -> null
+    }
+}
+
+/**
+ * iOS 通知分类 (带自定义动作的通知必须先注册分类再发送, 否则通知上不出现动作按钮)。
+ *
+ * 注册见 [IosNotificationPublisher.installCategories], 由
+ * [io.legado.app.help.config.registerIosProviders] 在启动早期调用; 发送时经
+ * [UNMutableNotificationContent.setCategoryIdentifier] 把分类挂到通知内容上。
+ */
+internal object IosNotificationCategories {
+
+    /** 导出通知分类 (进行中态挂 [ExportCancel] 动作)。 */
+    const val Export = "legado.export"
+
+    /** 导出通知的"取消"动作标识 (对照原版导出通知上的 IntentAction.stop 动作)。 */
+    const val ExportCancel = "legado.export.cancel"
+
+    /** 全部分类 ([UNUserNotificationCenter.setNotificationCategories] 为整体替换, 一次提交全集)。 */
+    fun all(): Set<UNNotificationCategory> = setOf(
+        UNNotificationCategory.categoryWithIdentifier(
+            identifier = Export,
+            actions = listOf(
+                // 不带 Foreground: 取消在后台完成即可, 与 app 端动作直达 Service (不拉 Activity) 同语义
+                UNNotificationAction.actionWithIdentifier(
+                    identifier = ExportCancel,
+                    title = syncGetString("cancel"),
+                    options = UNNotificationActionOptionNone,
+                ),
+            ),
+            intentIdentifiers = emptyList(),
+            // 清掉通知同样停导出 (对照原版 setDeleteIntent): 未挂该选项系统不投递清通知响应
+            options = UNNotificationCategoryOptionCustomDismissAction,
+        ),
+    )
 }
 
 /**
@@ -417,8 +476,16 @@ object IosNotificationPublisher {
      *
      * @param route 非空时写进 userInfo 的 [IosNotificationRouteKey], 用户点击后由
      *   [IosNotificationDelegate] 解出并投递成 `route:` 前缀串 (与外部启动请求同一条解析链)
+     * @param category 非空时挂通知分类 (须先经 [installCategories] 注册, 否则动作按钮不出现);
+     *   只有带自定义动作的通知才需要
      */
-    fun publish(identifier: String, title: String, body: String, route: String? = null) {
+    fun publish(
+        identifier: String,
+        title: String,
+        body: String,
+        route: String? = null,
+        category: String? = null,
+    ) {
         runCatching {
             val center = UNUserNotificationCenter.currentNotificationCenter()
             val payload = UNMutableNotificationContent().apply {
@@ -426,6 +493,9 @@ object IosNotificationPublisher {
                 setBody(body)
                 if (!route.isNullOrEmpty()) {
                     setUserInfo(mapOf(IosNotificationRouteKey to route))
+                }
+                if (!category.isNullOrEmpty()) {
+                    setCategoryIdentifier(category)
                 }
             }
             // trigger=null 立即触发; 先移除同 id 已展示通知, 模拟"更新同一条"
@@ -455,13 +525,22 @@ object IosNotificationPublisher {
     fun installDelegate() {
         UNUserNotificationCenter.currentNotificationCenter().delegate = IosNotificationDelegate
     }
+
+    /** 注册通知分类 (自定义动作按钮生效的前提; 须在任何带动作的通知发送之前调用)。 */
+    fun installCategories() {
+        runCatching {
+            UNUserNotificationCenter.currentNotificationCenter()
+                .setNotificationCategories(IosNotificationCategories.all())
+        }.onFailure { AppLog.put("iOS 通知分类注册失败: ${it.message}") }
+    }
 }
 
 /** 通知 userInfo 里承载路由的 key (与 [IosNotificationPublisher.publish] 对应)。 */
 internal const val IosNotificationRouteKey = "legadoRoute"
 
 /**
- * 通知点击处理: 解出 userInfo 里的路由, 交回既有的外部启动请求解析链。
+ * 通知响应处理: 通知上的自定义动作 (取消) 就地执行, 点通知本体则解出 userInfo 里的路由,
+ * 交回既有的外部启动请求解析链。
  *
  * 不新写路由解析: 复用 `route:` 前缀约定 (见 [IosLaunchRequests.parse]), 与系统
  * deep link / 文件关联走同一条链, 消费方仍是唯一的 `LaunchRequestBus` 消费者。
@@ -474,9 +553,18 @@ private object IosNotificationDelegate : NSObject(), UNUserNotificationCenterDel
         didReceiveNotificationResponse: UNNotificationResponse,
         withCompletionHandler: () -> Unit,
     ) {
-        val route = didReceiveNotificationResponse.notification.request.content
-            .userInfo[IosNotificationRouteKey] as? String
-        navigateToRoute(route)?.let(IosLaunchRequests::post)
+        when (didReceiveNotificationResponse.actionIdentifier) {
+            // 通知上的"取消"动作, 与用户显式清掉通知 (分类挂 CustomDismissAction 才投递)
+            IosNotificationCategories.ExportCancel,
+            UNNotificationDismissActionIdentifier -> IosPlatformCapabilities.cancelExport()
+
+            // 点通知本体: 解出 userInfo 里的路由
+            UNNotificationDefaultActionIdentifier -> {
+                val route = didReceiveNotificationResponse.notification.request.content
+                    .userInfo[IosNotificationRouteKey] as? String
+                navigateToRoute(route)?.let(IosLaunchRequests::post)
+            }
+        }
         withCompletionHandler()
     }
 

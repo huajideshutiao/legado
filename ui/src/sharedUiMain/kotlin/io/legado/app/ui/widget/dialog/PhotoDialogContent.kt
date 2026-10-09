@@ -406,8 +406,16 @@ private fun rememberPhotoSaveAction(
                     return@launch
                 }
             val files = PlatformServiceProviders.get().files
-            // 实际字节决定扩展名；用户取消选目录 (null) 静默返回。
-            when (files.saveImageRememberingDir(imageSaveFileName(src, bytes), bytes)) {
+            val fileName = imageSaveFileName(src, bytes)
+            // 落点按平台定: 鸿蒙落系统相册 (用户指定要求), 其余端走目录记忆
+            // (对照原版 PhotoDialog.initEvent 读图片目录键后直写);
+            // 实际字节决定扩展名; 用户取消选择位置 (null) 静默返回。
+            val saved = if (files.imageViewerSavesToAlbum) {
+                files.saveImageBytes(fileName, bytes)
+            } else {
+                files.saveImageRememberingDir(fileName, bytes)
+            }
+            when (saved) {
                 true -> Toasters.get().toast("保存成功")
                 false -> Toasters.get().toast("保存图片失败")
                 null -> Unit

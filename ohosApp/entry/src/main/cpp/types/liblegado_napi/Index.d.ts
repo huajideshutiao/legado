@@ -175,7 +175,9 @@ export interface LegadoNativeBridge {
    * 使 KMP OhosNativeBridge.showNotification / cancelNotification 跨线程 dispatch 到此 [callback]。
    *
    * @param callback 接收 JSON payload:
-   *   - SHOW:    `{ action: 'SHOW', id, title, content, progress, max }`
+   *   - SHOW:    `{ action: 'SHOW', id, title, content, progress, max, ongoing?, buttons? }`
+   *     (ongoing=true 置 isOngoing/tapDismissed=false/isAlertOnce; buttons 每项 `{ text, action }`
+   *     渲染成 actionButtons, 点击由宿主经 platformEvent type='notificationAction' 回送)
    *   - CANCEL:  `{ action: 'CANCEL', id }`
    *   内部分支调 notificationManager.publish / notificationManager.cancel
    */
@@ -380,7 +382,7 @@ export interface LegadoNativeBridge {
    * 由 OhosPlatformEventChannel 按 type 分发 (httpProgress → OhosDownloadProgressEvents,
    * lifecycle → OhosAppLifecycle)。事件方向恒为 ArkTS → Kotlin, 无 tsfn。
    *
-   * @param event 事件 JSON `{ type: 'httpProgress' | 'lifecycle', ... }`
+   * @param event 事件 JSON `{ type: 'httpProgress' | 'lifecycle' | ... | 'notificationAction', ... }`
    */
   platformEvent(event: string): void;
 

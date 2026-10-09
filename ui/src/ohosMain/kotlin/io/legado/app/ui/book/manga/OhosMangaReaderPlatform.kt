@@ -18,7 +18,6 @@ import io.legado.app.ui.book.manga.render.mangaProgressText
 import io.legado.app.ui.book.manga.render.preloadMangaImage
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.imageExtension
-import io.legado.app.utils.File
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
@@ -60,7 +59,13 @@ object OhosMangaReaderPlatform : MangaReaderScreenModel.Platform {
         )
     }
 
-    /** 保存图片：先取得原始字节，再按魔数生成正确扩展名后写入导出目录。 */
+    /**
+     * 保存图片: 取原始字节 → 按魔数生成正确扩展名 → 写进记住的保存目录。
+     *
+     * 目录记忆与选定目录的持久化授权由 [io.legado.app.ui.root.FilePickerService.saveImageRememberingDir]
+     * 统一处理 (对照原版 ReadMangaActivity.saveImage: 没记住目录先选一次并记 ACache imagePathKey,
+     * 之后直写)。
+     */
     override suspend fun saveImage(
         url: String,
         book: Book?,
@@ -72,10 +77,7 @@ object OhosMangaReaderPlatform : MangaReaderScreenModel.Platform {
             val bytes = MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
                 ?: return@runCatching false
             val name = "manga-${systemCurrentTimeMillis()}${imageExtension(bytes, url)}"
-            val destPath = files.saveFile(name)
-                ?: return@runCatching null
-            File(destPath).writeBytes(bytes)
-            true
+            files.saveImageRememberingDir(name, bytes)
         }.getOrElse {
             AppLog.put("保存图片出错\n${it.message}", it)
             false

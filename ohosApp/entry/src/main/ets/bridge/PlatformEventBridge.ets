@@ -15,6 +15,7 @@
  * - 音频焦点: { type: 'audioFocusChange', change: 'gain' | 'loss' | 'lossTransient' | 'lossTransientCanDuck' }
  * - 电话状态: { type: 'callStateChange', state: 'idle' | 'ringing' | 'offHook' }
  * - 系统对话框结果: { type: 'dialogResult', requestId, dialogResult } (系统对话框桥的响应侧)
+ * - 通知按钮点击: { type: 'notificationAction', notificationId, action }
  *
  * 后加的三类经 [emitPlatformEvent] 走同一通道 (不再各建一套回送函数)。
  *
@@ -177,12 +178,20 @@ export interface NetworkAvailableEvent {
   type: string;          // 'networkAvailable'
 }
 
+/** 通知按钮点击事件载荷 (与 Kotlin OhosPlatformEventPayload 对齐, type=notificationAction)。 */
+export interface NotificationActionEvent {
+  type: string;           // 'notificationAction'
+  notificationId: number; // 通知 id (与 Kotlin NotificationId 常量、ArkTS NOTIFICATION_ROUTES 同一张 id 表)
+  action: string;         // 按钮动作标识 (原版 addAction 的 pendingIntent action, 如 'stop')
+}
+
 /** 后加的平台事件载荷集合 (共用 [emitPlatformEvent])。 */
 export type ExtraPlatformEvent =
-  AudioDeviceChangeEvent | AudioFocusChangeEvent | PhoneCallStateEvent | NetworkAvailableEvent;
+  AudioDeviceChangeEvent | AudioFocusChangeEvent | PhoneCallStateEvent | NetworkAvailableEvent |
+  NotificationActionEvent;
 
 /**
- * 推送一条后加类型的平台事件 (媒体设备变化/音频焦点/电话状态/网络可用)。
+ * 推送一条后加类型的平台事件 (媒体设备变化/音频焦点/电话状态/网络可用/通知按钮点击)。
  *
  * 为什么不让调用方各自建模块级回送函数: 事件回送回调只有本模块持有, 各功能模块
  * (MediaBridgeHandler 的音频设备断开/音频打断、SystemEventSources 的电话与网络) 只需

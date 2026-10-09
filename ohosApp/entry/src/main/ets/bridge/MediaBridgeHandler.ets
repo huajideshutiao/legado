@@ -982,19 +982,24 @@ async function createAvSession(): Promise<avSession.AVSession | undefined> {
 }
 
 /**
- * 拉起本 Ability 的 WantAgent (播控卡片点击 / 长时任务 / 通知点击共用)。
+ * 拉起本 Ability 的 WantAgent (播控卡片点击 / 长时任务 / 通知点击 / 通知按钮共用)。
  *
  * 本函数导出于本模块: EntryAbility 的通知回调需要它给 NotificationRequest.wantAgent
- * 挂跳转目标 (对照 app 端通知的 contentIntent), 与播控卡片/长时任务共用同一份构建逻辑。
+ * 挂跳转目标 (对照 app 端通知的 contentIntent)、给 actionButtons 每项挂 wantAgent
+ * (对照 app 端通知的 addAction), 与播控卡片/长时任务共用同一份构建逻辑。
  *
  * @param uri 非空时写进 Want.uri。播控卡片传 `route:audio_play` —— 与 app 端音频通知
  *   contentIntent 的 route extra 同一个串, 点击后由 EntryAbility.handleDeepLink 走
  *   `legado.handleLaunchRequest` → `OhosLaunchRequests.parse` 解回 `NavigateTo("audio_play")`
  *   (不需要新增任何协议); 长时任务不传 (保活拉起不应改变用户当前页面)。
+ * @param parameters 非空时写进 Want.parameters (与 shortcuts_config.json 的 `wants.parameters`
+ *   同一形制: 系统把参数放进被拉起 Ability 的 `want.parameters`, 不出现在 want.uri);
+ *   通知按钮用它携带动作文本 (值一律字符串), 由 EntryAbility 读回后回送 Kotlin。
  */
 export async function buildLaunchWantAgent(
   context: common.UIAbilityContext,
-  uri?: string
+  uri?: string,
+  parameters?: Record<string, Object>
 ): Promise<WantAgent> {
   const want: Want = {
     bundleName: context.abilityInfo.bundleName,
@@ -1002,6 +1007,9 @@ export async function buildLaunchWantAgent(
   };
   if (uri !== undefined && uri.length > 0) {
     want.uri = uri;
+  }
+  if (parameters !== undefined) {
+    want.parameters = parameters;
   }
   const wantAgentInfo: wantAgent.WantAgentInfo = {
     wants: [want],

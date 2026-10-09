@@ -14,6 +14,7 @@ import io.legado.app.service.ReadAloudControllerShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
 import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.utils.FlowBus
 import io.legado.desktop.ui.tray.DesktopMediaTray.syncVisibility
@@ -66,7 +67,22 @@ class ReadAloudTrayBinding(
 )
 
 /**
- * 桌面端系统托盘: 播放/朗读状态展示 + 右键控制菜单 (听书时最小化仍可控)。
+ * 导出侧接入托盘所需的最小绑定: 导出期间托盘图标常驻显示当前书名与剩余待导本数
+ * (对照 app 端 ExportBookService 的常驻导出通知), 右键菜单可取消, 左键回书架管理页。
+ *
+ * 逐本导出时由 [DesktopPlatformCapabilities] 重建并重写本绑定 (值变化即推送, 触发刷新)。
+ */
+class ExportTrayBinding(
+    /** 当前正在导出的书名。 */
+    val bookName: String,
+    /** 队列里还剩几本待导出 (不含当前这本, 口径同 app 端 `waitExportBooks.size`)。 */
+    val remaining: Int,
+    /** 取消本次导出 (对照 app 端通知的取消 action / IntentAction.stop)。 */
+    val cancel: () -> Unit,
+)
+
+/**
+ * 桌面端系统托盘: 播放/朗读/导出状态展示 + 右键控制菜单 (听书或导出时最小化仍可控)。
  *
  * # 托盘所有权
  * 全进程唯一 [TrayIcon] 由本对象持有。`Toaster.jvm.kt` 原先自建蓝色圆点 TrayIcon 发通知,
@@ -103,6 +119,8 @@ class ReadAloudTrayBinding(
  * tooltip 与菜单项对照 app 端 `AudioPlayService.createNotification` /
  * `BaseReadAloudService` 的媒体通知: 标题"正在播放/播放暂停|正在朗读/朗读暂停: 书名",
  * 副标题为章节名, action 集为 上一章 / 播放暂停 / 下一章 / 停止 (定时器桌面端未接, 不造)。
+ * 导出链对照 `ExportBookService.upExportNotification`: tooltip 为"导出书籍"+"正在导出(书名),
+ * 还有 N 本待导出", action 集为取消 (对应通知的取消 action)。
  */
 object DesktopMediaTray {
 
@@ -131,6 +149,15 @@ object DesktopMediaTray {
         get() = readAloudBinding.value
         set(value) {
             readAloudBinding.value = value
+        }
+
+    private val exportBinding = MutableStateFlow<ExportTrayBinding?>(null)
+
+    /** 导出绑定: 导出开始后逐本重写, 导出结束/取消后置 null。 */
+    var export: ExportTrayBinding?
+        get() = exportBinding.value
+        set(value) {
+            exportBinding.value = value
         }
 
     // 状态监听作用域 (install 建 / uninstall 取消), 显隐与 refresh 在协程线程读, 故 @Volatile
@@ -226,6 +253,10 @@ object DesktopMediaTray {
                     .flatMapLatest { it?.controller?.state ?: flowOf(null) }
                     .collect { syncVisibility() }
             }
+            // 导出逐本重写绑定: 值变化即刷 tooltip 与菜单 (对照原版逐本重发通知)
+            s.launch {
+                exportBinding.collect { syncVisibility() }
+            }
         }
         // 任务栏缩略图按钮/进度条/全局媒体键 (Windows 专属, 内部自检平台)
         DesktopTaskbarMedia.install()
@@ -260,6 +291,7 @@ object DesktopMediaTray {
      *   而原版通知 (服务存活期) 全程保持
      * - 朗读: BaseReadAloudService 在 state ∈ {PLAYING, PAUSED} 时 startForeground,
      *   停止/完成/出错时 stopSelf
+     * - 导出: ExportBookService 全程为前台服务 (队列空才 stopSelf), 对应绑定非空期间
      *
      * 桌面端把"前台服务 + 通知"呈现为托盘图标, 判定状态源与 app 端完全一致。
      */
@@ -269,7 +301,7 @@ object DesktopMediaTray {
         val aloudState = aloud?.controller?.state?.value
         val aloudActive =
             aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED || aloudState == ReadAloudState.WAITING
-        return audioActive || aloudActive
+        return audioActive || aloudActive || exportBinding.value != null
     }
 
     /** 状态事件可在任意线程发出, 显隐操作统一收口到 EDT (SystemTray 状态单线程串行改)。 */
@@ -370,7 +402,20 @@ object DesktopMediaTray {
                     ?: str("read_aloud_s", "点击打开阅读界面")
             }
 
-            else -> lines += appName()
+            else -> {
+                val exportTask = exportBinding.value
+                if (exportTask != null) {
+                    // 对照 app 端导出通知: 标题取 subText, 正文即通知 contentText
+                    lines += str("export_book", "导出书籍")
+                    lines += syncGetString(
+                        "export_book_notification_content",
+                        exportTask.bookName,
+                        exportTask.remaining,
+                    )
+                } else {
+                    lines += appName()
+                }
+            }
         }
         return lines.joinToString("\n").take(TOOLTIP_MAX)
     }
@@ -424,6 +469,7 @@ object DesktopMediaTray {
      * 跳到当前后台任务对应的页面 (原版通知 contentIntent 的桌面等价):
      * - 音频活跃: 打开音频播放页 (对照 AudioPlayActivity)
      * - 朗读活跃: 打开阅读页 (对照 ReaderActivity)
+     * - 导出活跃: 打开书架管理页 (对照 app 端导出通知的 contentIntent)
      * 经 AppNavigatorProviders 全局导航 (非 Composable 代码的既有入口)。
      */
     private fun jumpToActive() {
@@ -438,6 +484,7 @@ object DesktopMediaTray {
             // 音频优先 (与托盘菜单/媒体键一致)
             audioActive -> AudioPlayShared.book?.toReadRoute()
             aloudActive -> ActiveReadBookRegistry.current?.bookValue?.toReadRoute()
+            exportBinding.value != null -> AppRoute.BookshelfManage()
             else -> null
         }
         if (route != null) {
@@ -549,7 +596,7 @@ object DesktopMediaTray {
         val action: (() -> Unit)? = null,
     )
 
-    /** 菜单内容单一来源 (Swing JPopupMenu 渲染; 音频/朗读两链共用, 防漂移)。 */
+    /** 菜单内容单一来源 (Swing JPopupMenu 渲染; 音频/朗读/导出三条链共用, 防漂移)。 */
     private fun buildMenuModel(): List<MenuEntry> {
         val entries = ArrayList<MenuEntry>()
         val audioStatus = AudioPlayShared.status
@@ -558,8 +605,9 @@ object DesktopMediaTray {
         val aloudState = aloud?.controller?.state?.value
         val aloudActive =
             aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED || aloudState == ReadAloudState.WAITING
-        // 两条链同时活跃时加标题分组, 免得两组"上一章"分不清 (文案取 app 端通知 subText)
-        val grouped = audioActive && aloudActive
+        // 多条链同时活跃时加标题分组, 免得两组"上一章"分不清 (文案取 app 端通知 subText)
+        val exportTask = exportBinding.value
+        val grouped = listOf(audioActive, aloudActive, exportTask != null).count { it } > 1
         if (audioActive) {
             if (grouped) entries += MenuEntry(str("audio", "音频"), enabled = false)
             addAudioEntries(entries, audioStatus)
@@ -568,7 +616,12 @@ object DesktopMediaTray {
             if (grouped) entries += MenuEntry(str("read_aloud", "朗读"), enabled = false)
             addReadAloudEntries(entries, aloud, aloudState == ReadAloudState.PAUSED)
         }
-        if (audioActive || aloudActive) entries += MenuEntry() // 分隔线
+        if (exportTask != null) {
+            if (grouped) entries += MenuEntry(str("export_book", "导出书籍"), enabled = false)
+            // 对照 app 端导出通知的取消 action (IntentAction.stop)
+            entries += MenuEntry(str("cancel", "取消")) { exportTask.cancel() }
+        }
+        if (audioActive || aloudActive || exportTask != null) entries += MenuEntry() // 分隔线
         // 无"显示"项: 恢复窗口 + 跳转对应页面 (原版通知点击行为) 由托盘左键单击承载
         entries += MenuEntry(str("exit", "退出")) { exitAction?.invoke() }
         return entries

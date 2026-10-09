@@ -66,8 +66,12 @@ import io.legado.desktop.model.fileBook.DesktopImportBook
 import io.legado.desktop.model.fileBook.DesktopImportFile
 import io.legado.desktop.ui.DesktopPlatformCapabilities.saveLog
 import io.legado.desktop.ui.component.FileDialogs
+import io.legado.desktop.ui.tray.DesktopMediaTray
+import io.legado.desktop.ui.tray.ExportTrayBinding
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -84,6 +88,9 @@ import javax.management.ObjectName
 
 object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** 本次导出任务 (对照 app 端 ExportBookService 的服务存活, 可取消)。 */
+    private var exportBooksJob: Job? = null
 
     override val capabilityScope: CoroutineScope get() = scope
 
@@ -756,44 +763,71 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
 
     private fun startCustomExport(path: String, books: List<Book>, range: String, size: Int) {
         if (books.isEmpty()) return
-        scope.launch {
+        if (exportBooksJob?.isActive == true) {
+            Toasters.get().toast("书籍正在导出")
+            return
+        }
+        exportBooksJob = scope.launch {
             Toasters.get().toast("开始导出 ${books.size} 本 (自定义章节)")
             try {
-                DesktopBookExport.exportCustomEpub(path, books, range, size)
+                books.forEachIndexed { index, book ->
+                    upExportTrayBinding(book, books.size - index - 1)
+                    DesktopBookExport.exportCustomEpub(path, listOf(book), range, size)
+                }
                 Toasters.get().toast("导出完成\n$path")
+            } catch (e: CancellationException) {
+                // 托盘取消导出: 不报错, 已写出的半成品与 app 端取消语义一致
+                throw e
             } catch (e: Exception) {
                 AppLog.put("导出书籍出错\n${e.message}", e)
                 Toasters.get().toast("导出书籍出错\n${e.message}")
+            } finally {
+                DesktopMediaTray.export = null
             }
         }
     }
 
+    /**
+     * 把当前导出进度交给托盘呈现 (对照 app 端 ExportBookService.upExportNotification):
+     * 托盘图标常驻显示书名 + 剩余待导本数, 右键菜单可取消 (取消即取消本次导出任务)。
+     */
+    private fun upExportTrayBinding(book: Book, remaining: Int) {
+        DesktopMediaTray.export = ExportTrayBinding(
+            bookName = book.name,
+            remaining = remaining,
+            cancel = { exportBooksJob?.cancel() },
+        )
+    }
+
     private fun startExport(dir: String, books: List<Book>) {
+        if (exportBooksJob?.isActive == true) {
+            Toasters.get().toast("书籍正在导出")
+            return
+        }
         val type = prefs.getInt(PreferKey.exportType, 0)
-        scope.launch {
+        exportBooksJob = scope.launch {
             Toasters.get().toast("开始导出 ${books.size} 本")
-            runCatching {
-                // 对照 app 端 MainActivity.startExportBooks: 图片书一律导出 cbz,
-                // 其余按配置类型 (0=txt 1=epub)
-                val txtBooks = arrayListOf<Book>()
-                val epubBooks = arrayListOf<Book>()
-                val cbzBooks = arrayListOf<Book>()
-                books.forEach { book ->
+            try {
+                books.forEachIndexed { index, book ->
+                    upExportTrayBinding(book, books.size - index - 1)
+                    // 对照 app 端 MainActivity.startExportBooks: 图片书一律导出 cbz,
+                    // 其余按配置类型 (0=txt 1=epub)
                     when {
-                        book.isImage -> cbzBooks.add(book)
-                        type == 1 -> epubBooks.add(book)
-                        else -> txtBooks.add(book)
+                        book.isImage -> DesktopBookExport.exportCbz(dir, listOf(book))
+                        type == 1 -> DesktopBookExport.exportEpub(dir, listOf(book))
+                        else -> DesktopBookExport.exportTxt(dir, listOf(book))
                     }
                 }
-                if (txtBooks.isNotEmpty()) DesktopBookExport.exportTxt(dir, txtBooks)
-                if (epubBooks.isNotEmpty()) DesktopBookExport.exportEpub(dir, epubBooks)
-                if (cbzBooks.isNotEmpty()) DesktopBookExport.exportCbz(dir, cbzBooks)
+                Toasters.get().toast("导出完成\n$dir")
+            } catch (e: CancellationException) {
+                // 托盘取消导出: 不报错, 已写出的半成品与 app 端取消语义一致
+                throw e
+            } catch (e: Exception) {
+                AppLog.put("导出书籍出错\n${e.message}", e)
+                Toasters.get().toast("导出书籍出错\n${e.message}")
+            } finally {
+                DesktopMediaTray.export = null
             }
-                .onSuccess { Toasters.get().toast("导出完成\n$dir") }
-                .onFailure {
-                    AppLog.put("导出书籍出错\n${it.message}", it)
-                    Toasters.get().toast("导出书籍出错\n${it.message}")
-                }
         }
     }
 

@@ -29,7 +29,7 @@ import { handleMarkdownRequest } from '../bridge/MarkdownBridgeHandler';
 // KP8+ System 桥接处理器 (ArkTS 侧 promptAction.showToast + context.startAbility 真实实现)
 import { initSystemBridge, handleShowToast, handleOpenUrl } from '../bridge/SystemBridgeHandler';
 import { handleBatteryRequest } from '../bridge/BatteryBridgeHandler';
-import { initPlatformEvent, emitAppLifecycle, emitColorMode, emitDialogResult } from '../bridge/PlatformEventBridge';
+import { initPlatformEvent, emitAppLifecycle, emitColorMode, emitDialogResult, emitPlatformEvent, NotificationActionEvent } from '../bridge/PlatformEventBridge';
 import { initShareBridge, handleShareRequest } from '../bridge/SystemShareBridgeHandler';
 import { handleDialogRequest } from '../bridge/SysDialogBridgeHandler';
 import { installSystemEventSources } from '../bridge/SystemEventSources';
@@ -40,6 +40,13 @@ import { initPermissionBridge, handlePermissionRequest } from '../bridge/Permiss
 // Notification tsfn 跨语言 payload (与 OhosNativeBridge.kt NotificationPayload 对齐)
 // 由 KMP 侧 KS_JSON 序列化为 JSON 字符串, 经 C++ tsfn dispatch 到 ArkTS 回调, 此处 JSON.parse 还原。
 // 注: Toast payload 已移至 SystemBridgeHandler.ets (与 handleShowToast 一并管理)
+
+/** 通知上的一个按钮 (与 Kotlin OhosNativeBridge.NotificationButton 对齐)。 */
+interface NotificationButton {
+  text: string;    // 按钮文案 (原版 addAction 的 title)
+  action: string;  // 动作标识 (原版 addAction 的 pendingIntent action, 如 IntentAction.stop)
+}
+
 interface NotificationPayload {
   action: string;  // 'SHOW' | 'CANCEL'
   id: number;
@@ -47,6 +54,11 @@ interface NotificationPayload {
   content?: string;
   progress?: number;
   max?: number;
+  // 进行中分支 (对照原版 setOngoing(true)): 置 isOngoing / isAlertOnce 且 tapDismissed=false;
+  // 缺省 (false/缺省字段) 时三个字段都不下发, 系统按默认处理
+  ongoing?: boolean;
+  // 通知按钮 (对照原版 addAction); 缺省/空数组 = 无按钮
+  buttons?: NotificationButton[];
 }
 
 /**
@@ -66,6 +78,12 @@ const NOTIFICATION_ROUTES: Map<number, string> = new Map<number, string>([
 function routeOfNotification(id: number): string | undefined {
   return NOTIFICATION_ROUTES.get(id);
 }
+
+// ===== 通知按钮回传参数约定 (EntryAbility 写进按钮 want、被拉起时从 want.parameters 读回) =====
+// 与 shortcuts_config.json 的 wants.parameters 同一形制: 系统把 wants.parameters 放进被拉起
+// Ability 的 `want.parameters` (不出现在 want.uri), 值一律取字符串。按钮由此不必新增 napi 导出。
+const NOTIFICATION_ID_PARAM: string = 'notificationId';
+const NOTIFICATION_ACTION_PARAM: string = 'action';
 
 /** 窗口策略命令 payload (与 OhosNativeBridge.kt WindowCommand 对齐)。 */
 interface WindowCommand {
@@ -142,6 +160,54 @@ function routeFromWantParameters(want: Want): string {
   }
   const value: Object | undefined = params['route'];
   return typeof value === 'string' ? value : '';
+}
+
+/**
+ * 通知按钮的 want 参数 (写进按钮的 wantAgent, 见 buildLaunchWantAgent 的 parameters 入参)。
+ *
+ * 两个值都取字符串 (与 shortcuts_config.json 的 wants.parameters 同一约束: 值只允许 string),
+ * 由本文件自己写、自己读 —— 点击经既有 `want → handleDeepLink` 入口回送 Kotlin, 不必新增 napi 导出。
+ *
+ * @param notificationId 通知 id (与 Kotlin NotificationId 常量同一张 id 表)
+ * @param action 按钮动作标识 (来自 Kotlin NotificationButton.action, 原版 IntentAction 字面量)
+ */
+function notificationActionWantParameters(notificationId: number, action: string): Record<string, Object> {
+  const parameters: Record<string, Object> = {};
+  parameters[NOTIFICATION_ID_PARAM] = String(notificationId);
+  parameters[NOTIFICATION_ACTION_PARAM] = action;
+  return parameters;
+}
+
+/**
+ * 投递通知按钮点击 (从按钮 want 的 parameters 解出, 经统一平台事件通道回送 Kotlin)。
+ *
+ * 两个参数 (notificationId + action) 齐备才算通知按钮点击, 否则返回 false 由调用方继续走
+ * 其它启动分支 (与 [routeFromWantParameters] 同款“解不出就不接管”的处理)。
+ *
+ * @returns true = 本次 want 是通知按钮点击 (已投递)
+ */
+function dispatchNotificationAction(want: Want): boolean {
+  const params: Record<string, Object> | undefined = want.parameters;
+  if (params === undefined) {
+    return false;
+  }
+  const id: Object | undefined = params[NOTIFICATION_ID_PARAM];
+  const action: Object | undefined = params[NOTIFICATION_ACTION_PARAM];
+  if (typeof id !== 'string' || typeof action !== 'string' || action.length === 0) {
+    return false;
+  }
+  const notificationId: number = Number.parseInt(id, 10);
+  if (Number.isNaN(notificationId)) {
+    return false;
+  }
+  const payload: NotificationActionEvent = {
+    type: 'notificationAction',
+    notificationId: notificationId,
+    action: action
+  };
+  emitPlatformEvent(payload);
+  console.info('[Legado] notification action dispatched: id=' + notificationId + ', action=' + action);
+  return true;
 }
 
 /**
@@ -283,7 +349,7 @@ export default class EntryAbility extends UIAbility {
     // KP8+: toast 回调抽至 SystemBridgeHandler.handleShowToast (与 handleOpenUrl 一并管理 system 桥接)。
     registerSafely((): void => {
       legado.registerToastCallback(handleShowToast);
-      legado.registerNotificationCallback((json: string): void => {
+      legado.registerNotificationCallback(async (json: string): Promise<void> => {
         try {
           const payload = JSON.parse(json) as NotificationPayload;
           if (payload.action === 'CANCEL') {
@@ -315,6 +381,35 @@ export default class EntryAbility extends UIAbility {
               }
             };
           }
+          // 进行中分支 (对照原版 setOngoing(true) + setOnlyAlertOnce(true)):
+          // isOngoing = 进行中通知; tapDismissed=false = 点正文/按钮都不把通知清掉;
+          // isAlertOnce = 后续同名刷新不再重复提醒。三者同属原版“进行中”那一支, 故由同一个
+          // ongoing 字段驱动; 缺省 (结束态/其它进度通知) 下三个字段都不下发, 系统按默认处理
+          // (tapDismissed 默认 true ↔ 原版 setAutoCancel(true))。
+          if (payload.ongoing === true) {
+            request.isOngoing = true;
+            request.tapDismissed = false;
+            request.isAlertOnce = true;
+          }
+          // 通知按钮 (对照原版 addAction): 每项一个 wantAgent, 携带 notificationId + action
+          // (见 dispatchNotificationAction); 构建失败则本次不带按钮, 通知照发。
+          const buttons: NotificationButton[] | undefined = payload.buttons;
+          if (buttons !== undefined && buttons.length > 0) {
+            try {
+              const actionButtons: notificationManager.NotificationActionButton[] = [];
+              for (const button of buttons) {
+                actionButtons.push({
+                  title: button.text,
+                  wantAgent: await buildLaunchWantAgent(
+                    this.context, undefined, notificationActionWantParameters(payload.id, button.action)
+                  )
+                });
+              }
+              request.actionButtons = actionButtons;
+            } catch (e) {
+              console.error('[Legado] notification actionButtons failed: ' + JSON.stringify(e));
+            }
+          }
           // 点击通知拉起应用。本通道只能传 id 与文本, 无法携带路由, 故按 [NOTIFICATION_ROUTES]
           // 映射到 app 端各通知 contentIntent 的同名 route 串。
           // 未挂 wantAgent 时由系统默认行为拉起 (与改动前一致)。
@@ -323,7 +418,11 @@ export default class EntryAbility extends UIAbility {
           } catch (e) {
             console.error('[Legado] notification wantAgent failed: ' + JSON.stringify(e));
           }
-          notificationManager.publish(request);
+          // 发布失败 (通知未授权 1600004 / 不允许发送 1600020 等) 必须可见:
+          // publish 返回 Promise, 不用 catch 接住的话失败现场什么都不剩
+          notificationManager.publish(request).catch((err: Error): void => {
+            console.error('[Legado] notification publish failed: ' + JSON.stringify(err) + ', id=' + payload.id);
+          });
         } catch (e) {
           console.error('[Legado] notification callback failed: ' + JSON.stringify(e) + ', json=' + json);
         }
@@ -571,6 +670,8 @@ export default class EntryAbility extends UIAbility {
    * 投递外部启动请求给 KMP 侧 (onCreate 冷启动 / onNewWant 热启动共用)。
    *
    * # 分流 (与 Kotlin LegadoNativeExports.handleDeepLink / handleLaunchRequest 分工对应)
+   * - 通知按钮点击 (want.uri 为空, notificationId + action 在 want.parameters) →
+   *   emitPlatformEvent (Kotlin OhosPlatformEventChannel 的 type="notificationAction")
    * - legado:// / yuedu:// 一键导入链接 → legado.handleDeepLink
    *   (@CName legado_handle_deep_link → LegadoDeepLinkHandler 弹勾选导入对话框)
    * - 主屏快捷方式 (want.uri 为空, 路由在 want.parameters.route) → legado.handleLaunchRequest
@@ -589,6 +690,11 @@ export default class EntryAbility extends UIAbility {
   private handleDeepLink(want: Want): void {
     const uri: string = want.uri ?? '';
     if (uri.length === 0) {
+      // 通知按钮点击: 参数在 want.parameters (notificationId + action), 不在 want.uri ——
+      // 先投递回 Kotlin (统一平台事件通道 type="notificationAction"), 不再走其它启动分支。
+      if (dispatchNotificationAction(want)) {
+        return;
+      }
       // 主屏快捷方式: 路由参数在 want.parameters.route (shortcuts_config.json 的
       // wants.parameters), 不在 want.uri —— 不先把这一支捞出来, 三项快捷方式全都只能
       // 拉起应用而不会跳转。值按裸路由名约定拼 `route:` 前缀投递 (与通知点击同一条链)。
@@ -750,9 +856,9 @@ export default class EntryAbility extends UIAbility {
                   }
                   break;
                 case 'showDialog':
-                  // 系统对话框桥 (KMP → ArkTS 跨线程 dispatch, 复用本通道避免新增独立 tsfn;
+                  // 对话框桥 (KMP → ArkTS 跨线程 dispatch, 复用本通道避免新增独立 tsfn;
                   // 同 exitApplication 的复用先例)。payload 是 OhosNativeBridge.DialogBridgeRequest
-                  // JSON, 交 SysDialogBridgeHandler 弹系统提示对话框 (候选列表 / 是-否确认框),
+                  // JSON, 交 SysDialogBridgeHandler 弹对话框 (候选列表 / 是-否确认框 / 多字段输入框),
                   // 用户选择后经 legado.platformEvent (type='dialogResult') 回送 KMP。
                   handleDialogRequest(cmd.payload ?? '', (requestId: number, resultJson: string): void => {
                     emitDialogResult(requestId, resultJson);

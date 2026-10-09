@@ -338,29 +338,66 @@ private object OhosFilePickerService : FilePickerService {
             .mapNotNull(::materialize)
 
     /**
-     * 鸿蒙 DocumentViewPicker.save 需在弹窗时就交出字节, 与"先要路径后写入"的接口顺序相反,
-     * 故同 iOS: 返回沙盒 filesDir/export 下的可写路径, 用户可在"文件"应用中取用。
+     * 单文件导出取目标路径: 弹目录选择器 ([pickDirectory], 对照原版导出形制 —— 先选目录,
+     * 再把文件写进该目录, 见 HandleFileContract.EXPORT + FileUtils.exportFile), 返回该目录下的
+     * 目标文件路径, 由调用方写盘。
+     *
+     * 写入用的是选择器当场给的临时授权 (授权持久化与 URI→路径转换在 [pickDirectory] 内完成),
+     * 后续访问才需激活。
+     *
+     * @return 用户取消选目录返回 null (调用方静默)
      */
     override fun saveFile(suggestedName: String, defaultDir: String?): String? {
-        val dir = defaultDir ?: (AppFilesDirs.get().filesDir + "/export")
-        return runCatching {
-            File(dir).mkdirs()
-            "$dir/$suggestedName"
-        }.getOrNull()
+        val dir = defaultDir ?: pickDirectory() ?: return null
+        return "$dir/$suggestedName"
     }
+
+    /**
+     * 图片查看器长按保存落系统相册 (用户指定要求, 与原版 PhotoDialog 的目录记忆不同)。
+     * 漫画图片保存不受本项影响, 始终走 [saveImageRememberingDir] 的目录记忆。
+     */
+    override val imageViewerSavesToAlbum: Boolean = true
 
     override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? {
         val ext = imageExtension(bytes, suggestedName).removePrefix(".")
         val savedToAlbum = runCatching { saveImageToAlbum(ext, bytes) }.getOrDefault(false)
         if (savedToAlbum) return true
-        val path = saveFile(suggestedName) ?: return null
+        // 相册写不进去 (未授予相册权限/图库写入被拒): 落沙盒导出目录, 保住内容不丢
         return runCatching {
-            File(path).writeBytes(bytes)
+            val dir = AppFilesDirs.get().filesDir + "/export"
+            File(dir).mkdirs()
+            File(dir, suggestedName).writeBytes(bytes)
             true
         }.getOrDefault(false)
     }
 
+    /**
+     * 支持把图片字节写进选定目录 ([saveImageRememberingDir] 的"选一次目录后直写"分支)。
+     *
+     * 选定目录在沙盒外, 写入前必须先激活其持久化目录授权 ([OhosDirAuthorizations]),
+     * 否则重启后写入被拒 (对照 [OhosAuthorizedFileBookAccessor] 的书籍落盘同款处理)。
+     */
+    override val supportsDirWrite: Boolean = true
+
+    override fun writeImageToDir(dir: String, fileName: String, bytes: ByteArray): Boolean =
+        runCatching {
+            OhosDirAuthorizations.ensureActivatedFor(dir)
+            val destDir = File(dir).apply { mkdirs() }
+            File(destDir, fileName).writeBytes(bytes)
+            true
+        }.getOrDefault(false)
+
+    /**
+     * 备份目录可写性预检。
+     *
+     * 用户选定的备份目录在沙盒外, "已记住的备份路径"须先激活持久化授权才可写 —— 否则
+     * 重启后这里会为真可写的目录报出 false, 把用户拉回重选目录 (对照
+     * [io.legado.app.ui.route.BackupConfigRoute] 不可写即重选的分支)。
+     * 未登记的路径 (沙盒内/手机降级路径) [OhosDirAuthorizations.ensureActivatedFor] 直通,
+     * 与改动前一致。
+     */
     override fun checkWrite(path: String): Boolean = runCatching {
+        OhosDirAuthorizations.ensureActivatedFor(path)
         val testDir = File(path)
         if (!testDir.exists()) testDir.mkdirs()
         if (!testDir.isDirectory) return@runCatching false

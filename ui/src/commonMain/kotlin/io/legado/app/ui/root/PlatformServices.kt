@@ -50,15 +50,36 @@ object PlatformServiceProviders {
 interface FilePickerService {
     fun pickFile(filter: FileFilter): String?
     fun pickFiles(filter: FileFilter): List<String>
+
+    /**
+     * 取一个可写目标路径 (调用方自行写盘)。各端按平台形制决定怎么取得:
+     * 安卓 SAF 单文件另存为 / 桌面保存对话框 / iOS 沙盒可见目录 / 鸿蒙选目录
+     * (原版导出形制是选目录后把文件写进该目录, 见 HandleFileContract.EXPORT + FileUtils.exportFile)。
+     *
+     * @return 用户取消选择返回 null (调用方静默)
+     */
     fun saveFile(suggestedName: String, defaultDir: String? = null): String?
 
     /**
-     * 保存图片字节到用户选择的位置（图片查看器长按保存，对照 master PhotoDialog.doSaveImage）。
-     * 各端: app=SAF CreateDocument → contentResolver 写入; desktop=保存对话框 → File 写入。
+     * 保存图片字节到本端的图片落点 (书签分享卡片导出; 图片查看器长按保存在
+     * [imageViewerSavesToAlbum]=true 的端也走这条)。
+     * 各端: app=SAF CreateDocument → contentResolver 写入; desktop=保存对话框 → File 写入;
+     * iOS=沙盒导出目录; 鸿蒙=系统相册。
      * 返回: true=写入成功; false=写入失败; null=用户取消选择位置（调用方应静默）。
      * 未实现端返回 false（调用方 toast 失败）。
      */
     fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? = false
+
+    /**
+     * 图片查看器长按保存的落点是否为系统相册。
+     *
+     * true 的端 (鸿蒙) 走 [saveImageBytes] 落系统相册; false 的端走
+     * [saveImageRememberingDir] 的目录记忆 (对照原版 PhotoDialog.initEvent 读图片目录键后直写)。
+     *
+     * 鸿蒙落系统相册是用户指定要求 (与原版 PhotoDialog 的目录记忆不同, 不是对齐原版的改动)。
+     * 漫画图片保存不受本项影响: 那条路径始终用目录记忆 (对照原版 ReadMangaActivity.saveImage)。
+     */
+    val imageViewerSavesToAlbum: Boolean get() = false
 
     /**
      * 是否支持"把字节写进指定目录" (决定图片保存能不能记住上次目录):

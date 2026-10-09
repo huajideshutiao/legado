@@ -10,6 +10,7 @@ import io.legado.app.help.media.SystemMediaControl
 import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.tts.OhosReadAloudHost
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.ui.OhosPlatformCapabilities
 import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.utils.KS_JSON
 import io.legado.app.web.refreshOhosWebServerAddresses
@@ -42,6 +43,8 @@ import kotlinx.serialization.Serializable
  *   → `io.legado.app.web.refreshOhosWebServerAddresses` (刷新 Web 服务地址)
  * - 系统对话框结果: `{ "type":"dialogResult", "requestId":3, "dialogResult":"{...}" }`
  *   → [OhosNativeBridge.onDialogResult] (系统对话框桥的响应侧, 见 [OhosNativeBridge.invokeDialogSync])
+ * - 通知按钮点击: `{ "type":"notificationAction", "notificationId":104, "action":"stop" }`
+ *   → [io.legado.app.ui.OhosPlatformCapabilities.onNotificationAction] (通知 actionButtons 的点击侧)
  *
  * 后四类是同一次扩展加上的 (媒体/电话/网络), 仍走同一个 napi 入口与同一个解析器;
  * dialogResult 是系统对话框桥的响应侧 (请求侧复用 window tsfn), 同样走本入口。
@@ -244,6 +247,12 @@ internal object OhosPlatformEventChannel {
                 requestId = payload.requestId,
                 resultJson = payload.dialogResult.orEmpty(),
             )
+
+            // 通知按钮点击 (EntryAbility 从按钮 want 的 parameters 解出 → emitPlatformEvent)
+            "notificationAction" -> OhosPlatformCapabilities.onNotificationAction(
+                notificationId = payload.notificationId,
+                action = payload.action.orEmpty(),
+            )
         }
     }
 }
@@ -252,7 +261,8 @@ internal object OhosPlatformEventChannel {
  * 统一平台事件载荷 (Kotlin 侧唯一一份定义, 与 ArkTS PlatformEventBridge.ets 对齐)。
  *
  * @param type 事件类型: "httpProgress" | "lifecycle" | "colorMode" |
- *   "audioDeviceChange" | "audioFocusChange" | "callStateChange" | "networkAvailable" | "dialogResult"
+ *   "audioDeviceChange" | "audioFocusChange" | "callStateChange" | "networkAvailable" | "dialogResult" |
+ *   "notificationAction"
  * @param url httpProgress: 请求 url (与 addListener 的 url 对应)
  * @param bytesReceived httpProgress: 已接收字节数
  * @param totalBytes httpProgress: 总字节数 (<=0 表示未知, 如分块传输无 Content-Length)
@@ -264,6 +274,8 @@ internal object OhosPlatformEventChannel {
  * @param state callStateChange: "idle" | "ringing" | "offHook"
  * @param requestId dialogResult: 对应 [OhosNativeBridge.invokeDialogSync] 生成的请求 ID
  * @param dialogResult dialogResult: 系统对话框结果 JSON (`{ok,index}` / `{ok,confirmed}` / `{ok,cancelled}`)
+ * @param notificationId notificationAction: 通知 id (与 ArkTS NOTIFICATION_ROUTES、[io.legado.app.constant.NotificationId] 同一张 id 表)
+ * @param action notificationAction: 按钮动作标识 (原版 `addAction` 的 pendingIntent action, 如 "stop")
  */
 @Serializable
 internal data class OhosPlatformEventPayload(
@@ -279,4 +291,6 @@ internal data class OhosPlatformEventPayload(
     val state: String? = null,
     val requestId: Long = 0L,
     val dialogResult: String? = null,
+    val notificationId: Int = 0,
+    val action: String? = null,
 )

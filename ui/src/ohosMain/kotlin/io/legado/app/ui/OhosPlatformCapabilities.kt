@@ -3,6 +3,8 @@ package io.legado.app.ui
 import io.legado.app.constant.AppLog
 import kotlin.concurrent.Volatile
 import io.legado.app.constant.BookType
+import io.legado.app.constant.IntentAction
+import io.legado.app.constant.NotificationId
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
@@ -13,6 +15,9 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.effectiveBookSaveDir
+import io.legado.app.help.book.getExportFileName
+import io.legado.app.help.book.isImage
+import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.file.OhosDirAuthorizations
 import io.legado.app.help.copyToClipboard as copyTextToClipboard
 import io.legado.app.help.readFromClipboard
@@ -23,7 +28,9 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.help.tts.OhosReadAloudHost
 import io.legado.app.help.upLoadToDirectLink
 import io.legado.app.model.Debug
+import io.legado.app.model.ExportBookUtils
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.napi.NotificationButton
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.service.defaultTtsEngineConfig
 import io.legado.app.ui.book.import.ImportFileItem
@@ -34,14 +41,17 @@ import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.pushExportDispatch
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.File
 import io.legado.app.utils.GSON
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.ScreenInfoProviders
 import io.legado.app.utils.toJson
+import io.legado.app.utils.verificationField
 import io.legado.app.web.WebServerManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -56,8 +66,8 @@ import kotlinx.serialization.encodeToString
 /**
  * 鸿蒙端 [io.legado.app.ui.root.PlatformCapabilities]: 内核已下沉的能力复用 [SharedPlatformCapabilities] (对照 desktop),
  * 依赖弹窗宿主 (分组管理/文本输入/主题列表) 的能力保持 unsupported —
- * 鸿蒙端尚无命令式对话框宿主, 需先补 Compose 对话框层 (本地书导入浏览已由
- * [NativeImportBook] 支持, 仅"按文件名导入 js"文本输入待 shared 补 TextInput Overlay)。
+ * 需输入的弹窗走 ArkTS 侧自绘对话框桥 (select/confirm/form 三种, 见 SysDialogBridgeHandler.ets;
+ * 本地书导入浏览已由 [NativeImportBook] 支持, "按文件名导入 js" 走 shared 的 TextInput Overlay)。
  * 转场动画 spec 不 override, 随 shared 默认 (iOS 式 300ms): 鸿蒙系统默认页面转场
  * 使用弹簧曲线 (spring curve), 时长与物理参数相关且不同设备默认动画不同
  * (查证 OpenHarmony 官方文档 arkts-navigation-animation.md: "默认转场动画使用弹簧曲线,
@@ -335,6 +345,59 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
 
     // ===== 书架管理: 导出开关 =====
 
+    /** 导出进度通知正文 (对照 app 端 ExportBookService.notificationContentText)。 */
+    private var notificationContentText = syncGetString("service_starting")
+
+    /**
+     * 更新导出进度通知 (对照 app 端 ExportBookService.upExportNotification)。
+     *
+     * 通知 id 用 [NotificationId.ExportBookService]: 与 ArkTS 侧 NOTIFICATION_ROUTES 的 id→route
+     * 表同源, 点击通知回书籍管理页; 同 id 覆盖式更新即“同一条通知”从进行中变结束态。
+     *
+     * 进行中带“取消”按钮 (对照原版 `addAction`, 动作字面量 [IntentAction.stop]), 点是后由宿主
+     * 经统一平台事件通道回传到 [onNotificationAction]; 结束态 (finish=true) 不带按钮。
+     *
+     * @param finish true = 结束态 (对照原版该分支的 `setOngoing(false)` + `setAutoCancel(true)`)
+     */
+    private fun upExportNotification(finish: Boolean = false) {
+        OhosNativeBridge.showNotification(
+            id = NotificationId.ExportBookService,
+            title = syncGetString("export_book"),
+            content = notificationContentText,
+            progress = 0,
+            max = 0,
+            ongoing = !finish,
+            buttons = if (finish) {
+                emptyList()
+            } else {
+                listOf(NotificationButton(text = syncGetString("cancel"), action = IntentAction.stop))
+            },
+        )
+    }
+
+    /**
+     * 通知按钮动作入口 (通知 actionButtons 点击 → 统一平台事件通道 type="notificationAction")。
+     *
+     * (id, action) 逐字对照原版按钮的 pendingIntent: `servicePendingIntent<ExportBookService>(IntentAction.stop)`
+     * —— id 指明哪个通知 (哪个“服务”), action 是原版的 Intent action 字面量。
+     */
+    fun onNotificationAction(notificationId: Int, action: String) {
+        if (notificationId == NotificationId.ExportBookService && action == IntentAction.stop) {
+            cancelExport()
+        }
+    }
+
+    /**
+     * 取消正在跑的导出并撤掉导出通知 (对照原版 ExportBookService 的 IntentAction.stop 分支:
+     * `notificationManager.cancel(NotificationId.ExportBook)` + `stopSelf()` —— 后者使服务的
+     * lifecycleScope 取消, 导出协程随之在章节目录/分卷边界停下)。
+     */
+    private fun cancelExport() {
+        exportBooksJob?.cancel()
+        exportBooksJob = null
+        services.notifications.cancelNotification(NotificationId.ExportBookService)
+    }
+
     // 导出书籍正文, 直接写进有效导出目录 (用户选过 → 偏好键; 鸿蒙无惯例目录, 见
     // OhosDataStorage.defaultBookExportDir —— 应用沙盒对文件管理器不可见, 写进去用户找不着),
     // 不经系统分享面板 (对照 app 端 ExportBookService 的落盘语义)
@@ -353,29 +416,20 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
             return
         }
         exportBooksJob = scope.launch {
-            val exportDirPath = effectiveBookExportDir() ?: return@launch
-            val exportDir = File(exportDirPath)
-            val usable = try {
-                // 选定目录在沙盒外: 写入前先激活其持久化目录授权, 再确保目录存在
-                OhosDirAuthorizations.ensureActivatedFor(exportDirPath)
-                exportDir.isDirectory || exportDir.mkdirs()
-            } catch (e: Exception) {
-                AppLog.put("导出目录不可用\n${e.message}", e)
-                prefs.remove(PreferKey.bookExportPath)
-                Toasters.get().toast("导出目录不可用，请重新选择")
-                return@launch
-            }
-            if (!usable) {
-                Toasters.get().toast("无法创建导出目录")
-                return@launch
-            }
+            val exportDir = openExportDir() ?: return@launch
             val failures = mutableListOf<String>()
             val usedPaths = mutableSetOf<String>()
             val exportType = prefs.getInt(PreferKey.exportType, 0)
             var exported = 0
-            books.forEach { book ->
+            books.forEachIndexed { bookIndex, book ->
                 try {
                     currentCoroutineContext().ensureActive()
+                    notificationContentText = syncGetString(
+                        "export_book_notification_content",
+                        book.name,
+                        books.size - bookIndex - 1,
+                    )
+                    upExportNotification()
                     val file = NativeBookExporter.exportBookFile(book, exportDir, usedPaths, exportType)
                     exported++
                     if (prefs.getBoolean(PreferKey.exportToWebDav, false)) {
@@ -388,6 +442,8 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
                     AppLog.put("导出书籍失败：${book.name}\n${e.message}", e)
                 }
             }
+            notificationContentText = "导出完成"
+            upExportNotification(finish = true)
             if (exported > 0) {
                 Toasters.get().toast("已导出 $exported 本书到 ${exportDir.absolutePath}")
             }
@@ -398,16 +454,195 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     }
 
     /**
+     * 打开发送导出目录: 取有效导出目录 ([effectiveBookExportDir]) → 激活其持久化目录授权
+     * → 确保目录存在。
+     *
+     * 选定目录在应用沙盒之外, 按 POSIX 路径写入前必须先激活授权; 授权失效 (用户在系统里
+     * 撤销/换过目录) 时清掉记忆目录, 下次导出重新让用户选。
+     *
+     * @return 可写目录; 已提示并返回 null 表示本次不能导出
+     */
+    private fun openExportDir(): File? {
+        val path = effectiveBookExportDir() ?: return null
+        val dir = File(path)
+        val usable = try {
+            OhosDirAuthorizations.ensureActivatedFor(path)
+            dir.isDirectory || dir.mkdirs()
+        } catch (e: Exception) {
+            AppLog.put("导出目录不可用\n${e.message}", e)
+            prefs.remove(PreferKey.bookExportPath)
+            Toasters.get().toast("导出目录不可用，请重新选择")
+            return null
+        }
+        if (!usable) {
+            Toasters.get().toast("无法创建导出目录")
+            return null
+        }
+        return dir
+    }
+
+    /**
      * 选择导出文件夹 (对照 BookshelfManageActivity.selectExportFolder 与 exportDir 回调):
      * 复用 [PlatformServiceProviders] 的目录选择器选一个用户可见的公共目录
      * (DocumentViewPicker + 授权持久化写模式 + 官方转换路径 + 记入授权表供重启后激活),
-     * 选中后记偏好键 [PreferKey.bookExportPath], 有选中书籍则直接导出。
+     * 选中后记偏好键 [PreferKey.bookExportPath]; 开了自定义导出章节先弹章节配置, 否则直接导出。
      */
     override fun selectExportFolder(books: List<Book>) {
         scope.launch {
             val path = services.files.pickDirectory() ?: return@launch
             prefs.putString(PreferKey.bookExportPath, path)
-            if (books.isNotEmpty()) exportAllBooks(books)
+            if (books.isEmpty()) return@launch
+            // 对照 BookshelfManageActivity.exportDir 回调的 enableCustomExport():
+            // 开关与"导出类型为 epub"两条相与 (app 端逐字是
+            // AppConfig.enableCustomExport && AppConfig.exportType == 1)
+            if (prefs.getBoolean(PreferKey.enableCustomExport, false) &&
+                prefs.getInt(PreferKey.exportType, 0) == 1
+            ) {
+                showExportSectionConfig(path, books)
+            } else {
+                exportAllBooks(books)
+            }
+        }
+    }
+
+    /**
+     * 自定义导出章节配置 (对照 BookshelfManageActivity.configExportSection 与
+     * dialog_select_section_export.xml: 导出全部 / 自定义导出 + 分卷文件名 JS 规则 + 分卷大小
+     * + 章节范围)。表单形制与 iOS 同项一致 (三个输入框 + "导出所有"/"自定义导出"两个提交键),
+     * 自绘对话框由 ArkTS 侧承载 (鸿蒙系统提示对话框只有标题/正文/按钮, 承载不了输入框, 见
+     * SysDialogBridgeHandler.ets 的 form 能力)。
+     *
+     * @param path 刚选定的导出目录; 两个导出分支都经 [effectiveBookExportDir] 重取
+     *   (与本参数同值, 与 iOS 同项实现同口径)
+     * @param books 待导出书籍
+     */
+    override fun showExportSectionConfig(path: String, books: List<Book>) {
+        if (books.isEmpty()) {
+            Toasters.get().toast("书籍不能为空")
+            return
+        }
+        scope.launch {
+            val outcome = formDialog(
+                OhosDialogFormPayload(
+                    title = syncGetString("select_section_export"),
+                    fields = listOf(
+                        OhosDialogFormField(
+                            key = FORM_FIELD_FILE_NAME,
+                            label = syncGetString("export_file_name"),
+                            initial = prefs.getString(PreferKey.episodeExportFileName, "").orEmpty(),
+                        ),
+                        OhosDialogFormField(
+                            key = FORM_FIELD_SIZE,
+                            label = syncGetString("file_contains_number"),
+                            initial = "1",
+                            numeric = true,
+                        ),
+                        OhosDialogFormField(
+                            key = FORM_FIELD_SCOPE,
+                            label = syncGetString("export_chapter_index"),
+                            hint = "1-5,8,10-18",
+                        ),
+                    ),
+                    actions = listOf(
+                        OhosDialogFormAction(
+                            key = FORM_ACTION_ALL,
+                            text = syncGetString("export_all"),
+                        ),
+                        OhosDialogFormAction(
+                            key = FORM_ACTION_CUSTOM,
+                            text = syncGetString("custom_export"),
+                        ),
+                    ),
+                    cancelText = syncGetString("cancel"),
+                )
+            ) ?: return@launch
+            // 分卷文件名 JS 规则仅在合法时持久化 (对照 etEpubFilename 的失焦校验)
+            val fileName = outcome.values?.get(FORM_FIELD_FILE_NAME).orEmpty()
+            if (tryParesExportFileName(fileName)) {
+                prefs.putString(PreferKey.episodeExportFileName, fileName)
+            }
+            if (outcome.action == FORM_ACTION_ALL) {
+                exportAllBooks(books)
+                return@launch
+            }
+            val scopeText = outcome.values?.get(FORM_FIELD_SCOPE).orEmpty().trim()
+            if (!verificationField(scopeText)) {
+                Toasters.get().toast(syncGetString("error_scope_input"))
+                return@launch
+            }
+            // 空值按 1 卷处理 (对照 etEpubSize 的 `toIntOrNull() ?: 1`), 但 0/负数不放行:
+            // 分卷按 chunked(size) 切, 非正数会在导出中途报错
+            val size = outcome.values?.get(FORM_FIELD_SIZE).orEmpty().toIntOrNull() ?: 1
+            if (size < 1) {
+                Toasters.get().toast("每份章节数必须大于 0")
+                return@launch
+            }
+            exportCustomBooks(books, ExportBookUtils.parseScope(scopeText), size)
+        }
+    }
+
+    /**
+     * 按章节范围分卷导出 epub (对照 BookshelfManageActivity.configExportSection 向
+     * ExportBookService 传的 epubScope + epubSize: 选定章节按 [size] 卷切分, 每卷一个 epub,
+     * 卷名走分卷文件名规则)。图片书仍按既有实现导出 cbz (对照 startExport 的
+     * `if (book.isImage) "cbz"`)。
+     *
+     * @param scope 选中章节的下标集合 (0-based, [ExportBookUtils.parseScope] 的结果)
+     */
+    private fun exportCustomBooks(books: List<Book>, scope: Set<Int>, size: Int) {
+        if (books.isEmpty()) return
+        if (exportBooksJob?.isActive == true) {
+            Toasters.get().toast("书籍正在导出")
+            return
+        }
+        exportBooksJob = this.scope.launch {
+            val exportDir = openExportDir() ?: return@launch
+            val failures = mutableListOf<String>()
+            val usedPaths = mutableSetOf<String>()
+            var exported = 0
+            books.forEachIndexed { bookIndex, book ->
+                try {
+                    currentCoroutineContext().ensureActive()
+                    notificationContentText = syncGetString(
+                        "export_book_notification_content",
+                        book.name,
+                        books.size - bookIndex - 1,
+                    )
+                    upExportNotification()
+                    val bookFiles = if (book.isImage) {
+                        listOf(NativeBookExporter.exportBookFile(book, exportDir, usedPaths, 1))
+                    } else {
+                        val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
+                        val selected = chapters.filterIndexed { index, _ -> index in scope }
+                        if (selected.isEmpty()) error("章节范围内没有章节")
+                        selected.chunked(size).mapIndexed { index, part ->
+                            NativeBookExporter.exportBookFile(
+                                book, exportDir, usedPaths, 1, part,
+                                book.getExportFileName("epub", index + 1),
+                            )
+                        }
+                    }
+                    bookFiles.forEach { file ->
+                        exported++
+                        if (prefs.getBoolean(PreferKey.exportToWebDav, false)) {
+                            AppWebDavShared.exportWebDav(file.absolutePath, file.name)
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    failures.add("${book.name}：${e.message ?: "未知错误"}")
+                    AppLog.put("导出书籍失败：${book.name}\n${e.message}", e)
+                }
+            }
+            notificationContentText = "导出完成"
+            upExportNotification(finish = true)
+            if (exported > 0) {
+                Toasters.get().toast("已导出 $exported 份到 ${exportDir.absolutePath}")
+            }
+            if (failures.isNotEmpty()) {
+                Toasters.get().toast("${failures.size} 本书导出失败：${failures.take(2).joinToString()}")
+            }
         }
     }
 
@@ -541,6 +776,46 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
         return resp.index
     }
 
+    /** form 对话框的字段键/动作键 (与 ArkTS 侧原样回传的键对应)。 */
+    private const val FORM_FIELD_FILE_NAME = "fileName"
+    private const val FORM_FIELD_SIZE = "size"
+    private const val FORM_FIELD_SCOPE = "scope"
+    private const val FORM_ACTION_ALL = "all"
+    private const val FORM_ACTION_CUSTOM = "custom"
+
+    /**
+     * form 对话框的等待上限 (10 分钟): 用户要逐个字段输入, 不能用 select/confirm 的 60s。
+     */
+    private const val FORM_DIALOG_TIMEOUT_MS = 600_000L
+
+    /**
+     * 弹多字段输入对话框并返回结果 (action 为点中的动作键, values 为各字段当前文本)。
+     *
+     * 平台形态: ArkTS 侧自绘自定义对话框 ([OhosDialogFormPayload] 声明字段与动作键, 见
+     * SysDialogBridgeHandler.ets 的 `form` 能力) —— 系统提示对话框 (showDialog) 只有标题/正文/
+     * 按钮, 承载不了输入框。用户取消/关闭/桥未就绪/超时返回 null。
+     *
+     * 超时比其他两种形态长: 用户要在对话框里逐字输入, 默认 60s 会在输入途中放弃这次请求,
+     * 此后用户再点提交就没人接收了。
+     */
+    private fun formDialog(payload: OhosDialogFormPayload): OhosDialogResult? {
+        val payloadJson = KS_JSON.encodeToString(payload)
+        val resultJson = OhosNativeBridge.invokeDialogSync(
+            "form",
+            payloadJson,
+            timeoutMs = FORM_DIALOG_TIMEOUT_MS,
+        ) ?: return null
+        val resp = runCatching {
+            KS_JSON.decodeFromString(OhosDialogResult.serializer(), resultJson)
+        }.getOrNull()
+        if (resp == null || !resp.ok) {
+            AppLog.putDebug("弹多字段对话框失败: ${resp?.error ?: resultJson}", tag = "ohos-dialog")
+            return null
+        }
+        if (resp.cancelled) return null
+        return resp
+    }
+
     /**
      * 弹是-否确认框并返回是否确认 (对照 app 端 `activity.alert { okButton/noButton }`)。
      *
@@ -606,12 +881,17 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
         }
     }
 
-    /** 写到 [io.legado.app.ui.root.FilePickerService.saveFile] 给出的沙盒可写路径。 */
-    private fun saveJson(defaultName: String, json: String) {
-        val path = services.files.saveFile(defaultName) ?: return
-        runCatching { File(path).writeText(json) }
-            .onSuccess { Toasters.get().toast("已导出到 $path") }
-            .onFailure { Toasters.get().toast("导出失败\n${it.message}") }
+    /**
+     * 单文件导出 (书源/书架/所选书源 JSON): 走共享导出分发对话框 —— 按钮表与原版
+     * HandleFileContract.EXPORT 一致 (上传 URL + 目录选择), 与桌面端同一形制; 选"保存到文件"
+     * 后由平台文件选择器取目标路径并写盘。
+     *
+     * scope 是 IoDispatcher (IO 执行), pushExportDispatch 是 UI 操作, 故切主线程。
+     */
+    private suspend fun saveJson(defaultName: String, json: String) {
+        withContext(Dispatchers.Main) {
+            pushExportDispatch(defaultName, json, "application/json")
+        }
     }
 
     /** 书架导出字段 (与 app 端 exportBookshelf 的 13 个字段一致)。 */
@@ -650,11 +930,45 @@ private data class OhosDialogConfirmPayload(
     val cancelText: String,
 )
 
+/** form 请求里的一个输入字段 (Kotlin → ArkTS)。 */
+@Serializable
+private data class OhosDialogFormField(
+    /** 字段键 (回传 [OhosDialogResult.values] 的键)。 */
+    val key: String,
+    /** 字段名 (输入框上方的标签)。 */
+    val label: String,
+    /** 初始文本。 */
+    val initial: String = "",
+    /** 输入框占位提示。 */
+    val hint: String? = null,
+    /** 是否用数字键盘。 */
+    val numeric: Boolean = false,
+)
+
+/** form 请求里的一个提交按钮 (Kotlin → ArkTS): 点它即带上 [key] 提交当前各字段值。 */
+@Serializable
+private data class OhosDialogFormAction(
+    val key: String,
+    val text: String,
+)
+
+/** form 请求 payload (Kotlin → ArkTS); 标题/标签/按钮文案由本侧给, ArkTS 不拼文案。 */
+@Serializable
+private data class OhosDialogFormPayload(
+    val title: String,
+    val message: String? = null,
+    val fields: List<OhosDialogFormField>,
+    val actions: List<OhosDialogFormAction>,
+    /** 取消按钮文案; 缺省时只能拍遮罩/返回键关闭。 */
+    val cancelText: String? = null,
+)
+
 /**
  * 对话框响应 (ArkTS → Kotlin)。
  *
  * - select 成功: [ok]=true, [index]=选中下标
  * - confirm 成功: [ok]=true, [confirmed]=是否点了"是"
+ * - form 成功: [ok]=true, [action]=点中的动作键, [values]=各字段当前文本
  * - 取消/关闭: [ok]=true, [cancelled]=true (未选择)
  * - 失败: [ok]=false, [error]=错误信息
  */
@@ -663,6 +977,8 @@ private data class OhosDialogResult(
     val ok: Boolean,
     val index: Int? = null,
     val confirmed: Boolean? = null,
+    val action: String? = null,
+    val values: Map<String, String>? = null,
     val cancelled: Boolean = false,
     val error: String? = null,
 )
