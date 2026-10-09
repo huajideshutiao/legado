@@ -482,7 +482,10 @@ interface PlatformCapabilities {
     /** "导出替换"开关当前值 (对照 AppConfig.exportUseReplace) */
     fun exportUseReplace(): Boolean = false
 
-    /** "自定义导出"开关当前值 (对照 AppConfig.enableCustomExport) */
+    /**
+     * "自定义导出"开关当前值 (对照 AppConfig.enableCustomExport), 供菜单勾选态与翻转;
+     * 导出时先弹章节配置对话框的判定见 [io.legado.app.utils.enableCustomExport] (另含导出类型为 epub)。
+     */
     fun enableCustomExport(): Boolean = false
 
     /** "导出到 WebDav"开关当前值 (对照 AppConfig.exportToWebDav) */

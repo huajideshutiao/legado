@@ -1183,7 +1183,8 @@ class AndroidPlatformCapabilities(
 
     // 对照 BookshelfManageActivity.configExportSection: 自定义导出章节配置对话框
     // (导出全部/自定义导出 + epub 文件名JS规则 + 分卷大小 + 章节范围, 复刻 dialog_select_section_export.xml)。
-    // 仅在导出到文件夹且 enableCustomExport 开启时弹出 (对照 exportDir 回调 value=="cache" 分支)。
+    // 仅在选择导出文件夹且 enableCustomExport() 成立 (开关开启且导出类型为 epub) 时弹出
+    // (对照 exportDir 回调 value=="cache" 分支)。
     override fun showExportSectionConfig(path: String, books: List<Book>) {
         // 默认选中自定义导出 (对照 cbSelectExport.callOnClick())
         val allState = mutableStateOf(false)

@@ -700,8 +700,9 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
             // 记忆落偏好键 (PreferKey.bookExportPath): 与安卓同一个键、同一套三分支
             prefs.putString(PreferKey.bookExportPath, dir.absolutePath)
             if (books.isNotEmpty()) {
-                // 对照 app 端 exportDir 回调: 开启自定义导出时先弹章节配置对话框
-                if (enableCustomExport()) {
+                // 对照 app 端 exportDir 回调: 开启自定义导出时先弹章节配置对话框。
+                // 本类同名成员是"自定义导出"开关当前值 (菜单勾选态), 走全限定名取上面那条带导出类型的判定
+                if (io.legado.app.utils.enableCustomExport()) {
                     showExportSectionConfig(dir.absolutePath, books)
                 } else {
                     startExport(dir.absolutePath, books)

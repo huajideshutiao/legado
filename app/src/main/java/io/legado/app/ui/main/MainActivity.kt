@@ -119,6 +119,7 @@ import io.legado.app.ui.root.shareTextTarget
 import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.utils.ACache
 import io.legado.app.utils.FileUtils
+import io.legado.app.utils.enableCustomExport
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.keepScreenOn
 import io.legado.app.utils.observeEvent
@@ -256,7 +257,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
                 pendingExportBooks = null
                 if (books != null && books.isNotEmpty()) {
                     // 对照 BookshelfManageActivity.exportDir 回调: 开启自定义导出时先弹章节配置对话框
-                    if (AppConfig.enableCustomExport) {
+                    if (enableCustomExport()) {
                         PlatformCapabilityProviders.get()
                             .showExportSectionConfig(dirPath, books)
                     } else {

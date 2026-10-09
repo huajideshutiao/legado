@@ -557,7 +557,7 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
                 lease.close()
             }
             if (exported > 0) {
-                Toasters.get().toast("已导出 $exported 本书到 ${exportDir.absolutePath}")
+                Toasters.get().toast("导出完成\n可在「文件」App 中查看")
             }
             if (failures.isNotEmpty()) {
                 Toasters.get().toast("${failures.size} 本书导出失败：${failures.take(2).joinToString()}")
@@ -586,9 +586,8 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
             }
             prefs.putString(PreferKey.bookExportPath, path)
             if (books.isEmpty()) return@launch
-            if (prefs.getBoolean(PreferKey.enableCustomExport, false) &&
-                prefs.getInt(PreferKey.exportType, 0) == 1
-            ) {
+            // 本类同名成员是"自定义导出"开关当前值 (菜单勾选态), 走全限定名取上面那条带导出类型的判定
+            if (io.legado.app.utils.enableCustomExport()) {
                 showExportSectionConfig(path, books)
             } else {
                 exportAllBooks(books)
@@ -716,7 +715,7 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
                 lease.close()
             }
             if (exported > 0) {
-                Toasters.get().toast("已导出 $exported 份到 ${exportDir.absolutePath}")
+                Toasters.get().toast("导出完成\n可在「文件」App 中查看")
             }
             if (failures.isNotEmpty()) Toasters.get().toast("${failures.size} 本书导出失败：${failures.take(2).joinToString()}")
         }
