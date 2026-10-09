@@ -57,8 +57,9 @@ import kotlinx.serialization.Serializable
  * 鸿蒙端 [ReaderPlatformProvider]: 电池电量经 napi Battery 桥查询 @ohos.batteryInfo,
  * 菜单状态/导航回调对齐 iOS [IosReadMenuState] (visibleState 可切, click 经 navigator/screenModel)。
  *
- * ArkTS 侧 TODO: legado_napi.cpp 实现 registerBatteryCallback + BatteryBridgeHandler.ets
- * 桥未就绪时 getBatteryLevel 回落 100 (电量恒显示, 用户拍板 2026-08, 与 desktop 一致)。
+ * ArkTS 侧 callback 已在 EntryAbility 启动时注册 (EntryAbility.ets →
+ * legado.registerBatteryCallback → BatteryBridgeHandler.ets 取 @ohos.batteryInfo.batterySOC);
+ * 桥未就绪/超时 getBatteryLevel 回落 100 (电量恒显示, 用户拍板 2026-08, 与 desktop 一致)。
  */
 object OhosReaderPlatformProvider : ReaderPlatformProvider {
 

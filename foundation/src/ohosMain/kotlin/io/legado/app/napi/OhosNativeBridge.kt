@@ -1570,7 +1570,8 @@ object OhosNativeBridge {
     // 阅读页电池电量走 ArkTS @ohos.batteryInfo (无 NDK C 接口), 经 tsfn 同步请求/响应获取。
     // 调用链: KMP getBatteryLevel → invokeBatterySync("getLevel") → tsfn → ArkTS @ohos.batteryInfo.batterySOC
     //   → legado.batteryCallback(requestId, {"level":85}) → deferred.complete → 返回缓存值
-    // ArkTS 侧实现为 TODO (legado_napi.cpp registerBatteryCallback + BatteryBridgeHandler.ets)
+    // ArkTS 侧已实现 (legado_napi.cpp registerBatteryCallback + BatteryBridgeHandler.ets),
+    // 由 EntryAbility 启动时注册: legado.registerBatteryCallback(...)
 
     /** battery threadsafe_function 引用 (Kotlin → ArkTS 发送电量查询)。 */
     @Volatile

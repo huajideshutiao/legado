@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.IntentData
@@ -30,6 +31,7 @@ import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.showSourceLogin
 import io.legado.app.help.toast.Toasters
@@ -577,6 +579,25 @@ fun BookInfoRoute(
                             )
                         )
                     }
+            }
+            // "去设置目录"动作消费 (对照原版 observeLiveBus: actionLive == "selectBooksDir" →
+            // localBookTreeSelect.launch → 选中后写 AppConfig.defaultBookTreeUri)。
+            // webFile 导入/下载在"书籍保存位置未设置"时由能力面发出该动作
+            // (SharedPlatformCapabilities 与 AndroidPlatformCapabilities 共四处分支),
+            // 而本页此前只有生产者没有消费者 → 用户点"阅读"只会静默失败。
+            // 复用各端既有的选目录入口 (PlatformCapabilities.pickBookTreeUri, 与
+            // "其它设置 → 书籍保存位置"同一个入口) 与既有偏好键 PreferKey.defaultBookTreeUri,
+            // 不另造第二套选目录/落盘实现; 用户取消 (uri == null) 时不动已有配置, 也不报错。
+            // 选择器由各端能力实现自行调度 (Android 直接拉起 SAF, 其余端在自己的 scope 里),
+            // 本协程在组合主线程上调用, 满足各端的线程要求。
+            launch {
+                val pref = PreferenceProviders.get()
+                screenModel.actionLive.collect { action ->
+                    if (action != "selectBooksDir") return@collect
+                    PlatformCapabilityProviders.get().pickBookTreeUri { uri ->
+                        if (uri != null) pref.putString(PreferKey.defaultBookTreeUri, uri)
+                    }
+                }
             }
             // 对照 Activity observeLiveBus: EventBus.REFRESH_BOOK_INFO → refreshBook
             launch {
