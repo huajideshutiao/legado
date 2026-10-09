@@ -53,6 +53,7 @@ import io.legado.app.model.registerIosReadBookPlatform
 import io.legado.app.model.registerNativeCacheBookCallback
 import io.legado.app.model.script.registerNativeJsEngines
 import io.legado.app.model.webBook.registerNativeWebBookProviders
+import io.legado.app.ui.IosShareInbox
 import io.legado.app.ui.book.changesource.registerNativeChangeBookSourcePlatform
 import io.legado.app.ui.book.manage.registerNativeBookshelfManagePlatform
 import io.legado.app.ui.book.read.page.provider.registerSkiaTextMeasurer
@@ -299,4 +300,10 @@ fun registerIosProviders() {
     // 必须在 didFinishLaunching 返回前调用 (Apple 硬约束), 本函数由 iOS 宿主在该钩子内调用,
     // 置于全部 provider 注册之后。
     registerIosBackgroundTasks()
+
+    // 分享扩展取件扫描 (分享面板 → App Group 共享容器 → 本启动路径取件 → 既有导入分发)。
+    // 入口类写件见 iosApp/ShareExtension/ShareViewController.swift。
+    // 取件本身在 IO 线程上跑 (见 IosShareInbox); 通道未生效时 (未签名产物拿不到
+    // App Group entitlement, 容器取不到) 安静退出, 不抛不崩。
+    IosShareInbox.deliverPending()
 }

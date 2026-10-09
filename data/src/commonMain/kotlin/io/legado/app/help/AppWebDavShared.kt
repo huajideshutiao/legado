@@ -6,6 +6,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
+import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDavShared.DEFAULT_WEB_DAV_URL
 import io.legado.app.help.AppWebDavShared.backUpWebDav
@@ -348,11 +349,33 @@ object AppWebDavShared {
      *
      * 对照 app 端 RemoteBookWebDav.downloadRemoteBook 的前置检查:
      * 没设保存位置就下载会落不到地方, 故先报错而不是等着写文件时失败。
+     *
+     * # 异常类型 (对齐原版真正能走到"去设置目录"出口的那条链)
+     * 原版同一件事有两处前置检查, 类型不同, 出口也不同:
+     * - `FileBook.saveBookFile` 未设置时抛 `NoBooksDirException`
+     *   (= `NoStackTraceException(appCtx.getString(R.string.no_books_dir))`),
+     *   由 `BookInfoViewModel.importWebFile/downloadWebFile` 的
+     *   `is NoBooksDirException -> actionLive.postValue("selectBooksDir")` 转成目录选择器;
+     * - `RemoteBookWebDav.downloadRemoteBook` 未设置时抛裸 `NoStackTraceException`,
+     *   其调用方 (`refreshWebDavBook` / `downloadToLocal`) 的 when 分支两个类型都匹配不上,
+     *   只会 `AppLog.put` —— 用户看不到任何出口 (原版缺陷, 不复刻)。
+     *
+     * 故此处不抛裸 [NoStackTraceException], 而是按前者口径抛 [InvalidBooksDirException]
+     * (本仓库中 NoBooksDirException 的共用等价类型: 四端"去设置目录"发出点匹配的都是它),
+     * 文案取原版同一条资源 [AppStringKey.no_books_dir]。
+     *
+     * # 平台边界 (如实记录, 未用默认值兜底)
+     * 被判定的 [PreferKey.defaultBookTreeUri] 是 Android SAF 树引用。桌面/iOS/鸿蒙三端的写入
+     * 实现不用它 (固定落 `{数据根}/books` 或 `{filesDir}/books`, 见各端 FileBookAccessor),
+     * 它们只在该偏好为空时报"没设置保存位置" (由"其它设置 → 书籍保存位置"或此处发出的
+     * 选目录动作写入该偏好)。这一层是原版 Android 前置检查的结构 (原版就在
+     * `RemoteBookWebDav.downloadRemoteBook` 里查 `AppConfig.defaultBookTreeUri`), 故保留;
+     * 未改成"按平台判断是否需要该前置"——那是新增平台语义, 偏离原版。
      */
-    @Throws(NoStackTraceException::class)
+    @Throws(InvalidBooksDirException::class)
     fun checkBookSaveDir() {
         if (PreferenceProviders.get().getString(PreferKey.defaultBookTreeUri).isEmpty()) {
-            throw NoStackTraceException("没有设置书籍保存位置!")
+            throw InvalidBooksDirException(appString(AppStringKey.no_books_dir))
         }
     }
 

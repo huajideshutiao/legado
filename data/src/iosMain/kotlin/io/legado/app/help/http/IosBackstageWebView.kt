@@ -68,8 +68,9 @@ import kotlin.coroutines.resume
  * decidePolicy 精确命中不同, sourceRegex 是"轮询发现即返回", 比安卓拦截语义滞后一个轮询周期)。
  *
  * 已知代价 (与 mac 端同一套降级, 如实记录): 这样**拿不到浏览器自设的 Referer/UA 与 HttpOnly
- * Cookie** (防盗链场景可能取不到能播的地址; mac 端另用 playHeaders 以 UA=宿主 UA/Referer=解析页
- * 兜底, iOS 端无此兜底), 也**无法拦截/替换响应** (命中后不能吞掉该请求)。
+ * Cookie** (防盗链场景可能取不到能播的地址; 故命中结果按 mac 端同口径用
+ * [WebViewSnifferScripts.playHeaders] 以 UA=请求里既有的 UA/Referer=原始解析页兜底), 也
+ * **无法拦截/替换响应** (命中后不能吞掉该请求)。
  * 自签证书仍无 `onReceivedSslError` 等价旁路。
  */
 private object IosBackstageWebViewFactory : BackstageWebViewFactory {
@@ -245,6 +246,8 @@ private class IosBackstageWebViewHandle(
      *
      * sourceRegex 走 [WebViewSnifferScripts] 的 document-start hook + 轮询收集 (与桌面 macOS 端
      * 同一套做法): 每轮把 hook 记录与 performance resource 条目合并回来逐条比对, 命中即返回。
+     * 命中结果按 [WebViewSnifferScripts.playHeaders] 补上 mac 端同口径的防盗链头
+     * (User-Agent 用请求里既有的 UA, Referer 用原始解析页地址)。
      * 拿不到浏览器自设的 Referer/UA 与 HttpOnly Cookie, 也无法拦截/替换响应 (见类 KDoc "已知代价")。
      * 超时不另抛专用异常: 与既有 overrideUrlRegex 路径同款 —— 外层
      * `withTimeout(AppConst.timeLimit)` 到点抛 TimeoutCancellationException, 走既有失败路径。
@@ -256,7 +259,7 @@ private class IosBackstageWebViewHandle(
         var injected = false
         while (true) {
             // 命中优先于 failure: 取消导航本身会触发 didFailProvisionalNavigation
-            hitUrl?.let { hit -> return StrResponse(url ?: hit, hit) }
+            hitUrl?.let { hit -> return hitResponse(hit) }
             failure?.let { cause -> throw cause }
             if (!injected && waited >= delayTime) {
                 injected = true
@@ -266,12 +269,34 @@ private class IosBackstageWebViewHandle(
             if (source != null) {
                 collectResourceHit(webView, source, seen)?.let { hit ->
                     // 与 overrideUrlRegex / 安卓 SnifferWebClient 同口径: url 取原始解析页, body 取命中地址
-                    return StrResponse(url ?: hit, hit)
+                    return hitResponse(hit)
                 }
             }
             delay(POLL_INTERVAL_MS)
             waited += POLL_INTERVAL_MS
         }
+    }
+
+    /**
+     * 嗅探命中结果: url 取原始解析页, body 取命中地址, 并补上 mac 端同口径的防盗链头
+     * ([WebViewSnifferScripts.playHeaders]): User-Agent 用请求里既有的 UA (缺省宿主 UA),
+     * Referer 用原始解析页地址。
+     *
+     * WKWebView 不向宿主暴露 http/https 子资源请求, 拿不到浏览器自设的 Referer/User-Agent,
+     * 也读不到 HttpOnly Cookie (如实记录, 不假装做到); 这里只能按 mac 端降级做法兜底。
+     * 请求头挂在 raw 响应的 headers 上 ([StrResponse.headers] 可读)。
+     */
+    private fun hitResponse(hit: String): StrResponse {
+        val headers = WebViewSnifferScripts.playHeaders(headerMap ?: emptyMap(), url)
+        val raw = KmpResponse(
+            code = 200,
+            message = "OK",
+            headers = headers.mapValues { listOf(it.value) },
+            body = null,
+            contentType = null,
+            request = KmpRequestBuilder().url(url ?: hit).build(),
+        )
+        return StrResponse(raw, hit)
     }
 
     /**

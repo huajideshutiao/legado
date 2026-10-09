@@ -43,6 +43,12 @@ import kotlinx.serialization.encodeToString
  *   这里写回业务层 (对齐 app 端 setCookie(tag, cookie) 语义);
  * - **sourceRegex / overrideUrlRegex**: ArkUI Web 组件支持 onInterceptRequest
  *   (拦截所有子资源请求, 比 iOS WKWebView 能力更强), 由 ArkTS 侧命中后立即回传命中 URL;
+ * - **嗅探命中的防盗链头**: 命中响应按 [WebViewSnifferScripts.playHeaders] 挂上
+ *   User-Agent/Referer/Cookie (优先取本端实际发出的请求头 [effectiveHeaders], 缺失回退
+ *   宿主 UA + 解析页 Referer), 与 iOS `IosBackstageWebView.hitResponse` / 桌面端同一口径,
+ *   下游经 [StrResponse.headers] 读得到。平台限制: ArkUI onInterceptRequest 能拿到子资源
+ *   请求头, 但 ArkTS 侧只回传命中 URL (WebViewResult 无 headers 字段), 桥未打通该字段,
+ *   故浏览器自加的 Referer/UA 与 HttpOnly Cookie 拿不到 (如实记录, 不假装做到);
  * - **UA / 请求头**: 由 ArkTS 侧 setCustomUserAgent / loadUrl headers 应用。
  *
  * # 平台限制 (桥未就绪时)
@@ -155,7 +161,25 @@ private class OhosBackstageWebViewHandle(
                     }
                 }
                 // 数据面: 源码/命中 URL 裸字符串 (失败路径已提前抛异常, 成功时非空)
-                StrResponse(result.url ?: url.orEmpty(), response.bodyRaw)
+                val hitUrl = result.url ?: url.orEmpty()
+                if (sourceRegex.isNullOrBlank() && overrideUrlRegex.isNullOrBlank()) {
+                    // 非嗅探: 与 app 端一致 (页面源码响应无请求头可挂)
+                    return@withContext StrResponse(hitUrl, response.bodyRaw)
+                }
+                // 嗅探命中: 与 iOS IosBackstageWebView.hitResponse / 桌面端同一口径挂上
+                // 防盗链头 (WebViewSnifferScripts.playHeaders) —— User-Agent/Referer/Cookie
+                // 优先取本端实际发出的请求头 (effectiveHeaders, 与 ArkTS 侧 loadUrl 应用的同一份),
+                // 缺失项回退 UA=宿主 UA + Referer=解析页。下游经 StrResponse.headers() 读得到。
+                val hitHeaders = WebViewSnifferScripts.playHeaders(effectiveHeaders, url)
+                val raw = KmpResponse(
+                    code = 200,
+                    message = "OK",
+                    headers = hitHeaders.mapValues { listOf(it.value) },
+                    body = null,
+                    contentType = null,
+                    request = KmpRequestBuilder().url(url ?: hitUrl).build(),
+                )
+                StrResponse(raw, response.bodyRaw)
             }
         }
     }

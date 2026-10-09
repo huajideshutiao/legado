@@ -14,6 +14,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.fileBook.FileBookProviders
+import io.legado.app.utils.isContentScheme
 import kotlinx.coroutines.currentCoroutineContext
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -97,12 +98,22 @@ object WebFileImportShared {
      * 与 app 端调用点同口径: 先按后缀校验确为压缩包 (非压缩包报错, 不静默返回空),
      * 再只取书籍文件 (底层要求 filter 非 null, 传 null 会恒返回空列表)。
      * 读失败已由 provider 记日志并返回空列表, 调用方据此弹“不支持的压缩包条目”。
+     *
+     * # 后缀校验用真实文件名 (对照 app 端 `ArchiveUtils.checkArchive(fileDoc.name)`)
+     * Android SAF 的 `content://` 保存引用末段是不透明文档 ID (不是文件名), 按末段字符串判
+     * 会把压缩包误判成非压缩包。真实文件名只能经系统文档接口取, 该端既有 provider 实现
+     * ([io.legado.app.help.archive.AndroidArchiveProvider] → `ArchiveUtils.getArchiveFilesName`)
+     * 已经在内部用 `checkArchive(fileDoc.name)` 做同一校验并抛出同样的
+     * `IllegalArgumentException("Unexpected file suffix")`, 故此类引用不在此重复判。
+     * 其余端的保存引用本身即文件路径 (`file://` / 存储引用), 末段就是真实文件名, 按原口径判。
      */
     @Throws(IllegalArgumentException::class, CancellationException::class)
     suspend fun getArchiveFilesName(archivePath: String): List<String> {
         // 对照 app 端 ArchiveUtils.checkArchive: 后缀不是压缩包就报错
-        val fileName = archivePath.substringAfterLast('/').substringAfterLast('\\')
-        require(AppPattern.archiveFileRegex.matches(fileName)) { "Unexpected file suffix" }
+        if (!archivePath.isContentScheme()) {
+            val fileName = archivePath.substringAfterLast('/').substringAfterLast('\\')
+            require(AppPattern.archiveFileRegex.matches(fileName)) { "Unexpected file suffix" }
+        }
         return ArchiveProviders.get()
             .getFilesName(archivePath) { AppPattern.bookFileRegex.matches(it) }
     }

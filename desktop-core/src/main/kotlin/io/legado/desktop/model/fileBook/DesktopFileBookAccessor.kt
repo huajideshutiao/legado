@@ -47,6 +47,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.FileNotFoundException
+import java.io.FileOutputStream
 import java.nio.file.Paths
 import java.util.Locale
 
@@ -324,9 +325,21 @@ class DesktopFileBookAccessor(
     override fun saveBookFile(inputStream: InputStream, fileName: String): String {
         // desktop 无 SAF, 用 {desktopAppRootDir}/books + java.io.File (app 端走 defaultBookTreeUri + DocumentFile);
         // 返回存储引用: 数据根下存相对引用 (`books/x.epub`, 便携移动后有效), 兼容旧 file: URI
+        //
+        // 异常口径与 app 端 FileBook.saveBookFile 文件路径分支逐字一致: 写不进去 (目录被删/无写权限/
+        // 磁盘满) 一律转 `SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e")`,
+        // 好让既有 `Throwable.isSecurityException()` 的调用方 (RemoteBookViewModelShared 的
+        // onPermissionDenied / ReaderScreenModel 的权限请求链) 拉起"去设置目录"出口;
+        // 原版该分支同样是 `catch (e: Exception)` 包住整段写 (含 copyTo), 故此处不另分类型。
         val file = File(booksDir, fileName)
         inputStream.use { input ->
-            file.outputStream().use { output -> input.copyTo(output) }
+            try {
+                file.outputStream().use { output -> input.copyTo(output) }
+            } catch (e: Exception) {
+                throw SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e").apply {
+                    addSuppressed(e)
+                }
+            }
         }
         return desktopStoredLocalRef(file)
     }
@@ -342,9 +355,22 @@ class DesktopFileBookAccessor(
      * 边下边写 `{desktopAppRootDir}/books/{fileName}`, 返回引用形式与
      * [saveBookFile] (inputStream 重载) 一致 ([desktopStoredLocalRef]);
      * 传输中途失败删净残缺文件 (不留半截书)。
+     *
+     * 异常口径与 app 端对齐: 保存位置不可用 (books 目录不可写) 报权限类提示
+     * (`SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e")`), 其余异常照旧透传。
      */
     override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
         val file = File(booksDir, fileName)
+        // 分辨"保存位置不可用"与网络/传输异常: 前者按 app 端文件路径分支的口径给出权限类提示,
+        // 后者原样透传。append 模式探测只验"能否打开目标文件写", 不截断已有文件;
+        // 与 downloadTo 随后自己打开的是同一个文件, 仍是流式, 不额外读入内存。
+        try {
+            FileOutputStream(file, true).close()
+        } catch (e: Exception) {
+            throw SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e").apply {
+                addSuppressed(e)
+            }
+        }
         try {
             webDav.downloadTo(file.absolutePath, true)
         } catch (e: Throwable) {

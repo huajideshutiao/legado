@@ -46,6 +46,11 @@ enum class AppStringKey {
     // AppWebDav 授权失败
     webdav_application_authorization_error,
 
+    // 书籍保存位置未设置 (对照 app 端 R.string.no_books_dir, 即原版 NoBooksDirException 的文案)。
+    // 用于共用层在"未设置书籍保存位置"时抛 InvalidBooksDirException, 让四端既有
+    // "去设置目录"分支 (InvalidBooksDirException) 能匹配上。
+    no_books_dir,
+
     // ReplaceRule 校验失败
     replace_rule_invalid,
 

@@ -265,10 +265,33 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
      * 非 Android 端没有 app 端 [io.legado.app.help.AppWebDav] 的 init 块 (那里启动即 upConfig),
      * 故首次使用时补一次认证 (与 native 端 uploadBook 同款惰性认证); 未配置 WebDav 时
      * upConfig 静默返回, 仅 WebDav 书 (远端地址非空) 会继续走到取远端条目。
+     *
+     * # "没有设置书籍保存位置" 的去设置目录出口 (非 Android 三端)
+     * 共享层 [AppWebDavShared.checkBookSaveDir] 在未设置 [PreferKey.defaultBookTreeUri] 时抛
+     * [InvalidBooksDirException] (文案 = 原版 `R.string.no_books_dir`)。app 端这条链的调用方
+     * (`BookInfoViewModel.refreshBook.onError`) 只 `AppLog.put` 不给出路, 三端照抄会让用户
+     * 只看到日志、不知去哪配置 (WebDav 书籍下载依赖该偏好, 见 webDavBookHelp)。
+     * 故这里按原版同款出口机制补上: 与三端 `importWebFile`/`downloadWebFile` 的
+     * `onAction("selectBooksDir")` 同一入口 ([PlatformCapabilities.pickBookTreeUri])、
+     * 同一偏好键 —— 用户选完目录后再次刷新即可通过前置检查。
+     * 选目录是平台 UI, 归主线程; 用户取消 (uri == null) 时不动既有配置、不报错。
+     * 异常仍原样上抛 (不吞): 调用方照旧记日志, 只是多了一次用户可见的出口。
+     * Android 端不受影响: 它有自建 override ([io.legado.app.ui.main.AndroidPlatformCapabilities]),
+     * 行为与原版逐字一致, 故不改。
      */
     override suspend fun refreshWebDavBook(book: Book) {
         if (AppWebDavShared.authorization == null) AppWebDavShared.upConfig()
-        AppWebDavShared.refreshWebDavBook(book)
+        try {
+            AppWebDavShared.refreshWebDavBook(book)
+        } catch (e: InvalidBooksDirException) {
+            val pref = PreferenceProviders.get()
+            withContext(mainDispatcher) {
+                PlatformCapabilityProviders.get().pickBookTreeUri { uri ->
+                    if (uri != null) pref.putString(PreferKey.defaultBookTreeUri, uri)
+                }
+            }
+            throw e
+        }
     }
 
     /** 段评列表 (对照原版 ReviewListDialog), 经 AppOverlay 弹 shared 实现。 */

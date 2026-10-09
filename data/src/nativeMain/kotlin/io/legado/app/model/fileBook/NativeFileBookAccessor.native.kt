@@ -9,6 +9,7 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.exception.SecurityException
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.archiveName
 import io.legado.app.help.book.getRemoteUrl
@@ -30,6 +31,8 @@ import io.legado.app.utils.toInputStream
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
 import io.legado.app.utils.File
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * native 端 (iOS/鸿蒙) [FileBookAccessor] 实现, 对照 desktop DesktopFileBookAccessor。
@@ -241,10 +244,27 @@ class NativeFileBookAccessor : FileBookAccessor {
      * 传输中途失败会留下残缺文件, 故失败时删净 (旧路径 "先读满再写" 失败时不留文件;
      * 不删干净的话残缺文件会被后续导入当成本地书读入)。
      *
+     * 异常口径与 app 端一致: 保存位置不可用 (books 目录不可写) 按 app 端文件路径分支的口径
+     * 报 `SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e")` (喂给
+     * `Throwable.isSecurityException()` 的"去设置目录"出口), 其余异常 (含网络/传输) 照旧透传。
+     *
      * 返回引用形式 (`file://` + 绝对路径) 与 [saveBookFile] (inputStream 重载) 一致。
      */
     override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
         val file = File("$booksDir/$fileName")
+        // 分辨"保存位置不可用"与网络/传输异常: 前者按 app 端 FileBook.saveBookFile 文件路径分支的
+        // 口径给出权限类提示, 后者原样透传 (与 desktop 端同一口径)。append 模式探测只验
+        // "能否打开目标文件写", 不截断已有文件; native File 无 append 流, 直接用 okio
+        // appendingSink (mustExist=false, 目标不存在则新建), 与 downloadTo 随后自己打开的
+        // 是同一个文件, 仍是流式。
+        try {
+            File(booksDir).mkdirs()
+            FileSystem.SYSTEM.appendingSink(file.path.toPath()).close()
+        } catch (e: Exception) {
+            throw SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e").apply {
+                addSuppressed(e)
+            }
+        }
         try {
             webDav.downloadTo(file.path, true)
         } catch (e: Throwable) {
@@ -256,10 +276,20 @@ class NativeFileBookAccessor : FileBookAccessor {
 
     override fun saveBookFile(inputStream: InputStream, fileName: String): String {
         // native 端无 SAF, 写入 {filesDir}/books (app 端走 defaultBookTreeUri + DocumentFile)
-        File(booksDir).mkdirs()
+        //
+        // 异常口径与 app 端 FileBook.saveBookFile 文件路径分支逐字一致: 写不进去 (目录被删/
+        // 无写权限/磁盘满) 转 `SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e")`,
+        // 让 `Throwable.isSecurityException()` (native actual 匹配 io.legado.app.exception.SecurityException)
+        // 的调用方 (RemoteBookViewModelShared 的 onPermissionDenied / ReaderScreenModel 的权限请求链)
+        // 拉起"去设置目录"出口; 原版该分支同样 `catch (e: Exception)` 包住整段写。
         val file = File("$booksDir/$fileName")
         try {
+            File(booksDir).mkdirs()
             file.writeBytes(inputStream.readFully())
+        } catch (e: Exception) {
+            throw SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e").apply {
+                addSuppressed(e)
+            }
         } finally {
             inputStream.close()
         }

@@ -49,6 +49,9 @@ targets:
           - "build"
           # Share Extension 是独立 target, 它的源码不能编进主 App (否则两份入口类)
           - "ShareExtension"
+          # entitlements 只由 CODE_SIGN_ENTITLEMENTS 引用, 不进构建产物
+          # (扩展那份在 ShareExtension/ 内, 随上面那条已整个目录排除)
+          - "iosApp.entitlements"
     info:
       path: Info.plist
       properties:
@@ -110,8 +113,10 @@ targets:
         # com.apple.developer.icloud-container-identifiers 逐字一致; 对不上
         # URLForUbiquityContainerIdentifier 恒返回 null。
         # ⚠️ 只加本键打不开 iCloud: 还缺三样 —— 付费账号给 App ID 勾 iCloud capability
-        # (Key-value storage + iCloud Documents)、iosApp.entitlements 并设
-        # CODE_SIGN_ENTITLEMENTS、以及 Kotlin 侧 IosICloud.enable() 那一行注册调用。
+        # (Key-value storage + iCloud Documents)、给 iosApp.entitlements 加上
+        # com.apple.developer.icloud-container-identifiers 等 iCloud 键 (该文件已建,
+        # 现只含 Share Extension 那条 App Group 键, 而 CODE_SIGN_ENTITLEMENTS 已在
+        # settings.base 指向它)、以及 Kotlin 侧 IosICloud.enable() 那一行注册调用。
         # 缺任一样时本键是死数据 (容器 URL 仍 null, 代码已按 null 兜底)。
         # ⚠️ 本段与 Info.plist 双写 (xcodegen generate 用本段重写 Info.plist)
         NSUbiquitousContainers:
@@ -277,6 +282,10 @@ targets:
           - "-framework"
           - "shared"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+        # App Group: 主 App 侧声明 (与 ShareExtension target 同一组); 值须与
+        # iosApp.entitlements / ShareExtension.entitlements / ShareViewController.swift 的
+        # legadoAppGroupId / Kotlin IosShareInbox.APP_GROUP_ID 逐字一致
+        CODE_SIGN_ENTITLEMENTS: iosApp.entitlements
       # 包名与安卓端对齐 (applicationId 基包 shutiao.reader):
       # Debug 构建 → shutiao.reader.debug, Release 构建 → shutiao.reader.release
       configs:
@@ -284,6 +293,11 @@ targets:
           PRODUCT_BUNDLE_IDENTIFIER: shutiao.reader.debug
         release:
           PRODUCT_BUNDLE_IDENTIFIER: shutiao.reader.release
+    # Share Extension 随主 App 一起打进 Payload/*.app/PlugIns/ (embed 走 Xcode 的
+    # "Embed App Extensions" 复制阶段)。扩展无法拉起宿主, 交付只能走 App Group 容器, 见下段。
+    dependencies:
+      - target: ShareExtension
+        embed: true
     preBuildScripts:
       # 每次构建前自动把 iOS 版本号与安卓对齐 (git 提交数 + GMT+8 构建时刻),
       # 写入 iosApp/project.yml 与 Info.plist, 供后续 Info.plist 处理与签名使用。
@@ -312,30 +326,35 @@ targets:
       testTargets: []
       gatherCoverageData: false
 
-  # ===== Share Extension 基建 (**刻意未接线**) =====
+  # ===== Share Extension (已接线: 分享面板 → App Group 容器 → 宿主启动取件) =====
   #
   # 目标: 让 legado 出现在其它 App「分享」面板的接收候选里 (对照 Android
   # AssociationActivity 的 SEND intent-filter / 鸿蒙 module.json5 的分享声明)。
   #
-  # 为什么现在只有基建、不接进 App: 接进去也没用, 反而多一个"能出现在分享面板、
-  # 点了没反应"的僵尸入口。未做的三处:
+  # 链路三处都已就位:
   #
-  #   1. 没把本 target 加进 iosApp 的 dependencies (即不 embed、不进 App 包)。
-  #      接线时在 iosApp.settings.configs 同级加:
-  #        dependencies:
-  #          - target: ShareExtension
-  #            embed: true
+  #   1. 本 target 已加进 iosApp 的 dependencies 并 embed: true (见 iosApp 段的
+  #      dependencies) —— 扩展随 App 打进 Payload/*.app/PlugIns/。
   #
-  #   2. 没声明 App Group entitlement。这是**硬前提**: 分享扩展**不能拉起宿主 App**
-  #      (扩展进程里没有通往宿主的 openURL 通道, Apple 限制), 业界唯一交付通道是把
-  #      文件写进 App Group 共享容器、宿主下次启动扫该容器取件。而 App Group 靠
-  #      entitlement 落地, 本仓产物是**未签名 ipa**, 拿不到任何 entitlement
-  #      (与 iCloud 容器同样原因, 见上面 NSUbiquitousContainers 段), 故通道当前不可用。
+  #   2. 两个 target 声明同一个 App Group (com.apple.security.application-groups,
+  #      值 group.shutiao.reader), 经 CODE_SIGN_ENTITLEMENTS 指向
+  #      iosApp/iosApp.entitlements 与 iosApp/ShareExtension/ShareExtension.entitlements。
+  #      这是**硬前提**: 分享扩展**不能拉起宿主 App** (扩展进程里没有通往宿主的 openURL
+  #      通道, Apple 限制), 业界唯一交付通道是把文件写进 App Group 共享容器、
+  #      宿主下次启动扫该容器取件。
   #
-  #   3. 没在宿主侧加取件扫描 (Kotlin IosLaunchRequests / LaunchRequestBus 里扫容器
-  #      目录 → LaunchRequest.ImportFile)。第 2 条不通时加它也是空活。
+  #   3. 宿主侧取件扫描在 Kotlin: ui/src/iosMain/.../IosShareInbox.kt, 由
+  #      IosProviderRegistry.registerIosProviders (didFinishLaunching) 拉起 —— 扫容器收件目录,
+  #      把文件挪进宿主沙盒后交既有的 handleIosLaunchRequest → LaunchRequest.ImportFile →
+  #      既有导入分发, 并清掉容器里的原件 (下次启动不会再导一遍)。
+  #      扩展侧写件见 ShareExtension/ShareViewController.swift 的 deliver。
   #
-  # 等有签名能力时, 按 1→2→3 顺序接线即可, 本 target 与入口类不用重写。
+  # ⚠️ 生效前提: App Group 靠 entitlement 落地 (与 iCloud 容器同样原因, 见上面
+  # NSUbiquitousContainers 段), 而本仓发布产物是**未签名 ipa** —— CI 用
+  # CODE_SIGNING_ALLOWED=NO 归档, 拿不到任何 entitlement, 于是容器取不到:
+  # 扩展只记日志不交付, 宿主扫描安静退出 (两端都不崩, 也不影响既有的
+  # CFBundleDocumentTypes 打开通道)。签名侧载 (AltStore/SideStore 重签) 或正式签名
+  # 且 App ID 勾上 App Groups 之后, 本链路才真正生效。
   #
   # 补充: "接收外部文件"并非只有分享面板一条路。主 App 的 Info.plist 已有
   # CFBundleDocumentTypes + LSSupportsOpeningDocumentsInPlace + UIFileSharingEnabled,
@@ -347,14 +366,17 @@ targets:
     deploymentTarget: "14.0"
     sources:
       - path: ShareExtension
+        excludes:
+          # entitlements 只由 CODE_SIGN_ENTITLEMENTS 引用, 不进构建产物
+          - "ShareExtension.entitlements"
     info:
       path: ShareExtension/Info.plist
       properties:
         CFBundleDisplayName: Legado
         # 版本号与主 App 保持一致 (App Store 校验要求扩展与宿主同版本);
-        # ⚠️ 根工程的 syncIosVersion 只写主 App 的 project.yml/Info.plist,
-        # **不会**同步到本段 —— 接线时要么把本段一并纳入那个任务, 要么改成
-        # 引用共享的 $(MARKETING_VERSION)/$(CURRENT_PROJECT_VERSION)。
+        # 根工程 syncIosVersion 按正则重写 project.yml 里**所有**的
+        # CFBundleShortVersionString/CFBundleVersion (含本段), 随后 xcodegen generate
+        # 用本段重写 ShareExtension/Info.plist —— 按 sync → generate 的顺序执行即与主 App 同版本。
         CFBundleShortVersionString: "3.26.081614"
         CFBundleVersion: "17376"
         # 分享扩展点 + 入口类 (类名 = PRODUCT_MODULE_NAME.ShareViewController)
@@ -367,7 +389,18 @@ targets:
     settings:
       base:
         PRODUCT_NAME: ShareExtension
+        # 扩展的 bundle id 必须以上一级 App 的 bundle id 为**前缀** (Apple: "Embedded
+        # binary's bundle identifier is not prefixed with the parent app's bundle identifier"),
+        # 而主 App 的 id 按 Debug/Release 分叉, 故本 target 也按 config 分叉;
+        # base 值保留不带 config 后缀的形态 (两个 config 都会覆盖它)。
         PRODUCT_BUNDLE_IDENTIFIER: shutiao.reader.ShareExtension
+        # App Group: 扩展侧声明 (与主 App 同一组; 值与上面几个位置逐字一致)
+        CODE_SIGN_ENTITLEMENTS: ShareExtension/ShareExtension.entitlements
         SWIFT_VERSION: "5.9"
         CODE_SIGN_STYLE: Automatic
         ENABLE_BITCODE: NO
+      configs:
+        debug:
+          PRODUCT_BUNDLE_IDENTIFIER: shutiao.reader.debug.ShareExtension
+        release:
+          PRODUCT_BUNDLE_IDENTIFIER: shutiao.reader.release.ShareExtension

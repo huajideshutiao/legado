@@ -202,7 +202,16 @@ internal object MacWebViewEngine : DesktopWebViewEngineBase() {
             }
             val hitUrl = withTimeoutOrNull(SNIFF_INTERVAL_MS + 100) { sniffed.await() }
             if (hitUrl != null) {
-                return snifferResult(request, hitUrl)
+                // 命中带头: 与 Windows/GTK 引擎 (子资源回调可读到 requestHeaders) 同一口径。
+                // WKWebView 读不到子资源请求头, 故这里只能把"主框架导航用的请求头 (= 书源 headerMap)"
+                // 交给 [playHeaders], 缺失项回退 UA=宿主 UA + Referer=解析页 —— 与 iOS
+                // `IosBackstageWebView.hitResponse`(WebViewSnifferScripts.playHeaders) 逐字同。
+                // 浏览器自设的 Referer/UA 与 HttpOnly Cookie 在 mac 上拿不到 (见类 KDoc 平台限制)。
+                return snifferResult(
+                    request,
+                    hitUrl,
+                    playHeaders(request.headerMap ?: emptyMap(), request.url),
+                )
             }
             delay(SNIFF_INTERVAL_MS)
         }

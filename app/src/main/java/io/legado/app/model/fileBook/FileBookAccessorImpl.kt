@@ -321,6 +321,9 @@ object FileBookAccessorImpl : FileBookAccessor {
      *   临时文件, 再复用 [saveBookFile] (inputStream 重载) 的既有权通道拷进 SAF 文档
      *   (仍是流式, 内存有界; 临时文件无论成败都删)。
      * 返回引用形式与 [saveBookFile] (inputStream 重载) 完全一致 (content:// 或 file://)。
+     *
+     * 异常口径: 保存位置不可用 (目录被删/无写权限) 仍报改动前文件路径分支的权限类提示
+     * (`SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e")`), 其余异常照旧透传。
      */
     @Throws(SecurityException::class)
     override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
@@ -329,6 +332,16 @@ object FileBookAccessorImpl : FileBookAccessor {
         )
         if (!treeUri.isContentScheme()) {
             val file = File(treeUri.path!!).getFile(fileName)
+            // 分辨"保存位置不可用"与网络/传输异常: 前者按改动前 `saveBookFile(inputStream)`
+            // 文件路径分支的口径给出权限类提示, 后者原样透传。append 模式探测只验"能否打开
+            // 目标文件写", 不截断已有文件; 与 downloadTo 随后自己打开的是同一个文件, 仍是流式。
+            try {
+                FileOutputStream(file, true).close()
+            } catch (e: Exception) {
+                throw SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e").apply {
+                    addSuppressed(e)
+                }
+            }
             try {
                 webDav.downloadTo(file.absolutePath, true)
             } catch (e: Throwable) {

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  主 App 的 entitlements (由 project.yml 的 iosApp.settings.base.CODE_SIGN_ENTITLEMENTS 引用,
+  文件本身不进构建产物, 已列在 iosApp.sources.excludes)。
+
+  ⚠️ 未签名 ipa 拿不到 entitlement: 本仓 CI 用 CODE_SIGNING_ALLOWED=NO 归档, 本文件此时是死数据,
+  App Group 容器恒取不到 (代码按"取不到就安静退出"处理)。签名侧载 (AltStore/SideStore 重签)
+  或正式签名且 App ID 勾上 App Groups 后才真正生效。
+
+  ⚠️ 本文件与 ShareExtension/ShareExtension.entitlements 必须声明**同一个** App Group 值,
+  且与 ShareExtension/ShareViewController.swift 的 legadoAppGroupId、
+  ui/src/iosMain/.../IosShareInbox.kt 的 APP_GROUP_ID 逐字一致 (改一处要四处同改)。
+
+  iCloud 容器键 (com.apple.developer.icloud-*) 尚未加: iCloud 另有三样前提, 见 project.yml
+  的 NSUbiquitousContainers 段。
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.shutiao.reader</string>
+	</array>
+</dict>
+</plist>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  分享扩展的 entitlements (由 project.yml 的 ShareExtension.settings.base.CODE_SIGN_ENTITLEMENTS
+  引用, 文件本身不进构建产物, 已列在 ShareExtension.sources.excludes)。
+
+  这里的 App Group 值必须与主 App 的 iosApp/iosApp.entitlements 完全相同 ——
+  扩展进程只能写共享容器, 宿主才能扫到 (扩展无法拉起宿主, 见 project.yml 的 ShareExtension 段)。
+
+  ⚠️ 未签名 ipa 拿不到 entitlement (CI 用 CODE_SIGNING_ALLOWED=NO 归档),
+  此时 FileManager.containerURL(forSecurityApplicationGroupIdentifier:) 恒返回 nil,
+  ShareViewController.deliver 只记日志、不交付, 不崩。
+
+  ⚠️ 值与 ShareExtension/ShareViewController.swift 的 legadoAppGroupId、
+  ui/src/iosMain/.../IosShareInbox.kt 的 APP_GROUP_ID 逐字一致 (改一处要四处同改)。
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.shutiao.reader</string>
+	</array>
+</dict>
+</plist>
