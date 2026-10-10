@@ -57,11 +57,15 @@ object OhosDirAuthorizations {
     /**
      * 访问 [path] 前确保 [usage] 用途下所属授权目录已激活: 未登记路径直通; 已登记目录激活成功才返回,
      * 失败抛 [SecurityException]。
+     *
+     * @return 授权表判定使用的规范化路径 (登记与匹配都按它比较)
      */
-    fun ensureActivatedFor(path: String, usage: DirUsage) {
+    fun ensureActivatedFor(path: String, usage: DirUsage): String {
+        val effectivePath = path.toPath(normalize = true).toString()
         synchronized(lock) {
-            activateFirstAvailable(path.toPath(normalize = true).toString(), usage)
+            activateFirstAvailable(effectivePath, usage)
         }
+        return effectivePath
     }
 
     /**

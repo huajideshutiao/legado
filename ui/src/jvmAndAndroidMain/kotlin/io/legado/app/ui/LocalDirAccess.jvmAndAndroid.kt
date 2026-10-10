@@ -9,5 +9,5 @@ import io.legado.app.constant.DirUsage
  * DocumentFile / contentResolver), 桌面为普通文件路径; 两端读取选定目录本身都不按用途二次授权,
  * 安卓侧另按用途登记选定目录供本地书文件访问校验。
  */
-internal actual fun <T> withLocalDirAccess(path: String, usage: DirUsage, block: () -> T): T =
-    block()
+internal actual fun <T> withLocalDirAccess(path: String, usage: DirUsage, block: (String) -> T): T =
+    block(path)

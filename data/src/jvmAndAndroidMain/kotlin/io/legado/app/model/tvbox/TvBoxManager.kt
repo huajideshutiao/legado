@@ -25,9 +25,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import java.io.File
-import java.nio.file.AtomicMoveNotSupportedException
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -232,26 +230,47 @@ object TvBoxManager {
             disabledSitesCache = emptySet()
             File(tvBoxDir(), "sites.json").delete()
             // 磁盘配置一并清除: 仅清内存会下次启动 init 重放 (removeSource 等调用方不再需要先 setConfig 兜底)
-            File(tvBoxDir(), "config.json").delete()
+            deleteWithLeftovers(File(tvBoxDir(), "config.json"))
         }
     }
 
-    /** 配置落盘走临时文件 + 重命名: 半写文件会让下次冷启动解析失败而整体失效。 */
+    /** 落盘临时件名后缀: 与目标同目录 (同一卷) 才能改名。 */
+    private const val TEMP_SUFFIX = ".tmp"
+
+    /** 原文件让位时的备份名后缀: 仅改名不覆盖已有目标的平台会用到。 */
+    private const val BACKUP_SUFFIX = ".bak"
+
+    /**
+     * 配置落盘走临时文件 + 改名: 半写文件会让下次冷启动解析失败而整体失效。
+     * 改名覆盖不了已存在的目标时 (Windows 的 CRT _wrename 要求目标名不存在), 原文件先改名
+     * 让位再重试, 重试仍失败就把原文件改回来: 任一步失败都留着一份完整配置。
+     * 落盘只用 java.io.File: java.nio.file 在 Android 上 API 26 才有, 模块 minSdk 24。
+     */
     private fun writeTextAtomically(file: File, text: String) {
-        val tmp = File(file.parentFile, file.name + ".tmp")
-        try {
-            tmp.writeText(text)
-            Files.move(
-                tmp.toPath(),
-                file.toPath(),
-                StandardCopyOption.REPLACE_EXISTING,
-                StandardCopyOption.ATOMIC_MOVE,
-            )
-        } catch (e: AtomicMoveNotSupportedException) {
-            Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
-        } finally {
-            if (tmp.exists()) tmp.delete()
+        val tmp = File(file.parentFile, file.name + TEMP_SUFFIX)
+        tmp.writeText(text)
+        // 同目录改名: 安卓/Linux、macOS 上原子覆盖目标, 不留中间窗口
+        if (tmp.renameTo(file)) return
+        // 目标已存在时改名可能被拒 (Windows 的 CRT _wrename 要求目标名不存在):
+        // 原文件先退到备份名让出目标名, 重试仍失败则把原文件改回来。
+        // 改名没成功就不删临时件: 目标不存在时它是新内容的唯一副本。
+        val backup = File(file.parentFile, file.name + BACKUP_SUFFIX)
+        backup.delete()
+        if (file.renameTo(backup)) {
+            if (tmp.renameTo(file)) {
+                backup.delete()
+                return
+            }
+            backup.renameTo(file)
         }
+        throw IOException("TVBox 配置落盘失败: ${file.path}")
+    }
+
+    /** 删除 [file] 连同它的落盘中间件, 避免清除后磁盘上仍留着一份可读的旧配置。 */
+    private fun deleteWithLeftovers(file: File) {
+        file.delete()
+        File(file.parentFile, file.name + TEMP_SUFFIX).delete()
+        File(file.parentFile, file.name + BACKUP_SUFFIX).delete()
     }
 
     // ===== 站点"未添加"集合 (filesDir/tvbox/sites.json; 脏 JSON 退化为空集) =====

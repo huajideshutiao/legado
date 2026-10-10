@@ -12,10 +12,14 @@ import io.legado.app.constant.DirUsage
  * [usage] 为本次访问的用途: 受沙盒约束的端只放行同用途登记的授权 —— 为字体选的目录不会因此
  * 放行书籍文件访问, 反之亦然 (见 [DirUsage])。无需授权的端 [usage] 不被使用。
  *
+ * [block] 的入参是本次访问实际使用的路径: 受沙盒约束的端先把它规范化 (解析符号链接,
+ * 见 `IosSecurityScopedStorage`/`OhosDirAuthorizations`) 再回传, iOS 还可能回传文件协调器给出的
+ * 替代位置; 无需授权的端原样回传。块内的文件系统调用以该入参为准。
+ *
  * 租约按调用粒度起停, 不跨调用持有。
  */
 internal expect fun <T> withLocalDirAccess(
     path: String,
     usage: DirUsage = DirUsage.BookTree,
-    block: () -> T,
+    block: (String) -> T,
 ): T

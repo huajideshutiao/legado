@@ -232,7 +232,7 @@ object NativeImportBook {
             _path.value = (listOf(rootDir!!.name) + subDirs.map { it.name })
                 .joinToString("/") + "/"
             val children = runCatching {
-                withLocalDirAccess(dir.path) {
+                withLocalDirAccess(dir.path) { _ ->
                     dir.listFiles()?.filter {
                         it.isDirectory || FileBook.isBookFile(it.name) ||
                             AppPattern.archiveFileRegex.matches(it.name)
