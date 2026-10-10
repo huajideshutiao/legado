@@ -48,7 +48,7 @@ internal object DesktopSmtc : NowPlayingSink {
 
     /** C 桥导出函数 (JNA Library 接口, 严格类型化; 见 smtc_bridge.c)。 */
     private interface LegadoSmtc : Library {
-        /** 初始化; 返回 0 = 成功, 非 0 = 失败 (失败后调用方熔断, 不重试)。
+        /** 初始化; 返回 0 = 成功, 非 0 = 失败 (含义见 [INIT_RC_WORKER_UNKNOWN])。
          *  hwnd = 主窗口句柄, 会话归属于它; 传 null 则 C 侧自建兜底隐形窗口。 */
         fun lgsmtc_init(hwnd: Pointer?, cb: CmdCallback): Int
 
@@ -80,11 +80,19 @@ internal object DesktopSmtc : NowPlayingSink {
 
     // ==================== 状态 (仅 executor 线程访问) ====================
 
+    /**
+     * 原生桥等待就绪超时的返回码: 这条路径没关线程句柄也没重建事件, 工作线程可能还活着并正在写
+     * 同一份原生会话对象 (见 smtc_bridge.c 的 lgsmtc_init), 再 init 会与它抢会话, 故不再重试。
+     * 其余失败一律可重试 (原生在那条路径上已回收线程与会话).
+     */
+    private const val INIT_RC_WORKER_UNKNOWN = -12
+
     @Volatile
     private var initialized = false
 
+    /** 原生报告过 [INIT_RC_WORKER_UNKNOWN]; 本次运行内不再重试。 */
     @Volatile
-    private var initFailed = false
+    private var sessionStateUnknown = false
 
     private var bridge: LegadoSmtc? = null
 
@@ -107,59 +115,51 @@ internal object DesktopSmtc : NowPlayingSink {
 
     // ==================== 公开 API (幂等, 全 runCatching) ====================
 
-    /** 加载 native 桥并初始化 (幂等; 失败熔断不再重试)。 */
+    /** 加载 native 桥并初始化 (幂等; 失败不熔断, 下一次初始化/推送会再试)。 */
     fun init() {
         if (!Platform.isWindows()) return
         if (!ENABLE_SMTC) return
-        executor.execute {
-            if (initialized || initFailed) return@execute
-            // 会话必须绑主窗口: 绑无任务栏按钮的隐藏窗口会让悬停任务栏拖崩 explorer
-            // (A/B 实证)。主窗口未就绪时不初始化, 下次 update 再试。
-            val hwnd = DesktopTaskbarMedia.mainWindowHandle() ?: return@execute
-            DesktopAppUserModelId.applyToWindow(hwnd)
-            runCatching {
-                val lib = bridge ?: loadBridge().also { bridge = it }
-                val rc = lib.lgsmtc_init(hwnd, cmdCallback)
-                if (rc != 0) {
-                    val hr = runCatching { lib.lgsmtc_last_hr() }.getOrDefault(0)
-                    throw IllegalStateException(
-                        "lgsmtc_init 失败 rc=$rc" +
-                            if (hr != 0) " hr=0x${Integer.toHexString(hr)}" else ""
-                    )
-                }
-                initialized = true
-            }.onFailure {
-                initFailed = true
-                AppLog.put("SMTC 初始化失败", it)
-            }
-        }
+        executor.execute { ensureSession() }
     }
 
-    /** 推送播放状态/元数据/进度/封面到系统媒体卡 (自动补一次 [init]; 失败熔断)。 */
+    /**
+     * 加载 native 桥并建会话, 返回可用的桥; 失败返回 null (原因已记日志)。只在 [executor] 线程调。
+     *
+     * 失败不锁死: 系统一时拿不到会话 (如窗口刚显示、shell 未就绪) 会在下一次初始化/推送时自愈;
+     * 只有原生明确报告工作线程状态未知 ([INIT_RC_WORKER_UNKNOWN]) 时才不再重试。
+     */
+    private fun ensureSession(): LegadoSmtc? {
+        if (initialized) return bridge
+        if (sessionStateUnknown) return null
+        // 会话必须绑主窗口: 绑无任务栏按钮的隐藏窗口会让悬停任务栏拖崩 explorer
+        // (A/B 实证)。主窗口未就绪时不初始化, 下次 update 再试。
+        val hwnd = DesktopTaskbarMedia.mainWindowHandle() ?: return null
+        DesktopAppUserModelId.applyToWindow(hwnd)
+        val lib = runCatching { bridge ?: loadBridge().also { bridge = it } }
+            .onFailure { AppLog.put("SMTC 初始化失败", it) }
+            .getOrNull() ?: return null
+        val rc = runCatching { lib.lgsmtc_init(hwnd, cmdCallback) }
+            .onFailure { AppLog.put("SMTC 初始化失败", it) }
+            .getOrNull() ?: return null
+        if (rc != 0) {
+            val hr = runCatching { lib.lgsmtc_last_hr() }.getOrDefault(0)
+            AppLog.put(
+                "SMTC 初始化失败 rc=$rc" +
+                    if (hr != 0) " hr=0x${Integer.toHexString(hr)}" else ""
+            )
+            if (rc == INIT_RC_WORKER_UNKNOWN) sessionStateUnknown = true
+            return null
+        }
+        initialized = true
+        return lib
+    }
+
+    /** 推送播放状态/元数据/进度/封面到系统媒体卡 (会话未建时当场再建一次)。 */
     override fun sync(info: NowPlayingInfo) {
         if (!Platform.isWindows()) return
         if (!ENABLE_SMTC) return
         executor.execute {
-            if (initFailed) return@execute
-            val lib = bridge ?: loadBridge().also { bridge = it }
-            if (!initialized) {
-                // 同 init(): 主窗口未就绪就不初始化 (不置 initFailed, 留待下次推送重试)
-                val hwnd = DesktopTaskbarMedia.mainWindowHandle() ?: return@execute
-                DesktopAppUserModelId.applyToWindow(hwnd)
-                val rc = runCatching {
-                    lib.lgsmtc_init(hwnd, cmdCallback)
-                }.getOrDefault(-1)
-                if (rc != 0) {
-                    initFailed = true
-                    val hr = runCatching { lib.lgsmtc_last_hr() }.getOrDefault(0)
-                    AppLog.put(
-                        "SMTC 初始化失败 rc=$rc" +
-                            if (hr != 0) " hr=0x${Integer.toHexString(hr)}" else ""
-                    )
-                    return@execute
-                }
-                initialized = true
-            }
+            val lib = ensureSession() ?: return@execute
             runCatching {
                 // 朗读无时长/倍速概念: C 桥按 dur<=0 不推 timeline、rate<=0 不写 PlaybackRate
                 lib.lgsmtc_update(

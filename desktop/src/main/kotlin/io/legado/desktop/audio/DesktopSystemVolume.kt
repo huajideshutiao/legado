@@ -66,9 +66,14 @@ internal object DesktopSystemVolume {
     @Volatile
     private var comReady = false
 
-    /** 初始化失败后不再重试 (防拖动中每帧刷日志)。 */
+    /**
+     * 上一次初始化失败是否已记过日志 (COM 初始化与端点初始化共用; **不作为可用性判据**)。
+     *
+     * 拖动音量时每帧都会重试初始化, 一次设备不可用不能变成满屏日志; 恢复正常后会重置,
+     * 下一次失败重新记。
+     */
     @Volatile
-    private var initFailed = false
+    private var initFailureLogged = false
 
     private var enumerator: Pointer? = null
     private var endpoint: Pointer? = null
@@ -133,7 +138,7 @@ internal object DesktopSystemVolume {
         }
     }
 
-    /** 释放 COM 引用链 (幂等; 下次调用自动重建; 初始化失败锁不重置)。 */
+    /** 释放 COM 引用链 (幂等; 下次调用自动重建)。 */
     fun release() {
         if (!Platform.isWindows()) return
         submit {
@@ -143,6 +148,7 @@ internal object DesktopSystemVolume {
             endpointVolume = null
             endpoint = null
             enumerator = null
+            initFailureLogged = false
             null
         }
     }
@@ -300,12 +306,16 @@ internal object DesktopSystemVolume {
         }.getOrNull()
     }
 
-    /** 懒初始化: CoCreateInstance → EnumAudioEndpoints → Activate, 缓存引用链。 */
+    /**
+     * 懒初始化: CoCreateInstance → GetDefaultAudioEndpoint → Activate, 缓存引用链。
+     *
+     * 失败不锁死: 释放本次已取得的引用后返回 null, 下次调用重试 —— 音频设备一时拿不到
+     * (设备切换/驱动重启) 不该让本次运行内再也调不了系统音量。
+     */
     private fun endpointVolume(): Pointer? {
         endpointVolume?.let { return it }
-        if (initFailed) return null
         ensureCom()
-        return runCatching {
+        val initialized = runCatching {
             val enumRef = PointerByReference()
             var hr = ole32("CoCreateInstance")
                 .invokeInt(
@@ -353,19 +363,22 @@ internal object DesktopSystemVolume {
                 endpointVolume = volumeRef.value
                 volumeRef.value
             } catch (e: Throwable) {
-                // 失败释放已取得的引用 (枚举器 + 可能已激活的端点), 锁死重试
+                // 失败释放已取得的引用 (枚举器 + 可能已激活的端点), 不留残余供下次重试
                 runCatching { endpoint?.let { vtbl(it, SLOT_RELEASE) } }
                 runCatching { vtbl(enumRef.value, SLOT_RELEASE) }
                 endpointVolume = null
                 endpoint = null
                 enumerator = null
-                initFailed = true
                 throw e
             }
         }.onFailure {
-            initFailed = true
-            AppLog.put("WASAPI 系统音量初始化失败: ${it.message}", it)
+            if (!initFailureLogged) {
+                initFailureLogged = true
+                AppLog.put("WASAPI 系统音量初始化失败: ${it.message}", it)
+            }
         }.getOrNull()
+        if (initialized != null) initFailureLogged = false
+        return initialized
     }
 
     private fun ensureCom() {
@@ -373,7 +386,8 @@ internal object DesktopSystemVolume {
         val hr = Ole32.INSTANCE.CoInitializeEx(Pointer.NULL, Ole32.COINIT_APARTMENTTHREADED).toInt()
         if (hr == S_OK || hr == S_FALSE) {
             comReady = true
-        } else {
+        } else if (!initFailureLogged) {
+            initFailureLogged = true
             AppLog.put("WASAPI CoInitializeEx 失败 hr=$hr")
         }
     }

@@ -1719,10 +1719,18 @@ class AndroidPlatformCapabilities(
     }
 
     // 对照 app 端 BaseReadBookActivity 的 FileDoc.fromUri(uri, true).find(book.originName):
-    // SAF 目录逐层列举, 一层找不到再进子目录找 (与 FileDoc.find(depth) 同语义)
+    // SAF 逐层列举, 所选目录找不到再进一级子目录找
+    // 只有普通文件算命中, 同名项不是文件时继续往后找 (与桌面/鸿蒙同一判据)
     override fun findBookFileInDir(dirUri: String, fileName: String): String? {
         val dir = runCatching { FileDoc.fromUri(dirUri.toUri(), true) }.getOrNull() ?: return null
-        return dir.find(fileName, depth = 1)?.uri?.toString()
+        val children = dir.list() ?: return null
+        children.firstOrNull { !it.isDir && it.name == fileName }?.let { return it.uri.toString() }
+        return children.asSequence()
+            .filter { it.isDir }
+            .firstNotNullOfOrNull { sub ->
+                sub.list()?.firstOrNull { !it.isDir && it.name == fileName }
+            }
+            ?.uri?.toString()
     }
 
     // 对照 ConfigViewModel.clearWebViewData: 删 webview 目录 + toast + delay + restart

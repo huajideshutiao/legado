@@ -12,6 +12,8 @@ import io.legado.app.data.entities.Review
 import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.BookChapterLoader
+import io.legado.app.help.book.delBookCore
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
@@ -22,6 +24,7 @@ import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.info.WebFileImportShared
+import io.legado.app.ui.book.manage.reportLocalBookSourceFileDeleteFailure
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.route.encodeReviewListDialogPayload
 import io.legado.app.ui.withLocalDirAccess
@@ -121,7 +124,12 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
 
     // ===== 书籍详情页 =====
 
-    /** 上架/下架 (走 shared 统一核心 toggleBookshelfCore; 三端均无 Android 的删除确认弹窗)。 */
+    /**
+     * 上架/下架。
+     *
+     * 下架没有确认框的调用方 (视频页) 不删源文件 (对照原版 `VideoViewModel.delBook` 固定 `false`),
+     * 确认框在调用方手里 (详情页) 的走 [deleteBookshelfBook] 带勾选值。
+     */
     override fun toggleBookshelf(
         book: Book,
         inBookshelf: Boolean,
@@ -130,11 +138,42 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
         onAction: (String) -> Unit,
         chapters: List<BookChapter>?,
     ) {
+        if (inBookshelf) {
+            deleteBookshelfBook(book, deleteOriginal = false, onComplete = onComplete)
+            return
+        }
         capabilityScope.launch {
-            runCatching { book.toggleBookshelfCore(inBookshelf, chapters) }
+            runCatching { book.toggleBookshelfCore(inBookshelf = false, chapters = chapters) }
                 .onSuccess { onComplete(it) }
                 .onFailure {
                     AppLog.put("书架操作失败\n${it.message}", it)
+                    onComplete(false)
+                }
+        }
+    }
+
+    /** 下架确认框由调用方 (详情页) 弹, 对照原版 `BookInfoActivity.deleteBook` 的 alert。 */
+    override fun confirmsDeleteBookInCapability(): Boolean = false
+
+    /**
+     * 下架: 删章节 + 删记录 + 按 [deleteOriginal] 删本地书源文件。
+     *
+     * 源文件删不掉时如实提示 (与书架删除同一文案), 不勾选时只下架、不碰文件。
+     */
+    override fun deleteBookshelfBook(
+        book: Book,
+        deleteOriginal: Boolean,
+        onComplete: (Boolean?) -> Unit,
+    ) {
+        capabilityScope.launch {
+            runCatching { book.delBookCore(deleteOriginal) }
+                .onSuccess { onComplete(null) }
+                .onFailure { e ->
+                    AppLog.put("删除书籍失败\n${e.message}", e)
+                    // 删源文件只有统一入口一个, 删不掉的原因要能看见 (与书架删除同一文案)
+                    if (book.isLocal && deleteOriginal) {
+                        reportLocalBookSourceFileDeleteFailure(book, e)
+                    }
                     onComplete(false)
                 }
         }
