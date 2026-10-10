@@ -109,9 +109,12 @@ class DesktopPdfFile(var book: Book) {
         }
     }
 
-    /** bookUrl → 本地文件 (先走 [LocalBookLocators] 路径缓存, 对齐 accessor.openLocalFile)。 */
+    /**
+     * bookUrl → 本地文件 (取 [LocalBookLocators] 解析后的可用引用: 引用失效时按文件名在书籍保存位置/
+     * 导入目录找回, 对齐 accessor.openLocalFile)。
+     */
     private fun resolvePdfFile(): File {
-        val path = runCatching { LocalBookLocators.get().getLocalPath(book) }.getOrNull()
+        val path = runCatching { LocalBookLocators.get().getReadableFileRef(book) }.getOrNull()
         return path?.let { File(it) }?.takeIf { it.isFile } ?: resolveLocalBookFile(book.bookUrl)
     }
 

@@ -14,11 +14,13 @@ import io.legado.app.lib.webdav.WebDav
 import io.legado.app.model.fileBook.RemoteZipWrapper
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.LogUtils
+import io.legado.app.utils.randomUUIDString
 import okhttp3.Request
 import org.chromium.net.CronetEngine
 import org.chromium.net.CronetProvider
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 
 @Suppress("ConstPropertyName")
 @Keep
@@ -28,9 +30,15 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
     private const val aarUrl =
         "https://maven.aliyun.com/repository/google/org/chromium/net/cronet-embedded/$soVersion/cronet-embedded-$soVersion.aar"
     private const val soName = "libcronet.$soVersion.so"
+
+    /** 落盘中间件名后缀: 落在目标同目录 (同一卷) 才能改名就位。 */
+    private const val TEMP_SUFFIX = ".tmp"
+
     private val soFile: File
     private var cpuAbi: String? = null
-    var download = false
+
+    /** "下载中"闸门: 两次并发触发只放一份进来, 判定必须是原子的读改写。 */
+    private val download = AtomicBoolean(false)
 
     @Volatile
     private var cacheInstall = false
@@ -90,62 +98,68 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
                 onComplete?.invoke(true)
                 return@async
             }
-            if (download) return@async
-            download = true
+            // 闸门原子地读改写: 两次并发触发都进来时, 两次落盘会共写同一份中间件
+            if (!download.compareAndSet(false, true)) return@async
             Coroutine.async {
-                val downloadFileTmp = File(App.instance.cacheDir, "so_download/$soName.tmp")
-                val downloadFile = File(App.instance.cacheDir, "so_download/$soName")
-                val result = if (downloadFile.exists()) true
-                else try {
-                    val webDav = WebDav(aarUrl, Authorization("", ""))
-                    val response =
-                        webDav.webDavClient.newCall(Request.Builder().url(aarUrl).head().build())
-                            .execute()
-                    val fileSize = response.header("Content-Length")?.toLong() ?: -1L
-                    if (fileSize <= 0) throw IOException("Failed to get file size")
-                    val remoteZip = RemoteZipWrapper(
-                        { offset, length, fs -> webDav.readRange(offset, length, fs) },
-                        "cronet.aar", fileSize
-                    )
-                    val entry = remoteZip.entries().asSequence().find {
-                        it.name.startsWith("jni/${getCpuAbi(App.instance)}/libcronet") && it.name.endsWith(
-                            ".so"
+                val downloadDir = File(App.instance.cacheDir, "so_download")
+                val downloadFile = File(downloadDir, soName)
+                // 中间件名每次唯一: 两次落盘绝不共用同一份, 谁也读不到对方写了一半的那份
+                val downloadFileTmp = File(downloadDir, randomUUIDString() + TEMP_SUFFIX)
+                try {
+                    val result = if (downloadFile.exists()) true
+                    else try {
+                        val webDav = WebDav(aarUrl, Authorization("", ""))
+                        val response =
+                            webDav.webDavClient.newCall(Request.Builder().url(aarUrl).head().build())
+                                .execute()
+                        val fileSize = response.header("Content-Length")?.toLong() ?: -1L
+                        if (fileSize <= 0) throw IOException("Failed to get file size")
+                        val remoteZip = RemoteZipWrapper(
+                            { offset, length, fs -> webDav.readRange(offset, length, fs) },
+                            "cronet.aar", fileSize
                         )
-                    } ?: throw IOException("SO entry not found for ${getCpuAbi(App.instance)}")
+                        val entry = remoteZip.entries().asSequence().find {
+                            it.name.startsWith("jni/${getCpuAbi(App.instance)}/libcronet") && it.name.endsWith(
+                                ".so"
+                            )
+                        } ?: throw IOException("SO entry not found for ${getCpuAbi(App.instance)}")
 
-                    downloadFileTmp.parentFile?.mkdirs()
-                    remoteZip.getInputStream(entry).use { input ->
-                        downloadFileTmp.outputStream().use { output ->
-                            input.copyTo(output)
+                        downloadFileTmp.parentFile?.mkdirs()
+                        remoteZip.getInputStream(entry).use { input ->
+                            downloadFileTmp.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
                         }
+                        downloadFileTmp.renameTo(downloadFile)
+                    } catch (e: Throwable) {
+                        e.printStackTrace()
+                        false
                     }
-                    downloadFileTmp.renameTo(downloadFile)
-                } catch (e: Throwable) {
-                    e.printStackTrace()
+
+                    if (result && downloadFile.exists()) {
+                        // 装载只看目标文件在不在: 半截 so 会被长期当成可用, 必须整份落到同目录临时文件再替换
+                        soFile.parentFile?.mkdirs()
+                        val staged = File(soFile.parentFile, randomUUIDString() + TEMP_SUFFIX)
+                        try {
+                            downloadFile.inputStream().use { input ->
+                                staged.outputStream().use { output -> input.copyTo(output) }
+                            }
+                            FileUtilsBase.replaceFileAtomically(staged, soFile)
+                        } finally {
+                            staged.delete()
+                        }
+                        soFile.setReadable(true)
+                        cacheInstall = false
+                        onComplete?.invoke(true)
+                    } else {
+                        downloadFile.delete()
+                        onComplete?.invoke(false)
+                    }
+                } finally {
+                    // 中间件名随机唯一: 中途失败残留的那份只能由本次清; 闸门在失败与抛出路径上同样放行
                     downloadFileTmp.delete()
-                    false
+                    download.set(false)
                 }
-
-                if (result && downloadFile.exists()) {
-                    // 装载只看目标文件在不在: 半截 so 会被长期当成可用, 必须整份落到同目录临时文件再替换
-                    soFile.parentFile?.mkdirs()
-                    val staged = File("${soFile.absolutePath}.tmp")
-                    try {
-                        downloadFile.inputStream().use { input ->
-                            staged.outputStream().use { output -> input.copyTo(output) }
-                        }
-                        FileUtilsBase.replaceFileAtomically(staged, soFile)
-                    } finally {
-                        staged.delete()
-                    }
-                    soFile.setReadable(true)
-                    cacheInstall = false
-                    onComplete?.invoke(true)
-                } else {
-                    downloadFile.delete()
-                    onComplete?.invoke(false)
-                }
-                download = false
             }
         }
     }

@@ -13,7 +13,7 @@ import io.legado.app.help.storage.registerNativeBackupRestoreHook
 import io.legado.app.help.storage.registerOhosDataStorage
 import io.legado.app.help.book.registerNativeBookImageStorage
 import io.legado.app.help.book.registerNativeContentProcessorAccessor
-import io.legado.app.help.book.registerNativeLocalBookLocator
+import io.legado.app.help.book.registerOhosLocalBookLocator
 import io.legado.app.help.crash.OhosCrashHandler
 import io.legado.app.help.crash.refreshNativeCrashLogPaths
 import io.legado.app.help.file.registerOhosAppFilesDir
@@ -218,7 +218,7 @@ fun registerOhosProviders() {
     registerOhosDataStorage()
     registerNativeBookStorage()
     registerNativeBookImageStorage()
-    registerNativeLocalBookLocator()
+    registerOhosLocalBookLocator()
     registerNativeBookHelpAccessor()
 
     // 4.5 ContentProcessor provider (复用 commonMain 的 ContentProcessorShared, 依赖 AppDb 已就绪)

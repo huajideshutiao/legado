@@ -10,11 +10,12 @@ import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.help.book.getLocalUri
+import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SystemUtils
 import io.legado.app.utils.isContentScheme
+import io.legado.app.utils.parseToUri
 import io.legado.app.utils.printOnDebug
 import java.io.File
 import java.io.FileOutputStream
@@ -87,7 +88,8 @@ class PdfFile(var book: Book) {
     @SuppressLint("Recycle") // fileDescriptor 作为字段保存, 由 closePdf() 统一关闭
     private fun readPdf(): PdfRenderer? {
         kotlin.runCatching {
-            val uri = book.getLocalUri()
+            val ref = LocalBookLocators.get().getReadableFileRef(book) ?: book.bookUrl
+            val uri = ref.parseToUri()
             if (uri.isContentScheme()) {
                 fileDescriptor = App.instance.contentResolver.openFileDescriptor(uri, "r")?.also {
                     pdfRenderer = PdfRenderer(it)

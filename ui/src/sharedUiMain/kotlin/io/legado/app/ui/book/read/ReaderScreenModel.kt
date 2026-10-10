@@ -727,6 +727,9 @@ class ReaderScreenModel(
      * 按 `book.originName` 在所选目录里找到文件 → 改 `book.bookUrl` → 落库 → 重载目录。
      * 找不到/未选中时给出与原版同口径的提示。
      *
+     * 书籍记录已不在书架时不新建、不改内存书址, 只如实提示 —— 与原版 `book.save()`
+     * (记录不在即新建) 的差别。
+     *
      * @param book 需要重新定位的本地书 (调用方传阅读器现行书籍)
      * @param dirUri 用户选定的目录 ([PlatformCapabilities.findBookFileInDir] 的入参形态)
      */
@@ -738,12 +741,18 @@ class ReaderScreenModel(
                 return@launch
             }
             val oldUrl = book.bookUrl
+            // 记录已不在书架: 不新建也不改内存书址 (定位动作不产生书籍记录)
+            val exists = runCatching { AppDbProviders.get().bookDao.has(oldUrl) }
+                .onFailure { AppLog.put("重新定位本地书失败\n${it.message}", it) }
+                .getOrNull() ?: return@launch
+            if (!exists) {
+                readBook.upMsg("书籍已不在书架，未更新地址")
+                return@launch
+            }
             book.bookUrl = newUrl
-            // 主键变了, 按 bookUrl 的 update 会匹配不到旧行, 必须删旧插新 (对照原版 book.save)
+            // 主键变了, 按 bookUrl 的 update 会匹配不到旧行, 必须删旧插新
             runCatching {
-                val dao = AppDbProviders.get().bookDao
-                if (dao.has(oldUrl)) dao.replace(book.copy(bookUrl = oldUrl), book)
-                else dao.insert(book)
+                AppDbProviders.get().bookDao.replace(book.copy(bookUrl = oldUrl), book)
             }.onFailure {
                 AppLog.put("重新定位本地书失败\n${it.message}", it)
             }

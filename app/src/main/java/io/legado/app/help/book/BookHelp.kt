@@ -28,6 +28,7 @@ import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.onEachParallel
+import io.legado.app.utils.parseToUri
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -263,7 +264,8 @@ object BookHelp {
                 handler
             )
         }
-        val uri = book.getLocalUri()
+        val ref = LocalBookLocators.get().getReadableFileRef(book) ?: book.bookUrl
+        val uri = ref.parseToUri()
         return if (uri.isContentScheme()) {
             App.instance.contentResolver.openFileDescriptor(uri, "r")
         } else {

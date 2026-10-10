@@ -6,7 +6,7 @@ import kotlin.concurrent.Volatile
 /**
  * 本地书文件定位跨平台抽象。
  *
- * 安卓端 [io.legado.app.help.book.BookHelp] 的 getLocalUri / getBookPFD 等方法
+ * 安卓端 [io.legado.app.help.book.BookHelp] 的 getBookPFD 等方法
  * 重 Android 依赖 (ContentResolver / DocumentFile / StorageManager /
  * ParcelFileDescriptor), 留 app 端。本接口仅暴露本地书文件路径定位与基本文件
  * 操作方法, 供桌面 JVM / iOS / 鸿蒙 commonMain 业务调用。
@@ -33,25 +33,26 @@ interface LocalBookLocator {
     fun getLocalPath(book: Book): String?
 
     /**
-     * 取压缩包内子书路径 (book.origin 形如 `local_book::archive.rar`);
-     * 非压缩包子书返回 null。
+     * 取本地书当前可用的文件引用 (读本地书文件的入口解析 bookUrl 用)。
+     *
+     * 按 bookUrl 解析出的引用读不到时, 在"书籍保存位置" ([effectiveBookSaveDir]) 与导入目录
+     * ([effectiveImportBookDir]) 里按 [Book.originName] 找回同名文件 —— 与原版
+     * `Book.getLocalUri()` 的定位口径一致 (每个目录下探 5 层、最多列举 100 个目录; 两个目录同一处时
+     * 只查一次)。
+     *
+     * 只定位: 按名找回的结果不回写 bookUrl、不落库, 也不写路径缓存 (缓存会让找回的路径
+     * 成为删除等其它入口的目标)。bookUrl 自身的解析与其它定位入口一样经 [getLocalPath],
+     * 会记入同一张路径缓存。
+     *
+     * @return 安卓端 SAF 引用为 `content://` URI 字符串, 其余端为本地绝对路径;
+     *   非本地书或确实找不到时返回 null (调用方按失败处理, 不伪造一个打不开的引用)
      */
-    fun getArchivePath(book: Book): String?
-
-    /**
-     * 缓存本地书路径 (供书架批量操作场景减少重复解析)。
-     */
-    fun cacheLocalPath(book: Book, path: String)
+    fun getReadableFileRef(book: Book): String?
 
     /**
      * 移除缓存的本地书路径 (供书籍删除场景清理)。
      */
     fun removeLocalPathCache(book: Book)
-
-    /**
-     * 取本地书文件最后修改时间 (epoch millis); 文件不存在返回 0。
-     */
-    fun getLastModified(book: Book): Long
 }
 
 /**

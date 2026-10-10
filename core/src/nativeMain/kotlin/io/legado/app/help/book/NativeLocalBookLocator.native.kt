@@ -5,13 +5,14 @@ import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import io.legado.app.utils.File
+import io.legado.app.utils.inputStream
 
 /**
  * [LocalBookLocator] iOS/鸿蒙 (Native target) 共用真实实现 (基于 [kotlin.io.File])。
  *
  * # 共用原因
- * iOS 与鸿蒙两端 LocalBookLocator 主体逻辑完全一致 (本地书路径解析 + 文件操作:
- * getLocalPath/getArchivePath/cacheLocalPath/removeLocalPathCache/getLastModified),
+ * iOS 与鸿蒙两端 LocalBookLocator 主体逻辑完全一致 (本地书路径解析 + 路径缓存:
+ * getLocalPath/removeLocalPathCache),
  * Kotlin/Native 在 iOS/linuxArm64 (鸿蒙) 上均支持 [kotlin.io.File],
  * 故统一改为 [kotlin.io.File] 实现下沉到 nativeMain 共用, 平台源集用 typealias 别名 + 各自 register 函数。
  *
@@ -21,19 +22,17 @@ import io.legado.app.utils.File
  * - bookUrl 形如 `/var/mobile/.../book.txt` 或 `/data/storage/.../book.txt` → 直接当本地路径
  * - 网络书源 (`http(s)://...`) → 返回 null
  *
- * # 压缩包子书路径
- * 从 book.origin 提取 (形如 `local_book::archive.rar`), 由 [Book.archiveName] 扩展提供
- * (BookExtensionsShared.kt, commonMain 已下沉)。
- *
- * # 缓存与文件操作
+ * # 缓存
  * 用 [Volatile] + [MutableMap] 缓存 bookUrl → 本地路径, 避免重复 URI 解析
  * (Kotlin/Native 无 ConcurrentHashMap, 用 Volatile + synchronized 块;
  * 访问频率低, 不需要高并发优化)。
- * 最后修改时间用 [File.lastModified] (epoch millis, 与 JVM `.toMillis()` 等价)。
  *
  * 模式参考 [io.legado.app.help.book.JvmLocalBookLocator]。
+ *
+ * 文件动作可被子类覆写: iOS/鸿蒙把"能否打开读取"的探测放进各自的目录授权内
+ * (见 [isReadableFile])。
  */
-class NativeLocalBookLocator : LocalBookLocator {
+open class NativeLocalBookLocator : LocalBookLocator {
 
     /** bookUrl → 本地路径缓存 (避免重复 URI 解析); Kotlin/Native 无 ConcurrentHashMap, 用同步块保护。 */
     @Volatile
@@ -53,34 +52,59 @@ class NativeLocalBookLocator : LocalBookLocator {
         return path
     }
 
-    override fun getArchivePath(book: Book): String? {
-        if (!book.isArchive) return null
-        // archiveName 扩展已校验 isArchive, 直接取
-        // runCatching 防御: archiveName 在非 archive 场景抛 NoStackTraceException, 此处虽已校验仍兜底
-        return runCatching { book.archiveName }.getOrNull()
+    /**
+     * 取本地书当前可用的文件引用: bookUrl 解析出的文件打不开时, 在"书籍保存位置"与"导入目录"里
+     * 按 [Book.originName] 找回同名文件 (原版 `Book.getLocalUri()` 的定位口径: 每个目录下探 5 层、
+     * 最多列举 100 个目录, 两个目录是同一处时只查一次)。
+     *
+     * 判据是"能打开": 打不开的引用 (含存在但读不了的文件) 同样进入按名找回。代价是每次判定多一次
+     * 打开探测 —— 对引用自身与每个同名候选各开一次再关掉, 调用方随后的读取再开一次。
+     *
+     * 只服务本次读取: 不写路径缓存, 免得其它入口 (如删除) 把按名找到的文件
+     * 当成书籍自身的目标。找不到返回 null。
+     */
+    override fun getReadableFileRef(book: Book): String? {
+        val path = getLocalPath(book) ?: return null
+        if (isReadableFile(path)) return path
+        return findLocalBookFileInDirs(
+            saveDir = effectiveBookSaveDir(),
+            importDir = effectiveImportBookDir(),
+        ) { dir -> searchInDir(dir, book.originName) }
     }
 
-    override fun cacheLocalPath(book: Book, path: String) {
-        synchronized(cacheLock) {
-            pathCache[book.bookUrl] = path
-        }
+    /**
+     * 在一个目录里按名找回。
+     *
+     * iOS/鸿蒙覆写本方法把整个查找放进该目录的授权内: 容器外目录未经授权时目录列举会得到空结果,
+     * 按名找回将无声失效 (见 `IosLocalBookLocator` / `OhosLocalBookLocator`)。
+     */
+    protected open fun searchInDir(dir: String, originName: String): String? =
+        findReadableLocalBookFileInDir(dir, originName, ::isReadableFile)
+
+    /**
+     * [path] 能否作为文件打开读取。
+     *
+     * iOS/鸿蒙覆写本方法把探测放进各自的目录授权内 (容器外路径无授权时直接探测会得出"文件打不开"
+     * 的错判), 见 `IosLocalBookLocator` / `OhosLocalBookLocator`。
+     */
+    protected open fun isReadableFile(path: String): Boolean = canOpenFile(path)
+
+    /**
+     * 平台无关的"能打开"探测: 是普通文件且能打开一次。
+     *
+     * 普通文件判定是必要的收口 —— 指向目录的引用能打开却不能读, 放行后要等阅读层取值才失败。
+     */
+    protected fun canOpenFile(path: String): Boolean {
+        val file = File(path)
+        if (!file.isFile) return false
+        val stream = runCatching { file.inputStream() }.getOrNull() ?: return false
+        runCatching { stream.close() }
+        return true
     }
 
     override fun removeLocalPathCache(book: Book) {
         synchronized(cacheLock) {
             pathCache.remove(book.bookUrl)
-        }
-    }
-
-    override fun getLastModified(book: Book): Long {
-        val path = getLocalPath(book) ?: return 0L
-        return try {
-            val file = File(path)
-            // lastModified 返回 epoch millis (与 JVM Files.getLastModifiedTime.toMillis() /
-            // iOS NSDate.timeIntervalSince1970*1000 等价); 文件不存在返回 0L
-            if (!file.exists()) 0L else file.lastModified()
-        } catch (e: Exception) {
-            0L
         }
     }
 
@@ -119,12 +143,4 @@ class NativeLocalBookLocator : LocalBookLocator {
             null
         }
     }
-}
-
-/**
- * 注册 [NativeLocalBookLocator] 到 [LocalBookLocators]
- * (iOS / 鸿蒙共用, 宿主启动早期调用)。
- */
-fun registerNativeLocalBookLocator() {
-    LocalBookLocators.register(NativeLocalBookLocator())
 }

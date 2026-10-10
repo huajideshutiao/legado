@@ -58,10 +58,11 @@ object AndroidDirAuthorizations {
      * [SecurityException] (阅读层据此提示重新选目录, 与 iOS/鸿蒙的授权失败同一形态),
      * 书籍的文件引用为空时抛 [IllegalArgumentException]。
      *
-     * 目标就是书籍自身的引用 ([Book.bookUrl], 归一化交给 [locationOf]) —— 本校验只是判定:
-     * 不解析"实际会访问哪个文件", 不搜索同名文件, 不读文件内容, 不改写书籍引用也不落库。
-     * 需实际访问的引用由访问方自行解析, 与删原文件取的引用是书籍的同一个引用
-     * (路径引用由定位器纯解析成绝对路径, content 引用直接取该 URI), 判定与实际动作指向同一处。
+     * 目标就是书籍自身的引用 ([Book.bookUrl], 归一化交给 [locationOf]) —— 本校验只判定该引用所在的
+     * 位置: 不读文件内容, 不搜索同名文件, 不改写书籍引用也不落库。
+     * 读取链在引用打不开时会按文件名在书籍保存位置与导入目录里另找一个同名文件打开 (两个目录都是
+     * 书籍用途选定的目录, 见 [DirUsage.BookTree]), 那个文件的位置不由本校验判定; 删原文件取的仍是
+     * 书籍自身的引用 (路径引用由定位器纯解析成绝对路径, content 引用直接取该 URI)。
      */
     fun ensureBookFileUsage(book: Book) {
         if (!book.isLocal) return

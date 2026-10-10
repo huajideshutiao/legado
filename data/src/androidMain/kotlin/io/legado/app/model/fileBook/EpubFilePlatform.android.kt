@@ -14,6 +14,7 @@ import android.util.Log
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.help.AppWebDavShared
+import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.lib.epublib.epub.EpubReader
 import io.legado.app.lib.epublib.util.zip.AndroidZipFile
@@ -29,6 +30,8 @@ import java.io.IOException
  *
  * 对齐原 app 端 `BookHelp.getBookPFD(book)` + `AndroidZipFile(pfd, name)`:
  * 基于 ParcelFileDescriptor 随机访问, content scheme 零拷贝, 不做整包复制。
+ * 本地引用先经 [LocalBookLocators] 解析 (引用失效时按文件名在保存目录/导入目录找回, 不改库),
+ * 再按解析结果分派:
  * - **webDav**: `StorageManager.openProxyFileDescriptor` + [WebDavPfdCallback] 流式按需读
  * - **content scheme**: `contentResolver.openFileDescriptor` (需 [epubApplicationContext] 已注册)
  * - **file scheme / 绝对路径**: `ParcelFileDescriptor.open`
@@ -59,6 +62,8 @@ actual class LocalEpubResource actual constructor(book: Book) {
 
     /**
      * 打开本地书籍文件的 [ParcelFileDescriptor], 行为对齐原 `BookHelp.getBookPFD`。
+     *
+     * 引用解析: 打不开时按文件名在书籍保存目录/导入目录找回, 不回写 bookUrl、不落库。
      */
     private fun openBookPfd(book: Book): ParcelFileDescriptor? {
         if (book.bookUrl.startsWith(BookType.webDavTag)) {
@@ -82,7 +87,7 @@ actual class LocalEpubResource actual constructor(book: Book) {
                 Handler(handlerThread.looper)
             )
         }
-        val uri = Uri.parse(book.bookUrl)
+        val uri = Uri.parse(LocalBookLocators.get().getReadableFileRef(book) ?: book.bookUrl)
         return when (uri.scheme) {
             "content" -> {
                 val context = epubApplicationContext
@@ -95,7 +100,7 @@ actual class LocalEpubResource actual constructor(book: Book) {
                 )
             }
             else -> {
-                // 无 scheme, 当作绝对路径 (与 app 端 Book.getLocalUri 的 Uri.fromFile 分支一致)
+                // 无 scheme, 当作绝对路径
                 ParcelFileDescriptor.open(
                     File(book.bookUrl), ParcelFileDescriptor.MODE_READ_ONLY
                 )

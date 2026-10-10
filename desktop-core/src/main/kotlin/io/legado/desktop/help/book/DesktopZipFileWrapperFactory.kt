@@ -22,7 +22,8 @@ import io.legado.app.model.fileBook.ZipFileWrapperFactory
  * - 其他本地压缩包 (rar/7z/cbr) → null (desktop 无 libarchive, app 端走 LocalArchiveWrapper)
  *
  * # bookUrl 解析
- * 本地路径经 [LocalBookLocators.get().getLocalPath] 解析:
+ * 本地路径经 [LocalBookLocators.get().getReadableFileRef] 解析: 先按 bookUrl 取路径,
+ * 引用失效时按文件名在"书籍保存位置"与"导入目录"里找回同名文件 (不回写 bookUrl、不落库):
  * - `file:///C:/path/book.cbz` → `C:\path\book.cbz`
  * - `/path/book.cbz` → 直接当本地路径
  *
@@ -36,7 +37,7 @@ object DesktopZipFileWrapperFactory : ZipFileWrapperFactory {
             if (book.bookUrl.startsWith(BookType.webDavTag) || book.bookUrl.startsWith("http")) {
                 return@runCatching createRemote(book)
             }
-            val path = LocalBookLocators.get().getLocalPath(book) ?: return null
+            val path = LocalBookLocators.get().getReadableFileRef(book) ?: return null
             val lowerPath = path.lowercase()
             if (lowerPath.endsWith(".cbz") || lowerPath.endsWith(".zip")) {
                 ZipFileWrapperFactory.CreateResult(LocalZipWrapper(java.io.File(path)))

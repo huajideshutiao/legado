@@ -11,6 +11,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.SecurityException
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.archiveName
 import io.legado.app.help.book.getRemoteUrl
@@ -91,7 +92,10 @@ class NativeFileBookAccessor : FileBookAccessor {
     override fun getBookInputStream(book: Book): InputStream {
         // 流式打开 (不整书读入内存); 调用方负责 close。
         // 打开失败抛 okio IOException 族 (ENOENT 为 FileNotFoundException, 其余含权限不足为普通 IOException)。
-        return resolveLocalFile(book.bookUrl).inputStream()
+        // 引用取当前可用的那个 (引用失效时按文件名在书籍保存位置/导入目录找回, 与桌面端 openLocalFile 同口径);
+        // 解析不到时按 bookUrl 原样打开, 由调用方按异常处理
+        val path = LocalBookLocators.get().getReadableFileRef(book)
+        return (if (path != null) File(path) else resolveLocalFile(book.bookUrl)).inputStream()
     }
 
     override fun getLastModified(book: Book): Result<Long> {

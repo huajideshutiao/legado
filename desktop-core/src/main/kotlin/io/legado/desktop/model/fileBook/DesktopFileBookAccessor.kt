@@ -150,27 +150,13 @@ class DesktopFileBookAccessor(
     }
 
     /**
-     * 打开 bookUrl 指向的本地文件, 不存在时在 books 目录按 originName 兜底查找。
-     *
-     * 兜底对齐 app 端 `Book.getLocalUri()` 的"书籍保存目录搜索"(设备间路径不一致时用),
-     * 命中后写入 [LocalBookLocators] 路径缓存, 不改 bookUrl (bookUrl 是 Book 主键)。
+     * 打开 bookUrl 指向的本地文件; 引用失效时由 [LocalBookLocators.get().getReadableFileRef]
+     * 按文件名在有效书籍保存目录与导入目录里找回 (只定位, 不回写 bookUrl、不写路径缓存)。
      */
     private fun openLocalFile(book: Book): InputStream? {
-        val locator = LocalBookLocators.get()
-        val path = runCatching { locator.getLocalPath(book) }.getOrNull()
-        val file = if (path != null) File(path) else resolveLocalFile(book.bookUrl)
-        if (file.isFile) return file.inputStream()
-        // 兜底: 在有效书籍保存目录按 originName 查找 (未设置保存位置时跳过, 与原版
-        // getLocalUri 的 `if (!defaultBookDir.isNullOrBlank())` 同口径)
-        val fallbackDir = effectiveBookSaveDir()
-        if (fallbackDir != null) {
-            val fallback = File(fallbackDir, book.originName)
-            if (fallback.isFile) {
-                locator.cacheLocalPath(book, fallback.absolutePath)
-                return fallback.inputStream()
-            }
-        }
-        return null
+        val path = runCatching { LocalBookLocators.get().getReadableFileRef(book) }.getOrNull()
+            ?: return null
+        return File(path).inputStream()
     }
 
     /** 压缩包子书: 在 books 目录按 archiveName 找回原压缩包 (对齐 app 端 `Book.getArchiveUri`)。 */
@@ -306,16 +292,16 @@ class DesktopFileBookAccessor(
     }
 
     override fun deleteBook(book: Book, deleteOriginal: Boolean) {
-        // 对齐 app 端 FileBook.deleteBook: 先清章节缓存, 再删封面 / 原文件 (无 SAF, 统一走 File)
+        // 对齐 app 端 FileBook.deleteBook: 章节缓存与封面在应用私有区, 删不掉不影响用户的源文件,
+        // 尽力而为即可; 源文件删不掉则抛出原因 (见 deleteSourceFile), 由上层如实提示。
         runCatching {
             BookStorageProviders.get().clearCache(book)
             if (!book.coverUrl.isNullOrEmpty()) {
                 FileUtilsBase.delete(desktopResolveStoredRef(book.coverUrl!!).absolutePath)
             }
-            if (deleteOriginal) {
-                deleteSourceFile(book)
-            }
         }
+        if (!deleteOriginal) return
+        deleteSourceFile(book)
     }
 
     /**
@@ -325,6 +311,9 @@ class DesktopFileBookAccessor(
      * 原因: 三者都不指向这本书的源文件 (空引用的解析结果是进程工作目录 `File("").absolutePath`),
      * 而这里对目录的删除是递归的。判定必须发生在删除之前 —— 删除不可撤销, 事后才发现解析结果
      * 是根目录, 波及的文件已经没了。
+     *
+     * 删不掉时抛出原因: 库里记录已删、文件还在磁盘上, 上层据此提示书名与原因。文件本就不在时
+     * 删除意图已经达成, 不抛。
      */
     private fun deleteSourceFile(book: Book) {
         val ref = book.bookUrl

@@ -80,7 +80,7 @@ class IosZipFileWrapperFactory : ZipFileWrapperFactory {
         if (url.startsWith("http") || url.startsWith(BookType.webDavTag)) {
             return remote.create(book)
         }
-        val path = LocalBookLocators.get().getLocalPath(book)
+        val path = LocalBookLocators.get().getReadableFileRef(book)
             ?: url.removePrefix("file://")
         val lower = path.lowercase()
         if (!lower.endsWith(".cbz") && !lower.endsWith(".zip")) return null

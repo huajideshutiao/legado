@@ -4,6 +4,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.help.AppWebDavShared
+import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavException
@@ -77,7 +78,8 @@ internal class NativeZipFileWrapper(private val filePath: String) : ZipFileWrapp
  *
  * # 分支语义与 app 端 `ZipFileWrappers.create` 对齐
  * - WebDAV / HTTP: [RemoteZipWrapper] + WebDav 范围读取 (与 desktop / app 同语义)
- * - 本地 .cbz/.zip: [NativeZipFileWrapper]
+ * - 本地 .cbz/.zip: [NativeZipFileWrapper] (路径取 [LocalBookLocators] 解析后的可用引用:
+ *   引用失效时按文件名在书籍保存位置/导入目录找回, 只定位不回写 bookUrl)
  * - 其他本地压缩包: native 端无 libarchive 解码库, 返回 null (调用方按失败处理,
  *   与 `NativeArchiveProvider` 对 rar/7z 抛明确异常的口径一致)
  *
@@ -90,7 +92,7 @@ class NativeZipFileWrapperFactory : ZipFileWrapperFactory {
         val url = book.bookUrl
         when {
             url.startsWith(BookType.webDavTag) || url.startsWith("http") -> createRemote(book)
-            else -> createLocal(url)
+            else -> createLocal(book)
         }
     }.onFailure {
         AppLog.put("读取Cbz文件失败\n${it.message}", it)
@@ -123,11 +125,11 @@ class NativeZipFileWrapperFactory : ZipFileWrapperFactory {
         return ZipFileWrapperFactory.CreateResult(wrapper)
     }
 
-    private fun createLocal(bookUrl: String): ZipFileWrapperFactory.CreateResult? {
-        val lower = bookUrl.lowercase()
+    private fun createLocal(book: Book): ZipFileWrapperFactory.CreateResult? {
+        // 本地路径取解析后的可用引用 (引用失效时按文件名在书籍保存位置/导入目录找回, 只定位不回写)
+        val path = LocalBookLocators.get().getReadableFileRef(book) ?: return null
+        val lower = path.lowercase()
         if (!lower.endsWith(".cbz") && !lower.endsWith(".zip")) return null
-        val path = bookUrl.removePrefix("file://")
-        if (path.isEmpty()) return null
         val file = File(path)
         if (!file.exists() || !file.isFile) return null
         return ZipFileWrapperFactory.CreateResult(NativeZipFileWrapper(path))

@@ -17,14 +17,12 @@ import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.archiveName
 import io.legado.app.help.book.getArchiveUri
-import io.legado.app.help.book.getLocalUri
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isArchive
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isPdf
-import io.legado.app.help.book.removeLocalUriCache
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.androidAppString
@@ -47,6 +45,7 @@ import io.legado.app.utils.getFile
 import io.legado.app.utils.inputStream
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.openOutputStream
+import io.legado.app.utils.parseToUri
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -100,9 +99,9 @@ object FileBookAccessorImpl : FileBookAccessor {
      * 走 Uri.inputStream(appCtx), 失败回退 importFromArchive / downloadRemoteBook。
      */
     override fun getBookInputStream(book: Book): InputStream {
-        val uri = book.getLocalUri()
+        val ref = LocalBookLocators.get().getReadableFileRef(book) ?: book.bookUrl
+        val uri = ref.parseToUri()
         val inputStream = uri.inputStream(App.instance).getOrNull() ?: let {
-            book.removeLocalUriCache()
             val localArchiveUri = book.getArchiveUri()
             val webDavUrl = book.getRemoteUrl()
             if (localArchiveUri != null) {
@@ -120,7 +119,6 @@ object FileBookAccessorImpl : FileBookAccessor {
             }
         }
         if (inputStream != null) return inputStream
-        book.removeLocalUriCache()
         throw FileNotFoundException("${uri.path} 文件不存在")
     }
 

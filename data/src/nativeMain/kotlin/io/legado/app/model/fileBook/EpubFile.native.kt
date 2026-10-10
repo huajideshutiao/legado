@@ -37,8 +37,8 @@ import kotlinx.atomicfu.locks.synchronized
  * 实现 EPUB 2.0 / 3.0 解析 (原 ohosMain EpubFile.ohos.kt 上移到 nativeMain, iOS 端同时受益)。
  *
  * # 设计
- * - 本地文件: [LocalBookLocators] 解析 bookUrl → 本地路径 → [kotlin.io.File.readBytes]
- *   → [EpubParser.parse] → [EpubBook] (内存模型)
+ * - 本地文件: [LocalBookLocators] 取当前可用的文件引用 (引用失效时按文件名在书籍保存位置/导入目录
+ *   找回, 只定位不改库) → [kotlin.io.File.readBytes] → [EpubParser.parse] → [EpubBook] (内存模型)
  * - 远程文件 (webDav/http): 复用 nativeMain WebDav actual (iOS 用 Darwin、鸿蒙用 CIO) 下载到本地缓存文件,
  *   再走 [EpubParser.parse] 解析 (与 jvm 端 RemoteZipWrapper 按需加载不同, native 端全量下载)
  * - 封面图片: [BitmapProviders] (iOS/鸿蒙已注册各自实现) 解码压缩为 JPEG 写入文件;
@@ -128,8 +128,9 @@ class EpubFile(var book: Book) {
                     readEpubRemote()
                 }
                 else -> {
-                    // 本地路径: LocalBookLocators 解析 → readBytes → EpubParser.parse
-                    val path = LocalBookLocators.get().getLocalPath(book)
+                    // 本地路径: LocalBookLocators 取当前可用的文件引用 (打不开时按文件名在
+                    // 书籍保存位置/导入目录找回), 再 readBytes → EpubParser.parse
+                    val path = LocalBookLocators.get().getReadableFileRef(book)
                         ?: book.bookUrl.removePrefix("file://")
                     val bytes = File(path).readBytes()
                     EpubParser.parse(bytes)

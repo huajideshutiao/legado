@@ -1,6 +1,7 @@
 package io.legado.app.model.fileBook
 
 import io.legado.app.data.entities.Book
+import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.file.desktopResolveStoredRef
 import io.legado.app.lib.epublib.epub.EpubReader
 import org.jetbrains.skia.EncodedImageFormat
@@ -47,7 +48,11 @@ actual class LocalEpubResource actual constructor(book: Book) {
     }
 
     /**
-     * 解析 [book.bookUrl] 为可被 [ZipFile] 打开的 [File] (委托 [desktopResolveStoredRef])。
+     * 解析 [book.bookUrl] 为可被 [ZipFile] 打开的 [File]。
+     *
+     * 先经 [LocalBookLocators] 取当前可用的文件引用: bookUrl 打不开时按文件名在"书籍保存位置"
+     * 与导入目录找回同名文件, 不回写 bookUrl、不落库。
+     * 定位不到时按原存储引用解析 (打开失败由 [EpubFile.readEpub] 记日志)。
      *
      * desktop 端 bookUrl 格式 (见 `LocalBookLocator.jvm.kt`):
      * - `books/x.epub` (数据根相对引用, saveBookFile 新格式) → `{数据根}/books/x.epub`
@@ -55,8 +60,9 @@ actual class LocalEpubResource actual constructor(book: Book) {
      * - `C:\path\book.epub`、`/home/user/book.epub` (绝对路径) → [File](url) (旧数据)
      */
     private fun resolveLocalFile(book: Book): File {
-        // 存储引用统一解析: 相对引用 (books/x.epub) 对准数据根, file: URI/绝对路径 (旧数据) 原样
-        return desktopResolveStoredRef(book.bookUrl)
+        // 存储引用统一解析: 相对引用对准数据根, file: URI/绝对路径 (旧数据) 原样
+        val path = LocalBookLocators.get().getReadableFileRef(book)
+        return if (path != null) File(path) else desktopResolveStoredRef(book.bookUrl)
     }
 
     /** 释放底层 ZipFile, 幂等。 */

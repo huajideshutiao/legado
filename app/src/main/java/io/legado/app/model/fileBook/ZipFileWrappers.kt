@@ -6,11 +6,12 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.getLocalUri
+import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavException
 import io.legado.app.utils.isContentScheme
+import io.legado.app.utils.parseToUri
 import java.io.File
 
 /** ZipFileWrapper 工厂；接口在 :modules:book-file，Book/WebDav/PFD 绑定留 app */
@@ -54,7 +55,8 @@ object ZipFileWrappers {
             } else if (book.bookUrl.lowercase().endsWith(".cbz") || book.bookUrl.lowercase()
                     .endsWith(".zip")
             ) {
-                val uri = book.getLocalUri()
+                val ref = LocalBookLocators.get().getReadableFileRef(book) ?: book.bookUrl
+                val uri = ref.parseToUri()
                 if (uri.isContentScheme()) {
                     val pfd = BookHelp.getBookPFD(book)
                     CreateResult(ContentZipWrapper(pfd!!), pfd)

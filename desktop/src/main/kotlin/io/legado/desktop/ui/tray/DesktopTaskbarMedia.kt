@@ -329,18 +329,10 @@ internal object DesktopTaskbarMedia {
         buttonsAdded = false
         iconsAttached = false
         DesktopTaskbarDwm.uninstall()
-        // 释放 COM 实例 (IUnknown::Release, vtable slot 2) —— 须在创建它的 STA 线程上
-        runOnPump {
-            // 媒体仍占着那一格时随托盘退场: 与 COM 释放同批投递 (泵线程), 排在在途刷新之后、
-            // 泵线程收到 WM_QUIT 之前
-            releaseMedia()
-            cachedTaskbarList?.let { list -> releaseChecked("ITaskbarList3 Release") { vtbl(list, 2) } }
-            cachedTaskbarList = null
-            imageList?.let { himl ->
-                releaseChecked("任务栏图标 ImageList_Destroy") { ComCtl32.INSTANCE.ImageList_Destroy(himl) }
-            }
-            imageList = null
-        }
+        // 释放原生资源: 泵线程还在就投给它 —— IUnknown::Release 须在创建它的 STA 线程上; 泵已不在
+        // (建窗失败/消息循环结束) 时队列没人抽取, 就地释放 —— 卸载是退出路径, 投不出去就再无下一次,
+        // 句柄会一直留到进程退出
+        if (!runOnPump { releasePumpResources() }) releasePumpResources()
         val pump = pumpWindow
         pumpWindow = null
         if (pump != null) {
@@ -351,6 +343,22 @@ internal object DesktopTaskbarMedia {
         // 命令执行器随托盘一起结束 (uninstall 只在应用退出路径调用): 留着会在进程收尾期间
         // 继续跑投递进来的任务
         commandExecutor.shutdown()
+    }
+
+    /**
+     * 释放本类持有的原生资源: 媒体进度格登记 + COM 实例 + 按钮图标列表 (幂等)。
+     *
+     * 泵线程还在时由它执行 (COM 对象归属那个 STA 套间); 泵已不在时由卸载方就地执行。
+     */
+    private fun releasePumpResources() {
+        // 媒体仍占着那一格时随托盘退场 (排在在途刷新之后)
+        releaseMedia()
+        cachedTaskbarList?.let { list -> releaseChecked("ITaskbarList3 Release") { vtbl(list, 2) } }
+        cachedTaskbarList = null
+        imageList?.let { himl ->
+            releaseChecked("任务栏图标 ImageList_Destroy") { ComCtl32.INSTANCE.ImageList_Destroy(himl) }
+        }
+        imageList = null
     }
 
     // ==================== 状态刷新 ====================
@@ -598,6 +606,15 @@ internal object DesktopTaskbarMedia {
     private val mediaKeysRegistered = AtomicBoolean(false)
 
     /**
+     * 建窗失败是否已上报 (见 [runLoop] 的失败分支)。
+     *
+     * 建窗失败期间每一代都是同一条失败: 只上报第一次, 某一代真的起来时清空 (之后再失败可再上报一次)。
+     * 只由泵线程读写。
+     */
+    @Volatile
+    private var pumpStartFailureReported = false
+
+    /**
      * 泵线程 COM 任务队列。
      *
      * ITaskbarList3 是 Apartment-threaded: 必须在真正 STA 线程上调用。
@@ -626,8 +643,12 @@ internal object DesktopTaskbarMedia {
         startPumpIfDead()
         val hwnd = pumpWindow ?: return false
         comTasks.add(action)
-        User32.INSTANCE.PostMessage(hwnd, WM_LG_RUN_COM, WinDef.WPARAM(0), WinDef.LPARAM(0))
-        return true
+        // 投递结果要如实回传: 泵线程已结束 (其窗口随之销毁) 时消息发不出去, 这笔排进队列也没人抽取
+        if (User32.INSTANCE.PostMessage(hwnd, WM_LG_RUN_COM, WinDef.WPARAM(0), WinDef.LPARAM(0))) {
+            return true
+        }
+        comTasks.remove(action)
+        return false
     }
 
     private fun drainComTasks() {
@@ -697,10 +718,16 @@ internal object DesktopTaskbarMedia {
                 taskbarCreatedMsg = User32.INSTANCE.RegisterWindowMessage(WM_TASKBARCREATED_MSG)
                 registerMediaKeys(hwnd)
             }.onFailure {
-                AppLog.put("任务栏媒体消息泵启动失败", it)
+                // 建窗失败后每次媒体事件都会再起一代 (重建是恢复通路), 但同一条失败不许逐代刷屏:
+                // 只上报第一次, 某一代真的起来后再重新允许上报
+                if (!pumpStartFailureReported) {
+                    pumpStartFailureReported = true
+                    AppLog.put("任务栏媒体消息泵启动失败 (后续重复失败不再逐次记日志)", it)
+                }
             }.isSuccess
             ready.countDown()
             if (!created) return
+            pumpStartFailureReported = false
             val msg = WinUser.MSG()
             while (User32.INSTANCE.GetMessage(msg, null, 0, 0) > 0) {
                 User32.INSTANCE.TranslateMessage(msg)

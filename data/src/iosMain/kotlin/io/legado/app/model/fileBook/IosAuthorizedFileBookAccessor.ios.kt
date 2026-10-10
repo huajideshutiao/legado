@@ -234,10 +234,15 @@ class IosAuthorizedFileBookAccessor(
         return action()
     }
 
-    /** 本地书文件路径 (非本地书返回 null, 走无授权路径)。 */
+    /**
+     * 本地书文件路径 (非本地书返回 null, 走无授权路径)。
+     *
+     * 取 [LocalBookLocators] 解析后的可用引用: 引用失效时按文件名在书籍保存位置/导入目录找回,
+     * 租约/授权挂在本次读取真正会打开的那个路径上。
+     */
     private fun localPath(book: Book): String? {
         if (!book.bookUrl.startsWith("file:")) return null
-        return LocalBookLocators.get().getLocalPath(book)
+        return LocalBookLocators.get().getReadableFileRef(book)
             ?: book.bookUrl.removePrefix("file://")
     }
 }
