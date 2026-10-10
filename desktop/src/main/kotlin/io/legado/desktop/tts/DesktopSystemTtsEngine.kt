@@ -15,24 +15,45 @@ import java.util.concurrent.atomic.AtomicBoolean
  * | macOS   | `say`                       | 停止重读 | 无     | `say -v ?` |
  * | Linux   | `spd-say` → `espeak-ng`     | 停止重读 | 无     | `-L` / `--voices` |
  *
- * 后端在启动时由后台线程预热 (见 init), 结果缓存; 探测不到任何后端时 [isReady] 为 false,
+ * 后端在启动时由后台线程预热 (见 [warmUpAsync]), 探测不到任何后端时 [isReady] 为 false,
  * [unsupportedMessage] 给出安装提示。
+ *
+ * 探测结果只缓存"有后端": 没探到时下次用到再探 —— 后端起不来 (如 Windows SAPI 对象一时建不出)
+ * 常是一次性的环境原因, 记死会让本次运行内再也朗读不了。
  */
 class DesktopSystemTtsEngine : SystemTtsEngine {
 
     private val osName: String = System.getProperty("os.name", "").lowercase()
 
-    /** 探测只做一次, 结果 (含"没有后端") 都缓存。 */
-    private val backendHolder: Lazy<DesktopTtsBackend?> = lazy { detectBackend() }
+    /** 已探到的后端; null 表示上一次没探到 (不缓存"没有后端"这一结论)。 */
+    @Volatile
+    private var backendField: DesktopTtsBackend? = null
 
-    private val backend: DesktopTtsBackend? get() = backendHolder.value
+    /**
+     * 取可用后端: 已有就复用; 没有就现探 (失败不记住, 下次用到再探)。
+     *
+     * 同一后端只存在一份 (探测全程持锁): 并发调用不会探出第二个后端/第二条 COM 线程。
+     */
+    @Synchronized
+    private fun backend(): DesktopTtsBackend? {
+        backendField?.let { return it }
+        if (shutdown.get()) return null
+        val detected = detectBackend() ?: return null
+        // 探测期间被关闭: 不留下活着的后端 (关闭时可能还没拿到探测结果)
+        if (shutdown.get()) {
+            detected.shutdown()
+            return null
+        }
+        backendField = detected
+        return detected
+    }
 
     /**
      * 后台异步预热 TTS 后端 (Windows 走 SAPI COM 初始化, Linux/mac 起探测子进程)。
      * 由桌面端启动阶段3 (首屏窗口显示后) 异步调用, 避免首屏前阻塞或唤醒系统 COM 组件。
      */
     fun warmUpAsync() {
-        Thread({ runCatching { backendHolder.value } }, "desktop-tts-warmup").apply {
+        Thread({ runCatching { backend() } }, "desktop-tts-warmup").apply {
             isDaemon = true
             start()
         }
@@ -56,7 +77,7 @@ class DesktopSystemTtsEngine : SystemTtsEngine {
     // ===== SystemTtsEngine contract =====
 
     override val isReady: Boolean
-        get() = !shutdown.get() && backend != null
+        get() = !shutdown.get() && backend() != null
 
     override val isSpeaking: Boolean
         get() = speakingField
@@ -82,7 +103,7 @@ class DesktopSystemTtsEngine : SystemTtsEngine {
 
     override fun speak(text: String, utteranceId: String): Boolean {
         if (shutdown.get()) return false
-        val engine = backend
+        val engine = backend()
         if (engine == null) return false
         lastText = text
         lastUtteranceId = utteranceId
@@ -95,7 +116,7 @@ class DesktopSystemTtsEngine : SystemTtsEngine {
     override fun pause() {
         if (shutdown.get()) return
         pausedField = true
-        val engine = backend ?: return
+        val engine = backend() ?: return
         // 后端不支持真暂停时降级为停止, resume 时从本段开头重读
         if (!engine.pause()) {
             engine.stop()
@@ -107,7 +128,7 @@ class DesktopSystemTtsEngine : SystemTtsEngine {
         if (shutdown.get()) return
         if (!pausedField) return
         pausedField = false
-        val engine = backend ?: return
+        val engine = backend() ?: return
         if (engine.resume()) {
             speakingField = true
             return
@@ -123,31 +144,31 @@ class DesktopSystemTtsEngine : SystemTtsEngine {
         if (shutdown.get()) return
         pausedField = false
         speakingField = false
-        backend?.stop()
+        backend()?.stop()
     }
 
     override fun shutdown() {
         if (!shutdown.compareAndSet(false, true)) return
         speakingField = false
         pausedField = false
-        // 没探测过就别为了关闭去启动后端
-        if (backendHolder.isInitialized()) backendHolder.value?.shutdown()
+        // 没探过就别为了关闭去启动后端
+        backendField?.shutdown()
     }
 
     // ===== 音色 (供设置界面) =====
 
     /** 当前平台可选音色; 无后端或后端不支持时为空。 */
-    fun availableVoices(): List<DesktopTtsVoice> = backend?.voices().orEmpty()
+    fun availableVoices(): List<DesktopTtsVoice> = backend()?.voices().orEmpty()
 
     /** 选择音色, null 恢复系统默认。 */
-    fun selectVoice(voiceId: String?): Boolean = backend?.selectVoice(voiceId) ?: false
+    fun selectVoice(voiceId: String?): Boolean = backend()?.selectVoice(voiceId) ?: false
 
     /** 当前音色 id, null 表示系统默认。 */
-    fun currentVoiceId(): String? = backend?.currentVoiceId
+    fun currentVoiceId(): String? = backend()?.currentVoiceId
 
     /** 无可用后端时的安装提示, 有后端时为 null。 */
     fun unsupportedMessage(): String? {
-        if (backend != null) return null
+        if (backend() != null) return null
         return when {
             osName.contains("nux") || osName.contains("nix") || osName.contains("aix") ->
                 "未检测到系统 TTS 后端。请安装 speech-dispatcher (推荐, 如 " +
@@ -198,9 +219,4 @@ class DesktopSystemTtsEngine : SystemTtsEngine {
             else -> null
         }
     }.getOrNull()
-
-    private companion object {
-        /** 无可用后端 (与 app 端 TextToSpeech.ERROR = -1 区分)。 */
-        const val ERROR_NO_BACKEND = -5
-    }
 }

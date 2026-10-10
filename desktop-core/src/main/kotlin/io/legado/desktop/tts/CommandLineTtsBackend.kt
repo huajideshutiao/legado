@@ -40,15 +40,16 @@ abstract class CommandLineTtsBackend : DesktopTtsBackend {
     /** 文本是否通过 stdin 传给子进程 (say / espeak-ng 需要, spd-say 走 argv)。 */
     protected open val textViaStdin: Boolean = false
 
-    /** 枚举音色, 默认无。 */
-    protected open fun loadVoices(): List<DesktopTtsVoice> = emptyList()
+    /** 枚举音色, 默认无。返回 null 表示这一次没取到 (调用方不得把"没取到"当成结论缓存)。 */
+    protected open fun loadVoices(): List<DesktopTtsVoice>? = emptyList()
 
     /** 停止时的额外动作 (如 spd-say 需要另起 `-C` 取消 daemon 队列)。 */
     protected open fun onStop() = Unit
 
     override fun voices(): List<DesktopTtsVoice> {
         voiceCache?.let { return it }
-        val list = runCatching { loadVoices() }.getOrDefault(emptyList())
+        // 没取到时只回空, 不写缓存: 后端一时不可用不该让本次运行内再也选不了音色
+        val list = runCatching { loadVoices() }.getOrNull() ?: return emptyList()
         voiceCache = list
         return list
     }
@@ -176,8 +177,8 @@ class MacSayTtsBackend : CommandLineTtsBackend() {
         }
     }
 
-    override fun loadVoices(): List<DesktopTtsVoice> {
-        val out = runCapture(listOf("say", "-v", "?")) ?: return emptyList()
+    override fun loadVoices(): List<DesktopTtsVoice>? {
+        val out = runCapture(listOf("say", "-v", "?")) ?: return null
         return out.lineSequence().mapNotNull { line ->
             if (line.isBlank()) return@mapNotNull null
             // 先按 # 切掉示例句, 余下末尾 token 是 locale, 其前是音色名 (名字可能含空格)
@@ -232,8 +233,8 @@ class LinuxSpeechDispatcherBackend : CommandLineTtsBackend() {
         runCapture(listOf("spd-say", "-C"), timeoutMs = 1500)
     }
 
-    override fun loadVoices(): List<DesktopTtsVoice> {
-        val out = runCapture(listOf("spd-say", "-L")) ?: return emptyList()
+    override fun loadVoices(): List<DesktopTtsVoice>? {
+        val out = runCapture(listOf("spd-say", "-L")) ?: return null
         return out.lineSequence().mapNotNull { line ->
             val cols = line.trim().split(Regex("\\s+"))
             if (cols.size < 2 || cols[0].equals("NAME", true)) return@mapNotNull null
@@ -273,8 +274,8 @@ class LinuxEspeakNgBackend(private val binary: String) : CommandLineTtsBackend()
         }
     }
 
-    override fun loadVoices(): List<DesktopTtsVoice> {
-        val out = runCapture(listOf(binary, "--voices")) ?: return emptyList()
+    override fun loadVoices(): List<DesktopTtsVoice>? {
+        val out = runCapture(listOf(binary, "--voices")) ?: return null
         return out.lineSequence().mapNotNull { line ->
             val cols = line.trim().split(Regex("\\s+"))
             // Pty Language Age/Gender VoiceName File ...

@@ -11,6 +11,7 @@ import com.sun.jna.platform.win32.OleAuto
 import com.sun.jna.platform.win32.Variant
 import com.sun.jna.platform.win32.Variant.VARIANT
 import com.sun.jna.platform.win32.WinDef
+import io.legado.app.constant.AppLog
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -37,11 +38,8 @@ internal class WindowsSapiTtsBackend : DesktopTtsBackend {
 
     private val alive = AtomicBoolean(true)
 
-    /** SpVoice 包装, 只允许在 [comThread] 上访问。 */
+    /** SpVoice 包装, 只允许在 [comThread] 上访问; 建不出来时为 null, 下次用到时重试。 */
     private var voice: SpVoice? = null
-
-    /** 初始化结果, null 表示 COM 创建失败 (无 SAPI)。 */
-    @Volatile private var initFailed: Boolean = false
 
     @Volatile private var voiceCache: List<DesktopTtsVoice>? = null
 
@@ -60,17 +58,9 @@ internal class WindowsSapiTtsBackend : DesktopTtsBackend {
         start()
     }
 
-    private val readyLatch = CountDownLatch(1)
-
     private fun comLoop() {
         Ole32.INSTANCE.CoInitializeEx(Pointer.NULL, Ole32.COINIT_APARTMENTTHREADED)
         try {
-            voice = runCatching { SpVoice() }.getOrElse {
-                initFailed = true
-                null
-            }
-            defaultVoiceId = voice?.let { sp -> runCatching { sp.currentVoiceToken() }.getOrNull() }
-            readyLatch.countDown()
             while (alive.get()) {
                 val task = tasks.poll(200, TimeUnit.MILLISECONDS) ?: continue
                 runCatching { task.run() }
@@ -78,23 +68,36 @@ internal class WindowsSapiTtsBackend : DesktopTtsBackend {
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
         } finally {
-            readyLatch.countDown()
             runCatching { voice?.release() }
             voice = null
             Ole32.INSTANCE.CoUninitialize()
         }
     }
 
-    /** 把任务派到 COM 线程并等结果; 失败或超时返回 null。 */
+    /**
+     * 取 COM 对象, 没有就现建 (只在 [comThread] 上调用)。
+     *
+     * 建不出来不记死: COM 对象只管一份, 失败后下次用到时再建 —— SAPI 对象建不出来常是一次性的
+     * 环境原因 (COM 未就绪 / 系统忙), 记死会让本次运行内再也读不出声。
+     */
+    private fun voiceOrCreate(): SpVoice? {
+        voice?.let { return it }
+        return runCatching { SpVoice() }.onFailure {
+            AppLog.put("SAPI 语音对象创建失败", it)
+        }.getOrNull()?.also { created ->
+            voice = created
+            defaultVoiceId = runCatching { created.currentVoiceToken() }.getOrNull()
+        }
+    }
+
+    /** 把任务派到 COM 线程并等结果; 取不到 COM 对象/没排上队/超时返回 null。 */
     private fun <T> onCom(timeoutMs: Long = 5000, block: (SpVoice) -> T): T? {
         if (!alive.get()) return null
-        readyLatch.await(5, TimeUnit.SECONDS)
-        if (initFailed) return null
         var result: T? = null
         val done = CountDownLatch(1)
         val ok = tasks.offer(Runnable {
             try {
-                voice?.let { result = runCatching { block(it) }.getOrNull() }
+                voiceOrCreate()?.let { result = runCatching { block(it) }.getOrNull() }
             } finally {
                 done.countDown()
             }
@@ -104,28 +107,47 @@ internal class WindowsSapiTtsBackend : DesktopTtsBackend {
         return result
     }
 
+    /**
+     * 不等结果地派发到 COM 线程; 返回 false 表示任务没进队列 (已关闭 / 队列满)。
+     *
+     * COM 对象建不出来、或任务执行里抛了异常时调 [onFailed]: 每段朗读必须恰好有一次终止事件,
+     * 不得静默丢掉 (被后一次朗读顶掉的段落不会走到这里, 它本来就不该再报事件)。
+     */
+    private fun offerCom(onFailed: () -> Unit, block: (SpVoice) -> Unit): Boolean {
+        if (!alive.get()) return false
+        return tasks.offer(Runnable {
+            val sp = voiceOrCreate()
+            if (sp == null) {
+                onFailed()
+            } else {
+                runCatching { block(sp) }.onFailure {
+                    AppLog.put("SAPI 朗读任务执行失败", it)
+                    onFailed()
+                }
+            }
+        })
+    }
+
     /** 不等结果地派发 (用于 stop/pause 这类要求低延迟的路径)。 */
     private fun postCom(block: (SpVoice) -> Unit) {
         if (!alive.get()) return
         tasks.offer(Runnable { voice?.let { runCatching { block(it) } } })
     }
 
-    /** 探测: COM 能创建出来就算可用。 */
-    // 最长阻塞 5s, 只应在后台线程调 (DesktopSystemTtsEngine 启动时预热, 不落 EDT)
-    fun isAvailable(): Boolean {
-        readyLatch.await(5, TimeUnit.SECONDS)
-        return !initFailed && alive.get()
-    }
+    /** 探测: COM 对象能建出来就算可用 (建不出来不记死, 下次调用再试)。 */
+    // 最长阻塞 5s, 只应在后台线程调 (DesktopSystemTtsEngine 启动或用到时探, 不落 EDT)
+    fun isAvailable(): Boolean = onCom { true } == true
 
     override fun voices(): List<DesktopTtsVoice> {
         voiceCache?.let { return it }
-        val list = onCom { it.enumVoices() } ?: emptyList()
+        // 枚举失败不写缓存: 后端一时不可用不该让本次运行内再也选不了音色
+        val list = onCom { it.enumVoices() } ?: return emptyList()
         voiceCache = list
         return list
     }
 
     override fun selectVoice(voiceId: String?): Boolean {
-        // null 要真的切回系统默认音色, 所以用 init 时记下的默认 token
+        // null 要真的切回系统默认音色, 所以用 COM 对象建好时记下的默认 token
         val target = voiceId ?: defaultVoiceId ?: return false
         val applied = onCom { it.selectVoiceById(target) } ?: false
         if (applied) selectedVoiceId = voiceId
@@ -134,8 +156,10 @@ internal class WindowsSapiTtsBackend : DesktopTtsBackend {
 
     override fun speak(text: String, rate: Float, utteranceId: String, listener: TtsBackendListener) {
         val gen = generation.incrementAndGet()
-        postCom { sp ->
-            if (generation.get() != gen) return@postCom
+        val accepted = offerCom(
+            onFailed = { listener.onError(utteranceId, ERROR_SPEAK_FAILED) },
+        ) { sp ->
+            if (generation.get() != gen) return@offerCom
             // 对照原版 Android TTS: 段间串行推进用 QUEUE_ADD 追加队列, 只有主动跳段才 flush。
             // 这里同样不在 speak 里带 PURGEBEFORESPEAK —— 实测带 PURGE 时 SAPI 每次 speak
             // 都复用同一个 stream 号, Status.CurrentStreamNumber 在新段开读前短暂停留在上一段
@@ -147,12 +171,15 @@ internal class WindowsSapiTtsBackend : DesktopTtsBackend {
             sp.setRate(rateToSapi(rate))
             listener.onStart(utteranceId)
             val flags = SPF_ASYNC or SPF_IS_NOT_XML
-            val stream = runCatching { sp.speak(text, flags) }.getOrElse {
+            val stream = runCatching { sp.speak(text, flags) }.getOrNull()
+            if (stream == null) {
                 listener.onError(utteranceId, ERROR_SPEAK_FAILED)
-                return@postCom
+            } else {
+                startProgressPoll(gen, stream, text.length, utteranceId, listener)
             }
-            startProgressPoll(gen, stream, text.length, utteranceId, listener)
         }
+        // 任务没排上队 (已关闭 / 队列满): 如实上报, 不让这一段静默消失
+        if (!accepted) listener.onError(utteranceId, ERROR_SPEAK_FAILED)
     }
 
     /**
@@ -404,6 +431,8 @@ internal class WindowsSapiTtsBackend : DesktopTtsBackend {
         const val SPRS_IS_SPEAKING = 0x2
         const val DISPID_PROPERTYPUT = -3
         const val POLL_INTERVAL_MS = 50L
+
+        /** 本段没能交给系统语音: COM 对象建不出来 / 任务未排上队列 / 调用失败。 */
         const val ERROR_SPEAK_FAILED = -3
 
         /** SAPI 的 Language 属性是十六进制 LCID 字符串, 只映射常见几个, 其余原样带出。 */
