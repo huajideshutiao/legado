@@ -10,12 +10,15 @@ import io.legado.app.data.entities.Book
  * `LocalArchiveWrapper` 等重 Android 依赖的直接引用。
  *
  * # 实现注册
- * - **Android (app)**: `ZipFileWrapperFactoryImpl` 包装原 `ZipFileWrappers.create`,
- *   在 `App.onCreate` 经 [ZipFileWrapperFactoryProviders.register] 注入。
+ * - **Android (app)**: 在 `App.onCreate` 经 [ZipFileWrapperFactoryProviders.register] 注入的是
+ *   用途校验装饰器 `AndroidAuthorizedZipFileWrapperFactory`: 开容器前按书籍文件引用校验目录用途,
+ *   其余行为委托 `ZipFileWrapperFactoryImpl` (包装 `ZipFileWrappers.create`)。
  * - **Desktop (desktop)**: `DesktopZipFileWrapperFactory` 用 [LocalZipWrapper]
  *   (本地 .cbz/.zip 文件) + [RemoteZipWrapper] (WebDAV 远程) 实现, 在 `Main.kt` 注入。
- * - **iOS / 鸿蒙**: `NativeZipFileWrapperFactory` 用 commonMain [RemoteZipCore]
- *   解析本地 cbz (纯 Kotlin zip 读取, 无 JVM 依赖), 在各自 ProviderRegistry 注入。
+ * - **iOS**: 注入 `IosZipFileWrapperFactory`, 用 commonMain [RemoteZipCore] 解析本地 cbz
+ *   (纯 Kotlin zip 读取, 无 JVM 依赖), 每段区间读在 security-scoped 授权内进行。
+ * - **鸿蒙**: 注入 `OhosZipFileWrapperFactory`, 本地路径分支先激活持久化目录授权,
+ *   解析复用 nativeMain `NativeZipFileWrapperFactory`。
  *
  * 模式参考 [io.legado.app.help.book.BookHelpProviders] /
  * [io.legado.app.help.book.BookStorageProviders]。

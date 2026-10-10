@@ -248,8 +248,11 @@ object FileUtilsBase {
         return src.renameTo(tar)
     }
 
-    /** 原子替换时原文件让位用的后缀: 目标名让给新文件, 原件原样留在这份备份里。 */
-    private const val REPLACE_BACKUP_SUFFIX = ".bak"
+    /**
+     * 原子替换时原文件让位用的后缀: 目标名让给新文件, 原件原样留在这份备份里。
+     * 替换被打断在"让位与重试改名之间"时它会残留在目标目录, [deleteWithReplaceBackup] 按这个名字清掉。
+     */
+    const val REPLACE_BACKUP_SUFFIX = ".bak"
 
     /**
      * 用 [src] 整份替换 [dst], 任一步失败都保持 [dst] 已有的内容可用。
@@ -289,6 +292,20 @@ object FileUtilsBase {
             }
         }
         backup.delete()
+    }
+
+    /**
+     * 删除 [target] 及其原子替换备份件。
+     *
+     * [REPLACE_BACKUP_SUFFIX] 是 [replaceFileAtomically] 的中间件: 替换被强杀在"让位与重试改名
+     * 之间"会残留, 同路径的下一次替换才会清掉它。删除替换目标的地方走本方法, 该件才随目标消失。
+     *
+     * @return [target] 本身是否删除成功 (备份件是否清掉不影响返回值)
+     */
+    fun deleteWithReplaceBackup(target: File): Boolean {
+        val deleted = target.delete()
+        File(target.parentFile, target.name + REPLACE_BACKUP_SUFFIX).delete()
+        return deleted
     }
 
     /**

@@ -20,6 +20,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.extension.EXTENSION_ICON_MAX_PIXEL_SIZE
 import io.legado.app.help.extension.ExtensionApkInfo
+import io.legado.app.help.extension.ExtensionInstallScaffold
 import io.legado.app.help.extension.isValidExtensionPackageName
 import io.legado.app.help.extension.model.ContentWarning
 import io.legado.app.help.extension.model.MangaExtension
@@ -82,7 +83,8 @@ internal object ExtensionLoader {
 
     private const val PRIVATE_EXTENSION_EXTENSION = "ext"
 
-    private fun getPrivateExtensionDir(context: Context) = File(context.filesDir, "exts")
+    /** 私有扩展文件所在目录 (扩展文件与安装临时件都在这棵目录下; 安装器落盘与卸载清理共用)。 */
+    fun getPrivateExtensionDir(context: Context) = File(context.filesDir, "exts")
 
     /**
      * 扩展安装包元信息 (覆盖校验面)。Android 侧由 PackageManager 查询, 与桌面端的
@@ -120,9 +122,16 @@ internal object ExtensionLoader {
         }
     }
 
+    /**
+     * 卸载私有扩展: 扩展文件、原子替换备份件与安装临时件一并清掉 (备份件是替换被强杀留下的旧副本,
+     * 卸载时不清会一直留在磁盘上)。重扫由调用方触发。
+     */
     fun uninstallPrivateExtension(context: Context, pkgName: String) {
         requireValidExtensionPackageName(pkgName)
-        if (File(getPrivateExtensionDir(context), "$pkgName.$PRIVATE_EXTENSION_EXTENSION").delete()) {
+        val dir = getPrivateExtensionDir(context)
+        ExtensionInstallScaffold.discardInstallTemps(dir, pkgName)
+        val target = File(dir, "$pkgName.$PRIVATE_EXTENSION_EXTENSION")
+        if (FileUtilsBase.deleteWithReplaceBackup(target)) {
             ExtensionInstallReceiver.notifyRemoved(context, pkgName)
         }
     }

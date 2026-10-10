@@ -13,8 +13,9 @@ import io.legado.app.data.entities.Book
  * 下沉后 [CbzFile] (shared) 不再直接依赖 app 端 [ZipFileWrappers],
  * 改经 [ZipFileWrapperFactoryProviders] provider 间接调用本实现。
  *
- * 注册: [registerAndroidWebBookProviders] 中
- * `ZipFileWrapperFactoryProviders.register(ZipFileWrapperFactoryImpl)`。
+ * 注册: [ZipFileWrapperFactoryProviders] 中生效的是用途校验装饰器
+ * [AndroidAuthorizedZipFileWrapperFactory] (由 [registerAndroidAuthorizedFileBookAccessor] 注入),
+ * 本对象是它的委托。
  *
  * # PFD 传递
  * [ZipFileWrappers.CreateResult.fileDescriptor] (ParcelFileDescriptor?) 直接

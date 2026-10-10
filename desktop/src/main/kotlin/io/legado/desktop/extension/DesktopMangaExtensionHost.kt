@@ -205,8 +205,7 @@ class DesktopMangaExtensionHost(
      */
     private val installer = object : ExtensionInstallScaffold() {
 
-        override fun tempFile(pkgName: String): File =
-            File(extDir, "$pkgName.$APK_EXTENSION.part")
+        override fun extensionDir(): File = extDir
 
         override fun readApkInfo(file: File): ExtensionApkInfo? {
             val manifest = runCatching { ApkManifestReader.read(file) }.getOrNull() ?: return null
@@ -246,8 +245,9 @@ class DesktopMangaExtensionHost(
     override fun uninstall(extension: MangaExtension.Installed) {
         // 桌面无共享扩展形态: 一律扩展目录内文件
         requireValidExtensionPackageName(extension.pkgName)
+        ExtensionInstallScaffold.discardInstallTemps(extDir, extension.pkgName)
         val file = File(extDir, "${extension.pkgName}.$APK_EXTENSION")
-        if (file.isFile && file.delete()) {
+        if (file.isFile && FileUtilsBase.deleteWithReplaceBackup(file)) {
             loadCache.remove(extension.pkgName)?.loaded?.classLoader?.let { loader ->
                 runCatching { loader.close() }
             }

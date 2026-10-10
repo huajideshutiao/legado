@@ -15,7 +15,7 @@ import java.io.File
  */
 internal class ExtensionInstaller(private val context: Context) : ExtensionInstallScaffold() {
 
-    override fun tempFile(pkgName: String): File = File(context.cacheDir, "$pkgName.apk")
+    override fun extensionDir(): File = ExtensionLoader.getPrivateExtensionDir(context)
 
     override fun readApkInfo(file: File): ExtensionApkInfo? =
         ExtensionLoader.archiveApkInfo(context, file)

@@ -14,6 +14,7 @@ import io.legado.app.help.tvbox.TvBoxLocalProxy
 import io.legado.app.help.tvbox.TvBoxSite
 import io.legado.app.help.tvbox.TvBoxPlatforms
 import io.legado.app.model.webBook.PluginSourceDelegates
+import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.GSON
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -237,40 +238,27 @@ object TvBoxManager {
     /** 落盘临时件名后缀: 与目标同目录 (同一卷) 才能改名。 */
     private const val TEMP_SUFFIX = ".tmp"
 
-    /** 原文件让位时的备份名后缀: 仅改名不覆盖已有目标的平台会用到。 */
-    private const val BACKUP_SUFFIX = ".bak"
-
     /**
-     * 配置落盘走临时文件 + 改名: 半写文件会让下次冷启动解析失败而整体失效。
-     * 改名覆盖不了已存在的目标时 (Windows 的 CRT _wrename 要求目标名不存在), 原文件先改名
-     * 让位再重试, 重试仍失败就把原文件改回来: 任一步失败都留着一份完整配置。
-     * 落盘只用 java.io.File: java.nio.file 在 Android 上 API 26 才有, 模块 minSdk 24。
+     * 配置落盘走临时文件 + 共享的原子替换 ([FileUtilsBase.replaceFileAtomically]): 半写文件会让
+     * 下次冷启动解析失败而整体失效, 覆盖时旧配置在新配置整份就位后才消失, 任一步失败都保持已有配置
+     * 可用。
      */
     private fun writeTextAtomically(file: File, text: String) {
         val tmp = File(file.parentFile, file.name + TEMP_SUFFIX)
         tmp.writeText(text)
-        // 同目录改名: 安卓/Linux、macOS 上原子覆盖目标, 不留中间窗口
-        if (tmp.renameTo(file)) return
-        // 目标已存在时改名可能被拒 (Windows 的 CRT _wrename 要求目标名不存在):
-        // 原文件先退到备份名让出目标名, 重试仍失败则把原文件改回来。
-        // 改名没成功就不删临时件: 目标不存在时它是新内容的唯一副本。
-        val backup = File(file.parentFile, file.name + BACKUP_SUFFIX)
-        backup.delete()
-        if (file.renameTo(backup)) {
-            if (tmp.renameTo(file)) {
-                backup.delete()
-                return
-            }
-            backup.renameTo(file)
+        try {
+            FileUtilsBase.replaceFileAtomically(tmp, file)
+        } catch (e: IOException) {
+            // 导入配置失败时用户看到的就是本模块这句文案; 共享实现报的是通用替换口径, 具体失败环节
+            // (原文件被占用/原文件去向) 并入消息里。不挂 cause: 失败提示取异常链最深层消息。
+            throw IOException("TVBox 配置落盘失败: ${file.path} (${e.message})")
         }
-        throw IOException("TVBox 配置落盘失败: ${file.path}")
     }
 
     /** 删除 [file] 连同它的落盘中间件, 避免清除后磁盘上仍留着一份可读的旧配置。 */
     private fun deleteWithLeftovers(file: File) {
-        file.delete()
+        FileUtilsBase.deleteWithReplaceBackup(file)
         File(file.parentFile, file.name + TEMP_SUFFIX).delete()
-        File(file.parentFile, file.name + BACKUP_SUFFIX).delete()
     }
 
     // ===== 站点"未添加"集合 (filesDir/tvbox/sites.json; 脏 JSON 退化为空集) =====

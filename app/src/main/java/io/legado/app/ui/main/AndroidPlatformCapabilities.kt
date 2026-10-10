@@ -88,6 +88,7 @@ import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.effectiveBookExportDir
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.file.AndroidDirAuthorizations
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.lib.theme.MonetColorExtract
 import io.legado.app.model.BookCover
@@ -810,6 +811,7 @@ class AndroidPlatformCapabilities(
             try {
                 val bookWebDav = AppWebDav.defaultBookWebDav
                     ?: throw NoStackTraceException("未配置webDav")
+                AndroidDirAuthorizations.ensureBookFileUsage(book)
                 bookWebDav.upload(book)
                 book.lastCheckTime = System.currentTimeMillis()
                 book.save()
@@ -1079,6 +1081,7 @@ class AndroidPlatformCapabilities(
 
     // 对照 BookInfoActivity.upWordCount 内 FileDoc.fromFile(book.bookUrl).size
     override suspend fun localBookFileSize(bookUrl: String): Long = withContext(IO) {
+        AndroidDirAuthorizations.ensureBookFileUsage(bookUrl)
         FileDoc.fromFile(bookUrl).size
     }
 
