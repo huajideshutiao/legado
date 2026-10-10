@@ -44,7 +44,10 @@ import io.legado.app.ui.book.info.BookInfoUiActions
 import io.legado.app.ui.book.info.BookInfoUiEvent
 import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
 import io.legado.app.ui.book.info.LocalIntroImageSlot
-import io.legado.app.ui.book.manage.DeleteConfirmDialog
+import io.legado.app.ui.book.manage.ShelfDeleteConfirmDialog
+import io.legado.app.ui.book.manage.ShelfDeleteRequest
+import io.legado.app.ui.book.manage.confirmShelfDelete
+import io.legado.app.ui.book.manage.startShelfDelete
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
@@ -219,14 +222,6 @@ fun BookInfoRoute(
     val onShelfResult: (Boolean?) -> Unit = { result ->
         if (result == null) navigator.pop(RouteResultPayload.Deleted)
         else screenModel.dispatch(BookInfoUiEvent.UpdateBookshelf(result))
-    }
-
-    // 下架 (勾选值已定): 交平台删记录 + 按勾选删源文件 (对照原版 deleteBook 的 yesButton 分支)
-    val deleteBookFromShelf: (Book, Boolean) -> Unit = { target, deleteOriginal ->
-        val platform = PlatformCapabilityProviders.get()
-        // 对照原版: 只有弹了勾选框 (本地书) 才回写"删除源文件"偏好
-        if (target.isLocal) platform.setDeleteBookOriginal(deleteOriginal)
-        platform.deleteBookshelfBook(target, deleteOriginal, onShelfResult)
     }
 
     val actions = object : BookInfoUiActions {
@@ -485,17 +480,8 @@ fun BookInfoRoute(
                 )
                 return
             }
-            // 下架: 确认框由能力面自己弹 (安卓的系统 alert) 时, 勾选值也由它自己取
-            if (platform.confirmsDeleteBookInCapability()) {
-                platform.deleteBookshelfBook(b, platform.getDeleteBookOriginal(), onShelfResult)
-                return
-            }
-            // "移除书籍时确认"关闭时按记忆的勾选值直接下架 (对照原版 deleteBook 的 alert 关闭分支)
-            if (!PreferenceProviders.get().getBoolean(PreferKey.bookInfoDeleteAlert, true)) {
-                deleteBookFromShelf(b, platform.getDeleteBookOriginal())
-                return
-            }
-            shelfDeleteRequest = ShelfDeleteRequest(b, platform.getDeleteBookOriginal())
+            // 下架: 确认框与勾选值按端分工 (见 startShelfDelete)
+            shelfDeleteRequest = startShelfDelete(b, onShelfResult)
         }
 
         // 搜索作者: :: 探索直接用内存 bookSource (对照 master search(): IntentData.source =
@@ -868,17 +854,14 @@ fun BookInfoRoute(
     }
 
     // 下架确认框 (对照原版 BookInfoActivity.deleteBook 的 alert; 本地书带"删除源文件"勾选)
-    shelfDeleteRequest?.let { request ->
-        DeleteConfirmDialog(
-            showCheckbox = request.book.isLocal,
-            initialDeleteOriginal = request.initialDeleteOriginal,
-            onConfirm = { deleteOriginal ->
-                shelfDeleteRequest = null
-                deleteBookFromShelf(request.book, deleteOriginal)
-            },
-            onDismiss = { shelfDeleteRequest = null },
-        )
-    }
+    ShelfDeleteConfirmDialog(
+        request = shelfDeleteRequest,
+        onConfirm = { target, deleteOriginal ->
+            shelfDeleteRequest = null
+            confirmShelfDelete(target, deleteOriginal, onShelfResult)
+        },
+        onDismiss = { shelfDeleteRequest = null },
+    )
 
     // 等待对话框 (对照 app 端 BookInfoActivity.upWaitDialogStatus, webFile 流程加载指示)
     val waitDialogVisible by screenModel.waitDialog.collectAsState()
@@ -887,14 +870,3 @@ fun BookInfoRoute(
         onDismissRequest = { screenModel.upWaitDialog(false) },
     )
 }
-
-/**
- * 下架确认框待决请求 (对照原版 BookInfoActivity.deleteBook: 本地书带"删除源文件"勾选)。
- *
- * @param book 待下架的书 (本地书才显示勾选框)
- * @param initialDeleteOriginal 勾选初始值 (删除源文件偏好)
- */
-private class ShelfDeleteRequest(
-    val book: Book,
-    val initialDeleteOriginal: Boolean,
-)

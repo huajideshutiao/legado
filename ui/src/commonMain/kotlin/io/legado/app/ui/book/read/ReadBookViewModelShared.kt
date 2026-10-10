@@ -1,7 +1,6 @@
 package io.legado.app.ui.book.read
 
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.BookType
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
@@ -20,10 +19,9 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.platform.syncGetString
-import io.legado.app.help.book.addType
+import io.legado.app.help.book.delBookCore
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
@@ -1806,8 +1804,7 @@ class ReadBookViewModelShared(
         val book = readBook.book.value
         if (book != null && book.isNotShelf) {
             progressSyncScope.launch {
-                AppDbProviders.get().bookDao.delete(book)
-                book.addType(BookType.notShelf)
+                book.delBookCore()
             }
         }
     }
@@ -2089,8 +2086,8 @@ class ReadBookViewModelShared(
     /**
      * 从书架删除当前书 (对照 app 端 ReadBookViewModel.removeFromBookshelf + Book.delete 扩展)。
      *
-     * 1:1 复刻 app 端 `Book.delete()` 行为: 删的是当前书则清 readBook.book 引用,
-     * 从数据库删除, 标记 notShelf 类型。
+     * 1:1 复刻 app 端 `Book.delete()` 行为: 删的是当前书则清 readBook.book 引用, 再走
+     * [delBookCore] (删章节 + 删库 + 标记 notShelf, 本地书不碰源文件)。
      */
     fun removeFromBookshelf(success: (() -> Unit)?) {
         val book = readBook.book.value ?: return
@@ -2099,8 +2096,7 @@ class ReadBookViewModelShared(
             if (readBook.book.value?.bookUrl == book.bookUrl) {
                 readBook.bookValue = null
             }
-            AppDbProviders.get().bookDao.delete(book)
-            book.addType(BookType.notShelf)
+            book.delBookCore()
             success?.invoke()
         }
     }

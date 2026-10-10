@@ -19,6 +19,7 @@ import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.effectiveBookExportDir
 import io.legado.app.help.config.rememberBookExportDir
+import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.file.desktopStoredLocalRef
 import io.legado.app.help.source.SourceVerificationHelpShared
@@ -419,9 +420,12 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     override fun showChangeCoverDialog(book: Book, onCoverSelected: (String) -> Unit) {
         val navigator = AppNavigatorProviders.get()
         scope.launch {
-            navigator.showOverlay(
-                AppOverlay.Dialog("change_cover", payload = "${book.name}\n${book.author}")
-            )
+            // 弹层是界面动作, 回主线程; 能力作用域是 IO, 弹层栈是"先读后写"。
+            withContext(mainDispatcher) {
+                navigator.showOverlay(
+                    AppOverlay.Dialog("change_cover", payload = "${book.name}\n${book.author}")
+                )
+            }
             val result = navigator.overlayResults.first { it.key == "change_cover" }
             val payload = result.payload as? RouteResultPayload.ChangeCover ?: return@launch
             withContext(Dispatchers.Main) { onCoverSelected(payload.coverUrl) }
@@ -1009,11 +1013,18 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
             val file = File(dir, "shareBookSource.json")
             runCatching { file.writeText(json, Charsets.UTF_8) }
                 .onSuccess {
-                    PlatformServiceProviders.get().sharing
-                        .shareFile(file.absolutePath, "application/json")
-                    Toasters.get().toast("已导出到 ${file.absolutePath}")
+                    // 分享与提示是界面动作, 回主线程; 能力作用域是 IO。
+                    withContext(mainDispatcher) {
+                        PlatformServiceProviders.get().sharing
+                            .shareFile(file.absolutePath, "application/json")
+                        Toasters.get().toast("已导出到 ${file.absolutePath}")
+                    }
                 }
-                .onFailure { Toasters.get().toast("导出失败\n${it.message}") }
+                .onFailure { error ->
+                    withContext(mainDispatcher) {
+                        Toasters.get().toast("导出失败\n${error.message}")
+                    }
+                }
         }
     }
 

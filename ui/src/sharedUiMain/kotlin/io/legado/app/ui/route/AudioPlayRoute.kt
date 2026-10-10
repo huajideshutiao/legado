@@ -26,8 +26,8 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.IntentData
-import io.legado.app.help.book.addType
 import io.legado.app.help.book.changeSourceTo
+import io.legado.app.help.book.delBookCore
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
@@ -43,6 +43,10 @@ import io.legado.app.ui.book.audio.AudioPlayScreenModel
 import io.legado.app.ui.book.audio.AudioPlaySidePanelKind
 import io.legado.app.ui.book.audio.AudioPlayUiEvent
 import io.legado.app.ui.book.bookmark.BookmarkDialog
+import io.legado.app.ui.book.manage.ShelfDeleteConfirmDialog
+import io.legado.app.ui.book.manage.ShelfDeleteRequest
+import io.legado.app.ui.book.manage.confirmShelfDelete
+import io.legado.app.ui.book.manage.startShelfDelete
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.AppShortcutHandler
@@ -204,6 +208,30 @@ fun AudioPlayRoute(
 
     // 退出加书架确认弹窗 (对照 Activity.finish: !inBookshelf 时弹确认)
     var showAddToShelfDialog by remember { mutableStateOf(false) }
+    // 不放入书架时的移出确认 (本地书带"删除源文件"勾选, 与详情页下架共用同一套)
+    var shelfDeleteRequest by remember { mutableStateOf<ShelfDeleteRequest?>(null) }
+    // 移出完成: 退出音频页 (完成之后才出栈)
+    val exitAfterRemove: (Boolean?) -> Unit = {
+        AudioPlayShared.inBookshelf = false
+        navigator.pop()
+    }
+    // 未入架临时书清理: 只移出记录, 不碰源文件
+    val removeSilentlyAndExit: () -> Unit = {
+        scope.launch(IoDispatcher) {
+            runCatching { AudioPlayShared.book?.delBookCore() }
+                .onFailure { AppLog.put("移出书架失败\n${it.message}", it) }
+            exitAfterRemove(null)
+        }
+    }
+    // 不放入书架: 本地书先按需选是否删源文件再移出; 网文没有源文件可选, 直接移出记录
+    val removeFromShelfAndExit: () -> Unit = {
+        val target = AudioPlayShared.book
+        if (target != null && target.isLocal) {
+            shelfDeleteRequest = startShelfDelete(target, exitAfterRemove)
+        } else {
+            removeSilentlyAndExit()
+        }
+    }
 
     // 宽屏右侧面板 (评论/目录共用, 互斥显示): 窗口宽 ≥DesignTokens.wideScreenMinWidth 启用
     // (官方 Compact/Medium 分界, 与主界面 NavRail/音频页并排同源);
@@ -233,15 +261,8 @@ fun AudioPlayRoute(
         } else if (state.inShelf) {
             navigator.pop()
         } else if (!AppConfigProviders.get().showAddToShelfAlert) {
-            // 不弹确认, 直接删除并退出
-            scope.launch(IoDispatcher) {
-                AudioPlayShared.book?.let { b ->
-                    AppDbProviders.get().bookDao.delete(b)
-                    b.addType(BookType.notShelf)
-                }
-                AudioPlayShared.inBookshelf = false
-                navigator.pop()
-            }
+            // 不弹确认, 直接移出并退出
+            removeSilentlyAndExit()
         } else {
             showAddToShelfDialog = true
         }
@@ -465,18 +486,22 @@ fun AudioPlayRoute(
                 }
             },
             cancelButton = AlertButton(text = stringResource(Res.string.no)) {
-                // 不放入书架: 删除并退出 (对照 Activity noButton)
-                scope.launch(IoDispatcher) {
-                    AudioPlayShared.book?.let { b ->
-                        AppDbProviders.get().bookDao.delete(b)
-                        b.addType(BookType.notShelf)
-                    }
-                    AudioPlayShared.inBookshelf = false
-                    navigator.pop()
-                }
+                // 不放入书架: 移出并退出 (对照 Activity noButton)
+                removeFromShelfAndExit()
             },
         )
     }
+
+    // 移出书架确认框 (本地书带"删除源文件"勾选)
+    ShelfDeleteConfirmDialog(
+        request = shelfDeleteRequest,
+        onConfirm = { target, deleteOriginal ->
+            shelfDeleteRequest = null
+            // 勾选值已定: 交平台移出记录 + 按勾选删源文件, 完成后退出音频页
+            confirmShelfDelete(target, deleteOriginal, exitAfterRemove)
+        },
+        onDismiss = { shelfDeleteRequest = null },
+    )
 
     // 目录弹窗 (对照阅读页 ReaderDialogEvent.Toc → TocDialogHost 全高底部弹窗;
     // 选章三态跳转对齐原 RouteResults.TOC 回传消费 (章节变 → skipTo; 同章不同 pos>0 →

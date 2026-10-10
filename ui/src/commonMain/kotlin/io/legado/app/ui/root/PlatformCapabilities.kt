@@ -267,6 +267,8 @@ interface PlatformCapabilities {
     /**
      * 书架操作: 上架/下架 (对照 onShelfClick, onComplete: null=删除, true=已上架, false=取消)
      *
+     * [onComplete] 在主线程回调 (调用方在其中做导航返回/状态派发); 实现内部在 IO 上落库/删文件。
+     *
      * @param chapters 上架时随书落库的目录 (对照原 addToBookshelf 里的
      *   `chapterListData.value?.let { bookChapterDao.insert(...) }`); null = 调用方无内存目录
      */
@@ -293,6 +295,8 @@ interface PlatformCapabilities {
     /**
      * 下架书目 (对照原版 `BaseReadViewModel.delBook`): 删章节 + 删记录 + 按 [deleteOriginal]
      * 删本地书源文件; 不勾选时只下架、不碰文件 (onComplete: null=下架成功, false=失败)。
+     *
+     * [onComplete] 在主线程回调 (调用方在其中做导航返回/状态派发); 实现内部在 IO 上删库/删文件。
      *
      * 默认实现忽略 [deleteOriginal] 委托 [toggleBookshelf]: 确认框由能力面自己弹的端
      * (见 [confirmsDeleteBookInCapability]) 由它自己的下架流程取勾选值。
@@ -673,7 +677,12 @@ interface PlatformCapabilities {
     /** 写本地密码 (对照 app 端 LocalConfig.password = value, 写 "local" SharedPreferences) */
     fun setLocalPassword(password: String?) = unsupported("设置本地密码")
 
-    /** SAF 选书籍目录 (对照 app 端 localBookTreeSelect.launch DIR_SYS), 选中后回调 onSelected(uri) */
+    /**
+     * SAF 选书籍目录 (对照 app 端 localBookTreeSelect.launch DIR_SYS), 选中后回调 onSelected(uri)。
+     *
+     * 回调不保证在界面线程: 安卓在界面线程回调, 桌面/iOS/鸿蒙在后台线程回调;
+     * 调用方若要在回调里做界面动作需自行切主线程。
+     */
     fun pickBookTreeUri(onSelected: (String?) -> Unit) = unsupported("选择书籍目录")
 
     /**

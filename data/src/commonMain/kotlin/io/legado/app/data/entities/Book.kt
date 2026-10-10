@@ -253,6 +253,11 @@ data class Book(
         ReadTimeRecorder.flushAll()
     }
 
+    /**
+     * 删除书架记录并把内存对象标记为临时书。
+     *
+     * 书源 JS 可经脚本桥反射调用本对象的公开方法, 本方法对外可达。
+     */
     fun delete() {
         // ReadBook.book 单例经 provider 解耦, 删除当前阅读书时清空阅读状态
         val readBookProvider = ReadBookStateProviders.getOrNull()

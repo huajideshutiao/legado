@@ -11,7 +11,6 @@ import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.fileBook.importLocalFile
 import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.FileDoc
-import io.legado.app.utils.delete
 import io.legado.app.utils.list
 import io.legado.app.utils.mapParallel
 import io.legado.app.utils.toastOnUi
@@ -127,16 +126,6 @@ class ImportBookViewModel(application: Application) : BaseViewModel(application)
             FileBook.importLocalFile(importBook.file)
         }
         importBook.isOnBookShelf = true
-    }
-
-    fun deleteDoc(bookList: HashSet<ImportBook>, finally: () -> Unit) {
-        execute {
-            bookList.forEach {
-                it.file.delete()
-            }
-        }.onFinally {
-            finally.invoke()
-        }
     }
 
     fun loadDoc(fileDoc: FileDoc) {

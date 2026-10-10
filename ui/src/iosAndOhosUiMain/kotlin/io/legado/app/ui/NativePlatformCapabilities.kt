@@ -161,7 +161,8 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
     ) {
         capabilityScope.launch {
             val json = selectedSourcesJson(selection) ?: return@launch
-            shareText(json)
+            // 分享面板是界面动作, 回主线程; 能力作用域是 IO。
+            withContext(mainDispatcher) { shareText(json) }
         }
     }
 

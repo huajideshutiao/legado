@@ -74,11 +74,14 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
     override fun showSourceVariableDialog(book: Book) {
         capabilityScope.launch {
             val source = AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
-            if (source == null) {
-                Toasters.get().toast("未找到书源")
-                return@launch
+            // 提示与弹层是界面动作, 回主线程; 能力作用域是 IO, 弹层栈是"先读后写"。
+            withContext(mainDispatcher) {
+                if (source == null) {
+                    Toasters.get().toast("未找到书源")
+                    return@withContext
+                }
+                showBookSourceVariableDialog(source)
             }
-            showBookSourceVariableDialog(source)
         }
     }
 
@@ -95,12 +98,15 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
         capabilityScope.launch {
             val source = AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
                 ?: return@launch
-            AppNavigatorProviders.get().showOverlay(
-                AppOverlay.Dialog(
-                    key = "bookVariable",
-                    payload = encodeBookVariableOverlayPayload(book, source),
+            // 弹层是界面动作, 回主线程; 能力作用域是 IO, 弹层栈是"先读后写"。
+            withContext(mainDispatcher) {
+                AppNavigatorProviders.get().showOverlay(
+                    AppOverlay.Dialog(
+                        key = "bookVariable",
+                        payload = encodeBookVariableOverlayPayload(book, source),
+                    )
                 )
-            )
+            }
         }
     }
 
@@ -142,12 +148,13 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
             deleteBookshelfBook(book, deleteOriginal = false, onComplete = onComplete)
             return
         }
+        // onComplete 是界面回调 (调用方在其中 pop 路由 / 派发状态), 回主线程; 能力作用域是 IO。
         capabilityScope.launch {
             runCatching { book.toggleBookshelfCore(inBookshelf = false, chapters = chapters) }
-                .onSuccess { onComplete(it) }
+                .onSuccess { withContext(mainDispatcher) { onComplete(it) } }
                 .onFailure {
                     AppLog.put("书架操作失败\n${it.message}", it)
-                    onComplete(false)
+                    withContext(mainDispatcher) { onComplete(false) }
                 }
         }
     }
@@ -162,16 +169,17 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
         deleteOriginal: Boolean,
         onComplete: (Boolean?) -> Unit,
     ) {
+        // onComplete 是界面回调 (调用方在其中 pop 路由 / 派发状态), 回主线程; 能力作用域是 IO。
         capabilityScope.launch {
             runCatching { book.delBookCore(deleteOriginal) }
-                .onSuccess { onComplete(null) }
+                .onSuccess { withContext(mainDispatcher) { onComplete(null) } }
                 .onFailure { e ->
                     AppLog.put("删除书籍失败\n${e.message}", e)
                     // 只有源文件没删掉才是"库里已删、文件还在" (见 delBookCore), 与书架删除同一文案
                     if (e is LocalBookSourceFileDeleteException) {
                         reportLocalBookSourceFileDeleteFailure(book, e)
                     }
-                    onComplete(false)
+                    withContext(mainDispatcher) { onComplete(false) }
                 }
         }
     }

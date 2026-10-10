@@ -27,8 +27,10 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.PageAnim
 import io.legado.app.data.AppDbProviders
+import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.LocalReadConfigProviders
@@ -53,6 +55,10 @@ import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.ReadMenuAction
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.ui.book.manage.ShelfDeleteConfirmDialog
+import io.legado.app.ui.book.manage.ShelfDeleteRequest
+import io.legado.app.ui.book.manage.confirmShelfDelete
+import io.legado.app.ui.book.manage.startShelfDelete
 import io.legado.app.ui.book.read.ReaderDialogEvent
 import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.read.ReaderScreen
@@ -355,6 +361,16 @@ fun ReaderRoute(
     // 弹框/toast 文案在组合期预取 (onBack 非 @Composable 不能 stringResource)。
     val readAloudPauseText = stringResource(Res.string.read_aloud_pause)
     val currentBook by screenModel.viewModel.book.collectAsState()
+    // 取消入架时的移出确认 (本地书带"删除源文件"勾选, 与详情页下架共用同一套)
+    var shelfDeleteRequest by remember { mutableStateOf<ShelfDeleteRequest?>(null) }
+    // 取消入架: 本地书先按需选是否删源文件再移出; 网文没有源文件可选, 维持原版只移出记录
+    val removeFromShelfAndExit: (Book) -> Unit = { target ->
+        if (target.isLocal) {
+            shelfDeleteRequest = startShelfDelete(target) { navigator.pop() }
+        } else {
+            screenModel.viewModel.removeFromBookshelf { navigator.pop() }
+        }
+    }
     AppBackHandler(enabled = isTopEntry) {
         // ⓪ 选区/图片菜单显示中: 返回键先取消选择 + 同步关平台浮动菜单, 不退出阅读页
         // (对照原版 textActionMenu 显示时 BACK 先 dismiss 菜单)。此前缺这一段, BACK 直接
@@ -790,7 +806,7 @@ fun ReaderRoute(
                     },
                     cancelButton = AlertButton(stringResource(Res.string.cancel)) {
                         screenModel.clearDialogEvent()
-                        screenModel.viewModel.removeFromBookshelf { navigator.pop() }
+                        removeFromShelfAndExit(book)
                     },
                 )
             }
@@ -1242,6 +1258,17 @@ fun ReaderRoute(
         null -> Unit
     }
     // endregion
+
+    // 移出书架确认框 (本地书带"删除源文件"勾选)
+    ShelfDeleteConfirmDialog(
+        request = shelfDeleteRequest,
+        onConfirm = { target, deleteOriginal ->
+            shelfDeleteRequest = null
+            // 勾选值已定: 交平台移出记录 + 按勾选删源文件, 完成后退出阅读页
+            confirmShelfDelete(target, deleteOriginal) { navigator.pop() }
+        },
+        onDismiss = { shelfDeleteRequest = null },
+    )
 }
 
 /**

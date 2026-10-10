@@ -253,7 +253,7 @@ object FileUtilsBase {
      * 原子替换时原文件让位用的后缀: 目标名让给新文件, 原件原样留在这份备份里。
      * 替换被打断在"让位与重试改名之间"时它会残留在目标目录, [deleteWithReplaceBackup] 按这个名字清掉。
      */
-    const val REPLACE_BACKUP_SUFFIX = ".bak"
+    private const val REPLACE_BACKUP_SUFFIX = ".bak"
 
     /**
      * 用 [src] 整份替换 [dst], 任一步失败都保持 [dst] 已有的内容可用。

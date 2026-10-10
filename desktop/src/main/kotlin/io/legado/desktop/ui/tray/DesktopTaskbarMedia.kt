@@ -642,13 +642,11 @@ internal object DesktopTaskbarMedia {
         }
         startPumpIfDead()
         val hwnd = pumpWindow ?: return false
+        // 泵线程已结束时其窗口随之销毁, 消息发不出去: 先确认窗口还在, 否则这笔排进队列也没人抽取
+        if (!User32.INSTANCE.IsWindow(hwnd)) return false
         comTasks.add(action)
-        // 投递结果要如实回传: 泵线程已结束 (其窗口随之销毁) 时消息发不出去, 这笔排进队列也没人抽取
-        if (User32.INSTANCE.PostMessage(hwnd, WM_LG_RUN_COM, WinDef.WPARAM(0), WinDef.LPARAM(0))) {
-            return true
-        }
-        comTasks.remove(action)
-        return false
+        User32.INSTANCE.PostMessage(hwnd, WM_LG_RUN_COM, WinDef.WPARAM(0), WinDef.LPARAM(0))
+        return true
     }
 
     private fun drainComTasks() {

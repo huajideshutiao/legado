@@ -124,31 +124,35 @@ private fun readAndBuild(fontPath: String): Typeface? {
         while (true) {
             val read = readFont(fontPath)
             val entry = fontEntries[fontPath]
-            if (read is FontRead.Unreadable) {
-                typeface = entry?.typeface
-                    ?: remember(fontPath, read, reportFontLoadFailure(fontPath, read.reason, read.cause))
-                break
-            }
-            if (entry != null && entry.read == read) {
-                typeface = entry.typeface
-                break
-            }
-            var cause: Throwable? = null
-            val built = try {
-                Typeface.createFromFile(read.file)
-            } catch (e: Exception) {
-                cause = e
-                null
-            }
-            // 文件在但不是字体: 框架按默认字形返回 (android.graphics.Typeface.createFromFile)
-            if (built != null && built !== Typeface.DEFAULT) {
-                lastFailureReport = null
-                typeface = remember(fontPath, read, built)
-                break
-            }
-            if (fileIdentity(read.file) == read.identity) {
-                typeface = remember(fontPath, read, reportFontLoadFailure(fontPath, "字体数据建不出字形", cause))
-                break
+            when (read) {
+                is FontRead.Unreadable -> {
+                    typeface = entry?.typeface
+                        ?: remember(fontPath, read, reportFontLoadFailure(fontPath, read.reason, read.cause))
+                    break
+                }
+                is FontRead.Loaded -> {
+                    if (entry != null && entry.read == read) {
+                        typeface = entry.typeface
+                        break
+                    }
+                    var cause: Throwable? = null
+                    val built = try {
+                        Typeface.createFromFile(read.file)
+                    } catch (e: Exception) {
+                        cause = e
+                        null
+                    }
+                    // 文件在但不是字体: 框架按默认字形返回 (android.graphics.Typeface.createFromFile)
+                    if (built != null && built !== Typeface.DEFAULT) {
+                        lastFailureReport = null
+                        typeface = remember(fontPath, read, built)
+                        break
+                    }
+                    if (fileIdentity(read.file) == read.identity) {
+                        typeface = remember(fontPath, read, reportFontLoadFailure(fontPath, "字体数据建不出字形", cause))
+                        break
+                    }
+                }
             }
         }
     }
