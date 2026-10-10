@@ -8,7 +8,6 @@ import androidx.core.provider.DocumentsContractCompat
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.DirUsage
 import io.legado.app.data.entities.Book
-import io.legado.app.help.book.getLocalUri
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.utils.KS_JSON
@@ -59,12 +58,14 @@ object AndroidDirAuthorizations {
      * 本地书文件访问前的用途校验: 非本地书直通, 位置未登记直通, 落在非书籍用途选定的目录下抛
      * [SecurityException] (阅读层据此提示重新选目录, 与 iOS/鸿蒙的授权失败同一形态)。
      *
-     * 目标取本地书实际会访问的引用 (含按文件名回退到书籍保存位置与导入目录的解析),
-     * 使校验的引用与实际读写的文件是同一个。
+     * 目标就是书籍自身的引用 ([Book.bookUrl], 归一化交给 [locationOf]) —— 本校验只是判定:
+     * 不解析"实际会访问哪个文件", 不搜索同名文件, 不读文件内容, 不改写书籍引用也不落库。
+     * 需实际访问的引用由访问方自行解析, 与删原文件取的引用是书籍的同一个引用
+     * (路径引用由定位器纯解析成绝对路径, content 引用直接取该 URI), 判定与实际动作指向同一处。
      */
     fun ensureBookFileUsage(book: Book) {
         if (!book.isLocal) return
-        ensureBookFileUsage(book.getLocalUri().toString())
+        ensureBookFileUsage(book.bookUrl)
     }
 
     /** 同上, 按文件引用校验 (导入的源文件同样只允许来自书籍用途登记的目录)。 */

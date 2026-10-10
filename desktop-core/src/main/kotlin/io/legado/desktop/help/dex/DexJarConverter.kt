@@ -6,6 +6,7 @@ package io.legado.desktop.help.dex
 import com.googlecode.d2j.dex.Dex2jar
 import com.googlecode.d2j.reader.MultiDexFileReader
 import com.googlecode.dex2jar.tools.BaksmaliBaseDexExceptionHandler
+import io.legado.app.utils.FileUtilsBase
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.zip.ZipEntry
@@ -71,17 +72,14 @@ object DexJarConverter {
         CtorSiteFixer.fix(jarFile, dexBytes)
     }
 
-    /** 单 dex → jar 原子落地 (tmp + rename): 同产物并发/双开桌面实例不会读到半个 jar。 */
+    /** 单 dex → jar 用共享的文件原子替换落地: 同产物并发/双开桌面实例不会读到半个 jar。 */
     fun convertDexAtomically(dexBytes: ByteArray, jarFile: File) {
         val dir = jarFile.parentFile ?: error("产物目录不可用: ${jarFile.path}")
         dir.mkdirs()
         val tmp = newTempFile(dir, jarFile.name)
         try {
             convertDex(dexBytes, tmp)
-            if (!tmp.renameTo(jarFile)) {
-                tmp.copyTo(jarFile, overwrite = true)
-                tmp.delete()
-            }
+            FileUtilsBase.replaceFileAtomically(tmp, jarFile)
         } finally {
             if (tmp.isFile) tmp.delete()
         }
@@ -144,16 +142,15 @@ object DexJarConverter {
         writeZip(output, merged)
     }
 
-    /** 产物缓存判定 + 临时文件原子落地; 转换异常不残留半成品 (缓存住失败产物)。 */
+    /**
+     * 产物缓存判定 + 共享的文件原子替换落地: 转换抛异常时半成品只存在于临时文件, 不会占住产物位置。
+     */
     private fun produce(output: File, source: File, generate: (File) -> Unit): File {
         if (isCached(output, source)) return output
         val tmp = newTempFile(output.parentFile, output.name)
         try {
             generate(tmp)
-            if (!tmp.renameTo(output)) {
-                tmp.copyTo(output, overwrite = true)
-                tmp.delete()
-            }
+            FileUtilsBase.replaceFileAtomically(tmp, output)
         } finally {
             if (tmp.isFile) tmp.delete()
         }

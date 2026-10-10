@@ -12,12 +12,12 @@ import io.legado.app.help.http.Cronet
 import io.legado.app.lib.webdav.Authorization
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.model.fileBook.RemoteZipWrapper
+import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.LogUtils
 import okhttp3.Request
 import org.chromium.net.CronetEngine
 import org.chromium.net.CronetProvider
 import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
 
 @Suppress("ConstPropertyName")
@@ -127,11 +127,16 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
                 }
 
                 if (result && downloadFile.exists()) {
-                    downloadFile.inputStream().use { input ->
-                        soFile.parentFile?.mkdirs()
-                        FileOutputStream(soFile).use { output ->
-                            input.copyTo(output)
+                    // 装载只看目标文件在不在: 半截 so 会被长期当成可用, 必须整份落到同目录临时文件再替换
+                    soFile.parentFile?.mkdirs()
+                    val staged = File("${soFile.absolutePath}.tmp")
+                    try {
+                        downloadFile.inputStream().use { input ->
+                            staged.outputStream().use { output -> input.copyTo(output) }
                         }
+                        FileUtilsBase.replaceFileAtomically(staged, soFile)
+                    } finally {
+                        staged.delete()
                     }
                     soFile.setReadable(true)
                     cacheInstall = false

@@ -2,6 +2,7 @@ package io.legado.app.ui.book.read.page
 
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.platform.Font
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.DirUsage
 import io.legado.app.help.FileUtilsCommon
 import io.legado.app.ui.withLocalDirAccess
@@ -13,8 +14,36 @@ import io.legado.app.ui.withLocalDirAccess
  * 字体文件可能是用户在应用容器外选定的字体目录里的文件, 读盘包在平台授权内
  * (用途 [DirUsage.Font]); 读不到 (未授权/授权失效) 返回 null, 由 [resolveReaderFontFamily]
  * 回落默认字体。
+ *
+ * 文件标识在同一段授权内随读盘一起取 (大小 + 最后修改时刻) 并登记给 [ReaderFontSource],
+ * 度量侧据此复用已加载字形, 不必为探测标识再取一次授权; 读不到或建不出字体时登记读不到。
+ *
+ * 读不到与建不出字体都留一条可查日志, 仍回落默认字体、不弹任何界面。
  */
-actual fun loadReaderFontFamily(path: String): FontFamily? = runCatching {
-    val bytes = withLocalDirAccess(path, DirUsage.Font) { FileUtilsCommon.readBytes(path) }
-    if (bytes == null || bytes.isEmpty()) null else FontFamily(Font(identity = path, data = bytes))
-}.getOrNull()
+actual fun loadReaderFontFamily(path: String): FontFamily? {
+    val read = runCatching {
+        withLocalDirAccess(path, DirUsage.Font) {
+            val bytes = FileUtilsCommon.readBytes(path)
+            if (bytes == null || bytes.isEmpty()) {
+                null
+            } else {
+                ReaderFontSource.FileIdentity(
+                    size = bytes.size.toLong(),
+                    lastModified = FileUtilsCommon.lastModified(path),
+                ) to bytes
+            }
+        }
+    }.getOrElse { return reportFontLoadFailure(path, "取授权或读盘失败", it) }
+    if (read == null) return reportFontLoadFailure(path, "字体文件读不到或内容为空", null)
+    val family = runCatching { FontFamily(Font(identity = path, data = read.second)) }
+        .getOrElse { return reportFontLoadFailure(path, "字体数据建不出字形", it) }
+    ReaderFontSource.onRead(path, read.first)
+    return family
+}
+
+/** 字体用不了: 登记读不到并留一条可查日志, 回落默认字体由 [resolveReaderFontFamily] 处理。 */
+private fun reportFontLoadFailure(path: String, reason: String, cause: Throwable?): FontFamily? {
+    ReaderFontSource.onUnreadable(path)
+    AppLog.put("正文字体加载失败, 回落默认字体: $path\n$reason", cause)
+    return null
+}

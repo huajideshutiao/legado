@@ -6,6 +6,7 @@ import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.model.manga.MangaSourceMapper
 import io.legado.app.model.plugin.pluginInstalledOf
+import io.legado.app.utils.FileUtilsBase
 import java.io.File
 import java.io.RandomAccessFile
 
@@ -125,10 +126,11 @@ object PluginSourceIcons {
         expected.indices.all { bytes[offset + it] == expected[it] }
 
     /**
-     * 图标缓存落盘: 先写同目录的 [TEMP_SUFFIX] 临时文件再改名 (与扩展安装落盘同一做法)。
+     * 图标缓存落盘: 先写同目录的 [TEMP_SUFFIX] 临时文件, 再用共享的文件原子替换
+     * ([FileUtilsBase.replaceFileAtomically]) 就位 —— 与扩展安装落盘同一实现。
      *
-     * 改名覆盖不了已存在的目标 (Windows 上 rename 会失败, Java 平台差异), 故先删目标: 走到这里
-     * 的目标只可能是被判为损坏的旧缓存或不存在, 删掉不丢有效数据, 且两端行为一致。
+     * 走到这里的目标只可能是被判为损坏的旧缓存或不存在, 替换失败时旧缓存内容不变, 由调用方回落到
+     * 书源名首字占位。
      */
     private fun writeIconAtomically(path: String, bytes: ByteArray): Boolean {
         val file = File(path)
@@ -136,10 +138,8 @@ object PluginSourceIcons {
         return try {
             file.parentFile?.mkdirs()
             temp.writeBytes(bytes)
-            if (file.exists()) file.delete()
-            val renamed = temp.renameTo(file)
-            if (!renamed) temp.delete()
-            renamed
+            FileUtilsBase.replaceFileAtomically(temp, file)
+            true
         } catch (_: Exception) {
             temp.delete()
             false

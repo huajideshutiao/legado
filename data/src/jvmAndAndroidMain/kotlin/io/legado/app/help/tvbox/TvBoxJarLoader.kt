@@ -6,6 +6,7 @@ import com.github.catvod.net.OkHttp
 import com.github.catvod.utils.Crypto
 import com.github.catvod.utils.Path
 import io.legado.app.constant.AppLog
+import io.legado.app.utils.FileUtilsBase
 import okhttp3.Request
 import java.io.File
 import java.lang.reflect.Method
@@ -173,15 +174,15 @@ internal object TvBoxJarLoader {
             val body = resp.body
             val tmp = File(target.absolutePath + ".tmp")
             tmp.parentFile?.mkdirs()
-            body.byteStream().use { input ->
-                tmp.outputStream().use { output -> input.copyTo(output) }
-            }
-            if (spec.md5.isNotEmpty() && !Crypto.equals(tmp, spec.md5)) {
-                tmp.delete()
-                throw IllegalStateException("spider jar md5 校验失败: ${spec.url}")
-            }
-            if (!tmp.renameTo(target)) {
-                tmp.copyTo(target, overwrite = true)
+            try {
+                body.byteStream().use { input ->
+                    tmp.outputStream().use { output -> input.copyTo(output) }
+                }
+                if (spec.md5.isNotEmpty() && !Crypto.equals(tmp, spec.md5)) {
+                    throw IllegalStateException("spider jar md5 校验失败: ${spec.url}")
+                }
+                FileUtilsBase.replaceFileAtomically(tmp, target)
+            } finally {
                 tmp.delete()
             }
         }
