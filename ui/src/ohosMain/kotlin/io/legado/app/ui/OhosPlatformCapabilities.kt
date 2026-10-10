@@ -47,6 +47,7 @@ import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.ensureBookSaveDirSelected
 import io.legado.app.ui.root.pushExportDispatch
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.File
@@ -469,15 +470,14 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
         services.notifications.cancelNotification(NotificationId.ExportBookService)
     }
 
-    // 导出书籍正文, 直接写进有效导出目录 (用户选过 → 设备本地记忆; 鸿蒙无惯例目录, 见
-    // OhosDataStorage.defaultBookExportDir —— 应用沙盒对文件管理器不可见, 写进去用户找不着),
-    // 不经系统分享面板 (对照 app 端 ExportBookService 的落盘语义)
+    // 导出书籍正文, 直接写进有效导出目录 (用户经目录选择器选定; 鸿蒙应用沙盒对文件管理器
+    // 不可见, 写进去用户找不着), 不经系统分享面板 (对照 app 端 ExportBookService 的落盘语义)
     override fun exportAllBooks(books: List<Book>) {
         if (books.isEmpty()) {
             Toasters.get().toast("书籍不能为空")
             return
         }
-        // 三分支同上, 未选过目录时先选 (对照 BookshelfManageActivity.exportAll)
+        // 未选过目录时先选 (对照 BookshelfManageActivity.exportAll)
         if (effectiveBookExportDir() == null) {
             selectExportFolder(books)
             return
@@ -874,10 +874,15 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     }
 
 
+    // 压缩包导入需要书籍保存位置: 未设置时经既有"书籍保存位置"选择器选定后继续导入
     override fun addImportSelectionToBookshelf(
         items: List<ImportFileItem>,
         onComplete: () -> Unit,
-    ) = NativeImportBook.addToBookshelf(items, onComplete)
+    ) = NativeImportBook.addToBookshelf(
+        items,
+        onComplete,
+        onNeedBooksDir = { ensureBookSaveDirSelected() },
+    )
 
     override fun updateImportBookFilter(key: String) = NativeImportBook.updateFilter(key)
 

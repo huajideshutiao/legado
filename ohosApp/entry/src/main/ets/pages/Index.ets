@@ -36,7 +36,7 @@ import { setVideoSurfaceId, setVideoPipSurfaceController, getVideoPixelSize, Siz
 const DOMAIN: number = 0x0000;
 
 // 视频画面 surface builder (K/N OhosVideoPlayPlatformProvider 的 ArkUIView2(name="legadoVideoSurface")
-// 混排到 Compose 层级时由 CPF 调用)。param 为 K/N 侧传入的 interop 参数 (含 playerId)。
+// 混排到 Compose 层级时由 CPF 调用)。
 // 纯 ArkTS XComponent 的 onLoad 不带 surfaceId (回调参数是 native 侧自定义 context), 故绑
 // XComponentController, onLoad 后经 getXComponentSurfaceId() 取 id 交给 MediaBridgeHandler
 // 绑定到 videoBook AVPlayer (player.surfaceId = surfaceId), 否则视频只能出声没有画面。

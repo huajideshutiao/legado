@@ -1,6 +1,5 @@
 package io.legado.app.help.config
 
-import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.storage.FilesJsonStore
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
@@ -16,6 +15,7 @@ import io.legado.app.utils.toJson
  * - [LocalConfigKeys] 配置 key 常量 (平台无关字符串, 供 app 端 / 桌面端统一引用)
  * - [DeviceLocalConfig] 设备本地配置空间 (不进备份的本机专有字符串配置)
  * - [effectiveBookExportDir] / [rememberBookExportDir] 依赖 [DeviceLocalConfig] 的导出目录记忆
+ *   (导出目录无平台惯例默认值, 必须由用户选定)
  * - [HelpVersion] 各 help 引导的最新版本号常量 (平台无关数值)
  * - [isLastVersion] 版本比较算法 (平台无关, 通过函数参数注入 get/put 操作)
  * - [isFirstOpen] 首次打开判断算法 (平台无关, 通过函数参数注入 get/put 操作)
@@ -86,7 +86,7 @@ object LocalConfigKeys {
      *
      * 值存 [DeviceLocalConfig] (设备本地空间, 不进备份): Android 端是 SAF 授权的
      * `content://` 树引用, 桌面/iOS/鸿蒙 是普通绝对路径 —— 都带本机授权/本机目录语义,
-     * 跟着备份走到别的设备上必然失效。取值顺序见 [effectiveBookExportDir]。
+     * 跟着备份走到别的设备上必然失效。读取见 [effectiveBookExportDir]。
      */
     const val bookExportPath = "bookExportPath"
 }
@@ -131,15 +131,9 @@ object DeviceLocalConfig {
 }
 
 /**
- * 有效导出目录 (与备份路径 [io.legado.app.help.storage.DataStorage.defaultBackupDir] 同一套
- * "用户选定目录 + 可为 null 的平台惯例目录"语义, 逐字对照
- * [io.legado.app.ui.route.BackupConfigRoute] 的 onBackup 三分支):
- *
- * 1. 用户已在"书架管理 → 选择导出文件夹"选过 ([LocalConfigKeys.bookExportPath]) → 用选定目录;
- * 2. 未选过但平台有惯例导出目录 ([io.legado.app.help.storage.DataStorage.defaultBookExportDir])
- *    → 用惯例目录, 不写记忆、不打扰用户;
- * 3. 都没有 (Android/鸿蒙: 写公共目录须用户授权, 惯例目录为 null) → 返回 null,
- *    调用方拉起目录选择器, 选中后写 [rememberBookExportDir] 再继续。
+ * 有效导出目录: 用户在"书架管理 → 选择导出文件夹"选定后写入 [LocalConfigKeys.bookExportPath]
+ * 的那个目录; 未选过时为 null (不回退任何平台惯例目录, 导出位置必须由用户显式选定),
+ * 调用方拉起目录选择器, 选中后写 [rememberBookExportDir] 再继续。
  *
  * 只负责取出"目录标识", 不做路径解析: Android 端选过的值是 SAF `content://` 树引用,
  * 桌面/iOS/鸿蒙 是普通绝对路径, 由各端写入方自行解析。
@@ -147,10 +141,9 @@ object DeviceLocalConfig {
 fun effectiveBookExportDir(): String? =
     DeviceLocalConfig.getString(LocalConfigKeys.bookExportPath)
         ?.takeIf { it.isNotBlank() }
-        ?: DataStorageProviders.getOrNull()?.defaultBookExportDir
 
 /**
- * 记住用户选定的导出目录 ([effectiveBookExportDir] 第 1 分支); [path] 为空表示忘掉记忆
+ * 记住用户选定的导出目录; [path] 为空表示忘掉记忆
  * (选定目录授权失效时调用, 下次导出重新让用户选)。
  */
 fun rememberBookExportDir(path: String?) {

@@ -47,6 +47,7 @@ import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteTransitionSpec
+import io.legado.app.ui.root.ensureBookSaveDirSelected
 import io.legado.app.ui.root.pushExportDispatch
 import io.legado.app.utils.cnCompare
 import io.legado.app.ui.root.TransitionEasing
@@ -301,8 +302,8 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
                 sourceType = SourceType.book,
                 sourceName = book.originName,
                 rssActions = actions,
-                // 源注入脚本 (无正文规则、直接加载网址时): 对照原版每次网页加载完成执行,
-                // 窗口引擎在每次导航完成时回调本处, 经窗口句柄执行脚本
+                // 源注入脚本: 对照原版每次网页加载完成后执行 (正文分支与直接加载网址分支
+                // 都经这里执行), 窗口引擎在每次导航完成时回调本处, 经窗口句柄执行脚本
                 onNavigated = {
                     val script = js
                     if (!script.isNullOrBlank()) {
@@ -725,8 +726,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     }
 
     // 导出书籍正文, 格式取导出配置 (0=txt 1=epub, 对照 app 端 AppConfig.exportType;
-    // 图片书自动走 cbz), 目录取"用户选过的设备本地记忆, 否则平台惯例目录"
-    // (三分支与备份路径同一形制, 见 DataStorage.defaultBookExportDir)
+    // 图片书自动走 cbz), 目录取用户选过的设备本地记忆, 未选过时拉起目录选择器
     override fun exportAllBooks(books: List<Book>) {
         if (books.isEmpty()) return
         val dir = effectiveBookExportDir()
@@ -904,6 +904,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     private suspend fun runExportQueue() {
         val failures = mutableListOf<String>()
         var lastPath: String? = null
+        var exported = 0
         try {
             while (true) {
                 val pending = takeNextExport()
@@ -925,6 +926,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
                             pending.path, listOf(pending.book), mode.range, mode.size
                         )
                     }
+                    exported++
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -943,13 +945,14 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
             discardExportQueue()
             throw e
         }
-        if (failures.isEmpty()) {
+        if (exported > 0) {
             lastPath?.let { Toasters.get().toast("导出完成\n$it") }
-        } else {
-            Toasters.get().toast("导出书籍出错\n${failures.first()}")
-            if (failures.size > 1) {
-                AppLog.put("导出书籍出错\n${failures.joinToString("\n")}")
-            }
+        }
+        if (failures.isNotEmpty()) {
+            Toasters.get().toast("${failures.size} 本书导出失败：${failures.take(2).joinToString()}")
+        }
+        if (exported > 0 && failures.isNotEmpty()) {
+            AppLog.put("部分书籍导出失败：${failures.joinToString()}")
         }
     }
 
@@ -1133,7 +1136,12 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     }
 
     override fun addImportSelectionToBookshelf(items: List<ImportFileItem>, onComplete: () -> Unit) {
-        DesktopImportBook.addToBookshelf(items, onComplete)
+        // 压缩包导入需要书籍保存位置: 未设置时经既有"书籍保存位置"选择器选定后继续导入
+        DesktopImportBook.addToBookshelf(
+            items,
+            onComplete,
+            onNeedBooksDir = { ensureBookSaveDirSelected() },
+        )
     }
 
     override fun updateImportBookFilter(key: String) = DesktopImportBook.updateFilter(key)

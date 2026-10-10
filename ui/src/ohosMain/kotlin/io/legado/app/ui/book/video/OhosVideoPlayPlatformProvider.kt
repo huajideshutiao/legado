@@ -14,7 +14,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.interop.ArkUIView2
-import androidx.compose.ui.napi.js
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import io.legado.app.help.toast.Toasters
@@ -87,7 +86,6 @@ object OhosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
             ArkUIView2(
                 name = ARKUI_BUILDER_VIDEO_SURFACE,
                 modifier = modifier.fillMaxSize(),
-                parameter = js { "playerId"(OhosNativeBridge.PLAYER_ID_VIDEO_BOOK) },
                 background = Color.Black,
                 interactive = false,
             )

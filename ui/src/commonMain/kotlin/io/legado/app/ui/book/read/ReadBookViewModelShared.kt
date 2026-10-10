@@ -10,6 +10,7 @@ import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.ReplaceRule
+import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookChapterLoader
@@ -68,6 +69,7 @@ import io.legado.app.ui.book.read.page.provider.SimpleTextMeasurer
 import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
 import io.legado.app.ui.book.searchContent.SearchResult
 import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.ensureBookSaveDirSelected
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.isSecurityException
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -897,22 +899,33 @@ class ReadBookViewModelShared(
      * 失败时置消息页并把权限类异常上报为权限拒绝事件 (宿主据此弹选目录对话框)。
      * 内部是整书/解压级 IO (native 端接口 readBytes, 并可能解压或同步 WebDAV 下载),
      * 故由装载任务在 IO 线程上调用 (对照原版 initBook 在 `execute` 的 IO 协程内检查)。
+     *
+     * 保存位置未设置导致 WebDAV 下载落不了盘时, 先拉起既有"书籍保存位置"选择器
+     * (与"其它设置 → 书籍保存位置"同一入口、同一偏好键), 选定后重试一次 —— 下载落盘
+     * 即继续打开; 用户取消则按打开失败处理。
      */
-    private fun checkLocalBookFileExist(book: Book): Boolean {
-        return try {
-            FileBookProviders.get().getBookInputStream(book).close()
-            true
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            // 失败归属校验: 检查是整书级 IO, 期间切书/关书后旧书的失败不得污染当前阅读状态
-            if (readBook.book.value?.bookUrl == book.bookUrl) {
-                readBook.upMsg("打开本地书籍出错: ${e.message}")
-                if (e.isSecurityException() || e is FileNotFoundException) {
-                    postPermissionDenial(0, book)
+    private suspend fun checkLocalBookFileExist(book: Book): Boolean {
+        var ensuredSaveDir = false
+        while (true) {
+            try {
+                FileBookProviders.get().getBookInputStream(book).close()
+                return true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                if (e is InvalidBooksDirException && !ensuredSaveDir) {
+                    ensuredSaveDir = true
+                    if (ensureBookSaveDirSelected()) continue
                 }
+                // 失败归属校验: 检查是整书级 IO, 期间切书/关书后旧书的失败不得污染当前阅读状态
+                if (readBook.book.value?.bookUrl == book.bookUrl) {
+                    readBook.upMsg("打开本地书籍出错: ${e.message}")
+                    if (e.isSecurityException() || e is FileNotFoundException) {
+                        postPermissionDenial(0, book)
+                    }
+                }
+                return false
             }
-            false
         }
     }
 

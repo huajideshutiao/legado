@@ -1,6 +1,7 @@
 package io.legado.app.ui.root
 
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.PreferKey
 import io.legado.app.constant.SourceType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -10,7 +11,10 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.Review
 import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.RssToolbarActions
+import io.legado.app.help.book.effectiveBookSaveDir
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.import.ImportFileItem
@@ -21,11 +25,13 @@ import io.legado.app.utils.FlowBus
 import io.legado.app.utils.encodeURI
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.web.WebServerManager
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** AppRoot 只依赖能力面；实现由唯一系统入口注册。 */
 interface PlatformCapabilities {
@@ -462,9 +468,8 @@ interface PlatformCapabilities {
      *
      * 选定结果落本机配置空间 [io.legado.app.help.config.rememberBookExportDir]
      * (原版把同一个选择结果存在 ACache "exportBookPath" —— 缓存会被清理动作抹掉,
-     * 且选定的是本机目录/授权引用, 不能随备份走到别的设备); 取值顺序
-     * (已选 → 未选且有平台惯例目录 → 都没有才拉本入口) 见
-     * [io.legado.app.help.config.effectiveBookExportDir]。
+     * 且选定的是本机目录/授权引用, 不能随备份走到别的设备); 导出流程在未选过时拉起本入口,
+     * 取值见 [io.legado.app.help.config.effectiveBookExportDir]。
      */
     fun selectExportFolder(books: List<Book>) = unsupported("选择导出目录")
 
@@ -689,6 +694,38 @@ object PlatformCapabilityProviders {
         ?: error("PlatformCapabilities must be registered by the system entry")
 
     fun getOrNull(): PlatformCapabilities? = provider
+}
+
+/**
+ * 拉起既有的"书籍保存位置"选择器 ([PlatformCapabilities.pickBookTreeUri]) 并等用户选定
+ * (与"其它设置 → 书籍保存位置"同一个选择器)。选择器是平台 UI, 在主线程拉起;
+ * 平台未实现该能力时按用户取消处理。
+ *
+ * @return 选定的目录标识; null = 用户取消
+ */
+private suspend fun awaitBookTreeUriSelection(): String? {
+    val result = CompletableDeferred<String?>()
+    withContext(mainDispatcher) {
+        runCatching {
+            PlatformCapabilityProviders.get().pickBookTreeUri { uri -> result.complete(uri) }
+        }.onFailure {
+            result.complete(null)
+        }
+    }
+    return result.await()
+}
+
+/**
+ * 确保"书籍保存位置"可用: 已设置时直接返回; 未设置时拉起既有选择器并记住选定目录
+ * ([PreferKey.defaultBookTreeUri])。
+ *
+ * @return true = 保存位置已可用 (原本已设置, 或本次已选定); false = 用户取消
+ */
+suspend fun ensureBookSaveDirSelected(): Boolean {
+    if (effectiveBookSaveDir() != null) return true
+    val uri = awaitBookTreeUriSelection()?.takeIf { it.isNotBlank() } ?: return false
+    PreferenceProviders.get().putString(PreferKey.defaultBookTreeUri, uri)
+    return true
 }
 
 // 平台能力默认 StateFlow 实例 (稳定引用, 避免每次调用返回新实例)

@@ -4,6 +4,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
+import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.file.AppFilesDirs
@@ -290,29 +291,53 @@ object NativeImportBook {
         }
     }
 
-    /** 上架选中条目 (对照 ImportBookViewModel.addToBookshelf)。 */
-    fun addToBookshelf(selection: List<ImportFileItem>, onComplete: () -> Unit) {
+    /**
+     * 上架选中条目 (对照 ImportBookViewModel.addToBookshelf)。
+     *
+     * [onNeedBooksDir] 供"压缩包导入需要书籍保存位置而尚未设置"的场景接到"书籍保存位置"
+     * 出口 (与"其它设置 → 书籍保存位置"同一选择器/同一偏好键), 返回 true 再重试该条导入;
+     * 返回 false (用户取消) 或传 null 时按导入出错提示。普通书文件导入不经它。
+     */
+    fun addToBookshelf(
+        selection: List<ImportFileItem>,
+        onComplete: () -> Unit,
+        onNeedBooksDir: (suspend () -> Boolean)? = null,
+    ) {
         scope.launch {
             selection.filterIsInstance<NativeImportFile>().forEach { item ->
-                runCatching {
-                    val file = item.file
-                    if (file.name.matches(AppPattern.archiveFileRegex)) {
-                        // 压缩包 (zip 内含书籍文件可解压导入; rar/7z native 端无解析器,
-                        // importLocalFile 抛明确异常, 不静默跳过) —— 解压产物落"书籍保存位置"
-                        // (未设置时 importLocalFile 报错, 由调用方提示)
-                        FileBook.importLocalFile(file.path)
-                    } else {
-                        // 普通书文件: 先复制进沙盒再导入 (见类注释"沙盒语义")
-                        FileBook.importLocalFile(sandboxCopy(file).path)
+                runCatching { importOne(item, onNeedBooksDir) }
+                    .onSuccess { item.isOnBookShelf = true }
+                    .onFailure { e ->
+                        AppLog.put("导入 ${item.name} 出错\n${e.message}", e)
+                        Toasters.get().toast("导入 ${item.name} 出错\n${e.message}")
                     }
-                    item.isOnBookShelf = true
-                }.onFailure { e ->
-                    AppLog.put("导入 ${item.name} 出错\n${e.message}", e)
-                    Toasters.get().toast("导入 ${item.name} 出错\n${e.message}")
-                }
             }
             reload()
             onComplete()
+        }
+    }
+
+    /** 导入单个条目; 保存位置未设置时先选目录再重试一次 (其余导入异常照旧上抛)。 */
+    private suspend fun importOne(
+        item: NativeImportFile,
+        onNeedBooksDir: (suspend () -> Boolean)?,
+    ) {
+        val doImport: () -> Unit = {
+            val file = item.file
+            if (file.name.matches(AppPattern.archiveFileRegex)) {
+                // 压缩包 (zip 内含书籍文件可解压导入; rar/7z native 端无解析器,
+                // importLocalFile 抛明确异常, 不静默跳过) —— 解压产物落"书籍保存位置"
+                FileBook.importLocalFile(file.path)
+            } else {
+                // 普通书文件: 先复制进沙盒再导入 (见类注释"沙盒语义")
+                FileBook.importLocalFile(sandboxCopy(file).path)
+            }
+        }
+        try {
+            doImport()
+        } catch (e: InvalidBooksDirException) {
+            if (onNeedBooksDir?.invoke() != true) throw e
+            doImport()
         }
     }
 

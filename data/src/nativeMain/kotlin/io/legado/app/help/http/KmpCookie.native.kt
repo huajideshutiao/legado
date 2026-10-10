@@ -1,5 +1,7 @@
 package io.legado.app.help.http
 
+import io.legado.app.utils.PublicSuffixList
+
 /**
  * KmpCookie native actual (iOS/鸿蒙共用)。
  *
@@ -24,12 +26,13 @@ actual class KmpCookie(
  *   domain match (相等或 "." 边界后缀; IP 主机不做后缀匹配), 不匹配 → 丢弃整个 cookie
  *   (OkHttp 同款 "No domain match? This is either incompetence or malice!");
  *   非法 Domain 属性 → 忽略该属性, 视为 host-only cookie (OkHttp 同款);
+ * - public suffix 拒绝 (OkHttp 同款: Domain 是 url host 的真后缀时不得是公共后缀, 如 `Domain=com`):
+ *   走 nativeMain [PublicSuffixList] (iOS/鸿蒙共用同一份算法与数据表); punycode 标签与含非 ASCII
+ *   字符的域名无法与规则表确定比对, 不做该项判定;
  * - Expires/Max-Age: RFC 6265 5.1.1 日期解析 (纯 Kotlin), **解析成功才 persistent=true**;
  *   Max-Age 优先于 Expires (RFC 6265 5.3); Max-Age 为 0/负数时 persistent 仍为 true
  *   (OkHttp 同款: persistent 仅表示「存在合法的 Expires/Max-Age 属性」);
- * - 差异说明: OkHttp 还会用 PublicSuffixDatabase 拒绝 public suffix 域名的 cookie
- *   (如 Domain=com), 纯 Kotlin 无 PSL 数据库, 该项跳过; IDN 域不做 punycode 转换,
- *   非 ASCII 域名视为非法属性。
+ * - 差异说明: IDN 域不做 punycode 转换, 非 ASCII 域名视为非法属性。
  *
  * iOS/鸿蒙 HTTP 引擎 (Ktor/@ohos.net.http) 响应头经 [KmpHeaders] 统一暴露,
  * Set-Cookie 多值通过 `headers.toMultimap()["Set-Cookie"]` 取出逐条解析。
@@ -108,8 +111,13 @@ private fun parseSetCookieHeader(urlHost: String, header: String): KmpCookie? {
         return null
     }
 
-    // OkHttp 还拒绝 public suffix 域名 (PublicSuffixDatabase, 如 Domain=com);
-    // 纯 Kotlin 无 PSL 数据库, 此处跳过 (见函数头差异说明)。
+    // Domain 是 url host 的真后缀时必须不是公共后缀 (OkHttp Cookie.parse 同款),
+    // 否则 Domain=com 这类 cookie 会把域范围扩大到整个 TLD。
+    if (domain != null && urlHost.length != domain.length &&
+        PublicSuffixList.isPublicSuffix(domain)
+    ) {
+        return null
+    }
 
     return KmpCookie(name, value, persistent)
 }

@@ -128,6 +128,7 @@ import io.legado.app.ui.root.SharedPlatformCapabilities
 import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.encodeBookVariableOverlayPayload
 import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
+import io.legado.app.ui.root.ensureBookSaveDirSelected
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.ArchiveUtils
@@ -588,7 +589,8 @@ class AndroidPlatformCapabilities(
             onComplete()
             return
         }
-        importViewModel.addToBookshelf(books) {
+        // 压缩包导入需要书籍保存位置: 未设置时经既有"书籍保存位置"选择器选定后继续导入
+        importViewModel.addToBookshelf(books, onNeedBooksDir = { ensureBookSaveDirSelected() }) {
             books.forEach { it.isOnBookShelf = true }
             onComplete()
         }
@@ -826,8 +828,20 @@ class AndroidPlatformCapabilities(
                     success?.invoke()
                 }
             } catch (e: Throwable) {
+                // 保存位置未设置时走既有的"去设置目录"出口 (与其它三端同一入口/同一偏好键)
+                if (e is InvalidBooksDirException) selectBookSaveDir()
                 AppLog.put("下载远程书籍<${book.name}>失败", e, true)
             }
+        }
+    }
+
+    /**
+     * 拉起既有的 SAF"书籍保存位置"选择器并记住选定目录 (与"其它设置 → 书籍保存位置"
+     * 同一入口/同一偏好键); 用户取消时不动既有配置。
+     */
+    private fun selectBookSaveDir() {
+        activity.runOnUiThread {
+            pickBookTreeUri { uri -> if (uri != null) AppConfig.defaultBookTreeUri = uri }
         }
     }
 
@@ -1045,7 +1059,14 @@ class AndroidPlatformCapabilities(
             return
         }
         if (remoteBook.lastModify > book.lastCheckTime) {
-            val uri = bookWebDav.downloadRemoteBook(remoteBook).toUri()
+            val uri = try {
+                bookWebDav.downloadRemoteBook(remoteBook)
+            } catch (e: InvalidBooksDirException) {
+                // 保存位置未设置: 走既有"去设置目录"出口 (与其它三端同一入口/同一偏好键),
+                // 异常照旧上抛 (调用方仍记日志), 只是多了一次用户可见的出口
+                selectBookSaveDir()
+                throw e
+            }.toUri()
             book.bookUrl = if (uri.isContentScheme()) uri.toString() else uri.path!!
             book.lastCheckTime = remoteBook.lastModify
         }
@@ -1399,9 +1420,8 @@ class AndroidPlatformCapabilities(
         }
     }
 
-    // 对照 BookshelfManageActivity.exportAll (三分支与备份路径同一形制, 见 DataStorage.defaultBookExportDir:
-    // 已选过 → 用; 未选过且平台有惯例目录 → 用惯例目录; 都没有 → 拉起目录选择器。
-    // 安卓的惯例目录恒为 null —— 写公共目录要 SAF 授权, 不能当默认值)
+    // 对照 BookshelfManageActivity.exportAll: 已选过导出目录 → 直接导出;
+    // 未选过 → 拉起目录选择器 (写公共目录要 SAF 授权, 没有可用惯例目录)
     override fun exportAllBooks(books: List<Book>) {
         val path = effectiveBookExportDir()
         if (path.isNullOrEmpty()) {
@@ -1847,11 +1867,19 @@ class AndroidPlatformCapabilities(
             activity.alert(androidAppString("draw"), androidAppString("no_book_found_bookshelf")) {
                 okButton {
                     activity.lifecycleScope.launch(IO) {
-                        val book = runCatching {
-                            FileBook.importFromArchive(fileDoc.uri, fileName) {
-                                it.contains(fileName)
+                        suspend fun importFromArchive() = FileBook.importFromArchive(
+                            fileDoc.uri, fileName,
+                        ) { it.contains(fileName) }
+                        // 压缩包解压产物落"书籍保存位置": 未设置时经既有选择器选定后继续导入
+                        val book = runCatching { importFromArchive() }
+                            .recoverCatching { e ->
+                                if (e is InvalidBooksDirException && ensureBookSaveDirSelected()) {
+                                    importFromArchive()
+                                } else {
+                                    throw e
+                                }
                             }
-                        }.getOrNull()?.firstOrNull()
+                            .getOrNull()?.firstOrNull()
                         activity.runOnUiThread {
                             book?.let { AppNavigatorProviders.get().push(it.toReadRoute()) }
                         }

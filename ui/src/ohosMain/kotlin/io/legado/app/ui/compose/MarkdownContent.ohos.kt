@@ -5,7 +5,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.interop.ArkUIView2
-import androidx.compose.ui.napi.js
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.sp
 import io.legado.app.napi.OhosNativeBridge
@@ -39,16 +38,10 @@ actual fun MarkdownContent(content: String, modifier: Modifier) {
         )
     }
     // 混排 ArkTS Web 组件: 位置/尺寸随 Compose 槽位 (对话框正文区), Web 内部滚动。
-    // 参数全走字符串 (CPF js DSL 的最稳类型); ArkTS 侧实际以 tsfn push 的内容为准,
-    // 此处参数仅作首帧兜底 (builder 可能先于 push 到达)。
+    // 内容/主题/字号一律以 tsfn push 的内容为准 (见上), ArkTS 构建器不消费 interop 参数。
     ArkUIView2(
         name = ARKUI_BUILDER_MARKDOWN_WEB,
         modifier = modifier,
-        parameter = js {
-            "content"(content)
-            "isDark"(if (isDark) "1" else "0")
-            "fontSize"(baseFontVp.toString())
-        },
         background = Color.Transparent,
         interactive = true,
     )

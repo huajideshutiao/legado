@@ -52,6 +52,7 @@ import io.legado.app.ui.root.DialogTransitionSpec
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteTransitionSpec
 import io.legado.app.ui.root.TransitionEasing
+import io.legado.app.ui.root.ensureBookSaveDirSelected
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.File
 import io.legado.app.utils.GSON
@@ -308,10 +309,15 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
         }
     }
 
+    // 压缩包导入需要书籍保存位置: 未设置时经既有"书籍保存位置"选择器选定后继续导入
     override fun addImportSelectionToBookshelf(
         items: List<ImportFileItem>,
         onComplete: () -> Unit,
-    ) = NativeImportBook.addToBookshelf(items, onComplete)
+    ) = NativeImportBook.addToBookshelf(
+        items,
+        onComplete,
+        onNeedBooksDir = { ensureBookSaveDirSelected() },
+    )
 
     override fun updateImportBookFilter(key: String) = NativeImportBook.updateFilter(key)
 
@@ -596,15 +602,14 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
         IosNotificationService.cancelNotification(NotificationId.ExportBookService)
     }
 
-    // 导出书籍正文, 直接写进有效导出目录 (用户选过 → 设备本地记忆, 否则惯例目录
-    // Documents/export —— iOS 的 Documents 经"文件"App 可见, 用户自己就能找到),
+    // 导出书籍正文, 直接写进有效导出目录 (用户经目录选择器选定; 未选过时先选目录),
     // 不经系统分享面板 (对照 app 端 ExportBookService 的落盘语义)
     override fun exportAllBooks(books: List<Book>) {
         if (books.isEmpty()) {
             Toasters.get().toast("书籍不能为空")
             return
         }
-        // 三分支同上, 未选过且无惯例目录时先选目录 (对照 BookshelfManageActivity.exportAll)
+        // 未选过导出目录时先选目录 (对照 BookshelfManageActivity.exportAll)
         if (effectiveBookExportDir() == null) {
             selectExportFolder(books)
             return
@@ -802,7 +807,7 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
      * 用户选定的目录在应用容器之外, 直接按 POSIX 路径写入会因缺 security scope 失败;
      * 写入新建文件与 [io.legado.app.model.fileBook.IosAuthorizedFileBookAccessor] 的落盘入口
      * 同模式 —— 直接持 [IosSecurityScopedStorage.acquireLease] 而不走 NSFileCoordinator
-     * (协调器会对尚不存在的目标路径报错); 沙盒内的惯例目录无需 scope, 租约为空操作。
+     * (协调器会对尚不存在的目标路径报错)。
      *
      * 授权已失效 (用户在系统里撤销/换过目录) 时清掉记忆目录 ([rememberBookExportDir]), 下次导出
      * 重新让用户选目录 (与图片保存目录写入失败即忘掉记忆目录同一处理)。

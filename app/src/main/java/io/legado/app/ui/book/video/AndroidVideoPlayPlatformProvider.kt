@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -145,6 +146,12 @@ class AndroidVideoPlayPlatformProvider(
         onSettled: () -> Unit,
     ): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        // 活动处于停止态 (onStop 之后、onStart 之前) 时进小窗必抛 IllegalStateException:
+        // AOSP Activity.enterPictureInPictureMode 在 mCanEnterPictureInPicture 为 false 时抛
+        // "Activity must be resumed to enter picture-in-picture", 该标志在 performStop 置 false
+        // (AMS 侧另有同口径的状态校验)。画中画钮到真正请求之间隔两帧, 这两帧里应用被停止
+        // (切后台/锁屏/他应用抢占) 时不得再发起, 按"平台当场判定没进去"回报 false
+        if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return false
         val c = controller as? AndroidVideoPlayerController
         activeController = c
         pipRequestSettled = onSettled

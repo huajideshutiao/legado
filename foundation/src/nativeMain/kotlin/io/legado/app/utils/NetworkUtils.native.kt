@@ -5,7 +5,8 @@ package io.legado.app.utils
  *
  * 详见 commonMain/utils/NetworkUtils.kt expect 注释。
  * 纯 Kotlin 实现: URL 解析部分与 jvmAndAndroidMain 行为一致;
- * PublicSuffixDatabase (JVM-only) 不可用, getSubDomain/getSubDomainOrNull 退化为返回 host (功能受限但不崩)。
+ * 域名归一 (getSubDomain/getSubDomainOrNull) 走 nativeMain 的 [PublicSuffixList] (iOS/鸿蒙共用同一份
+ * 算法与数据表, 结果小写); punycode 标签与含非 ASCII 字符的域名无法与规则表确定比对, 按整主机返回。
  *
  * 附加成员 (仅 jvmAndAndroid 可见的 java.net.URL/InetAddress 重载) 在 iOS/鸿蒙不暴露。
  * 仅 [isAvailable] 留 app (走 connectivityManager, 见 app 端 NetworkAvailability)。
@@ -136,10 +137,7 @@ actual object NetworkUtils {
         val baseUrl = getBaseUrl(url) ?: return url
         return kotlin.runCatching {
             val host = JsURL(baseUrl).host
-            if (isIPAddress(host)) host
-            // 退化: 无 PublicSuffixDatabase, 返回 host 作为 eTLD+1 的近似
-            // (功能受限: 多级子域名场景不能归一到 eTLD+1, 但 cookie 读写不崩, 仅 cookie 域范围扩大)
-            host
+            if (isIPAddress(host)) host else PublicSuffixList.normalize(host)
         }.getOrDefault(baseUrl)
     }
 
@@ -147,8 +145,7 @@ actual object NetworkUtils {
         val baseUrl = getBaseUrl(url) ?: return null
         return kotlin.runCatching {
             val host = JsURL(baseUrl).host
-            if (isIPAddress(host)) host
-            host
+            if (isIPAddress(host)) host else PublicSuffixList.normalize(host)
         }.getOrDefault(null)
     }
 
