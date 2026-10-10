@@ -6,6 +6,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.HttpTTS
+import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.config.LocalConfigKeys
@@ -22,6 +23,7 @@ import io.legado.app.ui.config.MODE_NEW_CONFIG
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.SharedPlatformCapabilities
 import io.legado.app.utils.GSON
@@ -108,7 +110,22 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
                         success?.invoke()
                     }
                 }
-                .onFailure { AppLog.put("下载远程书籍<${book.name}>失败", it, true) }
+                .onFailure { error ->
+                    // 保存位置未设置时走既有的"去设置目录"出口 (与书籍详情的 web 文件导入同一
+                    // 入口与偏好键); 用户取消 (uri == null) 时不动既有配置
+                    if (error is InvalidBooksDirException) {
+                        withContext(mainDispatcher) {
+                            PlatformCapabilityProviders.get().pickBookTreeUri { uri ->
+                                if (uri != null) {
+                                    PreferenceProviders.get().putString(
+                                        PreferKey.defaultBookTreeUri, uri
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    AppLog.put("下载远程书籍<${book.name}>失败", error, true)
+                }
         }
     }
 

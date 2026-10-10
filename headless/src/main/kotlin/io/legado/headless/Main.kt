@@ -85,8 +85,9 @@ fun main(args: Array<String>) {
     // 无 UI 确认框: 书源 openUrl 直开系统浏览器 (桌面端有 DesktopDialogs 确认框,
     // 无头进程无从确认; 直开语义见 HeadlessOpenUrlProvider 注释)
     OpenUrlProviders.register(HeadlessOpenUrlProvider)
-    // 6. 阶段3 核心 provider (含 Web 服务三件套注册) + 启动期异步任务
-    //    (adjustSortNumber/默认数据/清理/WebDav, 与桌面尾部逐行等价)
+    // 6. 阶段3 核心 provider + 启动期异步任务
+    //    (adjustSortNumber/默认数据/清理/WebDav, 与桌面尾部逐行等价; Web 服务三件套已在 5 步随
+    //    DesktopCore.registerRestProviders 注册)
     runBlocking {
         DesktopCore.registerSecondaryCoreProviders()
         DesktopCore.startupBackgroundTasks()

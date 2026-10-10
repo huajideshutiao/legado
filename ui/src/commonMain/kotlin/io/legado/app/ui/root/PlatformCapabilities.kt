@@ -460,10 +460,11 @@ interface PlatformCapabilities {
     /**
      * 选择导出文件夹 (对照 selectExportFolderMenu / selectExportFolder)。
      *
-     * 选定结果落偏好键 [io.legado.app.constant.PreferKey.bookExportPath] (原版把同一个选择结果
-     * 存在 ACache "exportBookPath" —— 缓存会被清理动作抹掉, 现改偏好键); 取值顺序
+     * 选定结果落本机配置空间 [io.legado.app.help.config.rememberBookExportDir]
+     * (原版把同一个选择结果存在 ACache "exportBookPath" —— 缓存会被清理动作抹掉,
+     * 且选定的是本机目录/授权引用, 不能随备份走到别的设备); 取值顺序
      * (已选 → 未选且有平台惯例目录 → 都没有才拉本入口) 见
-     * [io.legado.app.help.storage.effectiveBookExportDir]。
+     * [io.legado.app.help.config.effectiveBookExportDir]。
      */
     fun selectExportFolder(books: List<Book>) = unsupported("选择导出目录")
 

@@ -15,7 +15,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.interop.ArkUIView2
-import androidx.compose.ui.napi.js
 import androidx.compose.ui.text.style.TextAlign
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.ui.compose.theme.AppTheme
@@ -44,8 +43,8 @@ const val ARKUI_BUILDER_FOREGROUND_WEB: String = "legadoForegroundWeb"
  * 本 slot 走前台可见 Web + `legado.webControllerCallback`, 两条链各有独立 Web 实例与 tsfn, 互不抢占。
  *
  * # 接线内容
- * - 加载配置随参数 ([ARKUI_BUILDER_FOREGROUND_WEB] 的 `parameter`) 兜底下发, 并以
- *   [OhosVisibleWebViewBridge.show] 命令补全 headers/宽视口/登录标记 (ArkTS 未就绪时缓存待用);
+ * - 加载配置 (url/html/headers/宽视口/登录标记) 全部经 [OhosVisibleWebViewBridge.show] 命令下发
+ *   (ArkTS 未就绪时缓存待用);
  * - [WebViewCallbacks.host]: evaluateJavascript (异步, 经 [OhosVisibleWebViewBridge.evaluateJavascript]) /
  *   canGoBack / goBack / exitFullScreen / getUrl / reload, 供 WebViewRoute 执行验证回传与返回导航;
  * - [WebViewCallbacks.onPageFinished] / [WebViewCallbacks.onUrlChanged] / [WebViewCallbacks.onReceivedTitle] /
@@ -132,18 +131,11 @@ fun OhosWebViewSlot(
     }
 
     // 可见 Web 由 ArkTS interop builder 在本槽位内创建 (与 Markdown 查看器同一范式);
-    // 参数仅作首帧兜底 (builder 可能先于 show 命令到达), 完整配置以 show 命令为准。
+    // 加载配置一律由上面的 show 命令下发。
     if (OhosVisibleWebViewBridge.isReady()) {
         ArkUIView2(
             name = ARKUI_BUILDER_FOREGROUND_WEB,
             modifier = modifier.fillMaxSize(),
-            parameter = js {
-                "url"(config.url)
-                "html"(config.html ?: "")
-                "wideViewPort"(if (config.wideViewPort) "1" else "0")
-                "isLogin"(if (config.isLogin) "1" else "0")
-                "sourceKey"(config.sourceKey)
-            },
             background = Color.Transparent,
             interactive = true,
         )

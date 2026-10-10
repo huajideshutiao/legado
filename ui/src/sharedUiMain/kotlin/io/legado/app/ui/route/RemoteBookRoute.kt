@@ -35,10 +35,12 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.dialog.HelpDialog
+import kotlinx.coroutines.launch
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.no
 import legado.ui.generated.resources.ok
@@ -62,7 +64,22 @@ fun RemoteBookRoute(
     // 已上架书籍点击阅读: 切到 Reader 路由
     val onStartRead: (Book) -> Unit = { book -> navigator.push(AppRoute.Reader(book.toRouteRef())) }
     val shared = remember(scope) {
-        RemoteBookViewModelShared(scope = scope, onStartRead = onStartRead)
+        RemoteBookViewModelShared(
+            scope = scope,
+            onStartRead = onStartRead,
+            // 上架时要落盘 (图书保存位置): 未设置或写入被拒时复用各端既有的选目录入口
+            // (PlatformCapabilities.pickBookTreeUri, 与"其它设置 → 书籍保存位置"同一入口)
+            // 与既有偏好键, 用户取消 (uri == null) 时不动既有配置、不报错
+            onPermissionDenied = {
+                scope.launch {
+                    PlatformCapabilityProviders.get().pickBookTreeUri { uri ->
+                        if (uri != null) {
+                            PreferenceProviders.get().putString(PreferKey.defaultBookTreeUri, uri)
+                        }
+                    }
+                }
+            },
+        )
     }
     val items by shared.items.collectAsState()
     val path by shared.currentPath.collectAsState()

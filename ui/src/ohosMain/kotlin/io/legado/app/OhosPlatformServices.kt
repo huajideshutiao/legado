@@ -358,17 +358,21 @@ private object OhosFilePickerService : FilePickerService {
      */
     override val imageViewerSavesToAlbum: Boolean = true
 
+    /**
+     * 落系统相册。写不进相册 (未授予相册权限/图库拒绝/桥未就绪) 一律返回 false 并记日志, 由调用方
+     * 如实报"保存失败"——不能改写进用户看不到的应用私有目录还报成功 (那个落点用户取不到,
+     * 报成功就是谎报)。
+     */
     override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? {
         val ext = imageExtension(bytes, suggestedName).removePrefix(".")
-        val savedToAlbum = runCatching { saveImageToAlbum(ext, bytes) }.getOrDefault(false)
-        if (savedToAlbum) return true
-        // 相册写不进去 (未授予相册权限/图库写入被拒): 落沙盒导出目录, 保住内容不丢
-        return runCatching {
-            val dir = AppFilesDirs.get().filesDir + "/export"
-            File(dir).mkdirs()
-            File(dir, suggestedName).writeBytes(bytes)
-            true
-        }.getOrDefault(false)
+        return runCatching { saveImageToAlbum(ext, bytes) }
+            .onFailure { AppLog.put("保存图片到相册失败\n$suggestedName\n${it.message}", it) }
+            .getOrElse { savedToAlbum ->
+                if (!savedToAlbum) {
+                    AppLog.put("保存图片到相册失败, 未授予相册权限或被图库拒绝\n$suggestedName")
+                }
+                savedToAlbum
+            }
     }
 
     /**

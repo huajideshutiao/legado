@@ -8,6 +8,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.RssToolbarActions
@@ -42,6 +43,7 @@ import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.DefaultDialogTransitionSpec
 import io.legado.app.ui.root.DialogTransitionSpec
 import io.legado.app.ui.root.SharedPlatformCapabilities
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteTransitionSpec
@@ -528,7 +530,20 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
                         success?.invoke()
                     }
                 }
-                .onFailure { AppLog.put("下载远程书籍<${book.name}>失败", it, true) }
+                .onFailure { error ->
+                    // 保存位置未设置时走既有的"去设置目录"出口 (与书籍详情的 web 文件导入同一
+                    // 入口与偏好键); 用户取消 (uri == null) 时不动既有配置
+                    if (error is InvalidBooksDirException) {
+                        withContext(Dispatchers.Main) {
+                            PlatformCapabilityProviders.get().pickBookTreeUri { uri ->
+                                if (uri != null) {
+                                    prefs.putString(PreferKey.defaultBookTreeUri, uri)
+                                }
+                            }
+                        }
+                    }
+                    AppLog.put("下载远程书籍<${book.name}>失败", error, true)
+                }
         }
     }
 
@@ -658,8 +673,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     // 走 FileAssociationDispatch 的直接导入链), 没找到就弹确认框由调用方重新下载后重试
     override fun startReadRemoteArchive(fileName: String, onNeedDownload: () -> Unit) {
         scope.launch {
-            // 与 DesktopFileBookAccessor 的有效书籍保存目录同源
-            // (用户已选 → 选定目录; 未选 → 平台默认 {desktopAppRootDir}/books)
+            // 与 DesktopFileBookAccessor 的有效书籍保存目录同源 (用户在"书籍保存位置"选定)
             val dir = effectiveBookSaveDir()
             val path = dir?.let { File(it, fileName) }
             if (path != null && path.isFile) {

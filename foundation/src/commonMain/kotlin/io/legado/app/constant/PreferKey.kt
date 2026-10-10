@@ -44,12 +44,6 @@ object PreferKey {
     const val bookshelfSort = "bookshelfSort"
     const val bookExportFileName = "bookExportFileName"
 
-    /**
-     * 导出书籍落地目录的遗留偏好键: 记忆已存设备本地配置空间
-     * ([io.legado.app.help.config.LocalConfigKeys.bookExportPath], 见该处说明),
-     * 本键的读写只剩 [io.legado.app.help.storage.effectiveBookExportDir] 一处。
-     */
-    const val bookExportPath = "bookExportPath"
     const val bookImportFileName = "bookImportFileName"
     const val episodeExportFileName = "episodeExportFileName"
     const val recordLog = "recordLog"

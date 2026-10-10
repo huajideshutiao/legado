@@ -2,6 +2,8 @@ package io.legado.app.ui
 
 import io.legado.app.constant.AppLog
 import kotlin.concurrent.Volatile
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import io.legado.app.constant.BookType
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
@@ -85,7 +87,36 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     private val appDb get() = AppDbProviders.get()
     private val prefs get() = PreferenceProviders.get()
     private val services get() = PlatformServiceProviders.get()
+
+    /** 导出队列与"正在导出"标记的读写锁 (与队列读写同锁判断, 避免"收工瞬间入队"的书没人导)。 */
+    private val exportLock = SynchronizedObject()
+
+    /**
+     * 待导出队列, 键为书 url (对照原版 ExportBookService.waitExportBooks): 重复触发导出时新请求
+     * 入队稍后照常导出; 同一本书已在队列里就换成最新导出方式。
+     */
+    private val waitExportBooks = LinkedHashMap<String, PendingExport>()
+
+    /** 正在导出的书 url (对照原版 exportProgress: 同一本书正在导出时不再重复入队)。 */
+    private var exportingBookUrl: String? = null
+
+    /** 队列执行者是否在跑。 */
+    private var exportWorkerRunning = false
+
+    /** 队列执行者 (对照 app 端 ExportBookService 的服务存活, 可取消)。 */
     private var exportBooksJob: Job? = null
+
+    /** 队列里的一本书: 导出方式 (对照原版 ExportBookService 的 bookUrl → ExportConfig)。 */
+    private class PendingExport(val book: Book, val mode: ExportMode)
+
+    /** 导出方式 (对照原版 ExportBookService.ExportConfig: type 或 epubScope+epubSize)。 */
+    private sealed interface ExportMode {
+        /** 按导出配置导: `txt` / `epub`, 图片书为 `cbz`。 */
+        data class ByConfig(val type: Int) : ExportMode
+
+        /** 自定义导出: 章节下标集合 + 分卷大小 (epub)。 */
+        data class CustomEpub(val scope: Set<Int>, val size: Int) : ExportMode
+    }
 
     /**
      * 当前显示密度 (px → vp), 由 [io.legado.app.MainOhos] 在根组合里经 [updateDisplayDensity] 注入。
@@ -323,8 +354,7 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     // 没找到就弹确认框由调用方重新下载后重试。
     override fun startReadRemoteArchive(fileName: String, onNeedDownload: () -> Unit) {
         scope.launch {
-            // 与 NativeFileBookAccessor 的有效书籍保存目录同源
-            // (用户已选 → 选定目录; 未选 → 平台默认 {filesDir}/books);
+            // 与 NativeFileBookAccessor 的有效书籍保存目录同源 (用户在"书籍保存位置"选定);
             // 选定目录在沙盒外, 存在性检查同样要先激活既有目录授权
             val dir = effectiveBookSaveDir()
             if (dir != null) {
@@ -452,45 +482,157 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
             selectExportFolder(books)
             return
         }
-        if (exportBooksJob?.isActive == true) {
-            Toasters.get().toast("书籍正在导出")
-            return
+        // 导出配置在此快照 (对照原版把 exportType 随 intent 传进服务)
+        val exportType = prefs.getInt(PreferKey.exportType, 0)
+        enqueueExport(books) { ExportMode.ByConfig(exportType) }
+    }
+
+    /**
+     * 导出请求入队 (对照原版 BookshelfManageActivity.startExportBooks → ExportBookService:
+     * 每本书一条队列项, 重复触发入队稍后照常导出), 队列空闲时顺手拉起执行者。
+     *
+     * @param label 导出方式后缀 (自定义章节导出提示里带"自定义章节", 普通导出为空)
+     * @param modeOf 按书算导出方式 (图片书一律 cbz 等)
+     */
+    private fun enqueueExport(books: List<Book>, label: String = "", modeOf: (Book) -> ExportMode) {
+        if (books.isEmpty()) return
+        val (added, started) = synchronized(exportLock) {
+            // 同一本书只入队一次 (正在导出的那本不入队), 已在队列里则换成最新导出方式
+            var count = 0
+            books.forEach { book ->
+                if (book.bookUrl == exportingBookUrl) return@forEach
+                waitExportBooks[book.bookUrl] = PendingExport(book, modeOf(book))
+                count++
+            }
+            val start = count > 0 && !exportWorkerRunning
+            if (start) exportWorkerRunning = true
+            count to start
         }
-        exportBooksJob = scope.launch {
-            val exportDir = openExportDir() ?: return@launch
-            val failures = mutableListOf<String>()
-            val usedPaths = mutableSetOf<String>()
-            val exportType = prefs.getInt(PreferKey.exportType, 0)
-            var exported = 0
-            books.forEachIndexed { bookIndex, book ->
+        if (added == 0) return
+        Toasters.get().toast(
+            if (started) "开始导出 $added 本$label" else "已加入导出队列 $added 本$label"
+        )
+        if (started) exportBooksJob = scope.launch { runExportQueue() }
+    }
+
+    /** 取队首的一本书并标记"正在导出" (对照原版 export(): 取队首 → exportProgress 置位), 空队列返回 null。 */
+    private fun takeNextExport(): PendingExport? = synchronized(exportLock) {
+        val entry = waitExportBooks.entries.firstOrNull() ?: return null
+        waitExportBooks.remove(entry.key)
+        exportingBookUrl = entry.key
+        entry.value
+    }
+
+    /** 队列里还剩几本待导。 */
+    private fun pendingExportCount(): Int = synchronized(exportLock) { waitExportBooks.size }
+
+    /** 当前这本导完, 清掉"正在导出"标记。 */
+    private fun finishExport() = synchronized(exportLock) { exportingBookUrl = null }
+
+    /** 队列空时收工 (与 [enqueueExport] 同锁): 确认没新入队才真收工, 否则继续导。 */
+    private fun finishWorkerIfQueueEmpty(): Boolean = synchronized(exportLock) {
+        if (waitExportBooks.isNotEmpty()) {
+            false
+        } else {
+            exportWorkerRunning = false
+            true
+        }
+    }
+
+    /** 取消时丢掉剩余队列并归还执行者名额 (对照原版 IntentAction.stop → stopSelf: 未导出的不再导出)。 */
+    private fun discardExportQueue() = synchronized(exportLock) {
+        waitExportBooks.clear()
+        exportingBookUrl = null
+        exportWorkerRunning = false
+    }
+
+    /** 导出 [pending] 这一本, 返回写出的文件 (对照原版 ExportBookService 按 ExportConfig 分流)。 */
+    private suspend fun exportPending(
+        pending: PendingExport,
+        exportDir: File,
+        usedPaths: MutableSet<String>,
+    ): List<File> = when (val mode = pending.mode) {
+        is ExportMode.ByConfig -> listOf(
+            NativeBookExporter.exportBookFile(pending.book, exportDir, usedPaths, mode.type)
+        )
+
+        is ExportMode.CustomEpub -> if (pending.book.isImage) {
+            listOf(NativeBookExporter.exportBookFile(pending.book, exportDir, usedPaths, 1))
+        } else {
+            val chapters = appDb.bookChapterDao.getChapterList(pending.book.bookUrl)
+            val selected = chapters.filterIndexed { index, _ -> index in mode.scope }
+            if (selected.isEmpty()) error("章节范围内没有章节")
+            selected.chunked(mode.size).mapIndexed { index, part ->
+                NativeBookExporter.exportBookFile(
+                    pending.book, exportDir, usedPaths, 1, part,
+                    pending.book.getExportFileName("epub", index + 1),
+                )
+            }
+        }
+    }
+
+    /**
+     * 串行导出队列 (对照原版 ExportBookService.export(): 逐本从队首取出, 导完一本再取下一本)。
+     * 单本出错只记日志并继续下一本; 通知取消则丢掉剩余队列, 与 app 端 stopSelf 同语义。
+     */
+    private suspend fun runExportQueue() {
+        val failures = mutableListOf<String>()
+        val usedPaths = mutableSetOf<String>()
+        var exported = 0
+        var lastDirPath: String? = null
+        try {
+            while (true) {
+                val pending = takeNextExport()
+                if (pending == null) {
+                    if (finishWorkerIfQueueEmpty()) break
+                    continue
+                }
                 try {
                     currentCoroutineContext().ensureActive()
+                    val exportDir = openExportDir()
+                    if (exportDir == null) {
+                        // 目录不可用 (已提示并忘掉记忆目录): 本次不能导出, 剩余队列不再导
+                        discardExportQueue()
+                        break
+                    }
+                    lastDirPath = exportDir.absolutePath
                     notificationContentText = syncGetString(
                         "export_book_notification_content",
-                        book.name,
-                        books.size - bookIndex - 1,
+                        pending.book.name,
+                        pendingExportCount(),
                     )
                     upExportNotification()
-                    val file = NativeBookExporter.exportBookFile(book, exportDir, usedPaths, exportType)
-                    exported++
-                    if (prefs.getBoolean(PreferKey.exportToWebDav, false)) {
-                        AppWebDavShared.exportWebDav(file.absolutePath, file.name)
+                    exportPending(pending, exportDir, usedPaths).forEach { file ->
+                        exported++
+                        if (prefs.getBoolean(PreferKey.exportToWebDav, false)) {
+                            AppWebDavShared.exportWebDav(file.absolutePath, file.name)
+                        }
                     }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    failures.add("${book.name}：${e.message ?: "未知错误"}")
-                    AppLog.put("导出书籍失败：${book.name}\n${e.message}", e)
+                    failures.add("${pending.book.name}：${e.message ?: "未知错误"}")
+                    AppLog.put("导出书籍失败：${pending.book.name}\n${e.message}", e)
+                } finally {
+                    finishExport()
                 }
             }
-            notificationContentText = "导出完成"
-            upExportNotification(finish = true)
-            if (exported > 0) {
-                Toasters.get().toast("已导出 $exported 本书到 ${exportDir.absolutePath}")
-            }
-            if (failures.isNotEmpty()) {
-                Toasters.get().toast("${failures.size} 本书导出失败：${failures.take(2).joinToString()}")
-            }
+        } catch (e: CancellationException) {
+            // 通知取消导出: 不报错, 已写出的半成品与 app 端取消语义一致; 剩余队列不再导出
+            discardExportQueue()
+            throw e
+        } catch (e: Throwable) {
+            // 意外异常不能把执行者名额带走, 否则后续导出会一直排队没人导
+            discardExportQueue()
+            throw e
+        }
+        notificationContentText = "导出完成"
+        upExportNotification(finish = true)
+        if (exported > 0) {
+            Toasters.get().toast("导出完成\n已导出 $exported 个文件到 ${lastDirPath.orEmpty()}")
+        }
+        if (failures.isNotEmpty()) {
+            Toasters.get().toast("${failures.size} 本书导出失败：${failures.take(2).joinToString()}")
         }
     }
 
@@ -628,61 +770,13 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
      *
      * @param scope 选中章节的下标集合 (0-based, [ExportBookUtils.parseScope] 的结果)
      */
-    private fun exportCustomBooks(books: List<Book>, scope: Set<Int>, size: Int) {
+    private fun exportCustomBooks(books: List<Book>, scopeChapters: Set<Int>, size: Int) {
         if (books.isEmpty()) return
-        if (exportBooksJob?.isActive == true) {
-            Toasters.get().toast("书籍正在导出")
+        if (effectiveBookExportDir() == null) {
+            selectExportFolder(books)
             return
         }
-        exportBooksJob = this.scope.launch {
-            val exportDir = openExportDir() ?: return@launch
-            val failures = mutableListOf<String>()
-            val usedPaths = mutableSetOf<String>()
-            var exported = 0
-            books.forEachIndexed { bookIndex, book ->
-                try {
-                    currentCoroutineContext().ensureActive()
-                    notificationContentText = syncGetString(
-                        "export_book_notification_content",
-                        book.name,
-                        books.size - bookIndex - 1,
-                    )
-                    upExportNotification()
-                    val bookFiles = if (book.isImage) {
-                        listOf(NativeBookExporter.exportBookFile(book, exportDir, usedPaths, 1))
-                    } else {
-                        val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
-                        val selected = chapters.filterIndexed { index, _ -> index in scope }
-                        if (selected.isEmpty()) error("章节范围内没有章节")
-                        selected.chunked(size).mapIndexed { index, part ->
-                            NativeBookExporter.exportBookFile(
-                                book, exportDir, usedPaths, 1, part,
-                                book.getExportFileName("epub", index + 1),
-                            )
-                        }
-                    }
-                    bookFiles.forEach { file ->
-                        exported++
-                        if (prefs.getBoolean(PreferKey.exportToWebDav, false)) {
-                            AppWebDavShared.exportWebDav(file.absolutePath, file.name)
-                        }
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    failures.add("${book.name}：${e.message ?: "未知错误"}")
-                    AppLog.put("导出书籍失败：${book.name}\n${e.message}", e)
-                }
-            }
-            notificationContentText = "导出完成"
-            upExportNotification(finish = true)
-            if (exported > 0) {
-                Toasters.get().toast("已导出 $exported 份到 ${exportDir.absolutePath}")
-            }
-            if (failures.isNotEmpty()) {
-                Toasters.get().toast("${failures.size} 本书导出失败：${failures.take(2).joinToString()}")
-            }
-        }
+        enqueueExport(books, label = " (自定义章节)") { ExportMode.CustomEpub(scopeChapters, size) }
     }
 
     override fun showExportConfig() {

@@ -307,6 +307,7 @@ fun registerIosProviders() {
     // 分享扩展取件扫描 (分享面板 → App Group 共享容器 → 本启动路径取件 → 既有导入分发)。
     // 入口类写件见 iosApp/ShareExtension/ShareViewController.swift。
     // 取件本身在 IO 线程上跑 (见 IosShareInbox); 通道未生效时 (未签名产物拿不到
-    // App Group entitlement, 容器取不到) 安静退出, 不抛不崩。
+    // App Group entitlement, 容器取不到) 不抛不崩, 并在应用进入活动态后把原因与替代导入路径
+    // 明确提示给用户一次 (见 IosShareInbox.notifyEntryUnavailable)。
     IosShareInbox.deliverPending()
 }

@@ -881,7 +881,8 @@ private fun runDesktopApp() = application {
  *   (必须在它们之后注册)
  *
  * 无 UI 核心子集已下沉 :desktop-core 的 DesktopCore.registerSecondaryCoreProviders()
- * (原 0/0.5/1/4/5(zip)/7/8/8b/9/10/10b(正则)/11/11b(UserAgent)/13b 步, 顺序保持),
+ * (原 0/0.5/1/4/5(zip)/7/8/9/10/10b(正则)/11/11b(UserAgent)/13b 步, 顺序保持; 8b 的
+ * Web 服务 provider 已提到阶段1 同步注册, 见 DesktopCore.registerRestProviders),
  * 本函数只保留 UI 绑定子集 + 尾部启动任务调度, headless 入口复用核心子集。
  */
 private suspend fun registerSecondaryProviders() {

@@ -153,7 +153,7 @@ function LegadoMarkdownWebBuilder(param: object) {
 // 未注册时该 interop 节点为空 (前台 Web 不可用, 仅显示 Kotlin 侧占位文本)。
 //
 // controller 为模块级单例: 单个前台 Web 实例 (屏幕内同一时刻只有一个前台网页).
-// 加载配置由 WebViewBridgeHandler 的 show 命令下发 (此处只做宽视口首帧兼容).
+// 加载配置由 WebViewBridgeHandler 的 show 命令下发。
 const foregroundWebController: webview.WebviewController = new webview.WebviewController();
 
 @Component

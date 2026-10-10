@@ -80,10 +80,9 @@ interface DesktopArchiveSupport {
  *   (commons-compress 限制), 其余格式对齐。headless 不注入 → 压缩包导入/解压显式报错
  * - PDF: 注入 [BaseFileBook] 处理器 (:desktop 为 DesktopPdfFile companion, PDFBox) 替代
  *   app 端 `PdfFile` (android PdfRenderer)。headless 不注入 → PDF 书读取显式报错
- * - 文件保存: 用户已在"书籍保存位置"选过则落选定目录, 未选则落平台默认
- *   `{desktopAppRootDir}/books` (与 Android 端 `defaultBookTreeUri` 同语义); 落库引用走
- *   [desktopStoredLocalRef] (数据根下存 `books/` 相对引用, 便携移动程序目录后仍有效;
- *   外部文件存 file: URI)
+ * - 文件保存: 落用户在"书籍保存位置"选定的目录 (与 Android 端 `defaultBookTreeUri` 同语义;
+ *   未设置时由调用链既有的"去设置目录"出口拉起目录选择器); 落库引用走
+ *   [desktopStoredLocalRef] (外部目录存 `file:` URI, 数据根下的文件存相对引用)
  *
  * 模式参考 [io.legado.desktop.help.book.DesktopBookHelpAccessor]。
  */
@@ -101,9 +100,9 @@ class DesktopFileBookAccessor(
     private val coversDir: String = Paths.get(desktopAppRootDir(), "covers").toString()
 
     /**
-     * 有效书籍保存目录 (用户已选 → 选定目录; 未选 → 平台默认 `{desktopAppRootDir}/books`;
-     * 都没有 → 抛原版同款异常, 由调用链的"去设置目录"出口拉起目录选择器)。
-     * 写入前按需创建 (默认目录首次下载时可能还不存在)。
+     * 有效书籍保存目录 (用户在"书籍保存位置"选定)。
+     * 未设置时 [requireBookSaveDir] 抛原版同款异常, 由调用链既有的"去设置目录"出口
+     * 拉起目录选择器; 写入前按需创建 (选定目录可能还不存在)。
      */
     private fun bookSaveDir(): File = File(requireBookSaveDir()).apply { mkdirs() }
 
@@ -365,13 +364,15 @@ class DesktopFileBookAccessor(
      * 流式保存 WebDav 远端书籍文件 ("下载到本地" / "刷新远端更新" 链路)。
      *
      * desktop 无 SAF: 交给既有的 [WebDav.downloadTo] (savedPath, replaceExisting)
-     * 边下边写有效书籍保存目录下的 `{fileName}` (用户已选 → 选定目录, 未选 →
-     * `{desktopAppRootDir}/books`), 返回引用形式与
+     * 边下边写有效书籍保存目录下的 `{fileName}` (用户在"书籍保存位置"选定),
+     * 返回引用形式与
      * [saveBookFile] (inputStream 重载) 一致 ([desktopStoredLocalRef]);
      * 传输中途失败删净残缺文件 (不留半截书)。
      *
-     * 异常口径与 app 端对齐: 保存位置不可用 (目录不可写) 报权限类提示
-     * (`SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e")`), 其余异常照旧透传。
+     * 异常口径与 app 端对齐: 保存位置未设置时抛
+     * [io.legado.app.exception.InvalidBooksDirException]; 已设置但不可写 (目录被删/无写权限)
+     * 报权限类提示 (`SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e")`),
+     * 其余异常照旧透传。
      */
     override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
         val file = File(bookSaveDir(), fileName)

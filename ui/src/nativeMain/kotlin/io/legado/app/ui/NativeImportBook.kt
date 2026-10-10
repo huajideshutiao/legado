@@ -298,7 +298,8 @@ object NativeImportBook {
                     val file = item.file
                     if (file.name.matches(AppPattern.archiveFileRegex)) {
                         // 压缩包 (zip 内含书籍文件可解压导入; rar/7z native 端无解析器,
-                        // importLocalFile 抛明确异常, 不静默跳过) —— 解压产物已落 {filesDir}/books
+                        // importLocalFile 抛明确异常, 不静默跳过) —— 解压产物落"书籍保存位置"
+                        // (未设置时 importLocalFile 报错, 由调用方提示)
                         FileBook.importLocalFile(file.path)
                     } else {
                         // 普通书文件: 先复制进沙盒再导入 (见类注释"沙盒语义")

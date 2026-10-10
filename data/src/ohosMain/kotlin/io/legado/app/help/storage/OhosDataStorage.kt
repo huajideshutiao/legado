@@ -9,7 +9,7 @@ package io.legado.app.help.storage
  * 以及少量的系统文件", 只有"全量挂载的设备平台"上文件管理应用才能查看其他应用 el2/base
  * 下的数据), 而安卓/iOS 的惯例目录都是用户能找到的位置 (iOS 的 Documents 经"文件"App 可见)。
  * 产物要求用户自己找得到, 故与安卓同口径: 惯例目录为 null, 由用户经目录选择器选一个
- * 可见的公共目录 (导出取值顺序见 [effectiveBookExportDir] 第 3 分支, 备份见
+ * 可见的公共目录 (导出取值顺序见 [io.legado.app.help.config.effectiveBookExportDir], 备份见
  * [io.legado.app.ui.route.BackupConfigRoute] 的 backupPath 分支)。
  *
  * 规则/书架 json 的导出根目录 ([userExportDir]) 不在此列, 保持原值。

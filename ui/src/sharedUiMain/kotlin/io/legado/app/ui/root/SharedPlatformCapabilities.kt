@@ -266,18 +266,16 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
      * 故首次使用时补一次认证 (与 native 端 uploadBook 同款惰性认证); 未配置 WebDav 时
      * upConfig 静默返回, 仅 WebDav 书 (远端地址非空) 会继续走到取远端条目。
      *
-     * # 保存位置未设置时的行为 (三分支, 与备份路径同一套)
-     * 共享层 [AppWebDavShared.checkBookSaveDir] 只在 [io.legado.app.help.book.effectiveBookSaveDir]
-     * 为 null 时抛 [InvalidBooksDirException] (文案 = 原版 `R.string.no_books_dir`)。
-     * 桌面/iOS/鸿蒙三端都有平台惯例默认 books 目录 ([io.legado.app.help.storage.DataStorage.defaultBookDir]),
-     * 未选保存位置时就用默认目录下载, 不打扰用户; 故下面的“去设置目录”出口在这三端不触发。
-     * 仍保留 catch 作为平台默认目录为 null (或 provider 未注册) 时的安全出口: 与三端
+     * # 保存位置未设置时的行为
+     * 共享层 [AppWebDavShared.checkBookSaveDir] 在 [io.legado.app.help.book.effectiveBookSaveDir]
+     * 为 null 时抛 [InvalidBooksDirException] (文案 = 原版 `R.string.no_books_dir`);
+     * 下面的“去设置目录”出口把它转成目录选择器 —— 与
      * `importWebFile`/`downloadWebFile` 的 `onAction("selectBooksDir")` 同一入口
      * ([PlatformCapabilities.pickBookTreeUri])、同一偏好键。
      * 选目录是平台 UI, 归主线程; 用户取消 (uri == null) 时不动既有配置、不报错。
      * 异常仍原样上抛 (不吞): 调用方照旧记日志, 只是多了一次用户可见的出口。
-     * Android 端不受影响: 它有自建 override ([io.legado.app.ui.main.AndroidPlatformCapabilities]),
-     * 行为与原版逐字一致, 且其 defaultBookDir 为 null (保持原版“必须选”)。
+     * Android 端有自建 override ([io.legado.app.ui.main.AndroidPlatformCapabilities]),
+     * 行为与原版逐字一致。
      */
     override suspend fun refreshWebDavBook(book: Book) {
         if (AppWebDavShared.authorization == null) AppWebDavShared.upConfig()

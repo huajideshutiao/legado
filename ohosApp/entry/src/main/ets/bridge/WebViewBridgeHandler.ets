@@ -460,7 +460,7 @@ function clearJsRetryTimer(): void {
 // ## 请求 (Kotlin → ArkTS, tsfn 回调单参数)
 // {
 //   "requestId": <number>,
-//   "action": "show" | "hide" | "loadUrl" | "runJavaScript" | "getCookies" |
+//   "action": "show" | "loadUrl" | "runJavaScript" | "getCookies" |
 //             "getUrl" | "canGoBack" | "goBack" | "reload" | "exitFullScreen",
 //   "payload": "<JSON string, 各 action 的入参>"      // 注意: payload 是字符串, 需二次 JSON.parse
 // }
@@ -470,7 +470,7 @@ function clearJsRetryTimer(): void {
 //                  { url?, html?, headers?: [{name,value}], wideViewPort?, isLogin?, sourceKey? }
 // - loadUrl/getCookies: OhosWebUrlPayload { url? }
 // - runJavaScript: OhosWebScriptPayload { script }
-// - hide/goBack/reload/exitFullScreen/getUrl/canGoBack: 空对象 {}
+// - goBack/reload/exitFullScreen/getUrl/canGoBack: 空对象 {}
 //
 // ## 响应/事件 (ArkTS → Kotlin, 由 legado.webControllerCallback 两参数推送)
 // 字段与 Kotlin OhosWebControllerResult 同名同义:
@@ -478,7 +478,7 @@ function clearJsRetryTimer(): void {
 // - requestId > 0: 命令响应 (回 Kotlin 下发的同值)
 // - requestId == 0: 主动页面事件, event ∈ onPageFinished | onUrlChanged |
 //   onReceivedTitle | onProgressChanged | onCloseWindow
-// 注: show/hide/loadUrl/goBack/reload/exitFullScreen 为 fire-and-forget (不回响应, 回送
+// 注: show/loadUrl/goBack/reload/exitFullScreen 为 fire-and-forget (不回响应, 回送
 // 反而会让 Kotlin 侧打出"未知 requestId 的前台 Web 回调"调试日志)。
 //
 // # cookie 语义
@@ -530,15 +530,6 @@ interface ForegroundWebResult {
   progress?: number;
 }
 
-/** 前台 Web 首帧兜底参数 (CPF interop parameter; 按 Kotlin js DSL 约定全为字符串)。 */
-interface ForegroundWebBuilderParam {
-  url?: string;
-  html?: string;
-  wideViewPort?: string;
-  isLogin?: string;
-  sourceKey?: string;
-}
-
 /** 前台 Web 结果/事件回送函数类型 (EntryAbility 侧传 legado.webControllerCallback)。 */
 export type WebControllerCallback = (requestId: number, resultJson: string) => void;
 
@@ -577,44 +568,18 @@ let foregroundFullScreenHandler: FullScreenExitHandler | undefined;
  *
  * @param controller 可见 Web 组件的 WebviewController (与 interop builder 的 Web 组件绑定)
  * @param eventCallback 结果/事件回送函数 (内部调 legado.webControllerCallback; 页面事件用 requestId=0)
- * @param fallbackParam interop 首帧兜底参数 JSON (可省; 仅用于宽视口首帧兜底, 加载仍以 show 为准)
  */
 export function initForegroundWebBridge(
   controller: webview.WebviewController,
   eventCallback: WebControllerCallback,
-  fallbackParam?: string,
 ): void {
   foregroundController = controller;
   foregroundEventCallback = eventCallback;
   // 宽视口默认 false (对齐 Android: useWideViewPort/loadWithOverviewMode 默认关闭, config 打开才设)
   AppStorage.setOrCreate(FOREGROUND_WIDE_VIEWPORT_KEY, false);
-  applyForegroundFallback(fallbackParam);
   // show 命令早于组件挂载到达 (pendingShow 已缓存) 时立即补执行; 组件未就绪则静默留给 onPageEnd
   loadPendingShow();
   console.info('[WebControllerBridge] foreground controller injected');
-}
-
-/**
- * 应用 interop 首帧兜底参数。
- *
- * 只兜底宽视口开关: 加载配置一律以 show 命令为准 (若在此也发起加载, show 随后到达时会因
- * headers 不同而二次加载, 造成可见页面的重复请求/闪烁)。
- */
-function applyForegroundFallback(fallbackParam?: string): void {
-  if (fallbackParam == null || fallbackParam.length === 0) {
-    return;
-  }
-  let p: ForegroundWebBuilderParam;
-  try {
-    p = JSON.parse(fallbackParam) as ForegroundWebBuilderParam;
-  } catch (e) {
-    console.warn('[WebControllerBridge] parse interop fallback param failed: ' + fallbackParam);
-    return;
-  }
-  // CPF js DSL 参数全为字符串 ('1' = true)
-  if (p.wideViewPort === '1') {
-    AppStorage.setOrCreate(FOREGROUND_WIDE_VIEWPORT_KEY, true);
-  }
 }
 
 /**
@@ -636,9 +601,6 @@ export function handleForegroundWebRequest(requestJson: string, callback: WebCon
     // ===== fire-and-forget (ArkTS → Kotlin 不回响应) =====
     case 'show':
       applyShow(payload);
-      return;
-    case 'hide':
-      applyHide();
       return;
     case 'loadUrl':
       applyLoadUrl(payload);
@@ -672,7 +634,7 @@ export function handleForegroundWebRequest(requestJson: string, callback: WebCon
   }
 }
 
-// ===== 请求处理: show / hide (加载配置下发) =====
+// ===== 请求处理: show (加载配置下发) =====
 
 /** `show`: 缓存加载配置并下发 (组件未就绪时留给 onPageEnd 补执行; 同配置去重)。 */
 function applyShow(payloadJson: string): void {
@@ -781,30 +743,6 @@ function toWebHeaders(headers?: WebViewHeader[]): webview.WebHeader[] {
     out.push({ headerKey: h.name, headerValue: h.value });
   }
   return out;
-}
-
-/**
- * `hide`: 停止加载并复位到 about:blank (组件实例保留复用, 与 Kotlin slot 离开组合时的语义一致)。
- * 同时清掉待加载配置与去重键: 下次 show 一定会重新加载。
- */
-function applyHide(): void {
-  pendingShow = null;
-  appliedShowKey = '';
-  foregroundContentLoaded = false;
-  const controller = foregroundController;
-  if (controller == null) {
-    return;
-  }
-  try {
-    controller.stop();
-  } catch (e) {
-    console.warn('[WebControllerBridge] stop failed: ' + JSON.stringify(e));
-  }
-  try {
-    controller.loadUrl('about:blank');
-  } catch (e) {
-    console.warn('[WebControllerBridge] reset to about:blank failed: ' + JSON.stringify(e));
-  }
 }
 
 // ===== 请求处理: loadUrl / goBack / reload / exitFullScreen =====

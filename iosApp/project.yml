@@ -349,15 +349,18 @@ targets:
   #
   #   3. 宿主侧取件扫描在 Kotlin: ui/src/iosMain/.../IosShareInbox.kt, 由
   #      IosProviderRegistry.registerIosProviders (didFinishLaunching) 拉起 —— 扫容器收件目录,
-  #      把文件挪进宿主沙盒后交既有的 handleIosLaunchRequest → LaunchRequest.ImportFile →
-  #      既有导入分发, 并清掉容器里的原件 (下次启动不会再导一遍)。
+  #      把文件收进应用私有的接收目录 (不写用户可配置、在「文件」里可见的书籍保存位置:
+  #      此时用户还没确认导入, 写进去会覆盖用户同名文件、不导入又会留下副本),
+  #      再交既有的 handleIosLaunchRequest → LaunchRequest.ImportFile → 既有导入分发,
+  #      并清掉容器里的原件 (下次启动不会再收一遍) 与接收目录里没被导入的副本。
   #      扩展侧写件见 ShareExtension/ShareViewController.swift 的 deliver。
   #
   # ⚠️ 生效前提: App Group 靠 entitlement 落地 (与 iCloud 容器同样原因, 见上面
   # NSUbiquitousContainers 段), 而本仓发布产物是**未签名 ipa** —— CI 用
   # CODE_SIGNING_ALLOWED=NO 归档, 拿不到任何 entitlement, 于是容器取不到:
-  # 扩展只记日志不交付, 宿主扫描安静退出 (两端都不崩, 也不影响既有的
-  # CFBundleDocumentTypes 打开通道)。签名侧载 (AltStore/SideStore 重签) 或正式签名
+  # 分享面板那一步由扩展当场给用户说明原因与替代导入路径, 宿主也在应用进入活动态后
+  # 说明一次 (两端都不崩, 也不影响既有的 CFBundleDocumentTypes 打开通道)。
+  # 签名侧载 (AltStore/SideStore 重签) 或正式签名
   # 且 App ID 勾上 App Groups 之后, 本链路才真正生效。
   #
   # 补充: "接收外部文件"并非只有分享面板一条路。主 App 的 Info.plist 已有

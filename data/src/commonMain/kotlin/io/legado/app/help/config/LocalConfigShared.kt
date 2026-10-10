@@ -133,8 +133,7 @@ object DeviceLocalConfig {
 /**
  * 有效导出目录 (与备份路径 [io.legado.app.help.storage.DataStorage.defaultBackupDir] 同一套
  * "用户选定目录 + 可为 null 的平台惯例目录"语义, 逐字对照
- * [io.legado.app.ui.route.BackupConfigRoute] 的 onBackup 三分支;
- * 书籍保存位置的 [io.legado.app.help.book.effectiveBookSaveDir] 是同一形制):
+ * [io.legado.app.ui.route.BackupConfigRoute] 的 onBackup 三分支):
  *
  * 1. 用户已在"书架管理 → 选择导出文件夹"选过 ([LocalConfigKeys.bookExportPath]) → 用选定目录;
  * 2. 未选过但平台有惯例导出目录 ([io.legado.app.help.storage.DataStorage.defaultBookExportDir])

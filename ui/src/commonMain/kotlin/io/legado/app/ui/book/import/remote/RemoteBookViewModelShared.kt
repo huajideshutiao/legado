@@ -6,6 +6,7 @@ import io.legado.app.constant.AppPattern.bookFileRegex
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
+import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.config.AppConfigProviders
@@ -215,7 +216,9 @@ class RemoteBookViewModelShared(
             } catch (e: Throwable) {
                 if (e is CancellationException) throw e
                 AppLog.put("导入出错\n${e.message}", e, true)
-                if (e.isSecurityException()) onPermissionDenied()
+                // 写入被拒 (SecurityException) 与保存位置未设置 (InvalidBooksDirException) 都交
+                // "去设置目录"出口: 本地目录落盘前先让用户选一个保存位置
+                if (e.isSecurityException() || e is InvalidBooksDirException) onPermissionDenied()
             } finally {
                 // 对照 app 端 callback 内 loading=false
                 _isLoading.value = false

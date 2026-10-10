@@ -55,8 +55,9 @@ class NativeFileBookAccessor : FileBookAccessor {
     private val coversDir: String get() = AppFilesDirs.get().filesDir + "/covers"
 
     /**
-     * 有效书籍保存目录 (用户已选 → 选定目录; 未选 → 平台默认 `{filesDir}/books`;
-     * 都没有 → 抛原版同款异常)。iOS/鸿蒙两端平台默认目录存在, 实际不会走到抛异常。
+     * 有效书籍保存目录 (用户在"其它设置 → 书籍保存位置"选定)。
+     * 未设置时 [requireBookSaveDir] 抛原版同款异常, 由调用链既有的"去设置目录"出口
+     * 拉起目录选择器。
      */
     private fun bookSaveDir(): String = requireBookSaveDir()
 
@@ -239,7 +240,7 @@ class NativeFileBookAccessor : FileBookAccessor {
      * 流式保存 WebDav 远端书籍文件 ("下载到本地" / "刷新远端更新" 链路)。
      *
      * native 端无 SAF: 交给既有的 [WebDav.downloadTo] (savedPath, replaceExisting)
-     * 边下边写有效书籍保存目录下的 `{fileName}` (用户已选 → 选定目录, 未选 → `{filesDir}/books`;
+     * 边下边写有效书籍保存目录下的 `{fileName}` (用户在"书籍保存位置"选定);
      * 内部 mkdirs + okio 流式写, 见 WebDav.native.kt),
      * 不再经 [saveBookFile] (inputStream 重载) 的 `readFully()` 把整份文件读进内存 ——
      * 峰值内存与文件大小无关。
@@ -252,7 +253,8 @@ class NativeFileBookAccessor : FileBookAccessor {
      * 中途失败会留下半个文件, 不删掉的话它会被后续导入当成本地书读进去 (原版不存在这个缺陷)。
      * 之所以不复刻原版: 保留一份可被当书读入的半截文件比"多一次 delete"更坏。
      *
-     * 异常口径与 app 端一致: 保存位置不可用 (books 目录不可写) 按 app 端文件路径分支的口径
+     * 异常口径与 app 端一致: 保存位置未设置时抛 [io.legado.app.exception.InvalidBooksDirException];
+     * 已设置但写不进去 (目录被删/无写权限) 按 app 端文件路径分支的口径
      * 报 `SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e")` (喂给
      * `Throwable.isSecurityException()` 的"去设置目录"出口), 其余异常 (含网络/传输) 照旧透传。
      *
@@ -285,8 +287,9 @@ class NativeFileBookAccessor : FileBookAccessor {
     }
 
     override fun saveBookFile(inputStream: InputStream, fileName: String): String {
-        // native 端无 SAF, 写入有效书籍保存目录 (用户已选 → 选定目录, 未选 → 平台默认
-        // `{filesDir}/books`; app 端走 defaultBookTreeUri + DocumentFile)
+        // native 端无 SAF, 写入有效书籍保存目录 (用户在"书籍保存位置"选定;
+        // app 端走 defaultBookTreeUri + DocumentFile; 未设置时 requireBookSaveDir 抛异常,
+        // 由调用链既有的"去设置目录"出口拉起目录选择器)
         //
         // 异常口径与 app 端 FileBook.saveBookFile 文件路径分支逐字一致: 写不进去 (目录被删/
         // 无写权限/磁盘满) 转 `SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e")`,

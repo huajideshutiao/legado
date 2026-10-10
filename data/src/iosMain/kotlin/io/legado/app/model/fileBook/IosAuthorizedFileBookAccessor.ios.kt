@@ -4,6 +4,7 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.LocalBookLocators
+import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.book.requireBookSaveDir
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.utils.InputStream
@@ -70,10 +71,11 @@ class IosAuthorizedFileBookAccessor(
     }
 
     override fun importLocalFile(uriStr: String): Book {
-        // 源文件 (可能在别的授权目录) 与解出书籍的落地目录 ("书籍保存位置") 都要持租约:
-        // 压缩包分支由 delegate 内部调用 saveBookFile, 不会回到本类. 故这里是唯一的授权点
+        // 源文件 (可能在别的授权目录) 与解出书籍的落地目录 ("书籍保存位置") 都要持租约;
+        // 落地目录只有压缩包分支会写 (由 delegate 内部调 saveBookFile), 未设置保存位置时
+        // 本条不写盘, 故只在其已设置时纳入租约 (写入方报未设置)
         return withAccesses(
-            listOf(delegate.resolveLocalFile(uriStr).path, requireBookSaveDir())
+            listOfNotNull(delegate.resolveLocalFile(uriStr).path, effectiveBookSaveDir())
         ) {
             delegate.importLocalFile(uriStr)
         }
@@ -86,7 +88,7 @@ class IosAuthorizedFileBookAccessor(
     ): List<Book> {
         // 源压缩包 (可能在别的授权目录) 与解出书籍的落地目录 ("书籍保存位置") 都要持租约
         return withAccesses(
-            listOf(delegate.resolveLocalFile(archiveFileUri).path, requireBookSaveDir())
+            listOfNotNull(delegate.resolveLocalFile(archiveFileUri).path, effectiveBookSaveDir())
         ) {
             delegate.importFromArchive(archiveFileUri, saveFileName, filter)
         }
@@ -104,12 +106,12 @@ class IosAuthorizedFileBookAccessor(
     }
 
     /**
-     * 保存新书到"有效书籍保存位置" (用户已选 → 选定目录, 未选 → 沙盒默认 `{filesDir}/books`):
+     * 保存新书到"有效书籍保存位置" (用户在"书籍保存位置"选定):
      * 写入前取一次 security-scoped 租约, 写完即释放。
      *
      * 直接持租约 ([IosSecurityScopedStorage.acquireLease]) 而不走
      * [IosSecurityScopedStorage.withAccess] 的 NSFileCoordinator: 新建文件时协调器会对尚不存在的
-     * 目标路径报错, 而这里需要的只是授权本身; 沙盒默认目录无需 scope, 租约为空操作。
+     * 目标路径报错, 而这里需要的只是授权本身; 沙盒内路径 (导入副本) 无需 scope, 租约为空操作。
      *
      * 覆写所有能直接或间接触发写入的入口 ([importLocalFile] / [importFromArchive] /
      * `saveBookFile` 两个重载 / [saveBookFileFromWebDav] / [downloadRemoteBook] / [importRemoteBook])

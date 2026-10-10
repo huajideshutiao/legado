@@ -63,10 +63,9 @@ private class DesktopBackstageWebViewHandle(
             Request.Builder().url("http://localhost/").build()
         }
         // 嗅探命中时引擎会带上防盗链头 ([WebViewFetchResult.headers]): 挂到 raw 响应上,
-        // 下游经 [StrResponse.headers] 读得到 —— 与 iOS `IosBackstageWebView.hitResponse`
-        // 同一口径 (原版 Android `SnifferWebClient` 只回命中地址, 不提取请求头)。
-        // 此前无条件用 `StrResponse(url, body)` 构造, 把头丢掉了; 非嗅探路径 headers
-        // 恒为空 Map ([WebViewFetchResult] 契约), 故行为不变。
+        // 下游经 [StrResponse.headers] 读得到 (原版 Android `SnifferWebClient` 只回命中地址,
+        // 不提取请求头)。此前无条件用 `StrResponse(url, body)` 构造, 把头丢掉了; 非嗅探路径
+        // headers 恒为空 Map ([WebViewFetchResult] 契约), 故行为不变。
         val hitHeaders = result.headers
         if (!result.redirected && hitHeaders.isEmpty()) return StrResponse(result.url, result.body)
         // 与 app 端 buildStrResponse 一致: 发生过重定向时补一层 302 priorResponse,

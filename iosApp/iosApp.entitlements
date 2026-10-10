@@ -5,8 +5,9 @@
   文件本身不进构建产物, 已列在 iosApp.sources.excludes)。
 
   ⚠️ 未签名 ipa 拿不到 entitlement: 本仓 CI 用 CODE_SIGNING_ALLOWED=NO 归档, 本文件此时是死数据,
-  App Group 容器恒取不到 (代码按"取不到就安静退出"处理)。签名侧载 (AltStore/SideStore 重签)
-  或正式签名且 App ID 勾上 App Groups 后才真正生效。
+  App Group 容器恒取不到 —— 分享面板那一步由扩展当场说明原因与替代导入路径, 宿主侧在应用
+  进入活动态后提示一次 (见 IosShareInbox.notifyEntryUnavailable)。签名侧载 (AltStore/SideStore
+  重签) 或正式签名且 App ID 勾上 App Groups 后才真正生效。
 
   ⚠️ 本文件与 ShareExtension/ShareExtension.entitlements 必须声明**同一个** App Group 值,
   且与 ShareExtension/ShareViewController.swift 的 legadoAppGroupId、

@@ -52,7 +52,6 @@ import kotlin.native.CName
  * (与 `WebViewBridgeRequest`/`ImageBridgeRequest` 同形)。action:
  * - `"show"`: payload `OhosWebViewControllerPayload` (url/html/headers/wideViewPort/isLogin/sourceKey),
  *   ArkTS 显示可见 Web 并加载;
- * - `"hide"`: 隐藏并 dismiss 前台 Web;
  * - `"loadUrl"`: payload `OhosWebUrlPayload` (仅 url);
  * - `"runJavaScript"`: payload `OhosWebScriptPayload` (script), 结果经 `result` 字段回送;
  * - `"getCookies"`: payload `OhosWebUrlPayload` (url), 结果经 `cookie` 字段回送;
@@ -253,11 +252,6 @@ object OhosVisibleWebViewBridge : OhosWebViewBridge {
             sourceKey = config.sourceKey.takeIf { it.isNotBlank() },
         )
         fire("show", KS_JSON.encodeToString(payload))
-    }
-
-    /** 隐藏并 dismiss 前台 Web (路由返回/离开组合时调用)。 */
-    fun hide() {
-        fire("hide", KS_JSON.encodeToString(OhosWebUrlPayload()))
     }
 
     /** 加载 URL (对齐 [OhosWebViewBridge.loadUrl]; 不携带 headers, show 才带完整配置)。 */

@@ -9,7 +9,7 @@
 
   ⚠️ 未签名 ipa 拿不到 entitlement (CI 用 CODE_SIGNING_ALLOWED=NO 归档),
   此时 FileManager.containerURL(forSecurityApplicationGroupIdentifier:) 恒返回 nil,
-  ShareViewController.deliver 只记日志、不交付, 不崩。
+  ShareViewController 交付不了, 但会当场把原因与替代导入路径弹给用户看, 不崩。
 
   ⚠️ 值与 ShareExtension/ShareViewController.swift 的 legadoAppGroupId、
   ui/src/iosMain/.../IosShareInbox.kt 的 APP_GROUP_ID 逐字一致 (改一处要四处同改)。

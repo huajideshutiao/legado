@@ -36,9 +36,6 @@ class JvmDataStorage : DataStorage {
     override val userExportDir: String get() = desktopUserExportDir()
 
     override val defaultBackupDir: String get() = desktopBackupOutputDir()
-
-    /** 桌面书籍默认落地目录 `{应用数据根}/books` (与 DesktopFileBookAccessor 既有落点同源)。 */
-    override val defaultBookDir: String get() = Paths.get(rootDir, "books").toString()
 }
 
 /** 桌面宿主启动早期注册 [DataStorage] (须早于 [io.legado.app.help.book.JvmBookStorage] 构造)。 */

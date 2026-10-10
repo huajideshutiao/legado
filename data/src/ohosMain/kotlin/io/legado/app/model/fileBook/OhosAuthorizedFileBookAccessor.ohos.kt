@@ -4,6 +4,7 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.LocalBookLocators
+import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.book.requireBookSaveDir
 import io.legado.app.help.file.OhosDirAuthorizations
 import io.legado.app.lib.webdav.WebDav
@@ -33,12 +34,11 @@ class OhosAuthorizedFileBookAccessor(
         withActivation(book) { delegate.getHandler(book) }
 
     override fun importLocalFile(uriStr: String): Book =
-        // 源文件 (可能在别的授权目录) 与解出书籍的落地目录 ("书籍保存位置") 都要激活授权:
-        // 压缩包分支由 delegate 内部调用 saveBookFile, 不会回到本类, 故这里是唯一的授权点
+        // 源文件 (可能在别的授权目录) 与解出书籍的落地目录 ("书籍保存位置") 都要激活授权;
+        // 落地目录只有压缩包分支会写 (由 delegate 内部调 saveBookFile), 未设置保存位置时
+        // 本条不写盘, 故只在其已设置时激活 (写入方报未设置)
         withActivation(delegate.resolveLocalFile(uriStr).path) {
-            withActivation(requireBookSaveDir()) {
-                delegate.importLocalFile(uriStr)
-            }
+            withSaveDirActivation { delegate.importLocalFile(uriStr) }
         }
 
     override fun importFromArchive(
@@ -48,7 +48,7 @@ class OhosAuthorizedFileBookAccessor(
     ): List<Book> =
         // 源压缩包 (可能在别的授权目录) 与解出书籍的落地目录 ("书籍保存位置") 都要激活授权
         withActivation(delegate.resolveLocalFile(archiveFileUri).path) {
-            withActivation(requireBookSaveDir()) {
+            withSaveDirActivation {
                 delegate.importFromArchive(archiveFileUri, saveFileName, filter)
             }
         }
@@ -65,7 +65,7 @@ class OhosAuthorizedFileBookAccessor(
     }
 
     /**
-     * 保存新书到"有效书籍保存位置" (用户已选 → 选定目录, 未选 → 沙盒默认 `{filesDir}/books`):
+     * 保存新书到"有效书籍保存位置" (用户在"书籍保存位置"选定):
      * 写入前确保目录授权已激活 ([OhosDirAuthorizations.ensureActivatedFor]; 授权是持久态, 激活一次即可)。
      *
      * 覆写所有能直接或间接触发写入的入口 ([importLocalFile] / [importFromArchive] /
@@ -119,6 +119,10 @@ class OhosAuthorizedFileBookAccessor(
         OhosDirAuthorizations.ensureActivatedFor(path)
         return block()
     }
+
+    /** 保存位置已设置时先激活其授权 (未设置 = 本条不写盘, 无需授权)。 */
+    private fun <T> withSaveDirActivation(block: () -> T): T =
+        effectiveBookSaveDir()?.let { withActivation(it, block) } ?: block()
 
     private fun <T> withActivation(book: Book, block: () -> T): T {
         val path = localPath(book) ?: return block()
