@@ -103,7 +103,7 @@ object DesktopVerificationUiProvider : VerificationUiProvider {
             AnalyzeUrlFactories.create(url, source = source)
         }.getOrNull()
         val headerMap = analyzeUrl?.headerMap?.toMap()
-        val engine = DesktopWebViewEngines.get()
+        val engine = DesktopWebViewEngines.get(forceRefresh = true)
         if (engine == null) {
             // 无内嵌引擎降级: 系统浏览器打开 + 提示
             // (对照 WebViewRoute 的 host==null 兜底分支; 系统浏览器 cookie 无法回收,

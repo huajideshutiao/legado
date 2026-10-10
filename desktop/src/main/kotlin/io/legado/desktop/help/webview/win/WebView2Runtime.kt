@@ -52,17 +52,21 @@ internal object WebView2Runtime {
     @Volatile
     private var cached: Runtime? = null
 
-    @Volatile
-    private var probed = false
+    /** 已加载过的客户端 DLL 路径 → 环境创建导出函数 (同一 DLL 重复探测复用同一份, 不重复加载)。 */
+    private val loadedFunctions = HashMap<String, Function>()
 
-    /** 探测并加载 runtime; 未安装/版本过低/加载失败一律返回 null (不抛)。 */
+    /**
+     * 探测并加载 runtime; 未安装/版本过低/加载失败一律返回 null (不抛)。
+     *
+     * 只缓存可用结论: 没探到时每次调用都重新探 (随后装上 runtime 无需重启应用即可用);
+     * [forceRefresh] 为 true 时不采信缓存重新核对, DLL 路径未变时复用已加载的导出函数。
+     */
     @Synchronized
     fun detect(forceRefresh: Boolean = false): Runtime? {
-        if (probed && !forceRefresh) return cached
+        cached?.let { if (!forceRefresh) return it }
         cached = runCatching { doDetect() }.onFailure {
             AppLog.put("WebView2 runtime 探测失败", it)
         }.getOrNull()
-        probed = true
         return cached
     }
 
@@ -81,8 +85,10 @@ internal object WebView2Runtime {
             AppLog.put("WebView2 runtime 注册表存在但客户端 DLL 缺失: ${dll.absolutePath}")
             return null
         }
-        val function = NativeLibrary.getInstance(dll.absolutePath)
-            .getFunction(CREATE_ENVIRONMENT_FN, Function.ALT_CONVENTION)
+        val function = loadedFunctions.getOrPut(dll.absolutePath) {
+            NativeLibrary.getInstance(dll.absolutePath)
+                .getFunction(CREATE_ENVIRONMENT_FN, Function.ALT_CONVENTION)
+        }
         return Runtime(version, function)
     }
 

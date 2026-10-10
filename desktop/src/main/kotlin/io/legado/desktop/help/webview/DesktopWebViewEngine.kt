@@ -19,8 +19,19 @@ interface DesktopWebViewEngine {
     /** 引擎标识, 仅日志与诊断用。 */
     val id: String
 
-    /** 本机是否可用 (系统 runtime 已装 / 本地引擎已下载)。探测结果由实现自行缓存。 */
+    /**
+     * 本机是否可用 (系统 runtime 已装 / 本地引擎已下载)。
+     *
+     * **不可用的结论一律不得缓存** —— 缓存"曾经失败"会把可恢复的失败固化成本次运行内不可用。
+     */
     fun isAvailable(): Boolean
+
+    /**
+     * 强制重新核对本机可用性: 不采信缓存的可用结论, 重新现探。
+     *
+     * 失败结论不缓存、每次调用都现探的实现 (Linux / macOS) 不必覆写, 默认等同 [isAvailable]。
+     */
+    fun reprobe(): Boolean = isAvailable()
 
     /**
      * 无头抓取, 语义对照 app 端 `BackstageWebView.getStrResponse`:

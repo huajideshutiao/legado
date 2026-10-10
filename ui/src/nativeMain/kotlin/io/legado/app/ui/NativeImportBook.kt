@@ -15,6 +15,7 @@ import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.File
+import io.legado.app.utils.copyFileAtomically
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -385,16 +386,15 @@ object NativeImportBook {
      * 与"书籍保存位置"无关 —— 原版 importLocalFile 不复制, 三端外部文件为保住重启后可读
      * 才落沙盒).
      *
-     * 同名直接覆盖 (与 FileBook 重复导入的覆写语义一致); 源已在目标目录则跳过。
+     * 同名直接覆盖 (与 FileBook 重复导入的覆写语义一致): 复制进临时件再整份改名就位,
+     * 中途失败时已有副本内容照旧 (见 [copyFileAtomically]); 源已在目标目录则跳过。
      * 源文件读取 (外部目录) 包在授权租约内, 复制完即释放。
      */
     private fun sandboxCopy(src: File): File {
         val dir = File(AppFilesDirs.get().filesDir, "books")
         dir.mkdirs()
         val dest = File(dir, src.name)
-        if (dest.absolutePath != src.absolutePath) {
-            withLocalDirAccess(src.path) { src.copyTo(dest, overwrite = true) }
-        }
-        return dest
+        if (dest.absolutePath == src.absolutePath) return dest
+        return withLocalDirAccess(src.path) { copyFileAtomically(src, dest) }
     }
 }

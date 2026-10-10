@@ -23,27 +23,45 @@ import io.legado.desktop.help.webview.win.WindowsWebViewEngine
  */
 object DesktopWebViewEngines {
 
+    /** 已确认可用的引擎; null 表示上一次探测没找到 (不缓存"无引擎"这一结论)。 */
     @Volatile
     private var resolved: DesktopWebViewEngine? = null
 
+    /** "无引擎"这一结论是否已记过日志; 重探仍无引擎时不重复记同一条。 */
     @Volatile
-    private var probed = false
+    private var reportedNoEngine = false
 
-    /** 当前可用引擎; 全不可用返回 null (调用方回退系统浏览器)。 */
+    /**
+     * 当前可用引擎; 全不可用返回 null (调用方回退系统浏览器)。
+     *
+     * 只缓存"有引擎"的结论: 探测不到引擎时每次调用都重新探测 —— 系统随后装上 runtime/库后
+     * 无需重启应用即可用起来 (缓存"无引擎"会把可恢复的失败固化成本次运行内不可用)。
+     * [forceRefresh] 供失败提示与重试动作处调用: 不采信任何已有结论, 重新核对一次。
+     */
     @Synchronized
     fun get(forceRefresh: Boolean = false): DesktopWebViewEngine? {
-        if (probed && !forceRefresh) return resolved
-        resolved = candidates().firstOrNull { engine ->
-            runCatching { engine.isAvailable() }
-                .onFailure { AppLog.put("内嵌浏览器引擎 ${engine.id} 探测异常", it) }
-                .getOrDefault(false)
+        resolved?.let { if (!forceRefresh) return it }
+        val engine = candidates().firstOrNull { probe(it, forceRefresh) }
+        resolved = engine
+        if (engine == null) {
+            if (!reportedNoEngine) {
+                reportedNoEngine = true
+                AppLog.put("内嵌浏览器引擎: 无 (回退系统浏览器)")
+            }
+        } else {
+            reportedNoEngine = false
+            AppLog.put("内嵌浏览器引擎: ${engine.id}")
         }
-        probed = true
-        AppLog.put("内嵌浏览器引擎: ${resolved?.id ?: "无 (回退系统浏览器)"}")
-        return resolved
+        return engine
     }
 
     fun isAvailable(): Boolean = get() != null
+
+    /** 单次探测; 探测抛异常按不可用处理并如实记日志。 */
+    private fun probe(engine: DesktopWebViewEngine, forceRefresh: Boolean): Boolean =
+        runCatching { if (forceRefresh) engine.reprobe() else engine.isAvailable() }
+            .onFailure { AppLog.put("内嵌浏览器引擎 ${engine.id} 探测异常", it) }
+            .getOrDefault(false)
 
     private fun candidates(): List<DesktopWebViewEngine> = buildList {
         if (Platform.isWindows()) add(WindowsWebViewEngine)

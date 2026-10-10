@@ -221,7 +221,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         sourceName: String,
         sourceType: Int,
     ): Boolean {
-        val engine = DesktopWebViewEngines.get()
+        val engine = DesktopWebViewEngines.get(forceRefresh = true)
         if (engine == null) {
             browseUrl(url)
             runCatching {
@@ -276,7 +276,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         js: String?,
     ): Boolean {
         val target = url.ifBlank { book.tocUrl }
-        val engine = DesktopWebViewEngines.get()
+        val engine = DesktopWebViewEngines.get(forceRefresh = true)
         if (engine == null) {
             browseUrl(target)
             runCatching {

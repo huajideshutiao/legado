@@ -46,7 +46,7 @@ object DesktopTvBoxSniffer : TvBoxSniffPlatform {
         videoChecker: TvBoxVideoPredicate,
         depth: Int,
     ): TvBoxSniffResult {
-        val engine = DesktopWebViewEngines.get()
+        val engine = DesktopWebViewEngines.get(forceRefresh = true)
             ?: error("桌面 WebView 引擎不可用, 无法进行 TVBox 网页嗅探 (仅支持直链与 json 解析)")
         return descend(engine, url, headers, timeoutMs, videoChecker, depth)
     }

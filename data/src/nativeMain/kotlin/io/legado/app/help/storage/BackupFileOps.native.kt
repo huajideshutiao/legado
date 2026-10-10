@@ -2,6 +2,7 @@ package io.legado.app.help.storage
 
 import io.legado.app.utils.File
 import io.legado.app.utils.InputStream
+import io.legado.app.utils.copyFileAtomically
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import okio.buffer
@@ -23,7 +24,8 @@ import okio.buffer
  * - [writeText]: [File.writeText] (UTF-8)
  * - [readText]: [File.readText] (UTF-8), 文件不存在抛 IllegalStateException
  * - [listFiles]: [File.listFiles]?.map { it.path } (目录不存在返回 null)
- * - [copyFile]: [File.copyTo] (overwrite, 父目录 mkdirs, 与 JVM 流式 copyTo 等价)
+ * - [copyFile]: 同目录唯一临时件 + 整份改名就位 ([copyFileAtomically]; 与 JVM 端"覆盖即截断"不同:
+ *   中途失败时目标原内容照旧)
  * - [zipFiles]: [NativeZipCodec.zipFiles] (DEFLATE 固定 Huffman, 压不小/回读校验不过时回落 STORED,
  *   生成的 zip 可被 JVM/Android/桌面解压)
  * - [unZipToPath]: [NativeZipCodec.unZipToPath] (支持 STORED + DEFLATE, 可解压 JVM 端备份 zip)
@@ -138,11 +140,9 @@ actual object BackupFileOps {
     }
 
     actual fun copyFile(srcPath: String, destPath: String) {
-        // 父目录不存在则递归创建 (与 jvmAndAndroid createFileIfNotExist 行为对齐)
-        val dest = File(destPath)
-        dest.parentFile?.mkdirs()
-        // kotlin.io.File.copyTo 流式复制 (overwrite 覆盖已存在目标, 与 JVM 流式 copyTo 等价)
-        File(srcPath).copyTo(dest, overwrite = true)
+        // 整份复制替换目标 (共享实现): 临时件每次唯一 + 整份改名就位 —— 直接覆盖写在复制中途被打断
+        // 会留下半截目标 (备份 zip 被截断即读不出的坏包), 失败时目标原内容照旧并抛错
+        copyFileAtomically(File(srcPath), File(destPath))
     }
 
     /**

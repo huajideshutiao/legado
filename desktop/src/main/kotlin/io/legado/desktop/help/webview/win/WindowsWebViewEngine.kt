@@ -39,6 +39,8 @@ internal object WindowsWebViewEngine : DesktopWebViewEngineBase() {
 
     override fun isAvailable(): Boolean = WebView2Runtime.detect() != null
 
+    override fun reprobe(): Boolean = WebView2Runtime.detect(forceRefresh = true) != null
+
     override suspend fun fetch(request: WebViewFetchRequest): WebViewFetchResult {
         val sniffing = isSniffing(request)
         val instance = WebView2Instance.create(

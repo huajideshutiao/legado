@@ -107,21 +107,15 @@ internal object MacWebViewEngine : DesktopWebViewEngineBase() {
 
     private const val SNIFF_INTERVAL_MS = 500L
 
-    @Volatile
-    private var probed = false
-
-    @Volatile
-    private var available = false
-
-    override fun isAvailable(): Boolean {
-        if (probed) return available
-        available = runCatching {
-            // mac 上 WKWebView 框架必然存在; 探测做一次最小调用确认 runtime 可用
-            ObjC.cls("WKWebView") != Pointer.NULL
-        }.getOrDefault(false)
-        probed = true
-        return available
-    }
+    /**
+     * 引擎是否可用: mac 上 WKWebView 框架必然存在, 做一次最小调用确认 runtime 可用。
+     *
+     * 不缓存结论 (与 Linux 端同一判据): 探测失败往往是一次性的运行时初始化问题, 缓存 false
+     * 会把可恢复的失败固化成本次运行内不可用; 每次现探的开销只是一次 ObjC 类查找。
+     */
+    override fun isAvailable(): Boolean = runCatching {
+        ObjC.cls("WKWebView") != Pointer.NULL
+    }.getOrDefault(false)
 
     override suspend fun fetch(request: WebViewFetchRequest): WebViewFetchResult {
         if (!isAvailable()) throw NoStackTraceException("WKWebView 引擎不可用")

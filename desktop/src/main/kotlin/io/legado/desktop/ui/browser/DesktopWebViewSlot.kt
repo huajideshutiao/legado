@@ -62,7 +62,8 @@ fun DesktopWebViewSlot(
     callbacks: WebViewCallbacks = WebViewCallbacks(),
 ) {
     val url = config.url
-    val engine = remember { DesktopWebViewEngines.get() }
+    // 登录/验证页是引擎缺失提示的落地页: 这里按重试语义重新核对一次引擎, 不采信已有结论
+    val engine = remember { DesktopWebViewEngines.get(forceRefresh = true) }
     if (engine == null) {
         SystemBrowserFallback(url, modifier)
     } else {
