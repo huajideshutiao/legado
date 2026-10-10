@@ -11,6 +11,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.exception.LocalBookSourceFileDeleteException
 import io.legado.app.help.RuleBigDataProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
@@ -21,6 +22,7 @@ import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.encodeStringMap
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.postEvent
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.withContext
 import kotlin.math.min
 
@@ -220,12 +222,24 @@ suspend fun Book.toggleBookshelfCore(
  * 对照 app 端 [io.legado.app.base.BaseReadViewModel.delBook] 与 `Book.delete()`: 不弹确认框,
  * 供未入架临时书清理 (目录页返回未选章节) 与确认后的下架共用。
  * 平台缓存清理 (正文/封面) 由各端在此之后自行处理。
+ *
+ * 本地书源文件删不掉时抛 [LocalBookSourceFileDeleteException], 供调用方如实提示。
  */
 suspend fun Book.delBookCore(deleteOriginal: Boolean = false) {
     toggleBookshelfCore(inBookshelf = true)
     // 对照 Book.delete(): 删库后内存对象要标记回临时书
     addType(BookType.notShelf)
-    if (isLocal) FileBook.deleteBook(this, deleteOriginal)
+    if (!isLocal) return
+    // 库里的记录已删: 路径记忆只关缓存, 不碰文件 (与书架删除同一口径)
+    LocalBookLocators.get().removeLocalPathCache(this)
+    try {
+        FileBook.deleteBook(this, deleteOriginal)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        // 访问器的删除失败只有源文件一种 (缓存与封面在它内部尽力而为), 包成专门类型供调用方如实提示
+        throw LocalBookSourceFileDeleteException(e.message.orEmpty(), e)
+    }
 }
 
 /**

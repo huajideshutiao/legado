@@ -102,7 +102,8 @@ object FileAssociationDispatch {
 
         if (fileName.matches(AppPattern.bookFileRegex)) {
             val book = runCatching { FileBook.importLocalFile(path) }.getOrElse { e ->
-                Toasters.get().toast(e.message ?: "导入书籍失败")
+                // 对照 app 端 FileAssociationViewModel.dispatchIntent 的失败出口文案: 无法打开文件 + 原因
+                Toasters.get().toast("无法打开文件\n${e.message ?: e}")
                 AppLog.put("导入关联书籍失败: $path", e)
                 return
             }
@@ -224,7 +225,13 @@ fun String.toLocalFilePath(): String {
     }
 }
 
-private fun String.percentDecode(): String {
+/**
+ * 百分号解码 (如 `%20`、中文等 UTF-8 编码路径段)。
+ *
+ * 各处 URI → 本地路径的转换共用这一份 (shared 侧的 [toLocalFilePath], 鸿蒙侧系统投递/选择器
+ * 给出的授权体 URI 折回): 残缺的 `%` 序列按原样保留, 不进解码。
+ */
+internal fun String.percentDecode(): String {
     if (!contains('%')) return this
     val sb = StringBuilder(length)
     val byteBuf = ArrayList<Byte>()

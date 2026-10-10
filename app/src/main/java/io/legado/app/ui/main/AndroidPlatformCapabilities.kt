@@ -66,6 +66,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.exception.InvalidBooksDirException
+import io.legado.app.exception.LocalBookSourceFileDeleteException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.CrashHandler
@@ -665,6 +666,23 @@ class AndroidPlatformCapabilities(
         }
     }
 
+    // 对照 BookInfoActivity.deleteBook: 下架确认框由本能力面弹 (系统 alert), 勾选值也由它自己取
+    override fun confirmsDeleteBookInCapability(): Boolean = true
+
+    /**
+     * 下架走本能力面自己的流程: 系统 alert 问一句 → 删记录 → 清正文缓存 + 封面图片缓存 →
+     * 按勾选删本地书源文件 (见 [deleteBook] / [delBook])。
+     *
+     * 调用方传来的 [deleteOriginal] 不使用: 弹框后的勾选值才是准的 (初始值同样取自偏好)。
+     */
+    override fun deleteBookshelfBook(
+        book: Book,
+        @Suppress("UNUSED_PARAMETER") deleteOriginal: Boolean,
+        onComplete: (Boolean?) -> Unit,
+    ) {
+        deleteBook(book, onComplete)
+    }
+
     // 对照 BookInfoActivity.deleteBook: 删除确认弹窗 (本地书带"删除源文件"勾选)
     private fun deleteBook(book: Book, onComplete: (Boolean?) -> Unit) {
         if (!AppConfig.bookInfoDeleteAlert) {
@@ -717,11 +735,11 @@ class AndroidPlatformCapabilities(
                     book.coverUrl?.let { cache?.remove(it) }
                 }
             }.onSuccess { activity.runOnUiThread { onComplete(null) } }
-                .onFailure {
-                    AppLog.put("删除书籍失败\n${it.message}", it)
-                    // 本地书删源文件走统一入口, 删不掉的原因要能看见 (与书架删除同一文案)
-                    if (book.isLocal && deleteOriginal) {
-                        reportLocalBookSourceFileDeleteFailure(book, it)
+                .onFailure { e ->
+                    AppLog.put("删除书籍失败\n${e.message}", e)
+                    // 只有源文件没删掉才是"库里已删、文件还在" (见 delBookCore), 与书架删除同一文案
+                    if (e is LocalBookSourceFileDeleteException) {
+                        reportLocalBookSourceFileDeleteFailure(book, e)
                     }
                     activity.runOnUiThread { onComplete(false) }
                 }

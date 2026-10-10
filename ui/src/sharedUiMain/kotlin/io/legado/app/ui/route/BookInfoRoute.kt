@@ -485,7 +485,7 @@ fun BookInfoRoute(
                 )
                 return
             }
-            // 下架: 确认框在能力面手里 (Android) 时勾选值由它自己取, 这里只传达"下架"
+            // 下架: 确认框由能力面自己弹 (安卓的系统 alert) 时, 勾选值也由它自己取
             if (platform.confirmsDeleteBookInCapability()) {
                 platform.deleteBookshelfBook(b, platform.getDeleteBookOriginal(), onShelfResult)
                 return

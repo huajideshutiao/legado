@@ -13,6 +13,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.HttpTTS
+import io.legado.app.docsUriToMountPath
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.config.PreferenceProviders
@@ -842,7 +843,20 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
 
     // 完整分发链 (压缩包/JSON 一键导入/书籍文件) 见 FileAssociationDispatch, 四端共用
     override fun openImportFile(filePath: String) {
-        scope.launch { FileAssociationDispatch.dispatch(filePath) }
+        scope.launch {
+            // 系统投递进来的是文档授权体 URI (`file://docs/...`): 共享转换按 RFC 8089 把 `docs`
+            // 当网络主机段, 得出 `//docs/storage/...` 这种设备上不存在的形态 —— 先折回存储挂载点
+            // 真实路径再交分发链 (与 ArkTS 媒体桥折回视频地址同一规则)
+            val mountPath = filePath.docsUriToMountPath()
+            if (mountPath == filePath) {
+                FileAssociationDispatch.dispatch(filePath)
+                return@launch
+            }
+            // 该文件在应用沙盒之外: 先按书籍文件用途登记它的授权 URI (与选目录同一套登记机制,
+            // 不弹界面), 否则文件访问会被授权表拦成"没有访问权限"
+            OhosDirAuthorizations.remember(filePath, mountPath, DirUsage.BookTree)
+            FileAssociationDispatch.dispatch(mountPath)
+        }
     }
 
     // ===== 导入本地书 (状态与扫描见 NativeImportBook, 与 iOS 共用) =====

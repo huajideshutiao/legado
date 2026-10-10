@@ -10,10 +10,10 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Review
 import io.legado.app.exception.InvalidBooksDirException
+import io.legado.app.exception.LocalBookSourceFileDeleteException
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.delBookCore
-import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
@@ -152,9 +152,6 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
         }
     }
 
-    /** 下架确认框由调用方 (详情页) 弹, 对照原版 `BookInfoActivity.deleteBook` 的 alert。 */
-    override fun confirmsDeleteBookInCapability(): Boolean = false
-
     /**
      * 下架: 删章节 + 删记录 + 按 [deleteOriginal] 删本地书源文件。
      *
@@ -170,8 +167,8 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
                 .onSuccess { onComplete(null) }
                 .onFailure { e ->
                     AppLog.put("删除书籍失败\n${e.message}", e)
-                    // 删源文件只有统一入口一个, 删不掉的原因要能看见 (与书架删除同一文案)
-                    if (book.isLocal && deleteOriginal) {
+                    // 只有源文件没删掉才是"库里已删、文件还在" (见 delBookCore), 与书架删除同一文案
+                    if (e is LocalBookSourceFileDeleteException) {
                         reportLocalBookSourceFileDeleteFailure(book, e)
                     }
                     onComplete(false)

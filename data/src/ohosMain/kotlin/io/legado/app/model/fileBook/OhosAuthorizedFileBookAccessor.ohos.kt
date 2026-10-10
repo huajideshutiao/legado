@@ -22,13 +22,21 @@ import io.legado.app.utils.inputStream
  * 解析器/输入流的后续读取无需再包 (与 iOS 的按调用配对租约不同)。
  * 激活按**用途**匹配 ([DirUsage.BookTree]): 只有用户在书籍类入口选定的目录才放行书籍文件访问。
  * 沙盒内文件 ({filesDir}/books 导入副本) 不在授权集合内, 直接放行。
+ *
+ * 读子书时文件已不在 (压缩包被移走/改名) 则按压缩包名找回原压缩包重新解压后打开
+ * (见 [reopenFromArchive])。
  */
 class OhosAuthorizedFileBookAccessor(
     private val delegate: NativeFileBookAccessor = NativeFileBookAccessor(),
 ) : FileBookAccessor by delegate {
 
-    override fun getBookInputStream(book: Book): InputStream =
-        withActivation(book) { delegate.getBookInputStream(book) }
+    override fun getBookInputStream(book: Book): InputStream {
+        val opened = runCatching { withActivation(book) { delegate.getBookInputStream(book) } }
+        opened.getOrNull()?.let { return it }
+        // 书文件读不到 (文件被删/授权失效): 按压缩包名找回原压缩包重新解压 (对照原版, 见 [reopenFromArchive])
+        reopenFromArchive(book)?.let { return it }
+        throw opened.exceptionOrNull()!!
+    }
 
     override fun getLastModified(book: Book): Result<Long> = runCatching {
         withActivation(book) { delegate.getLastModified(book).getOrThrow() }

@@ -35,6 +35,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
 import io.legado.app.utils.File
 import okio.FileSystem
+import okio.IOException
 import okio.Path.Companion.toPath
 
 /**
@@ -211,14 +212,26 @@ class NativeFileBookAccessor : FileBookAccessor {
     }
 
     override fun deleteBook(book: Book, deleteOriginal: Boolean) {
-        // 与 app/desktop 同一条链: 先清章节缓存, 再删封面 / (可选) 原文件
+        // 与 app/desktop 同一口径: 章节缓存与封面在应用私有区, 删不掉不影响用户的源文件,
+        // 尽力而为即可; 源文件删不掉则抛出原因, 由上层如实提示 (见 [deleteSourceFile])。
         runCatching {
             BookStorageProviders.get().clearCache(book)
             book.coverUrl?.takeIf { it.isNotBlank() }?.let { File(it).delete() }
-            if (deleteOriginal) {
-                resolveLocalFile(book.bookUrl).delete()
-            }
         }
+        if (!deleteOriginal) return
+        deleteSourceFile(book)
+    }
+
+    /**
+     * 删除本地书源文件, 删不掉时抛出原因: 库里的记录已删、文件还在磁盘上, 上层据此提示书名与原因。
+     * 文件本就不在时删除意图已达成, 不抛。
+     */
+    private fun deleteSourceFile(book: Book) {
+        val ref = book.bookUrl
+        if (ref.isBlank()) throw IOException("未能删除源文件: 书籍文件引用为空")
+        val file = resolveLocalFile(ref)
+        if (file.delete()) return
+        if (file.exists()) throw IOException("未能删除源文件: ${file.absolutePath}")
     }
 
     override suspend fun saveBookFile(
@@ -497,6 +510,22 @@ class NativeFileBookAccessor : FileBookAccessor {
         }
         return out
     }
+}
+
+/**
+ * 压缩包子书回退: 子书文件读不到时按压缩包名找回原压缩包, 重新解压后打开同名书
+ * (对照原版 `BaseFileBook.getBookInputStream` 的 `Book.getArchiveUri` 回退分支与桌面端
+ * `DesktopFileBookAccessor.getBookInputStream`)。
+ *
+ * 由 iOS/鸿蒙两端的目录授权装饰器各自调用 —— 回退过程中的压缩包读取与再打开都要回到自己那份
+ * 装饰器 (`importFromArchive` / `getBookInputStream`), 授权才挂在本次真正会读写的路径上。
+ *
+ * @return 打开成功返回输入流; 没有对应的原压缩包或包内没有同名书返回 null (调用方按原先的失败如实上报)
+ */
+internal fun FileBookAccessor.reopenFromArchive(book: Book): InputStream? {
+    val archiveRef = LocalBookLocators.get().getReadableArchiveRef(book) ?: return null
+    return importFromArchive(archiveRef, book.originName) { it.contains(book.originName) }
+        .firstOrNull()?.let { getBookInputStream(it) }
 }
 
 /**

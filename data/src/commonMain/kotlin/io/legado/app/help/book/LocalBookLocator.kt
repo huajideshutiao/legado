@@ -50,6 +50,23 @@ interface LocalBookLocator {
     fun getReadableFileRef(book: Book): String?
 
     /**
+     * 取压缩包子书对应的原压缩包引用 (原压缩包被移走/改名后重新解压用)。
+     *
+     * 与 [getReadableFileRef] 同一套目录与同一套按名找回: 在"书籍保存位置"与导入目录里找
+     * [Book.archiveName], 单目录内的查找同样交给各端覆写的按名找回实现 (iOS/鸿蒙在各自目录授权内
+     * 列举) —— 未按本用途登记的目录照旧列不出内容, 不放宽用途校验。
+     *
+     * 安卓与桌面的压缩包回退在各自的本地书访问器内完成 (app 端 `Book.getArchiveUri`、桌面端
+     * `DesktopFileBookAccessor.findArchiveFile`), 不经本方法, 故默认返回 null;
+     * iOS/鸿蒙由 nativeMain 的定位实现覆写。
+     *
+     * 只定位: 不写路径缓存、不改书籍记录。
+     *
+     * @return 找回来的压缩包引用; 非压缩包子书或确实找不到时返回 null (调用方按原先的失败如实上报)
+     */
+    fun getReadableArchiveRef(book: Book): String? = null
+
+    /**
      * 移除缓存的本地书路径 (供书籍删除场景清理)。
      */
     fun removeLocalPathCache(book: Book)

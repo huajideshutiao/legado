@@ -14,6 +14,7 @@ import io.legado.app.help.openURL
 import io.legado.app.help.toast.Toasters
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.ui.OhosPlatformCapabilities
+import io.legado.app.ui.percentDecode
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BrowserService
 import io.legado.app.ui.root.CrashLogProvider
@@ -212,6 +213,26 @@ object OhosPlatformServices : PlatformServices {
         }
     }
 }
+
+/**
+ * 鸿蒙文档授权体 URI (`file://docs/...`) 的前缀。
+ *
+ * `docs` 不是网络主机段, 而是文档授权体: 去前缀即存储挂载点真实路径
+ * (与 ArkTS 媒体桥 MediaBridgeHandler.sandboxPathFromFileUri 同一规则)。
+ */
+internal const val OHOS_DOCS_URI_PREFIX = "file://docs"
+
+/**
+ * 文档授权体 URI → 存储挂载点真实路径 (去授权体前缀 + 百分号解码); 非该形态原样返回。
+ *
+ * URI 里的空格 / 中文等一律是百分号编码形式, 挂载点路径是解码后的形态。
+ */
+internal fun String.docsUriToMountPath(): String =
+    if (startsWith(OHOS_DOCS_URI_PREFIX)) {
+        removePrefix(OHOS_DOCS_URI_PREFIX).percentDecode()
+    } else {
+        this
+    }
 
 /**
  * 鸿蒙外部启动请求解析/投递 (对照 app 端 `Intent.toLaunchRequest`)。
@@ -434,9 +455,9 @@ private object OhosFilePickerService : FilePickerService {
         return convertedPath
     }
 
-    /** Phone 降级分支的 picker URI 折回 (原折回规则: docs 授权体去前缀即挂载点路径)。 */
+    /** Phone 降级分支的 picker URI 折回: docs 授权体去前缀即挂载点路径 (与文件关联投递同一规则)。 */
     private fun String.toLegacySandboxPath(): String = when {
-        startsWith("file://docs") -> removePrefix("file://docs")
+        startsWith(OHOS_DOCS_URI_PREFIX) -> docsUriToMountPath()
         startsWith("file://") -> removePrefix("file://")
         else -> this
     }

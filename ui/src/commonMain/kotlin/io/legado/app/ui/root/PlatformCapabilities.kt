@@ -284,17 +284,18 @@ interface PlatformCapabilities {
     /**
      * 下架确认框 (对照原版 `BookInfoActivity.deleteBook` 的 alert) 是否由本能力面自己弹。
      *
-     * true (默认) = 调用方直接委托 [deleteBookshelfBook], 能力面自己弹确认框 (Android);
-     * false = 调用方先弹确认框 (本地书带"删除源文件"勾选), 再把勾选值交给 [deleteBookshelfBook]。
+     * true = 调用方直接把下架交给 [deleteBookshelfBook], 确认框与"删除源文件"勾选值都由能力面
+     *   自己处理 (安卓的系统 alert);
+     * false (默认) = 调用方先弹确认框 (本地书带"删除源文件"勾选), 再把勾选值交给 [deleteBookshelfBook]。
      */
-    fun confirmsDeleteBookInCapability(): Boolean = true
+    fun confirmsDeleteBookInCapability(): Boolean = false
 
     /**
      * 下架书目 (对照原版 `BaseReadViewModel.delBook`): 删章节 + 删记录 + 按 [deleteOriginal]
      * 删本地书源文件; 不勾选时只下架、不碰文件 (onComplete: null=下架成功, false=失败)。
      *
-     * 默认实现忽略 [deleteOriginal] 委托 [toggleBookshelf] —— 自带确认框的端 (Android)
-     * 由它自己的下架流程取勾选值。
+     * 默认实现忽略 [deleteOriginal] 委托 [toggleBookshelf]: 确认框由能力面自己弹的端
+     * (见 [confirmsDeleteBookInCapability]) 由它自己的下架流程取勾选值。
      */
     fun deleteBookshelfBook(
         book: Book,

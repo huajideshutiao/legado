@@ -17,7 +17,11 @@ import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
+import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.delete_book_file
+import legado.ui.generated.resources.draw
+import legado.ui.generated.resources.ok
+import legado.ui.generated.resources.sure_del
 import org.jetbrains.compose.resources.stringResource
 
 /**

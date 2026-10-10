@@ -25,6 +25,7 @@ import io.legado.app.utils.IosSecurityScopedStorage
  *
  * # 租约生命周期 (按访问粒度配对 start/stop)
  * - [getBookInputStream]: 租约随返回的输入流 [InputStream.close] 释放 (TXT 分章按流读, 流活多久授权就多久);
+ *   书文件读不到时按压缩包名找回原压缩包重新解压后打开 (见 [reopenFromArchive]);
  * - [getHandler]: TXT/EPUB/CBZ 解析器在 `getChapterList`/`getContent`/`getImage` 内自行读文件
  *   (EPUB 整文件解析、CBZ 随机读 zip 中央目录), 无法从外部按流配对, 故对整个解析调用持租约,
  *   调用返回即释放;
@@ -46,16 +47,24 @@ class IosAuthorizedFileBookAccessor(
     override fun getBookInputStream(book: Book): InputStream {
         val path = localPath(book)
         if (path == null) return delegate.getBookInputStream(book)
-        val lease = IosSecurityScopedStorage.acquireLease(path, DirUsage.BookTree)
-        val stream = try {
-            IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) {
-                delegate.getBookInputStream(book)
+        val opened = runCatching {
+            val lease = IosSecurityScopedStorage.acquireLease(path, DirUsage.BookTree)
+            try {
+                LeaseHoldingInputStream(
+                    IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) {
+                        delegate.getBookInputStream(book)
+                    },
+                    lease,
+                )
+            } catch (e: Throwable) {
+                lease.close()
+                throw e
             }
-        } catch (e: Throwable) {
-            lease.close()
-            throw e
         }
-        return LeaseHoldingInputStream(stream, lease)
+        opened.getOrNull()?.let { return it }
+        // 书文件读不到 (文件被删/授权失效): 按压缩包名找回原压缩包重新解压 (对照原版, 见 [reopenFromArchive])
+        reopenFromArchive(book)?.let { return it }
+        throw opened.exceptionOrNull()!!
     }
 
     override fun getLastModified(book: Book): Result<Long> {

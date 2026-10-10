@@ -73,6 +73,22 @@ open class NativeLocalBookLocator : LocalBookLocator {
     }
 
     /**
+     * 压缩包子书的原压缩包引用: 按 [Book.archiveName] 在"书籍保存位置"与导入目录里找回
+     * (与 [getReadableFileRef] 同一套目录、同一套按名找回与目录授权)。
+     *
+     * 压缩包被移走/改名后子书文件仍在架上, 读子书时靠它把原包重新解压出来 (对照原版
+     * `BaseFileBook.getBookInputStream` 的 `Book.getArchiveUri` 回退分支)。
+     */
+    override fun getReadableArchiveRef(book: Book): String? {
+        if (!book.isArchive) return null
+        val archiveName = book.archiveName
+        return findLocalBookFileInDirs(
+            saveDir = effectiveBookSaveDir(),
+            importDir = effectiveImportBookDir(),
+        ) { dir -> searchInDir(dir, archiveName) }
+    }
+
+    /**
      * 在一个目录里按名找回。
      *
      * iOS/鸿蒙覆写本方法把整个查找放进该目录的授权内: 容器外目录未经授权时目录列举会得到空结果,

@@ -62,7 +62,6 @@ import kotlinx.coroutines.launch
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.add_to_group
 import legado.ui.generated.resources.allow_update
-import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.change_source_batch
 import legado.ui.generated.resources.check_selected_interval
 import legado.ui.generated.resources.clear_cache
@@ -70,15 +69,12 @@ import legado.ui.generated.resources.clear_cache_success
 import legado.ui.generated.resources.delete
 import legado.ui.generated.resources.disable_update
 import legado.ui.generated.resources.download_count
-import legado.ui.generated.resources.draw
 import legado.ui.generated.resources.export_all
 import legado.ui.generated.resources.export_bookshelf
 import legado.ui.generated.resources.loading
 import legado.ui.generated.resources.local_book
 import legado.ui.generated.resources.no_group
-import legado.ui.generated.resources.ok
 import legado.ui.generated.resources.screen
-import legado.ui.generated.resources.sure_del
 import org.jetbrains.compose.resources.stringResource
 
 /**
