@@ -44,6 +44,9 @@ private const val CREATE_TIMEOUT_MS = 20_000L
  * 同一 userDataFolder 挂不同 options 的第二个环境会创建失败 (WebView2 约束), 故两个用途
  * 各用独立目录; 浏览器 cookie 仍经 CookieStore 注入/回收闭环跨用途共享 (与 Android 上
  * WebView 与 OkHttp 两套 cookie 存储的桥接同构)。
+ *
+ * 环境对象只属于创建它的那一代消息泵 (STA 套间随线程消亡, 见 [WebView2Loop.generation]):
+ * 缓存按代号判代, 泵换代后交新代重建。
  */
 internal object WebView2Environment {
 
@@ -53,12 +56,15 @@ internal object WebView2Environment {
     /** 可见窗口 (登录/校验) 用途: 默认安全设置 (对齐 Android WebViewActivity)。 */
     private const val SECURE_DIR = "webview2-window"
 
+    /** 环境对象 + 创建它的那一代消息泵代号 (见 [cached])。 */
+    private class Bound(val generation: Long, val environment: Pointer)
+
     private class Slot {
         @Volatile
-        var environment: Pointer? = null
+        var environment: Bound? = null
 
         @Volatile
-        var pending: CompletableDeferred<Pointer?>? = null
+        var pending: CompletableDeferred<Bound?>? = null
     }
 
     private val insecureSlot = Slot()
@@ -72,31 +78,37 @@ internal object WebView2Environment {
      */
     suspend fun get(insecure: Boolean): Pointer? {
         val slot = if (insecure) insecureSlot else secureSlot
-        slot.environment?.let { return it }
+        cached(slot)?.let { return it }
         val deferred = synchronized(slot) {
-            slot.environment?.let { return it }
-            slot.pending ?: CompletableDeferred<Pointer?>().also {
+            cached(slot)?.let { return it }
+            slot.pending ?: CompletableDeferred<Bound?>().also {
                 slot.pending = it
                 startCreate(it, insecure)
             }
         }
-        val env = withTimeoutOrNull(CREATE_TIMEOUT_MS) { deferred.await() }
+        val created = withTimeoutOrNull(CREATE_TIMEOUT_MS) { deferred.await() }
         synchronized(slot) {
-            if (env != null) slot.environment = env
+            if (created != null) slot.environment = created
             // 无论成败都清 pending: 失败/超时后复用同一个已结束的 deferred 会让
             // 后续所有调用立刻拿到 null, 进程内永远无法重试 (必须重启才恢复)
             slot.pending = null
         }
-        if (env == null) {
+        if (created == null) {
             AppLog.put(
                 "WebView2 环境创建失败或超时 (${CREATE_TIMEOUT_MS}ms, insecure=$insecure), 内嵌浏览器不可用"
             )
         }
-        return env
+        return created?.environment
     }
 
-    private fun startCreate(deferred: CompletableDeferred<Pointer?>, insecure: Boolean) {
+    /** 缓存的环境只在创建它的那一代消息泵上可用 (套间随泵线程消亡); 换代后视为没有缓存。 */
+    private fun cached(slot: Slot): Pointer? =
+        slot.environment?.takeIf { it.generation == WebView2Loop.generation }?.environment
+
+    private fun startCreate(deferred: CompletableDeferred<Bound?>, insecure: Boolean) {
         WebView2Loop.post {
+            // 记下创建它的这一代泵线程: 环境对象随之失效 (见 [cached])
+            val generation = WebView2Loop.generation
             val runtime = WebView2Runtime.detect()
             if (runtime == null) {
                 deferred.complete(null)
@@ -106,7 +118,7 @@ internal object WebView2Environment {
                 override fun callback(self: Pointer, errorCode: Int, result: Pointer?): Int {
                     if (errorCode == S_OK && result != null) {
                         vtbl(result, 1) // AddRef: 出参是借用引用, 长期持有必须自己加
-                        deferred.complete(result)
+                        deferred.complete(Bound(generation, result))
                     } else {
                         AppLog.put("WebView2 环境创建回调失败 (HRESULT=${hex(errorCode)})")
                         deferred.complete(null)

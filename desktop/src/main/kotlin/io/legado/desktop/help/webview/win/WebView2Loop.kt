@@ -27,6 +27,9 @@ import java.util.concurrent.TimeUnit
  *
  * 副作用是可见窗口只能是**独立顶层窗口**而非嵌进 Compose 布局 —— 登录/验证本就是弹窗语义,
  * 可接受。
+ *
+ * 泵线程结束 (建窗失败 / 消息循环退出) 时它名下的窗口与它所在套间里的 COM 对象随线程失效:
+ * 泵在不在按线程存活判定, 线程已结束就整代重建 (见 [ensureStarted])。
  */
 internal object WebView2Loop {
 
@@ -41,8 +44,23 @@ internal object WebView2Loop {
     @Volatile
     private var pumpWindow: WinDef.HWND? = null
 
+    /** 消息泵线程; 线程结束即泵不可用 (它名下的窗口随线程被系统收走)。 */
     @Volatile
-    private var startFailed = false
+    private var pumpThread: Thread? = null
+
+    /** 本代建窗结果的就绪闸门; [START_TIMEOUT_SECONDS] 内未放开即按启动失败处理。 */
+    @Volatile
+    private var pumpReady: CountDownLatch? = null
+
+    /**
+     * 消息泵代号: 每换一代 +1。
+     *
+     * 泵线程结束即它所在 STA 套间里的 COM 对象失效 (见 [ensureStarted]), 跨代对象按本代号
+     * 判代 —— [WebView2Environment] 缓存的环境据此作废, 交新代重建。
+     */
+    @Volatile
+    var generation: Long = 0L
+        private set
 
     /** 每个 HWND 的消息处理钩子 (WM_SIZE/WM_CLOSE/工具栏绘制与鼠标), 由窗口创建方注册。 */
     private val windowHooks = HashMap<Pointer, (Int, WinDef.WPARAM, WinDef.LPARAM) -> Boolean>()
@@ -81,22 +99,43 @@ internal object WebView2Loop {
         )
     }
 
-    /** 启动线程 (幂等); 返回是否可用。 */
+    /**
+     * 启动 (泵不在时整代重建) 消息泵; 返回是否可用。
+     *
+     * 泵在不在按**泵线程是否还在**判, 不按 [pumpWindow] 是否非空: 线程结束 (建窗失败 / 消息
+     * 循环退出) 时它名下的窗口由系统随线程释放 (MSDN "Terminating a Thread"), 而本地记的
+     * 句柄仍非空 —— 按句柄判会让此后每次调用都以为泵还在, 任务投进失效句柄没人抽取, WebView2
+     * 在本次运行内再也不可用 (只能重启应用)。线程已结束就整代重建; 建不出来的那一代只是这一次
+     * 不可用 (线程随之结束), 下一次调用继续重试。
+     *
+     * 幂等: 泵线程还在 (含正在启动的那一代) 即不新建; 全程持锁, 并发调用者等锁后看到新线程
+     * 已在跑, 不会起出两份泵。
+     */
     @Synchronized
     fun ensureStarted(): Boolean {
-        if (pumpWindow != null) return true
-        if (startFailed) return false
-        val ready = CountDownLatch(1)
-        val thread = Thread({ runLoop(ready) }, "legado-webview2")
-        thread.isDaemon = true
-        thread.start()
+        if (pumpThread?.isAlive != true) {
+            // 换代: 只作废随线程失效的本地引用 (窗口与钩子已由系统随线程收走, 这里不会与上一代
+            // 线程并发访问); 任务队列不随线程失效, 留给新代接着抽取
+            pumpWindow = null
+            windowHooks.clear()
+            val ready = CountDownLatch(1)
+            val thread = Thread({ runLoop(ready) }, "legado-webview2")
+            thread.isDaemon = true
+            pumpThread = thread
+            pumpReady = ready
+            generation++
+            thread.start()
+        }
+        val ready = pumpReady ?: return pumpWindow != null
+        // 这一代已有结论 (就绪或建窗失败): 只看建窗结果
+        if (ready.count == 0L) return pumpWindow != null
         // 超时不再等: 建窗口卡住时按启动失败处理, 上层降级到无 WebView 路径而不是永久挂起
         if (!ready.await(START_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
             AppLog.put("WebView2 消息泵启动超时 (${START_TIMEOUT_SECONDS}s), 按不可用处理")
-            startFailed = true
+            // 卡住的这一代不再让后续调用白等: 之后就绪与否按窗口是否出现判定
+            pumpReady = null
             return false
         }
-        if (pumpWindow == null) startFailed = true
         return pumpWindow != null
     }
 

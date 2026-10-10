@@ -259,8 +259,9 @@ object IosSecurityScopedStorage {
      *
      * - 沙盒内路径: 返回无需 scope 的空租约;
      * - 落在同用途的已授权目录下: 对该根 URL start, 租约持有同一 URL 并在 close 时配对 stop;
-     *   同用途下有多个授权根都覆盖该文件时 (父目录与子目录各授权过一次) 逐个尝试, 起不来的条目跳过,
-     *   全部起不来才按授权失效处理 (阅读层据此提示"选择书籍所在文件夹");
+     *   同用途下有多个授权根都覆盖该文件时 (父目录与子目录各授权过一次) 逐个尝试, 起不来或起后
+     *   真实位置不覆盖该文件的条目跳过并继续试其余条目, 全部不成立才按授权失效处理
+     *   (阅读层据此提示"选择书籍所在文件夹");
      * - 其余情况抛 [SecurityException]。
      */
     fun acquireLease(path: String, usage: DirUsage): IosSecurityScopeLease {
@@ -268,23 +269,16 @@ object IosSecurityScopedStorage {
         if (isSandboxPath(target)) return IosSecurityScopeLease.none()
         val candidates = authorizedRootsFor(target, usage)
         if (candidates.isEmpty()) throw SecurityException("没有访问权限: $path")
-        val root = candidates.firstOrNull { it.url.startAccessingSecurityScopedResource() }
-            ?: run {
-                invalidateAll()
-                throw SecurityException("没有访问权限: $path")
-            }
-        val lease = IosSecurityScopeLease(root.url, started = true)
-        try {
+        for (candidate in candidates) {
+            if (!candidate.url.startAccessingSecurityScopedResource()) continue
+            val lease = IosSecurityScopeLease(candidate.url, started = true)
             // 起 scope 后重新规范化: 授权生效可能才解析出真实位置 (外置卷/文件提供者挂载), 归属按彼时位置判
-            val rootPath = root.url.path ?: throw SecurityException("授权目录没有有效路径")
-            if (!underRoot(canonicalPath(rootPath), target)) {
-                throw SecurityException("文件位于授权目录之外: $path")
-            }
-            return lease
-        } catch (e: Throwable) {
+            val rootPath = candidate.url.path
+            if (rootPath != null && underRoot(canonicalPath(rootPath), target)) return lease
             lease.close()
-            throw e
         }
+        invalidateAll()
+        throw SecurityException("没有访问权限: $path")
     }
 
     /**
