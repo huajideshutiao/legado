@@ -4,6 +4,7 @@ package io.legado.app.ui
 
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
+import io.legado.app.constant.DirUsage
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.NotificationId
 import io.legado.app.constant.PreferKey
@@ -274,7 +275,8 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     /**
      * 选书籍目录: 直接拿 UIDocumentPicker(Open) 的 security-scoped NSURL, 不经过只回 path 的
      * [PlatformServices.FilePickerService] —— 普通路径在下次访问时拿不回授权。
-     * 选中后存 minimal bookmark 集合 (可跨启动), 回调仍传目录路径 (与其余端同一契约)。
+     * 选中后存 minimal bookmark (可跨启动) 并记下用途 [DirUsage.BookTree], 回调仍传目录路径
+     * (与其余端同一契约)。
      */
     override fun pickBookTreeUri(onSelected: (String?) -> Unit) {
         scope.launch {
@@ -283,7 +285,7 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
                 onSelected(null)
                 return@launch
             }
-            val path = IosSecurityScopedStorage.addBookTree(url)
+            val path = IosSecurityScopedStorage.addDir(url, DirUsage.BookTree)
             onSelected(path)
         }
     }
@@ -383,7 +385,7 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     // (bookUrl 形如 file:///path; 沙盒内文件无需授权)
     override suspend fun localBookFileSize(bookUrl: String): Long = withContext(Dispatchers.IO) {
         val path = bookUrl.removePrefix("file://")
-        runCatching { IosSecurityScopedStorage.withAccess(path) { File(it).length() } }
+        runCatching { IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) { File(it).length() } }
             .getOrDefault(0L)
     }
 
@@ -779,14 +781,13 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
      * 选定目录存 security-scoped bookmark 并记入设备本地配置空间 ([rememberBookExportDir]);
      * 开了自定义导出 (且导出类型为 epub) 先弹章节配置, 否则立即导出。
      *
-     * 与 [pickBookTreeUri] 同一入口 ([pickDirectoryDocument]) + 同一授权表
-     * ([IosSecurityScopedStorage]) —— 都不经只回路径的 `FilePickerService.pickDirectory`,
-     * 否则下次访问拿不回授权。
+     * 与 [pickBookTreeUri] 同一入口 ([pickDirectoryDocument]) 但用途不同: 这里登记为
+     * [DirUsage.Export], 该目录只放行导出写入, 不放行书籍文件访问。
      */
     override fun selectExportFolder(books: List<Book>) {
         scope.launch {
             val url = pickDirectoryDocument() ?: return@launch
-            val path = IosSecurityScopedStorage.addBookTree(url) ?: run {
+            val path = IosSecurityScopedStorage.addDir(url, DirUsage.Export) ?: run {
                 Toasters.get().toast("无法保存导出目录的访问授权")
                 return@launch
             }
@@ -818,7 +819,7 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     private fun openExportDir(): Pair<File, IosSecurityScopeLease>? {
         val path = effectiveBookExportDir() ?: return null
         val lease = try {
-            IosSecurityScopedStorage.acquireLease(path)
+            IosSecurityScopedStorage.acquireLease(path, DirUsage.Export)
         } catch (e: Exception) {
             rememberBookExportDir(null)
             AppLog.put("导出目录不可用, 已清除记忆目录\n${e.message}", e)

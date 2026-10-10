@@ -6,6 +6,25 @@ import kotlinx.coroutines.flow.Flow
 import kotlin.concurrent.Volatile
 
 /**
+ * 插件源图标的像素边长上限 (px)。
+ *
+ * 依据: 自适应图标的图层规范尺寸是 108×108 dp (Android 文档 "Adaptive icons"), 最高密度档
+ * xxxhdpi = 640 dpi = 4.0× (Android 文档 "Support different pixel densities"), 即最大 432px;
+ * 传统启动图标 48dp 在 xxxhdpi 下 192px。512 覆盖全部合法启动图标并留余量, 更大的尺寸只可能
+ * 来自损坏包或恶意包声明的图标。
+ */
+const val EXTENSION_ICON_MAX_PIXEL_SIZE = 512
+
+/**
+ * 插件图标条目的字节上限。
+ *
+ * 依据: [EXTENSION_ICON_MAX_PIXEL_SIZE] 见方的未压缩 RGBA 是 1MiB, 图像的编码头、逐行滤波字节
+ * 与块结构再加少量, 故上限尺寸的图标不管用哪种格式编码都在 1MiB 出头; 取 2MiB 覆盖这些开销,
+ * 同时挡住清单可以声明的任意大条目。
+ */
+const val EXTENSION_ICON_MAX_BYTES = 2 * 1024 * 1024
+
+/**
  * 漫画/视频扩展宿主的平台面 (MangaExtensionManager 的平台注入点)。
  *
  * 管理器的装载编排/仓库/信任/注册表逻辑是平台无关的 (data jvmAndAndroidMain),

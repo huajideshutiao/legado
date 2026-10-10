@@ -1,6 +1,7 @@
 package io.legado.app.model.fileBook
 
 import io.legado.app.constant.BookType
+import io.legado.app.constant.DirUsage
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.LocalBookLocators
@@ -19,6 +20,7 @@ import io.legado.app.utils.inputStream
  *
  * 授权是持久态 (activatePermission 后进程内一直有效), 各入口激活一次即可,
  * 解析器/输入流的后续读取无需再包 (与 iOS 的按调用配对租约不同)。
+ * 激活按**用途**匹配 ([DirUsage.BookTree]): 只有用户在书籍类入口选定的目录才放行书籍文件访问。
  * 沙盒内文件 ({filesDir}/books 导入副本) 不在授权集合内, 直接放行。
  */
 class OhosAuthorizedFileBookAccessor(
@@ -36,9 +38,9 @@ class OhosAuthorizedFileBookAccessor(
         withActivation(book) { delegate.getHandler(book) }
 
     override fun importLocalFile(uriStr: String): Book =
-        // 源文件 (可能在别的授权目录) 与解出书籍的落地目录 ("书籍保存位置") 都要激活授权;
-        // 落地目录只有压缩包分支会写 (由 delegate 内部调 saveBookFile), 未设置保存位置时
-        // 本条不写盘, 故只在其已设置时激活 (写入方报未设置)
+        // 源文件 (可能在别的授权目录, 含导入页浏览到的文件) 与解出书籍的落地目录 ("书籍保存位置")
+        // 都要激活授权 (同属书籍文件用途); 落地目录只有压缩包分支会写 (由 delegate 内部调
+        // saveBookFile), 未设置保存位置时本条不写盘, 故只在其已设置时激活 (写入方报未设置)
         withActivation(delegate.resolveLocalFile(uriStr).path) {
             withSaveDirActivation { delegate.importLocalFile(uriStr) }
         }
@@ -77,7 +79,7 @@ class OhosAuthorizedFileBookAccessor(
      * 故每个能触达落盘的入口都要单独包一层。
      */
     override fun saveBookFile(inputStream: InputStream, fileName: String): String {
-        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir())
+        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir(), DirUsage.BookTree)
         return delegate.saveBookFile(inputStream, fileName)
     }
 
@@ -86,12 +88,12 @@ class OhosAuthorizedFileBookAccessor(
         fileName: String,
         source: BaseSource?
     ): String {
-        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir())
+        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir(), DirUsage.BookTree)
         return delegate.saveBookFile(str, fileName, source)
     }
 
     override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
-        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir())
+        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir(), DirUsage.BookTree)
         return delegate.saveBookFileFromWebDav(webDav, fileName)
     }
 
@@ -103,12 +105,12 @@ class OhosAuthorizedFileBookAccessor(
      * 写进网页响应体。不弹任何界面: 上传请求来自浏览器 (可能不在同一台设备上), 拿不到目录选择器。
      */
     override fun saveBookFileFromPath(filePath: String, fileName: String): String {
-        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir())
+        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir(), DirUsage.BookTree)
         return delegate.saveBookFile(File(filePath).inputStream(), fileName)
     }
 
     override fun downloadRemoteBook(book: Book): Boolean {
-        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir())
+        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir(), DirUsage.BookTree)
         return delegate.downloadRemoteBook(book)
     }
 
@@ -126,12 +128,12 @@ class OhosAuthorizedFileBookAccessor(
         lastModify: Long,
         downloadFile: Boolean
     ): Book {
-        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir())
+        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir(), DirUsage.BookTree)
         return delegate.importRemoteBook(webDav, serverID, name, path, size, lastModify, downloadFile)
     }
 
     private fun <T> withActivation(path: String, block: () -> T): T {
-        OhosDirAuthorizations.ensureActivatedFor(path)
+        OhosDirAuthorizations.ensureActivatedFor(path, DirUsage.BookTree)
         return block()
     }
 
@@ -166,7 +168,7 @@ class OhosZipFileWrapperFactory : ZipFileWrapperFactory {
         if (!url.startsWith("http") && !url.startsWith(BookType.webDavTag)) {
             val path = LocalBookLocators.get().getLocalPath(book)
                 ?: url.removePrefix("file://")
-            OhosDirAuthorizations.ensureActivatedFor(path)
+            OhosDirAuthorizations.ensureActivatedFor(path, DirUsage.BookTree)
         }
         return remote.create(book)
     }

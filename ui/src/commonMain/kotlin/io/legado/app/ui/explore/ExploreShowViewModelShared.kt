@@ -2,7 +2,6 @@ package io.legado.app.ui.explore
 
 import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.BookSourceType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BookSource
@@ -23,8 +22,8 @@ import io.legado.app.model.webBook.BookListPager
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.PluginFilterSession
 import io.legado.app.model.webBook.WebBook.getBookListAwait
+import io.legado.app.model.webBook.pluginFilterSessionOf
 import io.legado.app.model.webBook.parseExploreOptionsFromUrl
-import io.legado.app.ui.book.manga.extension.MangaExtensionServiceProviders
 import io.legado.app.utils.concurrent.newConcurrentSet
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.throttleLatest
@@ -140,9 +139,10 @@ class ExploreShowViewModelShared(
             bookSource?.isTachiyomiPluginSource() == true
 
     /**
-     * 筛选分类页的会话筛选实例 (漫画 [MangaFilterSession] / 视频 [AnimeFilterSession]; 仅本页会话内
-     * 有效, VM 随页面销毁即丢, 不持久化)。由 [createPluginExploreFilters] 在 initData 创建,
-     * 经 [explore] 透传取数委派; 入口行"重置"或退出重进页面时新建会话。
+     * 本页取数用的会话筛选实例 (漫画 [MangaFilterSession] / 视频 [AnimeFilterSession]; 仅本页会话内
+     * 有效, VM 随页面销毁即丢, 不持久化)。由 [createPluginExploreFilters] 经唯一入口
+     * [pluginFilterSessionOf] 建 (平台侧等注册表就绪后才作答), 经 [explore] 透传取数委派;
+     * 入口行"重置"或退出重进页面时新建会话。
      */
     var pluginExploreFilters: PluginFilterSession? = null
         private set
@@ -240,12 +240,13 @@ class ExploreShowViewModelShared(
                     ?: return@launch
             }
             parseExploreOptions()
-            createPluginExploreFilters()
             _sourceReadyFlow.tryEmit(Unit)
             if (exploreOptions.isNotEmpty()) {
                 _optionsReadyFlow.tryEmit(Unit)
             }
             _upStarFlow.value = isFavorite()
+            // 取数前建会话 (入口保证需要会话的地方都拿到会话; 等注册表就绪不挡首屏信号)
+            createPluginExploreFilters()
             explore()
         }
     }
@@ -266,12 +267,13 @@ class ExploreShowViewModelShared(
             this@ExploreShowViewModelShared.exploreName = exploreName
             bookSource = source
             parseExploreOptions()
-            createPluginExploreFilters()
             _sourceReadyFlow.tryEmit(Unit)
             if (exploreOptions.isNotEmpty()) {
                 _optionsReadyFlow.tryEmit(Unit)
             }
             _upStarFlow.value = isFavorite()
+            // 取数前建会话 (入口保证需要会话的地方都拿到会话; 等注册表就绪不挡首屏信号)
+            createPluginExploreFilters()
             explore()
         }
     }
@@ -296,6 +298,8 @@ class ExploreShowViewModelShared(
                 _optionsReadyFlow.tryEmit(Unit)
             }
             _upStarFlow.value = isFavorite()
+            // 单源搜索页同样要带筛选会话取数 (没有筛选 UI 也走同一入口拿源默认实例)
+            createPluginExploreFilters()
             explore()
         }
     }
@@ -347,20 +351,20 @@ class ExploreShowViewModelShared(
     }
 
     /**
-     * 创建筛选分类页的会话筛选实例 (仅 Tachiyomi/Aniyomi 插件源且当前为"筛选"分类时)。
+     * 建本页取数用的会话筛选实例: 插件源"筛选"分类页与单源搜索模式各建一次。
      *
      * 筛选不持久化: 实例为源默认筛选的新建件 (源 getFilterList 每次全新实例),
-     * 挂本 VM (页面会话) 随页面销毁即丢; 每次进入筛选分类页均为全新默认。
+     * 挂本 VM (页面会话) 随页面销毁即丢; 每次进入均为全新默认。
      */
     private suspend fun createPluginExploreFilters() {
-        if (!isPluginFilterKind) return
         val source = bookSource ?: return
-        pluginExploreFilters = createPluginFilterSession(source)
+        if (!isPluginFilterKind && !isSearchMode) return
+        pluginFilterSessionOf(source)?.let { pluginExploreFilters = it }
         _pluginFiltersVersion.value++
     }
 
     /**
-     * 重置到源默认筛选: 换新会话实例并返回 (源不可用/服务未注册返回 null, 保留原实例)。
+     * 重置到源默认筛选: 换新会话实例并返回 (拿不到新实例返回 null, 保留原实例)。
      * 入口行"重置"调用, 调用方换实例后重载第 1 页。
      *
      * 部分扩展的档位靠首次请求的拦截器异步抓站点表单写入插件偏好, 抓取完成前 getFilterList 只
@@ -369,19 +373,10 @@ class ExploreShowViewModelShared(
      */
     suspend fun resetPluginExploreFilters(): PluginFilterSession? {
         val source = bookSource ?: return null
-        val session = createPluginFilterSession(source) ?: return null
+        val session = pluginFilterSessionOf(source) ?: return null
         pluginExploreFilters = session
         _pluginFiltersVersion.value++
         return session
-    }
-
-    private suspend fun createPluginFilterSession(source: BookSource): PluginFilterSession? {
-        val service = MangaExtensionServiceProviders.getOrNull() ?: return null
-        return when (source.bookSourceType) {
-            BookSourceType.image -> service.createMangaFilterSession(source.bookSourceUrl)
-            BookSourceType.video -> service.createAnimeFilterSession(source.bookSourceUrl)
-            else -> null
-        }
     }
 
     /**
@@ -438,7 +433,7 @@ class ExploreShowViewModelShared(
         Coroutine.async(scope) {
             getBookListAwait(
                 source, key, pager.page, isSearch = isSearchMode,
-                pluginFilters = if (isSearchMode) null else pluginExploreFilters,
+                pluginFilters = pluginExploreFilters,
                 nextPageUrl = pager.nextPageUrl,
                 onUrlResolved = { analyzeUrl: AnalyzeUrlCore ->
                     val oldSize = exploreOptions.size

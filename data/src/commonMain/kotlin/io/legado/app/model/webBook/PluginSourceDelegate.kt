@@ -26,8 +26,8 @@ interface PluginSourceDelegate {
     /**
      * 插件源搜索 (对应 WebBook.getBookListAwait, isSearch=true; page 从 1 起)。
      *
-     * [filters] 为页面会话筛选实例 (页面创建、随页面销毁, 不持久化); 未传 (无筛选 UI 的调用方)
-     * 时用源默认筛选。
+     * [filters] 为页面会话筛选实例 (页面持有、随页面销毁, 不持久化), 由
+     * [pluginFilterSessionOf] 提供; 缺失或契约不符由实现报错, 实现不代建默认实例。
      */
     suspend fun getBookListAwait(
         bookSource: BookSource,
@@ -42,8 +42,8 @@ interface PluginSourceDelegate {
      * [url] 为虚拟源 exploreUrl 中某个发现分类的 url 段 (形如 `popular`/`latest`/`filter`),
      * 由实现自行分派到插件源对应取数面; 无法识别的值应显式报错而非静默返回空。
      *
-     * [filters] 为筛选分类页的会话筛选实例 (页面创建、随页面销毁, 不持久化);
-     * 筛选分类面必然携带对应契约的会话实例, 缺失即报错 (不静默取无筛选数据)。
+     * [filters] 为该页的会话筛选实例 (页面持有、随页面销毁, 不持久化), 由
+     * [pluginFilterSessionOf] 提供; 缺失或契约不符由实现报错 (不静默取无筛选数据)。
      */
     suspend fun getExploreAwait(
         bookSource: BookSource,
@@ -79,6 +79,15 @@ interface PluginSourceDelegate {
     fun tocFailMessage(bookSource: BookSource, e: Throwable): String? = null
 
     /**
+     * 该插件源页面会话用的默认筛选实例 (源 `getFilterList()` 的新建件): 取数链与筛选界面
+     * 共用同一份实例, 由页面持有并随页面销毁丢弃。
+     *
+     * 实现须在注册表就绪后才作答 (装载未完成时先等), 否则会把"还没装载"当成"该源没有筛选器";
+     * 源未装载或本端无插件宿主返回 null。
+     */
+    suspend fun createFilterSession(bookSource: BookSource): PluginFilterSession? = null
+
+    /**
      * 发现分类 (对应 BookSource.exploreKinds)。
      *
      * 返回 null = 本实现不接管分类 (走源自身 exploreUrl 规则解析); 返回列表 = 直接作为该书源
@@ -112,3 +121,12 @@ object PluginSourceDelegates {
     /** 已注册委派 (诊断与测试用)。 */
     fun registered(): List<PluginSourceDelegate> = impls
 }
+
+/**
+ * 插件源筛选会话的唯一入口: 等注册表就绪 (由委派实现完成) 后建该源的默认筛选实例。
+ *
+ * 页面持有同一份并经取数链透传 (筛选改动对取数立即生效); 没有筛选 UI 的调用方 (web API /
+ * 书源校验 / 调试 / 单源搜索页) 也经它取源默认实例。非插件源与无插件宿主的端返回 null。
+ */
+suspend fun pluginFilterSessionOf(bookSource: BookSource): PluginFilterSession? =
+    PluginSourceDelegates.resolve(bookSource)?.createFilterSession(bookSource)

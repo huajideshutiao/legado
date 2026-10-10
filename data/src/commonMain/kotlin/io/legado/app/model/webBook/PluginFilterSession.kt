@@ -7,8 +7,9 @@ import eu.kanade.tachiyomi.source.model.FilterList
  * 插件源筛选会话实例 (页面会话持有, 随页面销毁即丢, 不持久化)。
  *
  * 插件源的筛选状态由 Filter 对象自身携带 (上游约定: getFilterList 每次调用返回全新实例),
- * 故同一份实例必须同时供筛选 UI 与取数委派使用; 实例由页面 (VM) 创建持有, 经
- * [WebBook.getBookListAwait] 的 pluginFilters 参数透传到委派, 不经任何全局缓存。
+ * 故同一份实例必须同时供筛选 UI 与取数委派使用; 实例由唯一入口
+ * ([pluginFilterSessionOf]) 新建、页面持有, 经 [WebBook.getBookListAwait] 的 pluginFilters
+ * 参数透传到委派, 不经任何全局缓存。
  */
 sealed interface PluginFilterSession {
 

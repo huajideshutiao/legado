@@ -5,6 +5,8 @@
 
 package io.legado.app.utils
 
+import io.legado.app.constant.AppLog
+import io.legado.app.constant.DirUsage
 import io.legado.app.exception.SecurityException
 import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.atomic
@@ -16,6 +18,8 @@ import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import okio.IOException
 import okio.Path.Companion.toPath
 import platform.Foundation.NSBundle
@@ -39,8 +43,10 @@ import platform.Foundation.create
  *   [NSURL.startAccessingSecurityScopedResource], 访问结束对**同一对象**配对 stop;
  * - 长期引用用 [NSURLBookmarkCreationMinimalBookmark] 存 [NSUserDefaults], 再次访问解析回
  *   security-scoped URL; bookmark 陈旧时在有效 scope 内重建后覆盖存储;
- * - 授权是**目录集合**而非单个"最后目录": 用户为不同书籍分别授权过的目录都保留, 否则找回第二本书
- *   会让第一本书失去授权;
+ * - 每条授权带**用途** ([DirUsage], 即用户经哪个入口选它): 取租约时按用途匹配, 只有同用途的
+ *   授权才能放行该访问 —— 为备份或字体选的宽目录不会放行书籍文件访问;
+ * - 授权按用途分开登记, 且是**目录集合**而非单个"最后目录": 用户为不同书籍分别授权过的目录都保留,
+ *   否则找回第二本书会让第一本书失去授权;
  * - 每次访问独立取租约 ([acquireLease]) 并在 [IosSecurityScopeLease.close] 释放, 不把授权挂到进程生命周期;
  * - 根 URL start 返回 false = 授权已被撤销/失效 → 抛 [SecurityException], 由阅读层提示重新选目录;
  *   根 scope 生效时其内容由该目录 URL 递归覆盖 (Apple: 目录 URL 可递归访问其全部内容)。
@@ -52,18 +58,24 @@ import platform.Foundation.create
  */
 object IosSecurityScopedStorage {
 
-    /** 用户授权目录 bookmark 集合的 NSUserDefaults key (值为 base64 bookmark 字符串数组)。 */
-    private const val BOOK_TREE_BOOKMARKS_KEY = "iosBookTreeBookmarks"
+    /**
+     * 用户授权目录的 NSUserDefaults key
+     * (值为 JSON Map<[DirUsage], base64 bookmark 字符串数组>: 用途 → 该用途下已授权的目录)。
+     */
+    private const val AUTHORIZED_DIRS_KEY = "iosAuthorizedDirs"
 
-    /** 导入根目录 bookmark 的 NSUserDefaults key (单值: 导入浏览器只服务一个根目录)。 */
+    /**
+     * 导入根目录 bookmark 的 NSUserDefaults key (单值: 导入浏览器只服务一个根目录)。
+     * 该目录授权以 [DirUsage.BookTree] 参与匹配 —— 导入页浏览与导入的都是书籍文件。
+     */
     private const val IMPORT_ROOT_BOOKMARK_KEY = "iosImportRootBookmark"
 
     private val lock = SynchronizedObject()
 
     private val defaults: NSUserDefaults get() = NSUserDefaults.standardUserDefaults
 
-    /** 已解析的授权根: security-scoped URL + 规范化路径 (包含关系判定用)。 */
-    private class AuthorizedRoot(val url: NSURL, val canonicalPath: String)
+    /** 已解析的授权根: 用途 + security-scoped URL + 规范化路径 (包含关系判定用)。 */
+    private class AuthorizedRoot(val usage: DirUsage, val url: NSURL, val canonicalPath: String)
 
     /** 已解析的授权根缓存; 集合变更或解析失败时整体重载。 */
     @Volatile
@@ -94,14 +106,14 @@ object IosSecurityScopedStorage {
     /**
      * 记录用户新选的目录: 起 scope → 建 minimal bookmark → 并入集合 → 停 scope。
      *
-     * 书籍目录与导出目录共用本入口 —— 两者都是用户为读写书籍文件而授权的目录,
-     * 同属一个授权集合 (集合成员一律可按路径取租约, 不区分当初为什么而选)。
-     *
-     * 同一目录重复选择时替换旧条目 (按规范化路径判身份), 集合内其余目录不受影响。
+     * [usage] 是这次选择的用途 —— 一条授权只放行同用途的访问: 为备份或字体选的宽目录不会放行
+     * 书籍文件访问, 反之亦然。同一个目录在不同用途下各留一条 (既是书籍目录又是导出目录时两边都可用);
+     * 同一 (用途, 目录) 重复选择时替换旧条目, 其余条目一律保留 —— 否则找回第二本不同目录的书
+     * 会让第一本书失去授权。
      *
      * @return 目录 POSIX 路径; 建 bookmark 失败返回 null (调用方按"未授权"处理, 不落任何存储)
      */
-    fun addBookTree(url: NSURL): String? {
+    fun addDir(url: NSURL, usage: DirUsage): String? {
         val path = url.path ?: return null
         val started = url.startAccessingSecurityScopedResource()
         if (!started && !isSandboxPath(canonicalPath(path))) return null
@@ -110,26 +122,31 @@ object IosSecurityScopedStorage {
         } finally {
             if (started) url.stopAccessingSecurityScopedResource()
         } ?: return null
-        // 同一目录重复选择时替换旧条目; 集合内其余目录一律保留 —— 否则找回第二本
-        // 不同目录的书会让第一本书失去授权
         val target = canonicalPath(path)
         synchronized(lock) {
-            val kept = storedBookmarks().filterNot { existing ->
+            val stored = storedDirs().toMutableMap()
+            val kept = stored[usage].orEmpty().filterNot { existing ->
                 resolveBookmark(existing)?.first?.path?.let { canonicalPath(it) } == target
             }
-            storeBookmarks(kept + bookmark)
+            stored[usage] = kept + bookmark
+            storeDirs(stored)
             roots = emptyList()
         }
         return path
     }
 
-    private fun storedBookmarks(): List<String> =
-        defaults.arrayForKey(BOOK_TREE_BOOKMARKS_KEY)
-            ?.filterIsInstance<String>()
-            .orEmpty()
+    /** 已登记授权 (用途 → bookmark 列表); 存储损坏时按空集合处理并留痕。 */
+    private fun storedDirs(): Map<DirUsage, List<String>> {
+        val raw = defaults.stringForKey(AUTHORIZED_DIRS_KEY) ?: return emptyMap()
+        return runCatching { KS_JSON.decodeFromString<Map<DirUsage, List<String>>>(raw) }
+            .getOrElse {
+                AppLog.put("目录授权集合解析失败\n${it.message}", it)
+                emptyMap()
+            }
+    }
 
-    private fun storeBookmarks(bookmarks: List<String>) {
-        defaults.setObject(bookmarks, forKey = BOOK_TREE_BOOKMARKS_KEY)
+    private fun storeDirs(dirs: Map<DirUsage, List<String>>) {
+        defaults.setObject(KS_JSON.encodeToString(dirs), forKey = AUTHORIZED_DIRS_KEY)
         defaults.synchronize()
     }
 
@@ -137,23 +154,26 @@ object IosSecurityScopedStorage {
      * 解析全部已存 bookmark 为授权根集合。
      *
      * 陈旧 bookmark 在有效 scope 内重建；暂时无法重建时保留原值。
-     * 无法解析的条目移除，其余目录不受影响。
+     * 无法解析的条目移除，同用途的其余目录不受影响。
      */
     private fun resolvedRoots(): List<AuthorizedRoot> = synchronized(lock) {
         if (roots.isNotEmpty()) return@synchronized roots
-        val stored = storedBookmarks()
+        val stored = storedDirs()
         if (stored.isEmpty()) return@synchronized emptyList()
         val parsed = mutableListOf<AuthorizedRoot>()
-        val kept = mutableListOf<String>()
-        for (raw in stored) {
-            val resolved = resolveBookmark(raw) ?: continue
-            val url = resolved.first
-            val rawPath = url.path ?: continue
-            val bookmark = if (resolved.second) renewBookmark(url) ?: raw else raw
-            kept += bookmark
-            parsed += AuthorizedRoot(url, canonicalPath(rawPath))
+        val renewed = mutableMapOf<DirUsage, List<String>>()
+        for ((usage, bookmarks) in stored) {
+            val kept = mutableListOf<String>()
+            for (raw in bookmarks) {
+                val resolved = resolveBookmark(raw) ?: continue
+                val url = resolved.first
+                val rawPath = url.path ?: continue
+                kept += if (resolved.second) renewBookmark(url) ?: raw else raw
+                parsed += AuthorizedRoot(usage, url, canonicalPath(rawPath))
+            }
+            if (kept.isNotEmpty()) renewed[usage] = kept
         }
-        if (kept != stored) storeBookmarks(kept)
+        if (renewed != stored) storeDirs(renewed)
         roots = parsed
         parsed
     }
@@ -180,7 +200,8 @@ object IosSecurityScopedStorage {
 
     /**
      * 记录用户新选的导入根目录 (存 bookmark 供 [restoreImportRootPath] 下次恢复)。
-     * 不在此持有 scope: 导入浏览的目录列举/读取与书籍读取一样走 [acquireLease] 逐次授权。
+     * 不在此持有 scope: 导入浏览的目录列举/读取与书籍读取一样走 [acquireLease] 逐次授权;
+     * 该授权以 [DirUsage.BookTree] 参与匹配 (导入页浏览与导入的都是书籍文件)。
      *
      * @return 目录 POSIX 路径; 建 bookmark 失败返回 null
      */
@@ -195,7 +216,7 @@ object IosSecurityScopedStorage {
         } ?: return null
         defaults.setObject(bookmark, forKey = IMPORT_ROOT_BOOKMARK_KEY)
         defaults.synchronize()
-        synchronized(lock) { importRoot = AuthorizedRoot(url, canonicalPath(path)) }
+        synchronized(lock) { importRoot = AuthorizedRoot(DirUsage.BookTree, url, canonicalPath(path)) }
         return path
     }
 
@@ -217,13 +238,13 @@ object IosSecurityScopedStorage {
                     defaults.synchronize()
                 }
             }
-            val restored = AuthorizedRoot(url, canonicalPath(rawPath))
+            val restored = AuthorizedRoot(DirUsage.BookTree, url, canonicalPath(rawPath))
             synchronized(lock) { importRoot = restored }
             restored
         }
         val path = root.url.path ?: return null
         return runCatching {
-            acquireLease(path).close()
+            acquireLease(path, DirUsage.BookTree).close()
             path
         }.getOrNull()
     }
@@ -233,14 +254,17 @@ object IosSecurityScopedStorage {
     /**
      * 取 [path] 的授权租约; 调用方必须 [IosSecurityScopeLease.close] 释放。
      *
+     * [usage] 为本次访问的用途: 只有同用途的授权条目才能放行 —— 为备份或字体选的宽目录不会放行
+     * 书籍文件访问。
+     *
      * - 沙盒内路径: 返回无需 scope 的空租约;
-     * - 落在已授权目录下: 对该根 URL start, 租约持有同一 URL 并在 close 时配对 stop;
+     * - 落在同用途的已授权目录下: 对该根 URL start, 租约持有同一 URL 并在 close 时配对 stop;
      * - 其余情况抛 [SecurityException] (阅读层据此提示"选择书籍所在文件夹")。
      */
-    fun acquireLease(path: String): IosSecurityScopeLease {
+    fun acquireLease(path: String, usage: DirUsage): IosSecurityScopeLease {
         val target = canonicalPath(path)
         if (isSandboxPath(target)) return IosSecurityScopeLease.none()
-        val root = authorizedRootFor(target) ?: throw SecurityException("没有访问权限: $path")
+        val root = authorizedRootFor(target, usage) ?: throw SecurityException("没有访问权限: $path")
         if (!root.startAccessingSecurityScopedResource()) {
             invalidateAll()
             throw SecurityException("没有访问权限: $path")
@@ -258,13 +282,16 @@ object IosSecurityScopedStorage {
         }
     }
 
-    /** 找规范化路径 [canonicalTarget] 所属的授权根 (书籍目录集合优先, 其次导入根); 无匹配返回 null。 */
-    private fun authorizedRootFor(canonicalTarget: String): NSURL? {
-        resolvedRoots().firstOrNull { underRoot(it.canonicalPath, canonicalTarget) }
-            ?.let { return it.url }
-        return synchronized(lock) { importRoot }
-            ?.takeIf { underRoot(it.canonicalPath, canonicalTarget) }
-            ?.url
+    /**
+     * 找规范化路径 [canonicalTarget] 在 [usage] 用途下所属的授权根; 无匹配返回 null。
+     *
+     * 导入根目录以 [DirUsage.BookTree] 参与匹配 (见 [setImportRoot])。
+     */
+    private fun authorizedRootFor(canonicalTarget: String, usage: DirUsage): NSURL? {
+        val roots = resolvedRoots() + listOfNotNull(synchronized(lock) { importRoot })
+        return roots.firstOrNull {
+            it.usage == usage && underRoot(it.canonicalPath, canonicalTarget)
+        }?.url
     }
 
     /**
@@ -274,10 +301,11 @@ object IosSecurityScopedStorage {
      * 沙盒内路径 (租约不持 scope) 不经协调器, 直接执行。
      * 协调器报错或协调块未执行时抛 [IOException]；授权失败由 [acquireLease] 抛出。
      *
+     * @param usage 本次访问的用途, 见 [acquireLease]
      * @param write true 走 `coordinateWritingItemAtURL` (删除等写操作)
      */
-    fun <T> withAccess(path: String, write: Boolean = false, block: (String) -> T): T {
-        val lease = acquireLease(path)
+    fun <T> withAccess(path: String, usage: DirUsage, write: Boolean = false, block: (String) -> T): T {
+        val lease = acquireLease(path, usage)
         try {
             val target = canonicalPath(path)
             if (!lease.holdsScope) return block(target)
@@ -296,8 +324,8 @@ object IosSecurityScopedStorage {
     fun findBookFileInTree(dirUri: String, fileName: String): String? {
         if (fileName.isEmpty()) return null
         val target = canonicalPath(dirUri)
-        if (!isSandboxPath(target) && authorizedRootFor(target) == null) return null
-        return withAccess(dirUri) { dirPath ->
+        if (!isSandboxPath(target) && authorizedRootFor(target, DirUsage.BookTree) == null) return null
+        return withAccess(dirUri, DirUsage.BookTree) { dirPath ->
             val dir = File(dirPath)
             val direct = File(dir, fileName)
             if (direct.isFile) "file://${direct.absolutePath}" else null

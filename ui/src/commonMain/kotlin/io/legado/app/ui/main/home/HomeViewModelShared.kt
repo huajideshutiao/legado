@@ -12,6 +12,7 @@ import io.legado.app.model.webBook.BookListPager
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.WebBook.getBookListAwait
 import io.legado.app.model.webBook.parseExploreOptionsFromUrl
+import io.legado.app.model.webBook.pluginFilterSessionOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -174,7 +175,8 @@ class HomeViewModelShared(
             val result = getBookListAwait(
                 source, section.searchKey ?: section.exploreUrl, 1,
                 isSearch = section.searchKey != null,
-                selectedOptions = selectedOptions
+                selectedOptions = selectedOptions,
+                pluginFilters = pluginFilterSessionOf(source),
             )
             state.sectionBooksMap[section.id] = result.books
             _sectionUpdatedFlow.tryEmit(tabTitle to section.id)
@@ -223,6 +225,7 @@ class HomeViewModelShared(
                 isSearch = section.searchKey != null,
                 selectedOptions = selectedOptions,
                 nextPageUrl = state.infinitePager.nextPageUrl,
+                pluginFilters = pluginFilterSessionOf(source),
             )
             val prevSize = state.infiniteBookMap.size
             result.books.forEach { b -> state.infiniteBookMap.getOrPut(b.bookUrl) { b } }

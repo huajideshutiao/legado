@@ -19,6 +19,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
+import io.legado.app.constant.DirUsage
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.resolveImagePath
@@ -217,11 +218,13 @@ private class AndroidFilePickerService(
     }
 
     /**
-     * 备份目录可写性预检 (对照 app 端 BackupConfigFragment.backup:
+     * 目录可写性预检 (对照 app 端 BackupConfigFragment.backup:
      * FileDoc.fromDir(path).checkWrite())。content:// 走 SAF DocumentFile 判断,
      * 普通路径 (桌面等无 SAF 平台) 视为可写。
+     *
+     * SAF 权限按树 URI 授予, 无用途维度, 不区分目录当初为何而选。
      */
-    override fun checkWrite(path: String): Boolean = runBlocking {
+    override fun checkWrite(path: String, usage: DirUsage): Boolean = runBlocking {
         val uri = path.toUri()
         if (uri.scheme?.lowercase() != "content") {
             true
@@ -233,7 +236,8 @@ private class AndroidFilePickerService(
     }
 
     // 选目录: OpenDocumentTree (对照 app 端 HandleFileDialog.selectDocTree),
-    // 选中后 takePersistableUriPermission 保证重启后仍可访问
+    // 选中后 takePersistableUriPermission 保证重启后仍可访问;
+    // SAF 权限按树 URI 授予, 无用途维度, 不区分目录为何而选
     override val supportsDirWrite: Boolean = true
 
     // 写进已选目录 (对照 app 端 FileUtils.saveImage(dirUri): FileDoc 兼容 content:// 与 file://)
@@ -244,7 +248,7 @@ private class AndroidFilePickerService(
             true
         }.getOrDefault(false)
 
-    override fun pickDirectory(): String? = runBlocking {
+    override fun pickDirectory(usage: DirUsage): String? = runBlocking {
         withContext(Dispatchers.Main) { openDocumentTreePicker.launch(null) }?.let { uri ->
             val modeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
                 Intent.FLAG_GRANT_WRITE_URI_PERMISSION

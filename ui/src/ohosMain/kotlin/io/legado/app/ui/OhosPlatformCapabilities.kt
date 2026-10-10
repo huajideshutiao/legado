@@ -5,6 +5,7 @@ import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import io.legado.app.constant.BookType
+import io.legado.app.constant.DirUsage
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
 import io.legado.app.constant.PreferKey
@@ -240,7 +241,7 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     // bookUrl 可能指向用户授权目录内的原文件 (阅读重定位后不复制), 先激活授权再取属性
     override suspend fun localBookFileSize(bookUrl: String): Long = withContext(IoDispatcher) {
         val path = bookUrl.removePrefix("file://")
-        OhosDirAuthorizations.ensureActivatedFor(path)
+        OhosDirAuthorizations.ensureActivatedFor(path, DirUsage.BookTree)
         File(path).length()
     }
 
@@ -248,7 +249,7 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     // 先激活授权再走 NativePlatformCapabilities 的 depth 0/1 扫描, 返回保持 file:// 前缀 bookUrl;
     // 激活失败抛 SecurityException (带 errCode/policyCode), 不吞成文件不存在
     override fun findBookFileInDir(dirUri: String, fileName: String): String? {
-        OhosDirAuthorizations.ensureActivatedFor(dirUri)
+        OhosDirAuthorizations.ensureActivatedFor(dirUri, DirUsage.BookTree)
         return super<NativePlatformCapabilities>.findBookFileInDir(dirUri, fileName)
     }
 
@@ -649,7 +650,7 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
         val path = effectiveBookExportDir() ?: return null
         val dir = File(path)
         val usable = try {
-            OhosDirAuthorizations.ensureActivatedFor(path)
+            OhosDirAuthorizations.ensureActivatedFor(path, DirUsage.Export)
             dir.isDirectory || dir.mkdirs()
         } catch (e: Exception) {
             AppLog.put("导出目录不可用\n${e.message}", e)
@@ -669,10 +670,11 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
      * 复用 [PlatformServiceProviders] 的目录选择器选一个用户可见的公共目录
      * (DocumentViewPicker + 授权持久化写模式 + 官方转换路径 + 记入授权表供重启后激活),
      * 选中后记入设备本地配置空间 ([rememberBookExportDir]); 开了自定义导出章节先弹章节配置, 否则直接导出。
+     * 目录按 [DirUsage.Export] 登记: 只放行导出写入, 不放行书籍文件访问。
      */
     override fun selectExportFolder(books: List<Book>) {
         scope.launch {
-            val path = services.files.pickDirectory() ?: return@launch
+            val path = services.files.pickDirectory(DirUsage.Export) ?: return@launch
             rememberBookExportDir(path)
             if (books.isEmpty()) return@launch
             // 对照 BookshelfManageActivity.exportDir 回调的 enableCustomExport():
@@ -856,10 +858,10 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     // 对照 Android onPickFolder / selectFolder.launch;
     // 复用 OhosPlatformServices.pickDirectory (DocumentViewPicker 选目录 + 授权持久化 +
     // fileUri 官方转换, 记入授权表供重启后激活), 桥接未就绪/用户取消/目录不可访问时
-    // 返回 null 保持原目录不动
+    // 返回 null 保持原目录不动; 目录按 [DirUsage.BookTree] 登记 (导入页浏览与导入的都是书籍文件)
     override fun pickImportFolder() {
         scope.launch {
-            val path = services.files.pickDirectory() ?: return@launch
+            val path = services.files.pickDirectory(DirUsage.BookTree) ?: return@launch
             NativeImportBook.setRoot(path)
         }
     }

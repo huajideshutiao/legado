@@ -3,6 +3,7 @@
 package io.legado.app.ui
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.DirUsage
 import io.legado.app.constant.NotificationId
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.file.pickDocuments
@@ -147,14 +148,14 @@ private object IosFilePickerService : FilePickerService {
      * 选目录 (对照各端 `FilePickerService.pickDirectory`)。
      *
      * 选定目录在应用容器之外, 只回路径的话临时授权不跨启动, 下次访问拿不回授权 —— 故把 URL 交
-     * 授权表存 security-scoped bookmark (与"书籍保存位置"/导出目录同一张表), 调用方读写前用
-     * [IosSecurityScopedStorage.acquireLease] 取租约即可。
+     * 授权表存 security-scoped bookmark, [usage] 记下这次选择的用途 (本入口服务备份与字体两个
+     * 入口, 两者授权互不放行), 调用方读写前用 [IosSecurityScopedStorage.acquireLease] 取同用途租约。
      *
      * 用户取消返回 null; 建 bookmark 失败时报出来并返回 null (不交出拿不回授权的路径)。
      */
-    override fun pickDirectory(): String? {
+    override fun pickDirectory(usage: DirUsage): String? {
         val url = runBlocking { pickDirectoryDocument() } ?: return null
-        return IosSecurityScopedStorage.addBookTree(url) ?: run {
+        return IosSecurityScopedStorage.addDir(url, usage) ?: run {
             AppLog.put("选定目录无法保存访问授权: ${url.path}")
             Toasters.get().toast("无法保存目录的访问授权，请重新选择目录")
             null

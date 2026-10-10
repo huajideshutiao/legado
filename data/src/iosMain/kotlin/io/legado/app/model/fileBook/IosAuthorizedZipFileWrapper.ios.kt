@@ -2,6 +2,7 @@ package io.legado.app.model.fileBook
 
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
+import io.legado.app.constant.DirUsage
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.utils.File
@@ -30,7 +31,7 @@ internal class IosAuthorizedZipFileWrapper(private val path: String) : ZipFileWr
 
     private val core: RemoteZipCore by lazy {
         // 文件长度是文件系统调用: 外部目录需在授权内取 (之后每段区间读各自取租约)
-        val size = IosSecurityScopedStorage.withAccess(path) { File(it).length() }
+        val size = IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) { File(it).length() }
         RemoteZipCore(
             RangedSource { offset, length, _ -> readRange(offset, length) },
             file.name,
@@ -57,7 +58,7 @@ internal class IosAuthorizedZipFileWrapper(private val path: String) : ZipFileWr
 
     /** 单次区间读: 授权内整读文件后切片 (与 nativeMain 实现同策略, 不加第二套随机读逻辑)。 */
     private fun readRange(offset: Long, length: Int): ByteArray =
-        IosSecurityScopedStorage.withAccess(path) { target ->
+        IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) { target ->
             val bytes = File(target).readBytes()
             val from = offset.coerceIn(0L, bytes.size.toLong()).toInt()
             val to = (from + length).coerceIn(from, bytes.size)
@@ -84,7 +85,7 @@ class IosZipFileWrapperFactory : ZipFileWrapperFactory {
         val lower = path.lowercase()
         if (!lower.endsWith(".cbz") && !lower.endsWith(".zip")) return null
         val exists = runCatching {
-            IosSecurityScopedStorage.withAccess(path) { File(it).isFile }
+            IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) { File(it).isFile }
         }.getOrDefault(false)
         if (!exists) return null
         return ZipFileWrapperFactory.CreateResult(IosAuthorizedZipFileWrapper(path))

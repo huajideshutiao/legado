@@ -11,10 +11,7 @@ import io.legado.app.help.extension.MangaExtensionManager
 import io.legado.app.help.extension.PluginSourceIcons
 import io.legado.app.help.extension.model.MangaExtensionRepo
 import io.legado.app.help.extension.model.RepoKind
-import io.legado.app.model.anime.AnimeSourceMapper
 import io.legado.app.model.plugin.pluginInstalledOf
-import io.legado.app.model.webBook.AnimeFilterSession
-import io.legado.app.model.webBook.MangaFilterSession
 import io.legado.app.ui.book.manga.extension.MangaContentFilter
 import io.legado.app.ui.book.manga.extension.MangaContentWarning
 import io.legado.app.ui.book.manga.extension.MangaExtensionItem
@@ -240,18 +237,6 @@ open class SharedMangaExtensionPlatform(
     override suspend fun removeRepo(indexUrl: String) {
         MangaExtensionManager.removeRepo(indexUrl)
         MangaExtensionManager.findAvailableExtensions()
-    }
-
-    override suspend fun createMangaFilterSession(bookSourceUrl: String): MangaFilterSession? {
-        val sourceId = MangaSourceMapper.sourceIdOf(bookSourceUrl) ?: return null
-        val source = MangaExtensionManager.getSource(sourceId) ?: return null
-        return MangaFilterSession(source.getFilterList())
-    }
-
-    override suspend fun createAnimeFilterSession(bookSourceUrl: String): AnimeFilterSession? {
-        val sourceId = AnimeSourceMapper.sourceIdOf(bookSourceUrl) ?: return null
-        val source = MangaExtensionManager.getAnimeSource(sourceId) ?: return null
-        return AnimeFilterSession(source.getFilterList())
     }
 
     // region 插件自带配置 (ConfigurableSource/ConfigurableAnimeSource)

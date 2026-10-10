@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.constant.DirUsage
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
@@ -284,7 +285,7 @@ private fun ReadStyleContent(
                         .clickable {
                             scope.launch {
                                 val path = withContext(IoDispatcher) {
-                                    PlatformServiceProviders.get().files.pickDirectory()
+                                    PlatformServiceProviders.get().files.pickDirectory(DirUsage.Font)
                                 } ?: return@launch
                                 prefs.putString(PreferKey.fontFolder, path)
                                 rescanFontItems()

@@ -13,6 +13,7 @@ import io.legado.app.help.i18n.appString
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.script.JsEngines
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.model.webBook.pluginFilterSessionOf
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -221,7 +222,11 @@ object CheckSourceShared {
             val searchWord = source.getCheckKeyword(keyword)
             if (!source.searchUrl.isNullOrBlank()) {
                 source.removeGroup("搜索链接规则为空")
-                val searchBooks = WebBook.getBookListAwait(source, searchWord).books
+                val searchBooks = WebBook.getBookListAwait(
+                    source,
+                    searchWord,
+                    pluginFilters = pluginFilterSessionOf(source),
+                ).books
                 if (searchBooks.isEmpty()) {
                     source.addGroup("搜索失效")
                 } else {
@@ -241,7 +246,12 @@ object CheckSourceShared {
                 source.addGroup("发现规则为空")
             } else {
                 source.removeGroup("发现规则为空")
-                val exploreBooks = WebBook.getBookListAwait(source, url, isSearch = false).books
+                val exploreBooks = WebBook.getBookListAwait(
+                    source,
+                    url,
+                    isSearch = false,
+                    pluginFilters = pluginFilterSessionOf(source),
+                ).books
                 if (exploreBooks.isEmpty()) {
                     source.addGroup("发现失效")
                 } else {

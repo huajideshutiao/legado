@@ -492,7 +492,8 @@ object WebBook {
             getBookListAwait(
                 bookSource, name,
                 filter = { fName, fAuthor -> fName == name && fAuthor == author },
-                shouldBreak = { it > 0 }
+                shouldBreak = { it > 0 },
+                pluginFilters = pluginFilterSessionOf(bookSource),
             ).books.firstOrNull()?.let { searchBook ->
                 currentCoroutineContext().ensureActive()
                 return@runCatching searchBook.toBook()

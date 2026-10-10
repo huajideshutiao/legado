@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.DirUsage
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.config.AppConfigProviders
@@ -206,7 +207,9 @@ fun BackupConfigRoute(
                 } else if (backupPath.isNullOrBlank()) {
                     // 没设路径: SAF 选目录, 选完写 prefs + 立即备份 (对照 app 端 backupDir.launch)
                     screenModel.scope.launch {
-                        val path = withContext(IoDispatcher) { services.files.pickDirectory() }
+                        val path = withContext(IoDispatcher) {
+                            services.files.pickDirectory(DirUsage.Backup)
+                        }
                         if (path != null) {
                             pref.putString(PreferKey.backupPath, path)
                             screenModel.dispatch(
@@ -219,14 +222,14 @@ fun BackupConfigRoute(
                     // 对照 app 端 backup(): 已设路径先 checkWrite, 不可写则重新选目录再备份
                     screenModel.scope.launch {
                         val canWrite = withContext(IoDispatcher) {
-                            services.files.checkWrite(backupPath)
+                            services.files.checkWrite(backupPath, DirUsage.Backup)
                         }
                         if (canWrite) {
                             startBackup(backupPath, uploadToWebDav)
                         } else {
                             // 对照 app 端 backupDir.launch(): 重新选目录, 选完写 prefs + 立即备份
                             val path = withContext(IoDispatcher) {
-                                services.files.pickDirectory()
+                                services.files.pickDirectory(DirUsage.Backup)
                             }
                             if (path != null) {
                                 pref.putString(PreferKey.backupPath, path)
@@ -298,7 +301,7 @@ fun BackupConfigRoute(
             onSelectBackupPath = {
                 screenModel.scope.launch {
                     val path = withContext(IoDispatcher) {
-                        PlatformServiceProviders.get().files.pickDirectory()
+                        PlatformServiceProviders.get().files.pickDirectory(DirUsage.Backup)
                     }
                     if (path != null) {
                         pref.putString(PreferKey.backupPath, path)

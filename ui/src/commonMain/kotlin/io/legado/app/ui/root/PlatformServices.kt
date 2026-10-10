@@ -2,6 +2,7 @@ package io.legado.app.ui.root
 
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.DirUsage
 import io.legado.app.constant.fileNameFormat
 import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.config.PreferenceProviders
@@ -120,7 +121,7 @@ interface FilePickerService {
             prefs.getString(AppConst.imagePathKey).takeIf { it.isNotEmpty() }
         }
         val dir = remembered
-            ?: pickDirectory()?.also { prefs.putString(AppConst.imagePathKey, it) }
+            ?: pickDirectory(DirUsage.ImageSave)?.also { prefs.putString(AppConst.imagePathKey, it) }
             ?: return null
         if (writeImageToDir(dir, fileName, bytes)) return true
         // 目录被删/权限丢失: 忘掉记忆目录, 下次重新选 (对照 app 端 onError → ACache.remove)
@@ -128,16 +129,24 @@ interface FilePickerService {
         return false
     }
 
-    // 选目录 (对照 app 端 HandleFileContract.DIR_SYS / OpenDocumentTree),
-    // 各端按需实现, 默认返回 null 由调用方降级
-    fun pickDirectory(): String? = null
+    /**
+     * 选目录 (对照 app 端 HandleFileContract.DIR_SYS / OpenDocumentTree)。
+     *
+     * [usage] 为本次选择的用途: 受沙盒约束的端 (iOS/鸿蒙) 按用途登记目录授权, 该目录只放行同用途的
+     * 访问; 安卓 SAF 权限按树 URI 授予、桌面为普通文件路径, 无用途维度, 忽略该参数。
+     *
+     * 各端按需实现, 默认返回 null 由调用方降级
+     */
+    fun pickDirectory(usage: DirUsage): String? = null
 
     /**
-     * 备份目录可写性预检 (对照 app 端 BackupConfigFragment.backup 的 FileDoc.checkWrite)。
+     * 目录可写性预检 (对照 app 端 BackupConfigFragment.backup 的 FileDoc.checkWrite)。
+     * [usage] 同 [pickDirectory]: 该目录须在该用途下已授权才可写。
+     *
      * Android SAF content:// 目录用 DocumentFile 判断可写性, 不可写返回 false 由调用方引导重新选目录;
      * 无 SAF 概念的平台 (桌面等普通路径) 默认视为可写。
      */
-    fun checkWrite(path: String): Boolean = true
+    fun checkWrite(path: String, usage: DirUsage): Boolean = true
 
     /**
      * 处理启动闪屏背景图 (选图后调用)：原图复制进图集目录 (备份链路) + 按本端启动界面

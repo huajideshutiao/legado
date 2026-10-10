@@ -428,10 +428,12 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
         fun getSearchOptions(sourceUrl: String): List<ExploreOption> = emptyList()
 
         /**
-         * 取该源页面会话筛选实例 (默认 null: 无筛选 UI 的调用方, 委派按源默认筛选取数)。
-         * 实现方持有实例并在会话内复用, 使筛选 UI 与取数共用同一份; 不经全局缓存。
+         * 取该源页面会话筛选实例。默认实现 = 无筛选 UI 的调用方 (web API 等): 经唯一入口
+         * [pluginFilterSessionOf] 取源默认实例 (注册表就绪后新建, 不缓存)。
+         * 有筛选界面的实现方持有实例并在会话内复用, 使筛选 UI 与取数共用同一份。
          */
-        suspend fun getPluginFilters(source: BookSource): PluginFilterSession? = null
+        suspend fun getPluginFilters(source: BookSource): PluginFilterSession? =
+            pluginFilterSessionOf(source)
 
         /** 本轮搜索源列表就绪 (在 [search] 里与 [bookSources] 同时赋值)。 */
         fun onSearchSourcesResolved(sources: List<BookSource>) {}

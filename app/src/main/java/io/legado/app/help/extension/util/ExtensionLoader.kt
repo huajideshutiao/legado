@@ -4,7 +4,9 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.content.res.Resources
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
 import android.os.Build
@@ -16,6 +18,7 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
 import io.legado.app.constant.AppLog
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.extension.EXTENSION_ICON_MAX_PIXEL_SIZE
 import io.legado.app.help.extension.ExtensionApkInfo
 import io.legado.app.help.extension.isValidExtensionPackageName
 import io.legado.app.help.extension.model.ContentWarning
@@ -215,28 +218,58 @@ internal object ExtensionLoader {
      * 私有 apk 路径, 再按清单声明的图标资源 id 在本进程内读该包资源。不走
      * `PackageManager.getApplicationIcon`: 它在取不到图标时回落系统默认图标, 会把"没有图标"
      * 显示成有图标; 这里取不到就返回 null, 由调用方回落书源名首字占位。
+     *
+     * 尺寸超过 [EXTENSION_ICON_MAX_PIXEL_SIZE] 的图标按没有图标处理 (位图图标在解码前就被认出来,
+     * 只在读不出尺寸时才按兜底边长绘制): 清单可以声明任意大的图标, 按声明尺寸建位图会被拉到巨量分配。
+     *
+     * 包信息读取/资源解析/编码任何一环出错都收敛为 null: 调用方在书源列表流里逐行取图,
+     * 异常漏出去会终结整条列表流 (此后不再随插件与书源库更新)。
      */
-    fun readExtensionIcon(context: Context, pkgName: String): ByteArray? {
+    fun readExtensionIcon(context: Context, pkgName: String): ByteArray? =
+        runCatching { readIconPngBytes(context, pkgName) }
+            .getOrElse { e ->
+                // 落日志自身也要写文件, 再套一层: 日志失败同样不能让异常漏出本方法
+                runCatching { AppLog.put("扩展图标读取失败: $pkgName", e) }
+                null
+            }
+
+    /** [readExtensionIcon] 的实现体 (允许抛出, 由外层收容)。 */
+    private fun readIconPngBytes(context: Context, pkgName: String): ByteArray? {
         val appInfo = getExtensionPackageInfoFromPkgName(context, pkgName)?.applicationInfo
             ?: return null
         val resId = appInfo.icon
         if (resId == 0) return null
-        val packageManager = context.packageManager
-        val drawable = runCatching {
-            packageManager.getResourcesForApplication(appInfo).getDrawable(resId, null)
-        }.onFailure {
-            AppLog.put("扩展图标读取失败: $pkgName", it)
-        }.getOrNull() ?: return null
+        val resources = context.packageManager.getResourcesForApplication(appInfo)
+        // 位图图标先只看声明尺寸: 超上限直接跳过, 不让系统按声明尺寸解码出巨量位图
+        if (declaredIconTooLarge(resources, resId)) return null
+        val drawable = resources.getDrawable(resId, null) ?: return null
         return drawable.toPngBytes()
+    }
+
+    /**
+     * 清单声明的位图图标是否超过尺寸上限 (只解图像头, 不解像素)。
+     *
+     * 矢量图与自适应图标读不出位图尺寸, outWidth/outHeight 保持非正, 真值走 Drawable 路径;
+     * 读尺寸本身出错同样返回 false, 不影响正常图标。
+     */
+    private fun declaredIconTooLarge(resources: Resources, resId: Int): Boolean {
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        runCatching { BitmapFactory.decodeResource(resources, resId, options) }
+        return options.outWidth > EXTENSION_ICON_MAX_PIXEL_SIZE ||
+            options.outHeight > EXTENSION_ICON_MAX_PIXEL_SIZE
     }
 
     /** Drawable 画到同尺寸位图后编码为 PNG (图标可能是矢量/自适应图标, 不能直接取原字节)。*/
     private fun Drawable.toPngBytes(): ByteArray? = runCatching {
         val width = intrinsicWidth.takeIf { it > 0 } ?: ICON_FALLBACK_SIZE
         val height = intrinsicHeight.takeIf { it > 0 } ?: ICON_FALLBACK_SIZE
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        // 超过上限按兜底边长绘制: 不按固有尺寸分配位图
+        val tooLarge = width > EXTENSION_ICON_MAX_PIXEL_SIZE || height > EXTENSION_ICON_MAX_PIXEL_SIZE
+        val targetWidth = if (tooLarge) ICON_FALLBACK_SIZE else width
+        val targetHeight = if (tooLarge) ICON_FALLBACK_SIZE else height
+        val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        setBounds(0, 0, width, height)
+        setBounds(0, 0, targetWidth, targetHeight)
         draw(canvas)
         ByteArrayOutputStream().use { out ->
             if (bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) out.toByteArray() else null

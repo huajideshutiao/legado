@@ -34,6 +34,9 @@ import kotlinx.coroutines.ensureActive
  * Book/BookChapter/可播内容串, 复用现有搜索/详情/目录/视频播放管线。
  * 正文返回 `videoUrl,{"headers":{…}}` 链接参数串或多行 `标题::内容` (多分辨率),
  * 由现有 parseVideoContent 链解析进播放器。
+ *
+ * 筛选器实例统一由数据层入口 ([io.legado.app.model.webBook.pluginFilterSessionOf]) 新建并经
+ * WebBook 透传 (页面会话, 不持久化): 缺失或契约不符即报错, 不代建默认筛选。
  */
 object VideoSourceDelegateImpl : PluginSourceDelegate {
 
@@ -44,6 +47,15 @@ object VideoSourceDelegateImpl : PluginSourceDelegate {
     override fun tocFailMessage(bookSource: BookSource, e: Throwable): String =
         "获取tachiyomi插件 ${bookSource.bookSourceName} 的书籍目录失败\n${e.message}"
 
+    override suspend fun createFilterSession(bookSource: BookSource): PluginFilterSession? {
+        // 装载完成前问不出该源的筛选器 (问不出会被当成"没有筛选器"): 先等本地装载, 失败也放行,
+        // 未启动则不等; 答案由注册表现状决定
+        MangaExtensionManager.awaitInitialized()
+        val sourceId = AnimeSourceMapper.sourceIdOf(bookSource.bookSourceUrl) ?: return null
+        val source = MangaExtensionManager.getAnimeSource(sourceId) ?: return null
+        return AnimeFilterSession(source.getFilterList())
+    }
+
     override suspend fun getBookListAwait(
         bookSource: BookSource,
         key: String,
@@ -51,7 +63,7 @@ object VideoSourceDelegateImpl : PluginSourceDelegate {
         filters: PluginFilterSession?,
     ): BookListPage {
         val source = resolveSource(bookSource)
-        val animesPage = source.getSearchAnime(page, key, filters.toAnimeFilterList(source))
+        val animesPage = source.getSearchAnime(page, key, filters.toAnimeFilterList())
         return animesPage.toBookListPage(bookSource)
     }
 
@@ -64,28 +76,25 @@ object VideoSourceDelegateImpl : PluginSourceDelegate {
         val source = resolveSource(bookSource)
         // 虚拟源 exploreUrl 的分类 url 段 → 插件源对应取数面 (未知值显式报错, 不静默返回空)。
         // supportsLatest=false 的源在 getLatestUpdates 上抛 (上游语义), 此处如实透传。
-        // 筛选段 = Mihon FilterSheet 应用后的搜索面: 空关键词 + 页面会话筛选实例
+        // 筛选段 = Mihon FilterSheet 应用后的搜索面: 空关键词 + 本页会话筛选实例
         // (WebBook 透传, 随页面销毁); 仅声明了筛选器的源才有该分类。
         val animesPage = when (url) {
             AnimePluginSources.EXPLORE_URL_POPULAR -> source.getPopularAnime(page)
             AnimePluginSources.EXPLORE_URL_LATEST -> source.getLatestUpdates(page)
-            AnimePluginSources.EXPLORE_URL_FILTER -> {
-                val session = filters as? AnimeFilterSession
-                    ?: throw IllegalArgumentException("视频插件源筛选分类未携带筛选会话实例")
-                source.getSearchAnime(page, "", session.filters)
-            }
+            AnimePluginSources.EXPLORE_URL_FILTER ->
+                source.getSearchAnime(page, "", filters.toAnimeFilterList())
             else -> throw IllegalStateException("未知的视频插件发现分类: $url")
         }
         return animesPage.toBookListPage(bookSource)
     }
 
     /**
-     * 会话实例 → 取数用筛选器: 未带会话的调用方 (无筛选 UI) 用源默认筛选 (与 Mihon
-     * `state.filters` 恒为 `source.getFilterList()` 同语义); 会话类型不符即报错。
+     * 会话实例 → 取数用筛选器: 会话由唯一入口 [io.legado.app.model.webBook.pluginFilterSessionOf]
+     * 提供, 缺失或契约不符即报错 (该带会话的调用方没带就是缺陷, 不代建默认筛选掩盖)。
      */
-    private fun PluginFilterSession?.toAnimeFilterList(source: AnimeSource): AnimeFilterList =
+    private fun PluginFilterSession?.toAnimeFilterList(): AnimeFilterList =
         when (this) {
-            null -> source.getFilterList()
+            null -> throw IllegalArgumentException("视频插件源取数未携带筛选会话实例")
             is AnimeFilterSession -> filters
             else -> throw IllegalArgumentException("视频插件源收到不匹配的筛选会话实例")
         }

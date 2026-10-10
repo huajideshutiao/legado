@@ -1,14 +1,12 @@
 package io.legado.app.ui.book.search
 
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.BookSourceType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
-import io.legado.app.data.entities.isTachiyomiPluginSource
 import io.legado.app.help.book.BookFilter
 import io.legado.app.help.book.incrementalFilter
 import io.legado.app.help.config.AppConfigProviders
@@ -18,7 +16,7 @@ import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.PluginFilterSession
 import io.legado.app.model.webBook.SearchModel
 import io.legado.app.model.webBook.SourceSearchGroup
-import io.legado.app.ui.book.manga.extension.MangaExtensionServiceProviders
+import io.legado.app.model.webBook.pluginFilterSessionOf
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.concurrent.newConcurrentMap
 import io.legado.app.utils.concurrent.newConcurrentSet
@@ -163,7 +161,10 @@ class SearchViewModel {
      */
     private val pluginFilterSessions = newConcurrentMap<String, PluginFilterSession>()
 
-    /** 已探测确认不声明筛选器的插件源 (免得每次重组重复新建默认实例) */
+    /**
+     * 已探测确认不出筛选入口的插件源 (免得每次请求/重组重复新建默认实例):
+     * 源本身答出空筛选器, 或本端没有该源的插件实例。
+     */
     private val noFilterPluginSources = newConcurrentSet<String>()
 
     /** 筛选会话建立/替换版本 (面板据此重读实例)。 */
@@ -181,19 +182,13 @@ class SearchViewModel {
     private val _searchSources = MutableStateFlow<List<BookSource>>(emptyList())
     val searchSources = _searchSources.asStateFlow()
 
-    /** 取/建该源筛选会话; 非插件源或未声明筛选器的源返回 null (不出筛选入口)。 */
+    /** 取/建该源筛选会话; 没有可用插件源实例或未声明筛选器的源返回 null (不出筛选入口)。 */
     suspend fun ensurePluginFilterSession(source: BookSource): PluginFilterSession? {
-        if (!source.isTachiyomiPluginSource()) return null
         val url = source.bookSourceUrl
         pluginFilterSessions[url]?.let { return it }
         if (url in noFilterPluginSources) return null
-        val service = MangaExtensionServiceProviders.getOrNull() ?: return null
-        val session = when (source.bookSourceType) {
-            BookSourceType.image -> service.createMangaFilterSession(url)
-            BookSourceType.video -> service.createAnimeFilterSession(url)
-            else -> null
-        }
-        if (session == null || session.isEmpty) {
+        val session = pluginFilterSessionOf(source)?.takeIf { !it.isEmpty }
+        if (session == null) {
             noFilterPluginSources.add(url)
             return null
         }

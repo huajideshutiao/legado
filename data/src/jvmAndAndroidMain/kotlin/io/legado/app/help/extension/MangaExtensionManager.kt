@@ -104,7 +104,14 @@ object MangaExtensionManager {
         }
     }
 
-    private suspend fun awaitInitialized(): Boolean {
+    /**
+     * 等注册表装载完成。等的是本地扩展装载, 不含后续仓库索引拉取; 装载失败也照常返回
+     * (完成信号写在装载收尾处), 未启动时立即返回 false 表示没等过。
+     *
+     * 依赖注册表内存态作答的调用方 (如按源建筛选会话) 先等它: 否则会把"还没装载"
+     * 当成"没有这个源/这个源没有筛选器"。
+     */
+    suspend fun awaitInitialized(): Boolean {
         if (!started.get()) return false
         initialized.await()
         return true

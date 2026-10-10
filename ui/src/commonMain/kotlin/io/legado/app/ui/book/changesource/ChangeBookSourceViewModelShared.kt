@@ -17,6 +17,7 @@ import io.legado.app.help.coroutine.closeIfCloseable
 import io.legado.app.help.coroutine.newFixedThreadPoolDispatcher
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.model.webBook.pluginFilterSessionOf
 import io.legado.app.utils.concurrent.newConcurrentMap
 import io.legado.app.utils.concurrent.newSynchronizedList
 import io.legado.app.utils.internString
@@ -507,7 +508,7 @@ class ChangeBookSourceViewModelShared(
         val resultBooks = WebBook.getBookListAwait(
             source, name, filter = { fName, fAuthor ->
                 fName == name && (!checkAuthor || fAuthor.contains(author))
-            }).books
+            }, pluginFilters = pluginFilterSessionOf(source)).books
         resultBooks.forEach { searchBook ->
             when {
                 loadInfo || loadToc || loadWordCount -> {

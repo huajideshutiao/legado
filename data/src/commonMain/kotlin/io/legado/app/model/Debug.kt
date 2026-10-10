@@ -15,6 +15,7 @@ import io.legado.app.model.webBook.WebBook
 import io.legado.app.model.webBook.WebBook.getBookInfoAwait
 import io.legado.app.model.webBook.WebBook.getChapterListAwait
 import io.legado.app.model.webBook.WebBook.getContentAwait
+import io.legado.app.model.webBook.pluginFilterSessionOf
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isDataUrl
@@ -226,7 +227,13 @@ object Debug {
         log(debugSource, "︾开始解析发现页")
         val explore = Coroutine.async(scope) {
             val debugUrl = parseExploreUrl(url)
-            WebBook.getBookListAwait(bookSource, debugUrl, 1, isSearch = false)
+            WebBook.getBookListAwait(
+                bookSource,
+                debugUrl,
+                1,
+                isSearch = false,
+                pluginFilters = pluginFilterSessionOf(bookSource),
+            )
         }.onSuccess { page ->
             val exploreBooks = page.books
                 if (exploreBooks.isNotEmpty()) {
@@ -271,7 +278,12 @@ object Debug {
     private fun searchDebug(scope: CoroutineScope, bookSource: BookSource, key: String) {
         log(debugSource, "︾开始解析搜索页")
         val search = Coroutine.async(scope) {
-            WebBook.getBookListAwait(bookSource, key, 1)
+            WebBook.getBookListAwait(
+                bookSource,
+                key,
+                1,
+                pluginFilters = pluginFilterSessionOf(bookSource),
+            )
         }.onSuccess { page ->
             val searchBooks = page.books
                 if (searchBooks.isNotEmpty()) {

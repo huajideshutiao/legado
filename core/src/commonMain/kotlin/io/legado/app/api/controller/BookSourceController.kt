@@ -7,6 +7,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.model.webBook.pluginFilterSessionOf
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
@@ -130,7 +131,8 @@ object BookSourceController {
                 bookSource = bookSource,
                 key = exploreUrl,
                 page = page,
-                isSearch = false
+                isSearch = false,
+                pluginFilters = pluginFilterSessionOf(bookSource),
             )
             returnData.setData(pageResult.books)
         }.getOrElse {

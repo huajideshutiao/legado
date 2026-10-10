@@ -40,6 +40,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import javax.swing.SwingUtilities
 
 /**
@@ -65,8 +66,8 @@ import javax.swing.SwingUtilities
  * # 任务栏进度条 (SetProgressValue / SetProgressState)
  * 播放中显示进度 (对照原版通知进度条); 暂停 TBPF_PAUSED; 停止/空闲清除。
  * 写的是全应用唯一那格进度位 (与更新书籍/书源校验共用), 故每次刷新都按 [DesktopTaskbar.showMedia]
- * 登记为高优先级持有者 (对照鸿蒙长时任务的"音频优先级最高, 会抢占后台作业"); 退场时撤登记, 业务
- * 进度靠自己的下一次进度帧回屏。
+ * 登记为高优先级持有者 (对照鸿蒙长时任务的"音频优先级最高, 会抢占后台作业"); 退场时撤登记 (含托盘
+ * 整体卸载), 业务进度靠自己的下一次进度帧回屏。
  *
  * # 全局媒体键 (RegisterHotKey VK_MEDIA_*)
  * 对照原版 MediaButtonReceiver.handleIntent 的分发链:
@@ -200,11 +201,28 @@ internal object DesktopTaskbarMedia {
     private var lastDurationMs: Int = 0
 
     /**
-     * 媒体进度在任务栏登记里的条目 (通知标识 to 取用代次); null = 未登记。
+     * 媒体进度在任务栏登记里的条目 (通知标识 to 取用代次); 空 = 未登记。
      *
-     * 只在状态刷新 (STA 泵线程) 读写: 退场要用最后一次取用的代次撤登记。
+     * 取用只在状态刷新 (STA 泵线程); 撤登记由刷新与卸载收尾两处触发, 故原子取走 (取到的那一条才撤),
+     * 且按标识与代次撤, 只命中自己那一条。
      */
-    private var mediaHolder: Pair<Int, Long>? = null
+    private val mediaHolder = AtomicReference<Pair<Int, Long>?>(null)
+
+    /** 媒体在跑: 取用那一格, 记下本代 (退场带着它撤登记)。 */
+    private fun claimMedia(id: Int) {
+        mediaHolder.set(id to DesktopTaskbar.showMedia(id))
+    }
+
+    /**
+     * 媒体退场: 撤掉本代登记, 那一格交还业务进度 (顶替过它的业务那一条不动)。
+     *
+     * 退场出口 = 音频/朗读结束或被停止、两者互换、窗口不在、托盘整体卸载; 上屏动作成功与否都不影响
+     * 撤登记。
+     */
+    private fun releaseMedia() {
+        val holder = mediaHolder.getAndSet(null) ?: return
+        DesktopTaskbar.clear(holder.first, holder.second)
+    }
 
     /** 缩略图按钮图标列表 (comctl32 ImageList, 懒创建; 卸载时销毁)。 */
     @Volatile
@@ -278,6 +296,9 @@ internal object DesktopTaskbarMedia {
         DesktopTaskbarDwm.uninstall()
         // 释放 COM 实例 (IUnknown::Release, vtable slot 2) —— 须在创建它的 STA 线程上
         runOnPump {
+            // 媒体仍占着那一格时随托盘退场: 与 COM 释放同批投递 (泵线程), 排在在途刷新之后、
+            // 泵线程收到 WM_QUIT 之前
+            releaseMedia()
             cachedTaskbarList?.let { list -> releaseChecked("ITaskbarList3 Release") { vtbl(list, 2) } }
             cachedTaskbarList = null
             imageList?.let { himl ->
@@ -290,6 +311,8 @@ internal object DesktopTaskbarMedia {
         if (pump != null) {
             User32.INSTANCE.PostMessage(pump, WM_QUIT, WinDef.WPARAM(0), WinDef.LPARAM(0))
         }
+        // 泵线程不再抽取队列时 (消息循环已结束/收尾投递未送达) 排队的任务没人执行: 这里的撤登记是最后一笔
+        releaseMedia()
         // 命令执行器随托盘一起结束 (uninstall 只在应用退出路径调用): 留着会在进程收尾期间
         // 继续跑投递进来的任务
         commandExecutor.shutdown()
@@ -320,12 +343,19 @@ internal object DesktopTaskbarMedia {
         SwingUtilities.invokeLater {
             DesktopTaskbarDwm.update(audioStatus, aloud, progressMs, durationMs)
         }
+        // 泵线程已死 (消息循环结束) 时刷新没人抽取: 媒体进度上不了屏, 那一格交还业务进度
+        if (pumpThread?.isAlive == false) releaseMedia()
         // ITaskbarList3 调用必须在 STA 泵线程 (见 runOnPump 注释)
         runOnPump { refreshFromLastState() }
     }
 
     private fun refreshFromLastState() {
-        val hwnd = mainHwnd ?: return
+        val hwnd = mainHwnd
+        if (hwnd == null) {
+            // 窗口不在就没有媒体那一格 (上屏本身要窗口): 撤登记, 那一格交还业务进度
+            releaseMedia()
+            return
+        }
         val audioStatus = lastAudioStatus
         // 按钮可见性挂会话寿命 (provider running, 镜像原版服务存活/通知常驻): 切章节的
         // STOP 拉流窗口里原版通知不消失, status 判据会让按钮眨眼消失再重现
@@ -342,8 +372,7 @@ internal object DesktopTaskbarMedia {
         when {
             audioActive -> {
                 // 先登记媒体持有者再上屏: 期间到达的业务进度帧一律让位
-                val id = NotificationId.AudioPlayService
-                mediaHolder = id to DesktopTaskbar.showMedia(id)
+                claimMedia(NotificationId.AudioPlayService)
                 setProgress(
                     if (paused) TBPF_PAUSED else TBPF_NORMAL,
                     lastProgressMs.toLong(),
@@ -352,16 +381,14 @@ internal object DesktopTaskbarMedia {
             }
 
             aloudActive -> {
-                val id = NotificationId.ReadAloudService
-                mediaHolder = id to DesktopTaskbar.showMedia(id)
+                claimMedia(NotificationId.ReadAloudService)
                 setProgress(if (paused) TBPF_PAUSED else TBPF_NORMAL, 0L, 1L)
             }
 
             else -> {
-                // 先清屏再撤登记: 撤登记后到达的业务进度帧直接上屏
+                // 退场先撤登记 (撤登记不依赖上屏): 交还那一格后到达的业务进度帧直接上屏; 上屏失败也不影响归属
+                releaseMedia()
                 setProgress(TBPF_NOPROGRESS, 0L, 0L)
-                mediaHolder?.let { (id, generation) -> DesktopTaskbar.clear(id, generation) }
-                mediaHolder = null
             }
         }
         // 按钮集: 音频/朗读统一用简短章节 label (ThumbBar tooltip 直接可见,

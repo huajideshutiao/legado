@@ -3,10 +3,12 @@ package io.legado.app.model.plugin
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.PluginExploreKindUrl
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.extension.MangaExtensionManager
 import io.legado.app.help.extension.model.MangaExtension
 import io.legado.app.utils.GSON
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -125,6 +127,37 @@ internal class PluginVirtualBookSourceTable<SRC>(
             ?: return true
         return old.entries.containsAll(fresh.entries)
     }
+}
+
+/** 虚拟行基础发现分类 (热门/最新, 所有插件源恒有)。 */
+internal const val PLUGIN_EXPLORE_URL_BASE =
+    "热门::${PluginExploreKindUrl.POPULAR}\n最新::${PluginExploreKindUrl.LATEST}"
+
+/** 含筛选段的发现分类 (源声明了筛选器时用, 对齐 Mihon 仅 filters 非空才显示 Filter chip)。 */
+private const val PLUGIN_EXPLORE_URL_WITH_FILTER =
+    "$PLUGIN_EXPLORE_URL_BASE\n筛选::${PluginExploreKindUrl.FILTER}"
+
+/**
+ * 插件源筛选器有无 → 虚拟行 exploreUrl 的判定 (漫画/视频共用, 两侧判定不许各写一份)。
+ *
+ * "取不到" 与 "真的没有" 分开: 扩展 `getFilterList` 抛出时按声明了筛选器保留"筛选"入口,
+ * 落成基础分类即该源不再出该入口, 页面侧再也问不到它的筛选器; 待下次注册表同步重判。
+ * 源答出空表才是不声明筛选器。
+ */
+internal fun pluginExploreUrlOf(
+    logTag: String,
+    sourceName: String,
+    probe: () -> Collection<*>?,
+): String {
+    val filters = try {
+        probe()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        AppLog.put("$logTag $sourceName 筛选器取不到, 保留筛选入口待下次同步重判", e)
+        return PLUGIN_EXPLORE_URL_WITH_FILTER
+    }
+    return if (filters.isNullOrEmpty()) PLUGIN_EXPLORE_URL_BASE else PLUGIN_EXPLORE_URL_WITH_FILTER
 }
 
 /** 已装载/未装载扩展查询 (漫画/视频共用, 原两侧 installedOf 收敛于此)。 */

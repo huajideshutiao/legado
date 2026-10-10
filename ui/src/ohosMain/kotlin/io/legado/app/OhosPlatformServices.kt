@@ -1,6 +1,7 @@
 package io.legado.app
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.DirUsage
 import io.legado.app.help.copyToClipboard
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.file.OhosDirAuthorizations
@@ -348,7 +349,7 @@ private object OhosFilePickerService : FilePickerService {
      * @return 用户取消选目录返回 null (调用方静默)
      */
     override fun saveFile(suggestedName: String, defaultDir: String?): String? {
-        val dir = defaultDir ?: pickDirectory() ?: return null
+        val dir = defaultDir ?: pickDirectory(DirUsage.Export) ?: return null
         return "$dir/$suggestedName"
     }
 
@@ -385,23 +386,24 @@ private object OhosFilePickerService : FilePickerService {
 
     override fun writeImageToDir(dir: String, fileName: String, bytes: ByteArray): Boolean =
         runCatching {
-            OhosDirAuthorizations.ensureActivatedFor(dir)
+            OhosDirAuthorizations.ensureActivatedFor(dir, DirUsage.ImageSave)
             val destDir = File(dir).apply { mkdirs() }
             File(destDir, fileName).writeBytes(bytes)
             true
         }.getOrDefault(false)
 
     /**
-     * 备份目录可写性预检。
+     * 目录可写性预检。
      *
      * 用户选定的备份目录在沙盒外, "已记住的备份路径"须先激活持久化授权才可写 —— 否则
      * 重启后这里会为真可写的目录报出 false, 把用户拉回重选目录 (对照
      * [io.legado.app.ui.route.BackupConfigRoute] 不可写即重选的分支)。
+     * 激活按 [usage] 匹配: 该目录须在该用途下已授权。
      * 未登记的路径 (沙盒内/手机降级路径) [OhosDirAuthorizations.ensureActivatedFor] 直通,
      * 与改动前一致。
      */
-    override fun checkWrite(path: String): Boolean = runCatching {
-        OhosDirAuthorizations.ensureActivatedFor(path)
+    override fun checkWrite(path: String, usage: DirUsage): Boolean = runCatching {
+        OhosDirAuthorizations.ensureActivatedFor(path, usage)
         val testDir = File(path)
         if (!testDir.exists()) testDir.mkdirs()
         if (!testDir.isDirectory) return@runCatching false
@@ -411,9 +413,10 @@ private object OhosFilePickerService : FilePickerService {
         true
     }.getOrDefault(false)
 
-    // 选目录: Tablet (path 非空) 为已持久化授权 + 官方转换的路径, 验证可访问后记入授权表;
+    // 选目录: Tablet (path 非空) 为已持久化授权 + 官方转换的路径, 验证可访问后记入授权表
+    // (带 [usage]: 该目录只放行同用途的访问);
     // Phone (path 为 null) 保持原折回规则, 不做持久化/激活/可读性过滤
-    override fun pickDirectory(): String? {
+    override fun pickDirectory(usage: DirUsage): String? {
         val picked = pickDirectoryPolicy() ?: return null
         val path = picked.path ?: return picked.uri.toLegacySandboxPath()
         // 官方转换不校验可访问性: 此刻临时授权在, 目录仍不可读即真实失败, 不假成功
@@ -421,7 +424,7 @@ private object OhosFilePickerService : FilePickerService {
             AppLog.put("选中目录不可访问 path=$path")
             return null
         }
-        OhosDirAuthorizations.remember(picked.uri, path)
+        OhosDirAuthorizations.remember(picked.uri, path, usage)
         return path
     }
 

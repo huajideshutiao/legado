@@ -1,6 +1,7 @@
 package io.legado.app.ui
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.DirUsage
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
@@ -166,7 +167,7 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
 
     override fun pickBookTreeUri(onSelected: (String?) -> Unit) {
         capabilityScope.launch {
-            onSelected(PlatformServiceProviders.get().files.pickDirectory())
+            onSelected(PlatformServiceProviders.get().files.pickDirectory(DirUsage.BookTree))
         }
     }
 

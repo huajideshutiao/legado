@@ -1,5 +1,6 @@
 package io.legado.app.model.fileBook
 
+import io.legado.app.constant.DirUsage
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -45,9 +46,9 @@ class IosAuthorizedFileBookAccessor(
     override fun getBookInputStream(book: Book): InputStream {
         val path = localPath(book)
         if (path == null) return delegate.getBookInputStream(book)
-        val lease = IosSecurityScopedStorage.acquireLease(path)
+        val lease = IosSecurityScopedStorage.acquireLease(path, DirUsage.BookTree)
         val stream = try {
-            IosSecurityScopedStorage.withAccess(path) {
+            IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) {
                 delegate.getBookInputStream(book)
             }
         } catch (e: Throwable) {
@@ -60,7 +61,7 @@ class IosAuthorizedFileBookAccessor(
     override fun getLastModified(book: Book): Result<Long> {
         val path = localPath(book) ?: return delegate.getLastModified(book)
         return runCatching {
-            IosSecurityScopedStorage.withAccess(path) {
+            IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) {
                 delegate.getLastModified(book).getOrThrow()
             }
         }
@@ -128,7 +129,7 @@ class IosAuthorizedFileBookAccessor(
      * 此源文件是否存在无法判定, 按授权失败如实上报。
      */
     private fun sourceFileExists(path: String): Boolean {
-        val lease = IosSecurityScopedStorage.acquireLease(path)
+        val lease = IosSecurityScopedStorage.acquireLease(path, DirUsage.BookTree)
         return try {
             File(path).exists()
         } finally {
@@ -153,7 +154,7 @@ class IosAuthorizedFileBookAccessor(
      * [FileBookAccessor] 的 default 实现 (抛 UnsupportedOperationException), 不产生无授权的写入点。
      */
     override fun saveBookFile(inputStream: InputStream, fileName: String): String {
-        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir())
+        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir(), DirUsage.BookTree)
         return try {
             delegate.saveBookFile(inputStream, fileName)
         } finally {
@@ -166,7 +167,7 @@ class IosAuthorizedFileBookAccessor(
         fileName: String,
         source: BaseSource?
     ): String {
-        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir())
+        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir(), DirUsage.BookTree)
         return try {
             delegate.saveBookFile(str, fileName, source)
         } finally {
@@ -175,7 +176,7 @@ class IosAuthorizedFileBookAccessor(
     }
 
     override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
-        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir())
+        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir(), DirUsage.BookTree)
         return try {
             delegate.saveBookFileFromWebDav(webDav, fileName)
         } finally {
@@ -184,7 +185,7 @@ class IosAuthorizedFileBookAccessor(
     }
 
     override fun downloadRemoteBook(book: Book): Boolean {
-        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir())
+        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir(), DirUsage.BookTree)
         return try {
             delegate.downloadRemoteBook(book)
         } finally {
@@ -206,7 +207,7 @@ class IosAuthorizedFileBookAccessor(
         lastModify: Long,
         downloadFile: Boolean
     ): Book {
-        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir())
+        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir(), DirUsage.BookTree)
         return try {
             delegate.importRemoteBook(webDav, serverID, name, path, size, lastModify, downloadFile)
         } finally {
@@ -215,17 +216,20 @@ class IosAuthorizedFileBookAccessor(
     }
 
     private fun <T> leaseAround(path: String, write: Boolean = false, block: () -> T): T =
-        IosSecurityScopedStorage.withAccess(path, write) { block() }
+        IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree, write) { block() }
 
     /**
      * 依次在多个路径的 security scope 内执行 [block] (同一授权根重复取租约安全, 沙盒路径自动放行)。
      * 用于一次操作同时读写多个授权目录 (如从授权目录的压缩包解出书, 落到"书籍保存位置")。
+     *
+     * 路径一律按 [DirUsage.BookTree] 取租约: 源文件既可能是导入页浏览到的文件 (导入根目录的
+     * 授权也按书籍文件用途录) 也可能是书籍保存位置里的压缩包, 两者同属该用途。
      */
     private fun <T> withAccesses(paths: List<String>, block: () -> T): T {
         var action: () -> T = block
         for (path in paths.asReversed()) {
             val inner = action
-            action = { IosSecurityScopedStorage.withAccess(path) { inner() } }
+            action = { IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) { inner() } }
         }
         return action()
     }
@@ -282,9 +286,9 @@ private class LeasedFileBook(
 
     override fun getImage(book: Book, href: String): InputStream? {
         // 返回的流由调用方消费: 租约随流 close 释放 (与 getBookInputStream 同契约)
-        val lease = IosSecurityScopedStorage.acquireLease(path)
+        val lease = IosSecurityScopedStorage.acquireLease(path, DirUsage.BookTree)
         val stream = try {
-            IosSecurityScopedStorage.withAccess(path) {
+            IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) {
                 delegate.getImage(book, href)
             }
         } catch (e: Throwable) {
@@ -300,7 +304,7 @@ private class LeasedFileBook(
     override fun clear() = delegate.clear()
 
     private fun <T> withLease(block: () -> T): T =
-        IosSecurityScopedStorage.withAccess(path) { block() }
+        IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) { block() }
 }
 
 /**

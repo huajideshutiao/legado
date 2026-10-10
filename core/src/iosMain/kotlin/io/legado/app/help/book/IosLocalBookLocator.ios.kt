@@ -1,5 +1,6 @@
 package io.legado.app.help.book
 
+import io.legado.app.constant.DirUsage
 import io.legado.app.data.entities.Book
 import io.legado.app.utils.File
 import io.legado.app.utils.IosSecurityScopedStorage
@@ -41,7 +42,7 @@ class IosLocalBookLocator : LocalBookLocator {
     override fun getLastModified(book: Book): Long {
         val path = paths.getLocalPath(book) ?: return 0L
         return runCatching {
-            IosSecurityScopedStorage.withAccess(path) { File(it).lastModified() }
+            IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) { File(it).lastModified() }
         }.getOrDefault(0L)
     }
 }

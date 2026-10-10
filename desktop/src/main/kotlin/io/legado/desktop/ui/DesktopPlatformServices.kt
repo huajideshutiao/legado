@@ -1,6 +1,7 @@
 package io.legado.desktop.ui
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.DirUsage
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.resolveImagePath
 import io.legado.app.help.storage.DataStorageProviders
@@ -107,7 +108,8 @@ private class DesktopFilePickerService : FilePickerService {
             true
         }.getOrDefault(false)
 
-    override fun pickDirectory(): String? =
+    // 桌面为普通文件路径, 无用途维度, 忽略 usage
+    override fun pickDirectory(usage: DirUsage): String? =
         FileDialogs.pickDirectory(
             initialDir = userExportDir()?.let(::File)?.takeIf { it.isDirectory },
         )?.absolutePath

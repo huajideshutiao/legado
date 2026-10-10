@@ -25,6 +25,7 @@ import io.legado.app.model.anime.AnimeSourceMapper
 import io.legado.app.model.anime.VideoSourceDelegateImpl
 import io.legado.app.model.manga.MangaPluginSources
 import io.legado.app.model.manga.MangaSourceDelegateImpl
+import io.legado.app.model.webBook.pluginFilterSessionOf
 import java.io.File
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
@@ -94,8 +95,13 @@ class MangaExtensionRemoteInstrumentedTest {
         val (ext, bookSource) = installRemote("Comic Fury")
         assertTrue(ext.sources.isNotEmpty())
 
-        // 搜索
-        val page = MangaSourceDelegateImpl.getBookListAwait(bookSource, "test", 1)
+        // 搜索 (筛选会话经唯一入口取, 与页面取数同一条路)
+        val page = MangaSourceDelegateImpl.getBookListAwait(
+            bookSource,
+            "test",
+            1,
+            pluginFilterSessionOf(bookSource),
+        )
         assertTrue("搜索无结果", page.books.isNotEmpty())
 
         // 详情 (字段写回)
