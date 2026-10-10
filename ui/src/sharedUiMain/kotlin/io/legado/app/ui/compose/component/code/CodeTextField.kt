@@ -1412,8 +1412,8 @@ private class CodeHighlightCache(private val rules: List<CodeSyntaxRule>) {
     var version by mutableIntStateOf(0)
         private set
 
-    // @Volatile 的字段: 主线程 (highlight/runHighlightLoop 落盘) 写, Default worker
-    // (compute/incremental/buildAnnotated) 读 —— 单 worker 已排除并发写, 缺的只是可见性,
+    // @Volatile 的字段: 主线程 (highlight/runHighlightLoop 落盘) 写, 后台 worker
+    // (compute/incremental 读 cachedText/spans) 读 —— 单 worker 已排除并发写, 缺的只是可见性,
     // 故按字段 volatile 即可, 不给每键都走的热路径上锁
     @Volatile
     private var cachedText: String? = null
@@ -1441,9 +1441,13 @@ private class CodeHighlightCache(private val rules: List<CodeSyntaxRule>) {
 
     fun highlight(text: String, range: IntRange, scope: CoroutineScope): AnnotatedString {
         lastRange = range
-        if (cachedText == text && cachedRange == range) return cached!!
-        if (cachedText == text) {
-            // 仅窗口变化 (滚动): span 基线已是最新文本, 直接按新窗口重挂, 不重跑正则
+        // 先比文本再取快照, 取不到就重建: 不靠"比对上就一定非空"的隐式前提
+        val snapshotText = cachedText
+        if (snapshotText == text) {
+            val snapshot = cached
+            if (snapshot != null && cachedRange == range) return snapshot
+            // 文本未变 (滚动换窗口, 或快照尚未就绪): span 基线已是最新文本,
+            // 直接按新窗口重挂, 不重跑正则
             // (对照原版 updateVisibleSpans 只增删挂载, 不重算 allSyntaxSpans)
             val built = buildAnnotated(text, spans, range)
             cached = built
@@ -1644,9 +1648,10 @@ private class CodeHighlightCache(private val rules: List<CodeSyntaxRule>) {
      * 结果缓存到 [staleResult]: 同一 pendingText 期间每次 filter 调用复用同一实例。
      */
     private fun staleOrPlain(text: String, range: IntRange): AnnotatedString {
-        staleResult = buildStale(text, range)
+        val built = buildStale(text, range)
+        staleResult = built
         staleRange = range
-        return staleResult!!
+        return built
     }
 
     private fun buildStale(text: String, range: IntRange): AnnotatedString {

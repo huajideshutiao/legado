@@ -445,7 +445,16 @@ class ChangeBookSourceViewModelShared(
             tocMap.clear()
             bookMap.clear()
             tocMapChapterCount = 0
-            bookSources.add(appDb.bookSourceDao.getBookSource(origin)!!)
+            // 原版此处为强解包 (源已不在库即抛异常中断, 无任何提示); 现按无源可搜处理:
+            // 清掉该源旧结果后结束, 不进入空源搜索
+            val source = appDb.bookSourceDao.getBookSource(origin)
+            if (source == null) {
+                searchBooks.removeAll { it.origin == origin }
+                searchCallback?.upAdapter()
+                AppLog.put("换源单源搜索: 书源不存在\n$origin")
+                return@async
+            }
+            bookSources.add(source)
             searchBooks.removeAll { it.origin == origin }
             initSearchPool()
             search()
@@ -665,9 +674,15 @@ class ChangeBookSourceViewModelShared(
             }.onStart {
                 _searchState.value = true
             }.mapParallelSafe(platform.threadCount, bookSources.size) {
-                val source = appDb.bookSourceDao.getBookSource(it.origin)!!
-                withTimeout(timeLimit) {
-                    loadBookInfo(source, it.toBook())
+                // 原版此处为强解包 (源已不在库即抛); 并发多源时该异常被 mapParallelSafe 吞掉跳过,
+                // 单源刷新时则中断整轮。现统一为跳过该条并记日志, 其余条目照常刷新
+                val source = appDb.bookSourceDao.getBookSource(it.origin)
+                if (source == null) {
+                    AppLog.put("换源刷新列表跳过: 书源不存在\n${it.origin}")
+                } else {
+                    withTimeout(timeLimit) {
+                        loadBookInfo(source, it.toBook())
+                    }
                 }
             }.onCompletion {
                 _searchState.value = false
@@ -736,8 +751,10 @@ class ChangeBookSourceViewModelShared(
         return Coroutine.async(scope) {
             val toc = tocMap[book.primaryStr()]
             if (toc != null) {
+                // 原版此处为强解包, 与其非缓存路径的"源不存在"报错口径不一致; 现统一走同一错误
                 val source = appDb.bookSourceDao.getBookSource(book.origin)
-                return@async Pair(toc, source!!)
+                    ?: throw NoStackTraceException("书源不存在")
+                return@async Pair(toc, source)
             }
             val result = getToc(book).getOrThrow()
             tocMap[book.primaryStr()] = result.first
