@@ -340,6 +340,8 @@ class UpdateBookShared(
      */
     private suspend fun refreshBook(bookUrls: List<String>) {
         upPool()
+        // 本代标识: 收尾只在仍登记着本代时才动登记与进度 (见下方 onCompletion)
+        val self = currentCoroutineContext()[Job]
         bookUrls.asFlow()
             .onEachParallel(threadCount) { bookUrl ->
                 val book = appDb.bookDao.getBook(bookUrl)
@@ -394,6 +396,8 @@ class UpdateBookShared(
                 refreshCount.incrementAndGet()
                 updateProgress()
             }.onCompletion {
+                // 收尾可能晚到 (本代已被顶掉): 本代不再动登记/计数/进度/提示, 交新一代自己收尾
+                if (refreshJob !== self) return@onCompletion
                 refreshCount.value = 0
                 refreshTotal.value = 0
                 onRefreshJobCompleted()
@@ -522,6 +526,8 @@ class UpdateBookShared(
         _isRefreshing.value = true
         startedOnce.value = true
         upTocJob = scope.launch(upTocPool) {
+            // 本代标识: 收尾只在仍登记着本代时才动登记与进度 (见下方 onCompletion)
+            val self = currentCoroutineContext()[Job]
             flow {
                 while (true) {
                     emit(pollWaitUpTocBook() ?: break)
@@ -543,6 +549,8 @@ class UpdateBookShared(
                     postEvent(EventBus.UP_BOOKSHELF, it)
                 }
             }.onCompletion {
+                // 收尾可能晚到 (本代已被顶掉): 本代不再动登记/计数/进度/预下载, 交新一代自己收尾
+                if (upTocJob !== self) return@onCompletion
                 upTocCount.value = 0
                 upTocTotal.value = 0
                 // onUpTocJobCompleted 内会判断是否启动下一批 + updateProgress 同步进度状态

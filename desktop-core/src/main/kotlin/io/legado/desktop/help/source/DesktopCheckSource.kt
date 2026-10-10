@@ -3,6 +3,7 @@ package io.legado.desktop.help.source
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.NotificationId
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
@@ -31,7 +32,8 @@ import kotlin.math.min
  * 桌面端无 Android Service, 用协程 + [onEachParallel] 限流并发跑
  * [CheckSourceShared.checkSource] (业务全流程已下沉), 进度既发事件 ([EventBus.CHECK_SOURCE] /
  * [EventBus.CHECK_SOURCE_DONE]) 通知 UI, 也留在 [lastProgress] 供托盘呈现取用 (对照 app 端
- * CheckSourceService 的通知正文)。
+ * CheckSourceService 的通知正文); 任务栏进度记在 [NotificationId.CheckSourceService] 名下
+ * (与 app 端该校验通知同一 id)。
  *
  * 线程模型对照原版 CheckSourceService: 固定线程池 `min(threadCount, MAX_THREAD)`
  * (原版 searchCoroutine), 校验是网络阻塞调用, 不能占 Dispatchers.Default 的 CPU 池。
@@ -67,6 +69,9 @@ object DesktopCheckSource {
         // 与 iOS 端 IosCheckSource 同一时序；先落进度再入队, 保证首个事件到达时进度已可取
         lastProgress = Triple("", 0, ids.size)
         checkJob = scope.launch(checkPool) {
+            // 本轮占用进度位的本代次: 每帧进度都是一次取用, 收尾用本轮最后一次的取值释放 —— 上一轮
+            // (取消的收尾晚到) 用的取值对不上, 不会清掉新一轮刚上屏的进度
+            var generation = 0L
             postEvent(EventBus.CHECK_SOURCE, "0/${ids.size}")
             flow<BookSource> {
                 for (origin in ids) {
@@ -78,12 +83,12 @@ object DesktopCheckSource {
                 finishCount++
                 lastProgress = Triple(source.bookSourceName, finishCount, ids.size)
                 postEvent(EventBus.CHECK_SOURCE, "${source.bookSourceName} $finishCount/${ids.size}")
-                DesktopTaskbar.show(finishCount, ids.size)
+                generation = DesktopTaskbar.show(NotificationId.CheckSourceService, finishCount, ids.size)
                 appDb.bookSourceDao.update(source)
             }.onCompletion {
                 // 对照 CheckSourceService.onDestroy
                 lastProgress = null
-                DesktopTaskbar.clear()
+                DesktopTaskbar.clear(NotificationId.CheckSourceService, generation)
                 Debug.finishChecking()
                 postEvent(EventBus.CHECK_SOURCE_DONE, 0)
             }.collect { }

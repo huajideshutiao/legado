@@ -14,9 +14,11 @@ import com.sun.jna.platform.win32.WinGDI
 import com.sun.jna.platform.win32.WinUser
 import com.sun.jna.ptr.PointerByReference
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.NotificationId
 import io.legado.app.constant.Status
 import io.legado.app.help.media.RemoteMediaCommand
 import io.legado.app.help.media.SystemMediaControl
+import io.legado.app.help.notification.DesktopTaskbar
 import io.legado.app.model.AudioPlayCommanders
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
 import io.legado.app.ui.compose.platform.syncGetString
@@ -62,6 +64,9 @@ import javax.swing.SwingUtilities
  *
  * # 任务栏进度条 (SetProgressValue / SetProgressState)
  * 播放中显示进度 (对照原版通知进度条); 暂停 TBPF_PAUSED; 停止/空闲清除。
+ * 写的是全应用唯一那格进度位 (与更新书籍/书源校验共用), 故每次刷新都按 [DesktopTaskbar.showMedia]
+ * 登记为高优先级持有者 (对照鸿蒙长时任务的"音频优先级最高, 会抢占后台作业"); 退场时撤登记, 业务
+ * 进度靠自己的下一次进度帧回屏。
  *
  * # 全局媒体键 (RegisterHotKey VK_MEDIA_*)
  * 对照原版 MediaButtonReceiver.handleIntent 的分发链:
@@ -193,6 +198,13 @@ internal object DesktopTaskbarMedia {
 
     @Volatile
     private var lastDurationMs: Int = 0
+
+    /**
+     * 媒体进度在任务栏登记里的条目 (通知标识 to 取用代次); null = 未登记。
+     *
+     * 只在状态刷新 (STA 泵线程) 读写: 退场要用最后一次取用的代次撤登记。
+     */
+    private var mediaHolder: Pair<Int, Long>? = null
 
     /** 缩略图按钮图标列表 (comctl32 ImageList, 懒创建; 卸载时销毁)。 */
     @Volatile
@@ -328,15 +340,29 @@ internal object DesktopTaskbarMedia {
         }
         // 进度条: 对照原版通知进度 (暂停 TBPF_PAUSED, 无任务清除)
         when {
-            audioActive -> setProgress(
-                if (paused) TBPF_PAUSED else TBPF_NORMAL,
-                lastProgressMs.toLong(),
-                lastDurationMs.coerceAtLeast(1).toLong(),
-            )
+            audioActive -> {
+                // 先登记媒体持有者再上屏: 期间到达的业务进度帧一律让位
+                val id = NotificationId.AudioPlayService
+                mediaHolder = id to DesktopTaskbar.showMedia(id)
+                setProgress(
+                    if (paused) TBPF_PAUSED else TBPF_NORMAL,
+                    lastProgressMs.toLong(),
+                    lastDurationMs.coerceAtLeast(1).toLong(),
+                )
+            }
 
-            aloudActive -> setProgress(if (paused) TBPF_PAUSED else TBPF_NORMAL, 0L, 1L)
+            aloudActive -> {
+                val id = NotificationId.ReadAloudService
+                mediaHolder = id to DesktopTaskbar.showMedia(id)
+                setProgress(if (paused) TBPF_PAUSED else TBPF_NORMAL, 0L, 1L)
+            }
 
-            else -> setProgress(TBPF_NOPROGRESS, 0L, 0L)
+            else -> {
+                // 先清屏再撤登记: 撤登记后到达的业务进度帧直接上屏
+                setProgress(TBPF_NOPROGRESS, 0L, 0L)
+                mediaHolder?.let { (id, generation) -> DesktopTaskbar.clear(id, generation) }
+                mediaHolder = null
+            }
         }
         // 按钮集: 音频/朗读统一用简短章节 label (ThumbBar tooltip 直接可见,
         // 不能用原版通知的无障碍 label —— pref_media_button_per_next 系列是设置项标题,
