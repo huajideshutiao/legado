@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.Drawable
 import android.os.Build
 import androidx.core.content.pm.PackageInfoCompat
 import eu.kanade.tachiyomi.animesource.AnimeSource
@@ -24,6 +27,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
 
@@ -68,6 +72,9 @@ internal object ExtensionLoader {
         PackageManager.GET_META_DATA or
         PackageManager.GET_SIGNATURES or
         (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) PackageManager.GET_SIGNING_CERTIFICATES else 0)
+
+    /** 图标位图尺寸未知时的兜底边长 (典型 xxxhdpi 启动图标 192px)。 */
+    private const val ICON_FALLBACK_SIZE = 192
 
     private const val PRIVATE_EXTENSION_EXTENSION = "ext"
 
@@ -200,6 +207,43 @@ internal object ExtensionLoader {
                 .awaitAll()
         }
     }
+
+    /**
+     * 插件包内启动图标的 PNG 字节 (插件源虚拟行行首图标用)。
+     *
+     * 共享扩展与私有扩展共一条链: [getExtensionPackageInfoFromPkgName] 选出生效形态并回填
+     * 私有 apk 路径, 再按清单声明的图标资源 id 在本进程内读该包资源。不走
+     * `PackageManager.getApplicationIcon`: 它在取不到图标时回落系统默认图标, 会把"没有图标"
+     * 显示成有图标; 这里取不到就返回 null, 由调用方回落书源名首字占位。
+     */
+    fun readExtensionIcon(context: Context, pkgName: String): ByteArray? {
+        val appInfo = getExtensionPackageInfoFromPkgName(context, pkgName)?.applicationInfo
+            ?: return null
+        val resId = appInfo.icon
+        if (resId == 0) return null
+        val packageManager = context.packageManager
+        val drawable = runCatching {
+            packageManager.getResourcesForApplication(appInfo).getDrawable(resId, null)
+        }.onFailure {
+            AppLog.put("扩展图标读取失败: $pkgName", it)
+        }.getOrNull() ?: return null
+        return drawable.toPngBytes()
+    }
+
+    /** Drawable 画到同尺寸位图后编码为 PNG (图标可能是矢量/自适应图标, 不能直接取原字节)。*/
+    private fun Drawable.toPngBytes(): ByteArray? = runCatching {
+        val width = intrinsicWidth.takeIf { it > 0 } ?: ICON_FALLBACK_SIZE
+        val height = intrinsicHeight.takeIf { it > 0 } ?: ICON_FALLBACK_SIZE
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        setBounds(0, 0, width, height)
+        draw(canvas)
+        ByteArrayOutputStream().use { out ->
+            if (bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) out.toByteArray() else null
+        }
+    }.onFailure {
+        AppLog.put("扩展图标编码失败", it)
+    }.getOrNull()
 
     fun getExtensionPackageInfoFromPkgName(context: Context, pkgName: String): PackageInfo? {
         // 包名参与私有扩展文件路径拼接, 非法包名直接视为不存在

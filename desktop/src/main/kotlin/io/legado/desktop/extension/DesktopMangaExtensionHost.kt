@@ -10,11 +10,13 @@ import io.legado.app.help.extension.MangaExtensionManager
 import io.legado.app.help.extension.model.ContentWarning as ModelContentWarning
 import io.legado.app.help.extension.model.InstallStep
 import io.legado.app.help.extension.model.MangaExtension
+import io.legado.app.help.extension.isValidExtensionPackageName
 import io.legado.app.help.extension.requireValidExtensionPackageName
 import io.legado.app.help.extension.trust.TrustHelper
 import io.legado.app.help.file.desktopAppRootDir
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import net.dongliu.apk.parser.ApkFile
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -246,6 +248,29 @@ class DesktopMangaExtensionHost(
             }
             MangaExtensionManager.reloadExtensions()
         }
+    }
+
+    /**
+     * 插件包内启动图标 (PNG 字节): 扩展目录内 apk 的清单图标条目, 取最高密度变体。
+     *
+     * 扩展 apk 的图标资源名被混淆 (如 `res/o-.png`), 只能经资源表反解, 故用已有的 apk-parser;
+     * 文件缺失、清单无图标、图标非 png 条目一律返回 null (调用方回落书源名首字占位)。
+     */
+    override fun readExtensionIcon(pkgName: String): ByteArray? {
+        if (!isValidExtensionPackageName(pkgName)) return null
+        val apk = File(extDir, "$pkgName.$APK_EXTENSION")
+        if (!apk.isFile) return null
+        return runCatching {
+            ApkFile(apk).use { file ->
+                file.getIconFiles()
+                    .filter { it.path.endsWith(".png", ignoreCase = true) }
+                    .maxByOrNull { it.density }
+                    ?.data
+                    ?.takeIf { it.isNotEmpty() }
+            }
+        }.onFailure {
+            AppLog.put("扩展图标读取失败: $pkgName", it)
+        }.getOrNull()
     }
 
     // endregion

@@ -3,9 +3,11 @@ package io.legado.app.ui.book.source.manage
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.data.entities.isVirtualPluginSource
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.model.Debug
+import io.legado.app.ui.book.manga.extension.MangaExtensionServiceProviders
 import io.legado.app.ui.book.source.BookSourceListState
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.SourceFilter
@@ -20,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -48,7 +51,7 @@ class BookSourceScreenModel(
 
     private var sourceFlowJob: Job? = null
     private var groupsJob: Job? = null
-    private var iconsJob: Job? = null
+    private var pluginsJob: Job? = null
 
     // 域名缓存, 不随数据变化失效
     private val hostMap = hashMapOf<String, String>()
@@ -69,7 +72,7 @@ class BookSourceScreenModel(
     init {
         upBookSource(_state.value.searchKey)
         observeGroups()
-        observeIcons()
+        observePluginSources()
     }
 
     fun getSourceHost(origin: String): String =
@@ -93,18 +96,40 @@ class BookSourceScreenModel(
         }
     }
 
-    private fun observeIcons() {
-        iconsJob?.cancel()
-        iconsJob = scope.launch {
-            appDb.bookSourceDao.flowIcons()
-                .catch { AppLog.put("书源界面获取图标出错", it) }
-                .flowOn(IoDispatcher)
-                .throttleLatest(500)
-                .collect { icons ->
-                    _state.value = _state.value.copy(
-                        icons = icons.associate { it.bookSourceUrl to it.bookSourceIcon },
-                    )
-                }
+    /**
+     * 插件装载状态变化后重取列表: 插件源虚拟行的图标由归属插件包给出, 注册表就绪或插件版本
+     * 变化时行里的旧图标要跟着换 (卸载时虚拟行本身由同步删除, 无需在此处理)。
+     * 只在包名与版本的集合变化时重取, 安装进度/仓库刷新等发射不触发列表重建。
+     *
+     * 订阅时的当前快照同样重取: 列表可能建于注册表就绪之前 (图标落回首字占位), 只看后续
+     * 变化会漏掉「就绪结果已在当前快照里」这一情形, 冷启动先开书源管理就停在占位。
+     */
+    private fun observePluginSources() {
+        val service = MangaExtensionServiceProviders.getOrNull() ?: return
+        pluginsJob?.cancel()
+        pluginsJob = scope.launch {
+            service.state
+                .map { extState -> extState.installed.map { it.pkgName to it.versionCode } }
+                .distinctUntilChanged()
+                .collect { upBookSource(_state.value.searchKey) }
+        }
+    }
+
+    /**
+     * 插件源虚拟行的行首图标就地补进行数据: 行内没有图标字段的插件源按归属插件包取图
+     * (首次读包并落盘缓存, 之后命中缓存)。本端没有插件宿主 (iOS/鸿蒙) 时 provider 未注册,
+     * 直接原样返回 (行内图标字段为空, 界面回落首字占位)。
+     */
+    private fun withPluginSourceIcons(data: List<BookSourcePart>): List<BookSourcePart> {
+        if (!_state.value.showSourceIcon) return data
+        val service = MangaExtensionServiceProviders.getOrNull() ?: return data
+        return data.map { part ->
+            if (part.isVirtualPluginSource() && part.bookSourceIcon.isNullOrBlank()) {
+                service.sourceIconPath(part.bookSourceUrl)?.let { part.copy(bookSourceIcon = it) }
+                    ?: part
+            } else {
+                part
+            }
         }
     }
 
@@ -131,7 +156,7 @@ class BookSourceScreenModel(
                 is SourceFilter.Group -> appDb.bookSourceDao.flowGroupSearch(filter.name)
                 is SourceFilter.Search -> appDb.bookSourceDao.flowSearch(filter.key)
             }
-            base.map { data -> sortOrMerge(data) }
+            base.map { data -> withPluginSourceIcons(sortOrMerge(data)) }
                 .catch { AppLog.put("书源界面更新书源出错", it) }
                 .flowOn(IoDispatcher)
                 .throttleLatest(500)
@@ -227,6 +252,14 @@ class BookSourceScreenModel(
                 _state.value = _state.value.copy(
                     groupSourcesByDomain = !_state.value.groupSourcesByDomain
                 )
+                upBookSource(_state.value.searchKey)
+            }
+
+            BookSourceUiEvent.ToggleShowSourceIcon -> {
+                _state.value = _state.value.copy(
+                    showSourceIcon = !_state.value.showSourceIcon
+                )
+                // 重新取数: 关闭时不再按插件包取图, 重新勾选后立即回填
                 upBookSource(_state.value.searchKey)
             }
 
@@ -417,6 +450,7 @@ sealed interface BookSourceUiEvent {
     data class SortChange(val sort: BookSourceSort) : BookSourceUiEvent
     object ToggleSortDesc : BookSourceUiEvent
     object ToggleGroupByDomain : BookSourceUiEvent
+    object ToggleShowSourceIcon : BookSourceUiEvent
     data class Toggle(val item: BookSourcePart, val checked: Boolean) : BookSourceUiEvent
     data class SelectAll(val all: Boolean) : BookSourceUiEvent
     object RevertSelection : BookSourceUiEvent

@@ -93,7 +93,7 @@ internal fun ExtensionPrefDialog(
             dialog.loading -> Box(
                 Modifier
                     .fillMaxWidth()
-                    .padding(DesignTokens.spacingXl),
+                    .padding(vertical = DesignTokens.spacingXl),
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(modifier = Modifier.size(24.dp))
@@ -103,14 +103,14 @@ internal fun ExtensionPrefDialog(
                 text = errorText,
                 color = colors.secondaryText,
                 fontSize = 14.sp,
-                modifier = Modifier.padding(DesignTokens.spacingLg),
+                modifier = Modifier.padding(vertical = DesignTokens.spacingLg),
             )
 
             dialog.items.isEmpty() -> Text(
                 text = emptyText,
                 color = colors.secondaryText,
                 fontSize = 14.sp,
-                modifier = Modifier.padding(DesignTokens.spacingLg),
+                modifier = Modifier.padding(vertical = DesignTokens.spacingLg),
             )
 
             else -> Column(
@@ -181,7 +181,7 @@ internal fun ExtensionPrefDialog(
                             .clickable {
                                 picked = if (value in picked) picked - value else picked + value
                             }
-                            .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
+                            .padding(vertical = DesignTokens.spacingDefault),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         AppCheckbox(
@@ -241,7 +241,7 @@ internal fun PrefItemRow(
             Modifier
                 .fillMaxWidth()
                 .clickable(enabled = enabled) { onPreferenceClick() }
-                .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
+                .padding(vertical = DesignTokens.spacingDefault),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f), content = header)
@@ -272,7 +272,7 @@ internal fun PrefItemRow(
                     else -> {}
                 }
             }
-            .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
+            .padding(vertical = DesignTokens.spacingDefault),
     ) {
         header()
         if (choiceExpanded) {
@@ -309,7 +309,7 @@ internal fun PrefChoiceDialog(
                     Modifier
                         .fillMaxWidth()
                         .clickable { onPick(value) }
-                        .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
+                        .padding(vertical = DesignTokens.spacingDefault),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AppRadioButton(selected = value == selected, onClick = null)

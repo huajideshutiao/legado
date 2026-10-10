@@ -184,7 +184,8 @@ fun AppSelectorList(items: List<String>, onItemClick: (index: Int) -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onItemClick(index) }
-                    .padding(horizontal = DesignTokens.spacingXl, vertical = 14.dp)
+                    // 左右不叠加额外边距: 内容槽已给 spacingDefault(8dp), 条目与标题同一边界规则
+                    .padding(vertical = 14.dp)
             )
         }
     }

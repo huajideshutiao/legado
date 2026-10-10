@@ -54,4 +54,7 @@ class AndroidMangaExtensionHost(context: Context) : MangaExtensionHost {
             MangaExtensionManager.reloadExtensions()
         }
     }
+
+    override fun readExtensionIcon(pkgName: String): ByteArray? =
+        ExtensionLoader.readExtensionIcon(appContext, pkgName)
 }

@@ -495,7 +495,7 @@ private fun <T> HomeSearchPickDialog(
             color = colors.fillet,
         ) {
             Column(
-                Modifier.fillMaxWidth().padding(top = DesignTokens.spacingLg, bottom = DesignTokens.spacingDefault)
+                Modifier.fillMaxWidth().padding(top = DesignTokens.spacingMd, bottom = DesignTokens.spacingDefault)
             ) {
                 Text(
                     text = title,
@@ -531,7 +531,8 @@ private fun <T> HomeSearchPickDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onPick(item) }
-                                .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingMd),
+                                // 本弹窗正文列不带统一内边距, 8dp 由各子项自带 (与标题/搜索框同值)
+                                .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingMd),
                         )
                     }
                 }

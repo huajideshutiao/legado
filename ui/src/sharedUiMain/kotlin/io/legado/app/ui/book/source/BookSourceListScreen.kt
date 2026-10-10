@@ -89,6 +89,7 @@ import legado.ui.generated.resources.need_login
 import legado.ui.generated.resources.no_group
 import legado.ui.generated.resources.search
 import legado.ui.generated.resources.search_book_source
+import legado.ui.generated.resources.show_source_icon
 import legado.ui.generated.resources.sort
 import legado.ui.generated.resources.sort_auto
 import legado.ui.generated.resources.sort_by_lastUpdateTime
@@ -203,7 +204,7 @@ fun BookSourceListScreen(
             callbacks = callbacks,
             item = item,
             checked = state.selected.contains(item.bookSourceUrl),
-            iconUrl = state.icons[item.bookSourceUrl],
+            iconUrl = item.bookSourceIcon.takeIf { state.showSourceIcon },
             isScrollIdle = isScrollIdle,
             headerUrls = headerUrls,
             canDrag = canDrag,
@@ -219,13 +220,13 @@ fun BookSourceListScreen(
 data class BookSourceListState(
     val sources: List<BookSourcePart> = emptyList(),
     val selected: Set<String> = emptySet(),
-    /** 书源地址 → 图标地址; 行首图标位渲染用, 与列表行数据分开下发 */
-    val icons: Map<String, String?> = emptyMap(),
     val searchKey: String = "",
     val groups: List<String> = emptyList(),
     val sort: BookSourceSort = BookSourceSort.Default,
     val sortAscending: Boolean = true,
     val groupSourcesByDomain: Boolean = false,
+    /** 行首书源图标是否显示 (关闭时统一回落到书源名首字占位, 且不发起图片加载)。 */
+    val showSourceIcon: Boolean = true,
     val checkSourceMsg: String? = null,
     val checkSourceVisible: Boolean = false,
 )
@@ -240,6 +241,7 @@ data class BookSourceListCallbacks(
     val onSortChange: (BookSourceSort) -> Unit = {},
     val onToggleSortDesc: () -> Unit = {},
     val onToggleGroupByDomain: () -> Unit = {},
+    val onToggleShowSourceIcon: () -> Unit = {},
     val onToggle: (BookSourcePart, Boolean) -> Unit = { _, _ -> },
     val onSelectAll: (Boolean) -> Unit = {},
     val onRevertSelection: () -> Unit = {},
@@ -292,6 +294,7 @@ private fun BookSourceActions(state: BookSourceListState, callbacks: BookSourceL
     val strImportLocal = stringResource(Res.string.import_local)
     val strImportOnline = stringResource(Res.string.import_on_line)
     val strGroupSourcesByDomain = stringResource(Res.string.group_sources_by_domain)
+    val strShowSourceIcon = stringResource(Res.string.show_source_icon)
     val strHelp = stringResource(Res.string.help)
 
     // 排序菜单 (降序开关 + 单选各排序方式 + 按域名分组开关)
@@ -347,6 +350,10 @@ private fun BookSourceActions(state: BookSourceListState, callbacks: BookSourceL
             text = strGroupSourcesByDomain,
             checked = state.groupSourcesByDomain,
         ) { dismiss(); callbacks.onToggleGroupByDomain() }
+        CheckDropdownItem(
+            text = strShowSourceIcon,
+            checked = state.showSourceIcon,
+        ) { dismiss(); callbacks.onToggleShowSourceIcon() }
         MenuItem(strHelp) { dismiss(); callbacks.onHelp() }
     }
 }

@@ -232,6 +232,12 @@ object MangaExtensionManager {
                     if (it is CancellationException) throw it
                     AppLog.put("视频插件源虚拟行同步失败", it)
                 }
+            // 插件图标缓存按已装载集合清理 (卸载/更新后的旧版本残留), 保证私有缓存区有界
+            runCatching { PluginSourceIcons.prune() }
+                .onFailure {
+                    if (it is CancellationException) throw it
+                    AppLog.put("插件源图标缓存清理失败", it)
+                }
             refreshStatuses()
         } catch (e: Throwable) {
             if (e is CancellationException) throw e

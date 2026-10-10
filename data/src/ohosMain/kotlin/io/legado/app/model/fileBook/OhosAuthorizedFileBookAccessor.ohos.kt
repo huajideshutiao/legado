@@ -8,7 +8,9 @@ import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.book.requireBookSaveDir
 import io.legado.app.help.file.OhosDirAuthorizations
 import io.legado.app.lib.webdav.WebDav
+import io.legado.app.utils.File
 import io.legado.app.utils.InputStream
+import io.legado.app.utils.inputStream
 
 /**
  * 鸿蒙 [FileBookAccessor] 授权装饰器: 本地书的文件访问入口先经目录授权激活
@@ -69,7 +71,8 @@ class OhosAuthorizedFileBookAccessor(
      * 写入前确保目录授权已激活 ([OhosDirAuthorizations.ensureActivatedFor]; 授权是持久态, 激活一次即可)。
      *
      * 覆写所有能直接或间接触发写入的入口 ([importLocalFile] / [importFromArchive] /
-     * `saveBookFile` 两个重载 / [saveBookFileFromWebDav] / [downloadRemoteBook] / [importRemoteBook])
+     * `saveBookFile` 两个重载 / [saveBookFileFromWebDav] / [saveBookFileFromPath] /
+     * [downloadRemoteBook] / [importRemoteBook])
      * 的原因: `by delegate` 只转发未被覆写的方法, delegate 内部再调 `saveBookFile` 不会回到本类,
      * 故每个能触达落盘的入口都要单独包一层。
      */
@@ -90,6 +93,18 @@ class OhosAuthorizedFileBookAccessor(
     override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
         OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir())
         return delegate.saveBookFileFromWebDav(webDav, fileName)
+    }
+
+    /**
+     * 保存 web 上传的临时文件为书籍 (用户在"书籍保存位置"选定)。
+     *
+     * 写入前先激活落地目录已记住的授权 (重启后授权需重新 activate); 未设置保存位置时
+     * [requireBookSaveDir] 报"没有设置书籍保存位置", 授权失效时报明确异常 —— 两者都由调用方
+     * 写进网页响应体。不弹任何界面: 上传请求来自浏览器 (可能不在同一台设备上), 拿不到目录选择器。
+     */
+    override fun saveBookFileFromPath(filePath: String, fileName: String): String {
+        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir())
+        return delegate.saveBookFile(File(filePath).inputStream(), fileName)
     }
 
     override fun downloadRemoteBook(book: Book): Boolean {

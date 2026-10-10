@@ -587,7 +587,7 @@ private fun OpenUrlConfirmDialog(
         cancelButton = AlertButton(text = "取消") { onDismiss() },
         widthFraction = 0.8f,
     ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingDefault)) {
+        Column(Modifier.fillMaxWidth().padding(vertical = DesignTokens.spacingDefault)) {
             Text("$sourceName 正在请求跳转链接/应用，是否跳转？")
             Text(request.url, modifier = Modifier.padding(top = DesignTokens.spacingDefault))
             AppTextButton(text = "禁用书源", onClick = {

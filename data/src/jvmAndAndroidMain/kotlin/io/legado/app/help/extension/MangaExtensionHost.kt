@@ -43,6 +43,14 @@ interface MangaExtensionHost {
     fun uninstall(extension: MangaExtension.Installed)
 
     /**
+     * 读取插件包内的启动图标 (PNG 字节), 供插件源虚拟行行首图标缓存用。
+     *
+     * 包不存在、清单未声明图标、图标资源解析失败一律返回 null —— 调用方回落书源名首字
+     * 占位, 不抛异常。读包与解码有实际 I/O, 调用方应在后台线程调用。
+     */
+    fun readExtensionIcon(pkgName: String): ByteArray?
+
+    /**
      * 管理器首次初始化回调 (幂等语义由管理器保证, 只会触发一次)。
      * Android 在此注册安装事件广播接收器 (维持"扩展 UI 首入口才装广播"的既有时序);
      * 桌面无系统广播, no-op。

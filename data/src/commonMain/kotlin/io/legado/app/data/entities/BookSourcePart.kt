@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
 @DatabaseView(
     """select bookSourceUrl, bookSourceName, bookSourceGroup, customOrder, enabled, enabledExplore,
     (ifnull(trim(loginUrl), '') <> '' or ifnull(trim(loginUi), '') <> '') hasLoginUrl, lastUpdateTime, respondTime, weight,
-    (ifnull(trim(exploreUrl), '') <> '') hasExploreUrl
+    (ifnull(trim(exploreUrl), '') <> '') hasExploreUrl, bookSourceIcon
     from book_sources""",
     viewName = "book_sources_part"
 )
@@ -35,7 +35,9 @@ data class BookSourcePart(
     // 智能排序的权重
     var weight: Int = 0,
     // 是否有发现url
-    var hasExploreUrl: Boolean = false
+    var hasExploreUrl: Boolean = false,
+    // 行首图标地址 (网络地址或本地文件路径), 空 = 首字占位
+    var bookSourceIcon: String? = null
 ) {
 
     // 不覆写 equals/hashCode: 理由同 BookSource —— 只比 url 会让列表状态整表判等,

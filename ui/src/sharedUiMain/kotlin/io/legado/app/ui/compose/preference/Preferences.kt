@@ -440,7 +440,7 @@ private fun SingleChoiceDialog(
                             selected = i == selectedIndex,
                             onClick = { onSelected(i); onDismissRequest() },
                         )
-                        .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingMd),
+                        .padding(vertical = DesignTokens.spacingMd),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(DesignTokens.spacingMd),
                 ) {

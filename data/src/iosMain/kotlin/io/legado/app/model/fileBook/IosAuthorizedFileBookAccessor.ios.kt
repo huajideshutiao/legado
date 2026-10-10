@@ -148,6 +148,9 @@ class IosAuthorizedFileBookAccessor(
      * `saveBookFile` 两个重载 / [saveBookFileFromWebDav] / [downloadRemoteBook] / [importRemoteBook])
      * 的原因: `by delegate` 只转发未被覆写的方法, delegate 内部再调 `saveBookFile` 不会回到本类,
      * 故每个能触达落盘的入口都要单独包一层。
+     *
+     * `saveBookFileFromPath` (web 上传落盘) 不覆写: iOS 没有网页服务, 入口不可达; 该端保持
+     * [FileBookAccessor] 的 default 实现 (抛 UnsupportedOperationException), 不产生无授权的写入点。
      */
     override fun saveBookFile(inputStream: InputStream, fileName: String): String {
         val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir())

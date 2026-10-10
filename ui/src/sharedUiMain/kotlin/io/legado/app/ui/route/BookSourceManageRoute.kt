@@ -255,6 +255,7 @@ fun BookSourceManageRoute(
             onSortChange = { screenModel.dispatch(BookSourceUiEvent.SortChange(it)) },
             onToggleSortDesc = { screenModel.dispatch(BookSourceUiEvent.ToggleSortDesc) },
             onToggleGroupByDomain = { screenModel.dispatch(BookSourceUiEvent.ToggleGroupByDomain) },
+            onToggleShowSourceIcon = { screenModel.dispatch(BookSourceUiEvent.ToggleShowSourceIcon) },
             onToggle = { item, checked ->
                 screenModel.dispatch(BookSourceUiEvent.Toggle(item, checked))
             },

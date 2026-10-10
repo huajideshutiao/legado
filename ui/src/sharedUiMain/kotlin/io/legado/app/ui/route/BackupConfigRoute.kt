@@ -423,7 +423,7 @@ fun BackupConfigRoute(
                 showRestoreIgnore = false
             },
         ) {
-            // 多选列表 (对照 app 端 multiChoiceItems 交互; 样式为 Compose 近似: 24/8 padding + 12 间距 + toggleable Checkbox)
+            // 多选列表 (对照 app 端 multiChoiceItems 交互; 样式为 Compose 近似: 左右不叠加额外边距(内容槽 8dp) + 上下 8 + 12 间距 + toggleable Checkbox)
             Column {
                 titles.forEachIndexed { index, title ->
                     Row(
@@ -437,7 +437,7 @@ fun BackupConfigRoute(
                                     BackupConfigShared.ignoreConfig[keys[index]] = it
                                 },
                             )
-                            .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingDefault),
+                            .padding(vertical = DesignTokens.spacingDefault),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(DesignTokens.spacingMd),
                     ) {

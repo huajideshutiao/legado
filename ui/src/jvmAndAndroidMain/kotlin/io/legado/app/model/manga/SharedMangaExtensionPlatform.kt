@@ -8,6 +8,7 @@ import io.legado.app.help.extension.ExtensionPrefs
 import io.legado.app.help.extension.model.InstallStep
 import io.legado.app.help.extension.model.MangaExtension
 import io.legado.app.help.extension.MangaExtensionManager
+import io.legado.app.help.extension.PluginSourceIcons
 import io.legado.app.help.extension.model.MangaExtensionRepo
 import io.legado.app.help.extension.model.RepoKind
 import io.legado.app.model.anime.AnimeSourceMapper
@@ -115,6 +116,14 @@ open class SharedMangaExtensionPlatform(
         val updatedNames: Set<String>,
     )
 
+    /**
+     * 状态流在服务构造 (宿主启动注册) 时开始组装: 书源管理页据「已装插件集合变化」重取插件源
+     * 图标, 该信号必须在冷启动就生效, 不能等插件管理页首入口 [init]。
+     */
+    init {
+        startStateAssembly()
+    }
+
     override fun init() {
         if (!inited.compareAndSet(false, true)) return
         MangaExtensionManager.init()
@@ -128,7 +137,9 @@ open class SharedMangaExtensionPlatform(
                 contentFilter.value = ExtensionPrefs.getContentFilter().toContentFilter()
             }
             .launchIn(scope)
+    }
 
+    private fun startStateAssembly() {
         // updatedNames 必须作为 combine 输入: checkForUpdates 在 Manager 发射完状态之后才写它,
         // 不参与 combine 就没有重算触发, 条目 hasUpdate 不会刷新。
         val filters = combine(languages, kindFilter, contentFilter) { langs, kind, content ->
@@ -268,6 +279,9 @@ open class SharedMangaExtensionPlatform(
     }
 
     // endregion
+
+    override fun sourceIconPath(bookSourceUrl: String): String? =
+        PluginSourceIcons.iconPathOf(bookSourceUrl)
 
     private fun collectInstallStep(pkgName: String, flow: Flow<InstallStep>) {
         scope.launch {

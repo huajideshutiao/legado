@@ -8,6 +8,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
+import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.CacheManager
 import io.legado.app.help.JsExtensionsPlatform
@@ -537,7 +538,10 @@ object BookController {
     }
 
     /**
-     * 添加本地书籍
+     * 添加本地书籍 (网页"上传本地书籍" / WiFi 传书)。
+     *
+     * 失败原因直接写进响应体: 请求来自浏览器, 可能不在同一台设备上, 看不到应用的任何界面 ——
+     * 响应体里的文字就是用户能拿到的全部信息, 必须直接说清去哪儿做什么。
      */
     fun addLocalBook(
         parameters: Map<String, List<String>>,
@@ -548,10 +552,27 @@ object BookController {
             ?: return returnData.setErrorMsg("fileName 不能为空")
         val fileData = files["fileData"]
             ?: return returnData.setErrorMsg("fileData 不能为空")
-        kotlin.runCatching {
+        // 保存通道自身的两种不可用状态分别给可执行原因 (内部异常文字等于没说);
+        // 导入阶段的异常仍按写盘失败口径归为一句
+        val uri = kotlin.runCatching {
             // FileBook.saveBookFile(File(fileData).inputStream(), fileName) →
             // FileBookProviders.get().saveBookFileFromPath (commonMain 无法直接 File.inputStream())
-            val uri = FileBookProviders.get().saveBookFileFromPath(fileData, fileName)
+            FileBookProviders.get().saveBookFileFromPath(fileData, fileName)
+        }.getOrElse { e ->
+            return returnData.setErrorMsg(
+                when {
+                    e is InvalidBooksDirException ->
+                        "没有设置书籍保存位置，无法上传：请在装有本应用的设备上进入「其它设置 - 书籍保存位置」选定目录后重新上传"
+
+                    e is UnsupportedOperationException ->
+                        "本端不支持网页上传本地书籍：请在装有本应用的设备上导入本地书"
+
+                    e.isSecurityException() -> "需重新设置书籍保存位置!"
+                    else -> "保存书籍错误\n${e.message}"
+                }
+            )
+        }
+        kotlin.runCatching {
             FileBook.importLocalFile(uri)
         }.onFailure {
             return when {

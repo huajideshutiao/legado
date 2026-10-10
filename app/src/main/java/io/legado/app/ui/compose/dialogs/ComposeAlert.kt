@@ -223,7 +223,7 @@ class AlertBuilder(val context: Context) {
                                 selected = i == selected,
                                 onClick = { selected = i; onClick?.invoke(dialog, i) },
                             )
-                            .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingMd),
+                            .padding(vertical = DesignTokens.spacingMd),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(DesignTokens.spacingMd),
                     ) {
@@ -261,7 +261,7 @@ class AlertBuilder(val context: Context) {
                                     onClick(dialog, i, it)
                                 },
                             )
-                            .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingDefault),
+                            .padding(vertical = DesignTokens.spacingDefault),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(DesignTokens.spacingMd),
                     ) {

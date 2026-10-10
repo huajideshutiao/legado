@@ -23,7 +23,12 @@ interface MangaExtensionService {
      */
     fun init()
 
-    /** 插件管理页状态 (已装/未装载/可用/仓库/安装进度)。 */
+    /**
+     * 插件管理页状态 (已装/未装载/可用/仓库/安装进度)。
+     *
+     * 平台实现在服务注册 (宿主启动序列) 时即开始组装并发射: 书源管理页要在冷启动按已装插件
+     * 集合变化重取插件源图标, 不能等插件管理页 [init]。
+     */
     val state: StateFlow<MangaExtensionUiState>
 
     /**
@@ -117,6 +122,14 @@ interface MangaExtensionService {
      * 打开输入对话框时回调一次), 让扩展侧的输入框配置照常执行。
      */
     suspend fun bindEditTextPreference(pkgName: String, index: Int) {}
+
+    /**
+     * 插件源虚拟行的行首图标: 归属插件包启动图标在应用私有缓存区的文件路径。
+     *
+     * 非插件源 (TVBox 站点源没有包内图标来源)、插件包已卸载、包内取不到图标时返回 null ——
+     * 调用方回落书源名首字占位。首次调用会读插件包并落盘缓存, 请在后台线程调用。
+     */
+    fun sourceIconPath(bookSourceUrl: String): String? = null
 }
 
 /** 插件内容分级 (与插件宿主 ContentWarning 对齐)。 */

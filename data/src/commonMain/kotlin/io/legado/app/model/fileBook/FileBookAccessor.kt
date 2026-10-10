@@ -91,10 +91,11 @@ interface FileBookAccessor {
      * inputStream 扩展均为 JVM-only, 且 expect InputStream 与 java.io.FileInputStream 类型不兼容),
      * 故新增本重载, 由各平台 actual 自行完成 "路径 -> InputStream -> saveBookFile" 转换。
      *
-     * 已实现: app 端 `FileBookAccessorImpl` / 桌面 `DesktopFileBookAccessor`。
+     * 已实现: app 端 `FileBookAccessorImpl` / 桌面 `DesktopFileBookAccessor` / 鸿蒙
+     * `OhosAuthorizedFileBookAccessor` (先激活用户已选目录的授权再写, 不弹界面)。
      *
-     * default 实现抛 [UnsupportedOperationException]: iOS/鸿蒙当前没有这条通道;
-     * 调用方据此把"本端没有这条通道"当作明确原因回报给请求方。
+     * default 实现抛 [UnsupportedOperationException]: iOS 没有网页服务, web 上传入口不可达,
+     * 不需要这条通道; 调用方据此把"本端没有这条通道"当作明确原因回报给请求方。
      *
      * @param filePath web 上传临时文件路径 (原 addLocalBook 的 files["fileData"])
      * @param fileName 保存文件名

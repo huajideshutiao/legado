@@ -123,7 +123,7 @@ fun FontSelectDialog(
                                 showTypefaceDialog = true
                             }
                         }
-                        .padding(vertical = DesignTokens.spacingDefault, horizontal = DesignTokens.spacingMd),
+                        .padding(vertical = DesignTokens.spacingDefault),
                 )
                 Spacer(Modifier.weight(1f))
                 topBarTrailing?.invoke()
@@ -187,7 +187,7 @@ private fun FontRow(
         Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = DesignTokens.spacingLg, vertical = if (preview != null) DesignTokens.spacingXs else DesignTokens.spacingDefault),
+            .padding(vertical = if (preview != null) DesignTokens.spacingXs else DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RadioButton(

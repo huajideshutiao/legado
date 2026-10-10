@@ -121,6 +121,16 @@
         #drag.active {
             box-shadow: 0 0 15px rgba(0,0,0,.1);
         }
+        .reason {
+            display: inline-block;
+            margin-left: 6px;
+            color: #ea5449;
+            font-size: 12px;
+            text-align: left;
+            word-break: break-all;
+            white-space: normal;
+            vertical-align: middle;
+        }
         @media (max-width: 600px) {
             .s-title .app-name { font-size: 24px; }
             .s-title .page-name { font-size: 16px; }
@@ -239,24 +249,60 @@
         });
 
         xhr.addEventListener('load', () => {
-            if (xhr.status === 200) {
+            // 服务端以 {isSuccess, errorMsg, data} 承载结果, 逻辑失败同样回 2xx, 状态码分不出成败
+            const body = responseBody(xhr);
+            if (body && body.isSuccess === true) {
                 indicator.className = 'success';
                 indicator.textContent = '';
             } else {
-                indicator.className = 'fail';
-                indicator.textContent = '';
+                failUpload(indicator, failReason(xhr, body));
             }
             nextUpload();
         });
 
         xhr.addEventListener('error', () => {
-            indicator.className = 'fail';
-            indicator.textContent = '';
+            failUpload(indicator, '网络错误，未收到服务器响应');
             nextUpload();
         });
 
         xhr.open('POST', UPLOAD_URL);
         xhr.send(fd);
+    }
+
+    // 服务端异常兜底与静态资源等非 JSON 响应解析不出结果结构
+    function responseBody(xhr) {
+        try {
+            const body = JSON.parse(xhr.responseText);
+            return body && typeof body === 'object' ? body : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // 失败原因来自响应体的 errorMsg (未设置保存位置 / 本端没有上传通道都写在这里)；
+    // 取不到就退原文，不能只给一个图标让用户猜
+    function failReason(xhr, body) {
+        if (body && typeof body.errorMsg === 'string' && body.errorMsg) {
+            return body.errorMsg;
+        }
+        return '上传失败：' + (xhr.responseText || ('HTTP ' + xhr.status));
+    }
+
+    function failUpload(indicator, reason) {
+        indicator.className = 'fail';
+        indicator.textContent = '';
+        indicator.title = reason;
+        const cell = indicator.parentElement;
+        if (cell && !cell.querySelector('.reason')) {
+            const text = document.createElement('span');
+            text.className = 'reason';
+            cell.appendChild(text);
+        }
+        const text = cell && cell.querySelector('.reason');
+        if (text) {
+            text.textContent = reason;
+        }
+        alert(reason);
     }
 
     function nextUpload() {
