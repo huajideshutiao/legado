@@ -76,7 +76,7 @@ internal object ExtensionLoader {
         PackageManager.GET_SIGNATURES or
         (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) PackageManager.GET_SIGNING_CERTIFICATES else 0)
 
-    /** 图标位图尺寸未知时的兜底边长 (典型 xxxhdpi 启动图标 192px)。 */
+    /** 图标位图算不出可用边长 (固有尺寸非正或超过上限) 时的兜底边长 (典型 xxxhdpi 启动图标 192px)。 */
     private const val ICON_FALLBACK_SIZE = 192
 
     private const val PRIVATE_EXTENSION_EXTENSION = "ext"

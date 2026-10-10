@@ -10,9 +10,11 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.DirUsage
 import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.file.AndroidDirAuthorizations
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
@@ -57,6 +59,8 @@ class FileAssociationFragment(private val isShellHost: Boolean = false) : Fragme
             val uri = argUri ?: return@registerHandleFile
             result.uri?.let { treeUri ->
                 AppConfig.defaultBookTreeUri = treeUri.toString()
+                // 书籍保存位置下的文件按本地书读写, 登记为书籍用途
+                AndroidDirAuthorizations.remember(treeUri.toString(), DirUsage.BookTree)
                 importBook(treeUri, uri)
             }
         }

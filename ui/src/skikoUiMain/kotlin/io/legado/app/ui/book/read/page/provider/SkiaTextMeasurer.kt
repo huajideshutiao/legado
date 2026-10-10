@@ -1,10 +1,12 @@
 package io.legado.app.ui.book.read.page.provider
 
+import io.legado.app.constant.DirUsage
 import io.legado.app.ui.book.read.page.ReaderFontAlias
 import io.legado.app.ui.book.read.page.ReaderFontDescription
 import io.legado.app.ui.book.read.page.ReaderGlyphFallback
 import io.legado.app.ui.book.read.page.provider.SkiaTextMeasurer.Companion.defaultReaderTypeface
 import io.legado.app.ui.book.read.page.readerFontDescription
+import io.legado.app.ui.withLocalDirAccess
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import org.jetbrains.skia.BreakIterator
@@ -193,14 +195,18 @@ class SkiaTextMeasurer(
          * 用户自定义正文字体 (`ReadBookConfig.textFont`) → Typeface: 走 `makeFromFile`, 与绘制侧
          * Compose `Font(File)` 读同一个文件; 空路径 / 加载失败回落 [defaultReaderTypeface]。
          *
+         * 字体文件可能是用户在应用容器外选定的字体目录里的文件, 读盘包在平台授权内
+         * (用途 [DirUsage.Font]); 授权失效/读不到时回落默认字形, 不弹任何界面。
+         *
          * 文件路径分支**不应用 [weight]**：skiko 无 `Typeface.makeFromTypeface(base, style)`，
          * 且绘制侧单 Font 注册下 `FontWeight` 本来也不生效，忽略字重才是与绘制一致的行为。
          */
         fun readerTypeface(description: ReaderFontDescription): Typeface? {
             val path = description.customPath
             if (path == null) return defaultReaderTypeface(description)
-            return runCatching { FontMgr.default.makeFromFile(path, 0) }.getOrNull()
-                ?: defaultReaderTypeface(description)
+            return runCatching {
+                withLocalDirAccess(path, DirUsage.Font) { FontMgr.default.makeFromFile(path, 0) }
+            }.getOrNull() ?: defaultReaderTypeface(description)
         }
     }
 }

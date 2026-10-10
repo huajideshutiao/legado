@@ -75,6 +75,7 @@ import io.legado.app.help.update.registerAndroidAppUpdate
 import io.legado.app.help.image.MangaPluginImageFetcherProviders
 import io.legado.app.model.BookCoverShared
 import io.legado.app.model.CacheBook
+import io.legado.app.model.fileBook.registerAndroidAuthorizedFileBookAccessor
 import io.legado.app.model.fileBook.registerAndroidFileBookProviders
 import io.legado.app.model.fileBook.registerEpubApplicationContext
 import io.legado.app.model.manga.JvmMangaPluginImageFetcher
@@ -233,6 +234,9 @@ class App : Application() {
         // FileBookProviders 调到 app 端 FileBookAccessorImpl, 含 importFromArchive /
         // importLocalFile / saveBookFile / downloadRemoteBook / mergeBook 等重 Android 逻辑)
         registerAndroidFileBookProviders()
+        // 注册本地书访问器与 zip 容器工厂 (用途校验装饰器): 须在平台实现注册之后,
+        // 任何 FileBook 调用之前; IO 仍由平台实现唯一提供
+        registerAndroidAuthorizedFileBookAccessor()
         registerAndroidPasswordProvider()
         // 注册 ServiceLaunchers (commonMain Download/CacheBook/UpdateBook 启动入口)
         registerAndroidServiceLauncher(instance)

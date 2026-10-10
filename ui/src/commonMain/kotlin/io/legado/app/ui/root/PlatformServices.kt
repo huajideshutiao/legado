@@ -133,7 +133,8 @@ interface FilePickerService {
      * 选目录 (对照 app 端 HandleFileContract.DIR_SYS / OpenDocumentTree)。
      *
      * [usage] 为本次选择的用途: 受沙盒约束的端 (iOS/鸿蒙) 按用途登记目录授权, 该目录只放行同用途的
-     * 访问; 安卓 SAF 权限按树 URI 授予、桌面为普通文件路径, 无用途维度, 忽略该参数。
+     * 访问; 安卓的系统权限按树 URI 授予、本身没有用途维度, 由应用侧按用途登记选定目录, 本地书文件访问
+     * 据此判定目录归属; 桌面为普通文件路径、选定目录不产生系统授权, 忽略该参数。
      *
      * 各端按需实现, 默认返回 null 由调用方降级
      */
@@ -141,7 +142,7 @@ interface FilePickerService {
 
     /**
      * 目录可写性预检 (对照 app 端 BackupConfigFragment.backup 的 FileDoc.checkWrite)。
-     * [usage] 同 [pickDirectory]: 该目录须在该用途下已授权才可写。
+     * [usage] 同 [pickDirectory]: 受沙盒约束的端该目录须在同用途下已授权才可写。
      *
      * Android SAF content:// 目录用 DocumentFile 判断可写性, 不可写返回 false 由调用方引导重新选目录;
      * 无 SAF 概念的平台 (桌面等普通路径) 默认视为可写。

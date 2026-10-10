@@ -64,8 +64,9 @@ interface MangaExtensionHost {
     /**
      * 读取插件包内的启动图标 (PNG 字节), 供插件源虚拟行行首图标缓存用。
      *
-     * 包不存在、清单未声明图标、图标资源解析失败一律返回 null —— 调用方回落书源名首字
-     * 占位, 不抛异常。读包与解码有实际 I/O, 调用方应在后台线程调用。
+     * 包不存在、清单未声明图标、图标资源解析失败、图标尺寸超过 [EXTENSION_ICON_MAX_PIXEL_SIZE]
+     * 一律返回 null —— 调用方回落书源名首字占位, 不抛异常。返回的字节恒为完整 PNG, 缓存层据此
+     * 只按 PNG 判完好。读包与解码有实际 I/O, 调用方应在后台线程调用。
      */
     fun readExtensionIcon(pkgName: String): ByteArray?
 

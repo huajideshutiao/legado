@@ -108,7 +108,8 @@ private class DesktopFilePickerService : FilePickerService {
             true
         }.getOrDefault(false)
 
-    // 桌面为普通文件路径, 无用途维度, 忽略 usage
+    // 桌面无沙盒: 选定目录是普通文件路径, 不产生系统授权, 用途无法强制 —— 本地书文件访问不做用途校验;
+    // 安卓的树 URI 权限同样没有用途维度, 由应用侧按用途登记, 故该参数在那里被登记使用
     override fun pickDirectory(usage: DirUsage): String? =
         FileDialogs.pickDirectory(
             initialDir = userExportDir()?.let(::File)?.takeIf { it.isDirectory },

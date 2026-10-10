@@ -307,7 +307,13 @@ object DesktopCore {
         PluginSourceDelegates.register(MangaSourceDelegateImpl)
         PluginSourceDelegates.register(VideoSourceDelegateImpl)
         MangaPluginImageFetcherProviders.register(JvmMangaPluginImageFetcher())
-        MangaExtensionServiceProviders.register(SharedMangaExtensionPlatform(SharedMangaSourceConfig(Context())))
+        // 插件服务构造期即启动一份长命状态收集器 (SharedMangaExtensionPlatform.init), 重复注册会
+        // 留下第二份永不取消的收集器; 与 app 端进程级单例同语义: 已有实例就不再新建
+        if (MangaExtensionServiceProviders.getOrNull() == null) {
+            MangaExtensionServiceProviders.register(
+                SharedMangaExtensionPlatform(SharedMangaSourceConfig(Context()))
+            )
+        }
         // Web 服务 provider (NanoHTTPD 独立, 不依赖其他 provider):
         // - WebServerPlatform: HttpServer+WebSocketServer 起停 (JvmWebServerPlatform 共用逻辑)
         // - WebAssetSource: composeResources 读 commonMain/composeResources/files/web/ 静态资源

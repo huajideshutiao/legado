@@ -1,6 +1,7 @@
 package io.legado.app.ui.root
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.DirUsage
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
@@ -23,6 +24,7 @@ import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.info.WebFileImportShared
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.route.encodeReviewListDialogPayload
+import io.legado.app.ui.withLocalDirAccess
 import io.legado.app.utils.FlowBus
 import io.legado.app.web.WebServerManager
 import kotlinx.coroutines.CancellationException
@@ -433,6 +435,9 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
      * pref 字体目录 + 内置字体目录合并, 同名去重 (先扫的 pref 目录优先) 后按名排序
      * (对照 app 端 FontSelectDialog.loadFontFiles)。
      *
+     * 用户选定的字体目录可能在应用容器之外: 列举走 [withLocalDirAccess] 的平台授权
+     * (用途 [DirUsage.Font]); 未授权/授权失效时跳过该目录, 只保留内置字体目录, 不弹任何界面。
+     *
      * 支持 SAF content:// 目录的端自行 override。
      */
     override suspend fun scanFontItems(): List<FontItem> = withContext(IoDispatcher) {
@@ -440,7 +445,15 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
         val items = arrayListOf<FontItem>()
         PreferenceProviders.get().getString(PreferKey.fontFolder)
             .takeIf { it.isNotBlank() }
-            ?.let { scanFontDir(items, it.toPath(), fontRegex) }
+            ?.let { fontFolder ->
+                runCatching {
+                    withLocalDirAccess(fontFolder, DirUsage.Font) { authorizedDir ->
+                        scanFontDir(items, authorizedDir.toPath(), fontRegex)
+                    }
+                }.onFailure {
+                    AppLog.put("字体目录读取失败, 本次只用内置字体目录: $fontFolder\n${it.message}")
+                }
+            }
         scanFontDir(items, DataStorageProviders.get().fontsDir.toPath(), fontRegex)
         items.distinctBy { it.name }.sortedBy { it.name }
     }

@@ -39,6 +39,7 @@ import io.legado.app.BuildConfig
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.DirUsage
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.appInfo
@@ -62,6 +63,7 @@ import io.legado.app.model.fileBook.FileBook
 import io.legado.app.help.extension.AndroidMangaExtensionHost
 import io.legado.app.help.extension.MangaExtensionHostProviders
 import io.legado.app.help.extension.MangaExtensionManager
+import io.legado.app.help.file.AndroidDirAuthorizations
 import io.legado.app.model.manga.AndroidMangaExtensionPlatform
 import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.service.BaseReadAloudService
@@ -176,6 +178,8 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
             return@registerHandleFile
         }
         ACache.get().put(AppConst.imagePathKey, uri.toString())
+        // 图片保存目录也可被本地书引用, 登记用途供书籍文件访问校验
+        AndroidDirAuthorizations.remember(uri.toString(), DirUsage.ImageSave)
         // 有待保存图片 (menu_save 先选目录后保存) 则继续保存
         pendingSaveImageSrc?.let { src ->
             pendingSaveImageSrc = null
@@ -213,6 +217,8 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     private val importSelectFolder = registerHandleFile { result ->
         if (result.uri != null) {
             AppConfig.importBookPath = result.uri.toString()
+            // 导入根目录下的文件按本地书读入, 登记为书籍用途
+            AndroidDirAuthorizations.remember(result.uri.toString(), DirUsage.BookTree)
             // 取消选择时不动当前 rootDoc (对照原版 selectFolder 回调 uri==null 直接 return)
             pendingImportFolderCallback?.invoke()
             pendingImportFolderCallback = null
@@ -227,6 +233,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
 
     /** 其它设置: SAF 选书籍目录 (对照 OtherConfigHost.localBookTreeSelect, DIR_SYS)。 */
     private val bookTreeUriSelect = registerHandleFile { result ->
+        result.uri?.let { AndroidDirAuthorizations.remember(it.toString(), DirUsage.BookTree) }
         pendingBookTreeUriCallback?.invoke(result.uri?.toString())
         pendingBookTreeUriCallback = null
     }
@@ -253,6 +260,8 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
                 val dirPath = if (uri.isContentScheme()) uri.toString() else uri.path
                     ?: return@registerHandleFile
                 rememberBookExportDir(dirPath)
+                // 导出目录只存放导出成品, 登记用途后其下文件不作为本地书来源
+                AndroidDirAuthorizations.remember(uri.toString(), DirUsage.Export)
                 val books = pendingExportBooks
                 pendingExportBooks = null
                 if (books != null && books.isNotEmpty()) {

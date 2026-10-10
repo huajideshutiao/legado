@@ -23,6 +23,7 @@ import io.legado.app.constant.DirUsage
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.resolveImagePath
+import io.legado.app.help.file.AndroidDirAuthorizations
 import io.legado.app.model.bakeCoverImageFile
 import io.legado.app.model.bakedImagePath
 import io.legado.app.model.deleteImageIfUnreferenced
@@ -222,7 +223,7 @@ private class AndroidFilePickerService(
      * FileDoc.fromDir(path).checkWrite())。content:// 走 SAF DocumentFile 判断,
      * 普通路径 (桌面等无 SAF 平台) 视为可写。
      *
-     * SAF 权限按树 URI 授予, 无用途维度, 不区分目录当初为何而选。
+     * SAF 权限按树 URI 授予, 可写性与目录当初为何而选无关。
      */
     override fun checkWrite(path: String, usage: DirUsage): Boolean = runBlocking {
         val uri = path.toUri()
@@ -237,7 +238,7 @@ private class AndroidFilePickerService(
 
     // 选目录: OpenDocumentTree (对照 app 端 HandleFileDialog.selectDocTree),
     // 选中后 takePersistableUriPermission 保证重启后仍可访问;
-    // SAF 权限按树 URI 授予, 无用途维度, 不区分目录为何而选
+    // SAF 权限按树 URI 授予、本身没有用途维度, 故选中后按 [usage] 登记用途, 供本地书文件访问校验
     override val supportsDirWrite: Boolean = true
 
     // 写进已选目录 (对照 app 端 FileUtils.saveImage(dirUri): FileDoc 兼容 content:// 与 file://)
@@ -257,6 +258,7 @@ private class AndroidFilePickerService(
             }.onFailure {
                 AppLog.put("AndroidFilePickerService.pickDirectory takePersistableUriPermission 失败: ${it.localizedMessage}")
             }
+            AndroidDirAuthorizations.remember(uri.toString(), usage)
             uri.toString()
         }
     }

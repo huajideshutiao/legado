@@ -259,20 +259,25 @@ object IosSecurityScopedStorage {
      *
      * - 沙盒内路径: 返回无需 scope 的空租约;
      * - 落在同用途的已授权目录下: 对该根 URL start, 租约持有同一 URL 并在 close 时配对 stop;
-     * - 其余情况抛 [SecurityException] (阅读层据此提示"选择书籍所在文件夹")。
+     *   同用途下有多个授权根都覆盖该文件时 (父目录与子目录各授权过一次) 逐个尝试, 起不来的条目跳过,
+     *   全部起不来才按授权失效处理 (阅读层据此提示"选择书籍所在文件夹");
+     * - 其余情况抛 [SecurityException]。
      */
     fun acquireLease(path: String, usage: DirUsage): IosSecurityScopeLease {
         val target = canonicalPath(path)
         if (isSandboxPath(target)) return IosSecurityScopeLease.none()
-        val root = authorizedRootFor(target, usage) ?: throw SecurityException("没有访问权限: $path")
-        if (!root.startAccessingSecurityScopedResource()) {
-            invalidateAll()
-            throw SecurityException("没有访问权限: $path")
-        }
-        val lease = IosSecurityScopeLease(root, started = true)
+        val candidates = authorizedRootsFor(target, usage)
+        if (candidates.isEmpty()) throw SecurityException("没有访问权限: $path")
+        val root = candidates.firstOrNull { it.url.startAccessingSecurityScopedResource() }
+            ?: run {
+                invalidateAll()
+                throw SecurityException("没有访问权限: $path")
+            }
+        val lease = IosSecurityScopeLease(root.url, started = true)
         try {
-            val rootPath = root.path ?: throw SecurityException("授权目录没有有效路径")
-            if (!underRoot(canonicalPath(rootPath), canonicalPath(path))) {
+            // 起 scope 后重新规范化: 授权生效可能才解析出真实位置 (外置卷/文件提供者挂载), 归属按彼时位置判
+            val rootPath = root.url.path ?: throw SecurityException("授权目录没有有效路径")
+            if (!underRoot(canonicalPath(rootPath), target)) {
                 throw SecurityException("文件位于授权目录之外: $path")
             }
             return lease
@@ -283,15 +288,15 @@ object IosSecurityScopedStorage {
     }
 
     /**
-     * 找规范化路径 [canonicalTarget] 在 [usage] 用途下所属的授权根; 无匹配返回 null。
+     * 找规范化路径 [canonicalTarget] 在 [usage] 用途下覆盖它的全部授权根 (按登记顺序); 无匹配返回空。
      *
      * 导入根目录以 [DirUsage.BookTree] 参与匹配 (见 [setImportRoot])。
      */
-    private fun authorizedRootFor(canonicalTarget: String, usage: DirUsage): NSURL? {
+    private fun authorizedRootsFor(canonicalTarget: String, usage: DirUsage): List<AuthorizedRoot> {
         val roots = resolvedRoots() + listOfNotNull(synchronized(lock) { importRoot })
-        return roots.firstOrNull {
+        return roots.filter {
             it.usage == usage && underRoot(it.canonicalPath, canonicalTarget)
-        }?.url
+        }
     }
 
     /**
@@ -324,7 +329,7 @@ object IosSecurityScopedStorage {
     fun findBookFileInTree(dirUri: String, fileName: String): String? {
         if (fileName.isEmpty()) return null
         val target = canonicalPath(dirUri)
-        if (!isSandboxPath(target) && authorizedRootFor(target, DirUsage.BookTree) == null) return null
+        if (!isSandboxPath(target) && authorizedRootsFor(target, DirUsage.BookTree).isEmpty()) return null
         return withAccess(dirUri, DirUsage.BookTree) { dirPath ->
             val dir = File(dirPath)
             val direct = File(dir, fileName)
