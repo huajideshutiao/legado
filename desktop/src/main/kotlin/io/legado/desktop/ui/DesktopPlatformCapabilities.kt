@@ -90,8 +90,32 @@ import javax.management.ObjectName
 object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** 本次导出任务 (对照 app 端 ExportBookService 的服务存活, 可取消)。 */
+    /**
+     * 待导出队列, 键为书 url (对照原版 ExportBookService.waitExportBooks): 重复触发导出时新请求
+     * 入队稍后照常导出; 同一本书已在队列里就换成最新落点。
+     */
+    private val waitExportBooks = LinkedHashMap<String, PendingExport>()
+
+    /** 正在导出的书 url (对照原版 exportProgress: 同一本书正在导出时不再重复入队)。 */
+    private var exportingBookUrl: String? = null
+
+    /** 队列执行者是否在跑 (与队列读写同锁判断, 避免"收工瞬间入队"的书没人导)。 */
+    private var exportWorkerRunning = false
+
+    /** 队列执行者 (对照 app 端 ExportBookService 的服务存活, 可取消)。 */
     private var exportBooksJob: Job? = null
+
+    /** 队列里的一本书: 落点 + 导出方式 (对照原版 ExportBookService 的 bookUrl → ExportConfig)。 */
+    private class PendingExport(val path: String, val book: Book, val mode: ExportMode)
+
+    /** 导出方式 (对照原版 ExportBookService.ExportConfig: type 或 epubScope+epubSize)。 */
+    private sealed interface ExportMode {
+        /** 按导出配置导: `txt` / `epub`, 图片书为 `cbz`。 */
+        data class ByConfig(val type: String) : ExportMode
+
+        /** 自定义导出: 章节范围 + 分卷大小 (epub)。 */
+        data class CustomEpub(val range: String, val size: Int) : ExportMode
+    }
 
     override val capabilityScope: CoroutineScope get() = scope
 
@@ -764,29 +788,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     }
 
     private fun startCustomExport(path: String, books: List<Book>, range: String, size: Int) {
-        if (books.isEmpty()) return
-        if (exportBooksJob?.isActive == true) {
-            Toasters.get().toast("书籍正在导出")
-            return
-        }
-        exportBooksJob = scope.launch {
-            Toasters.get().toast("开始导出 ${books.size} 本 (自定义章节)")
-            try {
-                books.forEachIndexed { index, book ->
-                    upExportTrayBinding(book, books.size - index - 1)
-                    DesktopBookExport.exportCustomEpub(path, listOf(book), range, size)
-                }
-                Toasters.get().toast("导出完成\n$path")
-            } catch (e: CancellationException) {
-                // 托盘取消导出: 不报错, 已写出的半成品与 app 端取消语义一致
-                throw e
-            } catch (e: Exception) {
-                AppLog.put("导出书籍出错\n${e.message}", e)
-                Toasters.get().toast("导出书籍出错\n${e.message}")
-            } finally {
-                DesktopMediaTray.export = null
-            }
-        }
+        enqueueExport(books, path, label = " (自定义章节)") { ExportMode.CustomEpub(range, size) }
     }
 
     /**
@@ -802,33 +804,137 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     }
 
     private fun startExport(dir: String, books: List<Book>) {
-        if (exportBooksJob?.isActive == true) {
-            Toasters.get().toast("书籍正在导出")
-            return
-        }
         val type = prefs.getInt(PreferKey.exportType, 0)
-        exportBooksJob = scope.launch {
-            Toasters.get().toast("开始导出 ${books.size} 本")
-            try {
-                books.forEachIndexed { index, book ->
-                    upExportTrayBinding(book, books.size - index - 1)
-                    // 对照 app 端 MainActivity.startExportBooks: 图片书一律导出 cbz,
-                    // 其余按配置类型 (0=txt 1=epub)
-                    when {
-                        book.isImage -> DesktopBookExport.exportCbz(dir, listOf(book))
-                        type == 1 -> DesktopBookExport.exportEpub(dir, listOf(book))
-                        else -> DesktopBookExport.exportTxt(dir, listOf(book))
-                    }
+        // 导出配置在此快照 (对照原版 BookshelfManageActivity 把 exportType 随 intent 传进服务),
+        // 图片书一律导 cbz (对照 app 端 MainActivity.startExportBooks)
+        enqueueExport(books, dir) {
+            ExportMode.ByConfig(if (it.isImage) "cbz" else if (type == 1) "epub" else "txt")
+        }
+    }
+
+    /**
+     * 导出请求入队 (对照原版 BookshelfManageActivity.startExportBooks → ExportBookService:
+     * 每本书一条队列项, 重复触发入队稍后照常导出), 队列空闲时顺手拉起执行者。
+     *
+     * @param label 导出方式后缀 (自定义章节导出提示里带"自定义章节", 普通导出为空)
+     * @param modeOf 按书算导出方式 (图片书一律 cbz 等)
+     */
+    private fun enqueueExport(
+        books: List<Book>,
+        path: String,
+        label: String = "",
+        modeOf: (Book) -> ExportMode,
+    ) {
+        if (books.isEmpty()) return
+        val (added, started) = synchronized(this) {
+            // 同一本书只入队一次 (正在导出的那本不入队), 已在队列里则换成最新落点
+            var count = 0
+            books.forEach { book ->
+                if (book.bookUrl == exportingBookUrl) return@forEach
+                waitExportBooks[book.bookUrl] = PendingExport(path, book, modeOf(book))
+                count++
+            }
+            val start = count > 0 && !exportWorkerRunning
+            if (start) exportWorkerRunning = true
+            count to start
+        }
+        if (added == 0) return
+        Toasters.get().toast(
+            if (started) "开始导出 $added 本$label" else "已加入导出队列 $added 本$label"
+        )
+        if (started) {
+            exportBooksJob = scope.launch { runExportQueue() }
+        }
+    }
+
+    /** 取队首的一本书并标记"正在导出" (对照原版 export(): 取队首 → exportProgress 置位), 空队列返回 null。 */
+    private fun takeNextExport(): PendingExport? = synchronized(this) {
+        val entry = waitExportBooks.entries.firstOrNull() ?: return null
+        waitExportBooks.remove(entry.key)
+        exportingBookUrl = entry.key
+        entry.value
+    }
+
+    /** 队列里还剩几本待导 (托盘进度显示用)。 */
+    private fun pendingExportCount(): Int = synchronized(this) { waitExportBooks.size }
+
+    /** 当前这本导完, 清掉"正在导出"标记。 */
+    private fun finishExport() = synchronized(this) { exportingBookUrl = null }
+
+    /**
+     * 队列空时收工 (与 [enqueueExport] 同锁): 确认没新入队才真收工, 否则继续导 —— 否则在收工
+     * 的一瞬间入队的书就没人导了。托盘进度与"执行者在跑"同一原子动作清掉, 不会清掉下一批的绑定。
+     */
+    private fun finishWorkerIfQueueEmpty(): Boolean = synchronized(this) {
+        if (waitExportBooks.isNotEmpty()) {
+            false
+        } else {
+            exportWorkerRunning = false
+            DesktopMediaTray.export = null
+            true
+        }
+    }
+
+    /** 取消时丢掉剩余队列并归还执行者名额 (对照原版 IntentAction.stop → stopSelf: 未导出的不再导出)。 */
+    private fun discardExportQueue() = synchronized(this) {
+        waitExportBooks.clear()
+        exportingBookUrl = null
+        exportWorkerRunning = false
+        DesktopMediaTray.export = null
+    }
+
+    /**
+     * 串行导出队列 (对照原版 ExportBookService.export(): 逐本从队首取出, 导完一本再取下一本)。
+     * 单本出错只记日志并继续下一本; 托盘取消则丢掉剩余队列, 与 app 端 stopSelf 同语义。
+     */
+    private suspend fun runExportQueue() {
+        val failures = mutableListOf<String>()
+        var lastPath: String? = null
+        try {
+            while (true) {
+                val pending = takeNextExport()
+                if (pending == null) {
+                    if (finishWorkerIfQueueEmpty()) break
+                    continue
                 }
-                Toasters.get().toast("导出完成\n$dir")
-            } catch (e: CancellationException) {
-                // 托盘取消导出: 不报错, 已写出的半成品与 app 端取消语义一致
-                throw e
-            } catch (e: Exception) {
-                AppLog.put("导出书籍出错\n${e.message}", e)
-                Toasters.get().toast("导出书籍出错\n${e.message}")
-            } finally {
-                DesktopMediaTray.export = null
+                lastPath = pending.path
+                try {
+                    upExportTrayBinding(pending.book, pendingExportCount())
+                    when (val mode = pending.mode) {
+                        is ExportMode.ByConfig -> when (mode.type) {
+                            "cbz" -> DesktopBookExport.exportCbz(pending.path, listOf(pending.book))
+                            "epub" -> DesktopBookExport.exportEpub(pending.path, listOf(pending.book))
+                            else -> DesktopBookExport.exportTxt(pending.path, listOf(pending.book))
+                        }
+
+                        is ExportMode.CustomEpub -> DesktopBookExport.exportCustomEpub(
+                            pending.path, listOf(pending.book), mode.range, mode.size
+                        )
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    failures.add("${pending.book.name}：${e.message ?: "未知错误"}")
+                    AppLog.put("导出书籍出错\n${pending.book.name}\n${e.message}", e)
+                } finally {
+                    finishExport()
+                }
+            }
+        } catch (e: CancellationException) {
+            // 托盘取消导出: 不报错, 已写出的半成品与 app 端取消语义一致; 剩余队列不再导出
+            discardExportQueue()
+            throw e
+        } catch (e: Throwable) {
+            // 意外异常不能把执行者名额带走, 否则后续导出会一直排队没人导
+            discardExportQueue()
+            throw e
+        }
+        if (failures.isEmpty()) {
+            lastPath?.let { Toasters.get().toast("导出完成\n$it") }
+        } else {
+            Toasters.get().toast("导出书籍出错\n${failures.first()}")
+            if (failures.size > 1) {
+                AppLog.put("导出书籍出错\n${failures.joinToString("\n")}")
             }
         }
     }

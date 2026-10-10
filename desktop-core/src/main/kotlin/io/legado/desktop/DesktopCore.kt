@@ -122,7 +122,7 @@ var restartMainClass: String = "io.legado.desktop.MainKt"
  * 1. [initRuntimeEnvironment] — 便携模式 + quickjs native 定位 (main 最前, 早于一切 provider)
  * 2. [DesktopCrashHandler.install] — 崩溃日志 (紧跟 1, 落盘目录依赖 legado.portable.root)
  * 3. [registerEarlyProviders] — 阶段1 同步注册核心子集 (原 application{} 内注册块)
- * 4. [registerRestProviders] — 阶段1 余下重注册 (HTTP/JS/Room/存储/封面)
+ * 4. [registerRestProviders] — 阶段1 余下重注册 (HTTP/JS/Room/存储/封面/Web 服务)
  * 5. [registerSecondaryCoreProviders] — 阶段3 异步注册核心子集 (原 registerSecondaryProviders)
  * 6. [startupBackgroundTasks] — 阶段3 尾部启动期异步任务 (adjustSortNumber/默认数据/清理/WebDav)
  */
@@ -308,6 +308,16 @@ object DesktopCore {
         PluginSourceDelegates.register(VideoSourceDelegateImpl)
         MangaPluginImageFetcherProviders.register(JvmMangaPluginImageFetcher())
         MangaExtensionServiceProviders.register(SharedMangaExtensionPlatform(SharedMangaSourceConfig(Context())))
+        // Web 服务 provider (NanoHTTPD 独立, 不依赖其他 provider):
+        // - WebServerPlatform: HttpServer+WebSocketServer 起停 (JvmWebServerPlatform 共用逻辑)
+        // - WebAssetSource: composeResources 读 commonMain/composeResources/files/web/ 静态资源
+        // - WebStrings: 硬编码中文文案 (后续接入 i18n 资源后替换)
+        // 「我的」页网络服务开关的显隐判据就是 WebServerPlatforms.getOrNull(), 与同一页的漫画/
+        // 影视源服务入口一样必须同步注册 (挂到阶段3异步注册会让启动后立刻进该页看不到开关);
+        // 开关一旦可见马上就会被点到, 故三项都要在任何 WebServerManager.start()/stop() 之前就绪
+        registerDesktopWebServerPlatform()
+        registerComposeWebAssetSource()
+        registerDesktopWebStrings()
         // Room 开库预热 (与首帧组合并行; 上一轮我误删了它, 实测把 273ms 开库成本又退回主链路上)。
         // 实测: 注册 provider 只要 1~2ms, 真正开库 (加载 sqliteJni 原生库 + 建/打开 db 与 -wal/-shm
         // + Room schema 校验 + InvalidationTracker 启动) 要 224~282ms, 而它拖到首次 DAO 访问 ——
@@ -379,14 +389,8 @@ object DesktopCore {
             SourceHelpAccessors.register(DesktopSourceHelpAccessor())
             // 8. 服务启动器 (依赖 AppDbProviders + BookHelpProviders + BookStorageProviders, 已同步注册)
             registerDesktopServiceLauncher()
-            // 8b. Web 服务 provider (NanoHTTPD 独立, 不依赖其他 provider)
-            // - WebServerPlatform: HttpServer+WebSocketServer 起停 (JvmWebServerPlatform 共用逻辑)
-            // - WebAssetSource: composeResources 读 commonMain/composeResources/files/web/ 静态资源
-            // - WebStrings: 硬编码中文文案 (后续接入 i18n 资源后替换)
-            // 须在任何 WebServerManager.start()/stop() 之前注册 (MyScreen Web 服务开关触发时)
-            registerDesktopWebServerPlatform()
-            registerComposeWebAssetSource()
-            registerDesktopWebStrings()
+            // 8b. Web 服务 provider 已提前到阶段1同步注册 (开关显隐判据须首组合前就绪, 见
+            //     registerRestProviders)
             // 9. CacheBook 回调 (依赖 ServiceLauncher 已注册)
             DesktopCacheBook.registerCallback()
             // 10. Source 扩展 provider (依赖 PreferenceProviders, in-memory 实现)
