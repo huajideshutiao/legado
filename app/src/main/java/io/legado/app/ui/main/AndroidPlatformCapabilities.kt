@@ -684,7 +684,7 @@ class AndroidPlatformCapabilities(
                                 role = Role.Checkbox,
                                 onValueChange = { deleteFile.value = it },
                             )
-                            .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingDefault),
+                            .padding(vertical = DesignTokens.spacingDefault),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(DesignTokens.spacingMd),
                     ) {
@@ -1107,7 +1107,7 @@ class AndroidPlatformCapabilities(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingDefault)
+                        .padding(vertical = DesignTokens.spacingDefault)
                 ) {
                     Text(
                         androidAppString("export_file_name"),
@@ -1220,7 +1220,7 @@ class AndroidPlatformCapabilities(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingDefault)
+                        .padding(vertical = DesignTokens.spacingDefault)
                 ) {
                     Row(
                         Modifier

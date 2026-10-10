@@ -301,7 +301,7 @@ private fun ExportConfigDialog(
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingDefault),
+                .padding(vertical = DesignTokens.spacingDefault),
         ) {
             // 导出文件名 (对照 et_file_name, Variable: name, author)
             Text(
@@ -421,7 +421,7 @@ private fun ExportSectionConfigDialog(
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingDefault),
+                .padding(vertical = DesignTokens.spacingDefault),
         ) {
             Row(
                 Modifier

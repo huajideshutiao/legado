@@ -365,7 +365,7 @@ fun VideoControlsOverlay(
     // 颜色走 ThemeStore 动态色, 倍速档位对齐 app SpeedButton
     accentColor: Color = AppTheme.colors.accent,
     secondaryTextColor: Color = AppTheme.colors.primaryText,
-    speeds: List<Float> = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f),
+    speeds: List<Float> = listOf(0.1f, 0.5f, 1f, 1.25f, 1.5f, 1.75f, 2f),
     bufferedMs: Long = 0L,
     onSeekDragStateChange: (Boolean) -> Unit = {},
     onPopupVisibleChange: (Boolean) -> Unit = {},
@@ -724,7 +724,7 @@ fun VideoSeekBar(
 /**
  * 倍速钮 (文字 + AppDropdownMenu, 可配置档位/颜色)。
  *
- * @param speeds 倍速档位 (默认对齐 app 端 7 档)
+ * @param speeds 倍速档位 (7 档)
  * @param currentSpeedColor 当前选中档位文字色
  * @param otherSpeedColor 未选中档位文字色
  * @param onVisibleChange 下拉开合上报 (调用层据此抑制控制栏自动隐藏)
@@ -733,7 +733,7 @@ fun VideoSeekBar(
 fun SpeedButton(
     currentSpeed: Float,
     onSpeedChange: (Float) -> Unit,
-    speeds: List<Float> = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f),
+    speeds: List<Float> = listOf(0.1f, 0.5f, 1f, 1.25f, 1.5f, 1.75f, 2f),
     currentSpeedColor: Color = AppTheme.colors.accent,
     otherSpeedColor: Color = AppTheme.colors.primaryText,
     onVisibleChange: (Boolean) -> Unit = {},

@@ -89,10 +89,7 @@ internal fun BookExportFormatDialogContent(overlay: AppOverlay.Dialog, navigator
                 Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .padding(
-                        horizontal = DesignTokens.spacingXl,
-                        vertical = DesignTokens.spacingDefault,
-                    ),
+                    .padding(vertical = DesignTokens.spacingDefault),
             ) {
                 // 导出文件名 JS 规则 (对照 et_file_name, 可用 name/author 变量, 留空用默认名)
                 Text(
