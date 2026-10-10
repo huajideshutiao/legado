@@ -1,5 +1,6 @@
 package io.legado.app.help.book
 
+import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.storage.DataStorageProviders
@@ -27,7 +28,8 @@ import kotlinx.coroutines.runBlocking
  * - [hasContent]: [File.exists]
  * - [delContent]/[clearCache]: [File.deleteRecursively] (递归删除整本书缓存目录)
  * - [getChapterFiles]: [File.listFiles] + 过滤普通文件 (排除子目录)
- * - [updateCacheFolder]: [File.renameTo] (与 JVM Files.move / iOS NSFileManager.moveItemAtPath 等价)
+ * - [updateCacheFolder]: [File.renameTo] 查返回值 (与 JVM Files.move / iOS NSFileManager.moveItemAtPath 等价),
+ *   失败时原目录原地不动并如实记日志
  * - [clearInvalidCache]/[clearInvalidBookFolders]: 委托 [BookHelpShared] 统一编排
  *   (遍历 + 累计大小 + 按修改时间淘汰, 三端共用)
  *
@@ -143,7 +145,11 @@ class NativeBookStorage(
         newDir.parentFile?.mkdirs()
         // renameTo 替换已存在目标 (与 JVM StandardCopyOption.REPLACE_EXISTING / iOS moveItemAtPath 行为对齐)
         // 注意: kotlin.io.File.renameTo 在目标已存在时行为依赖平台 (POSIX rename 会原子替换)
-        oldDir.renameTo(newDir)
+        // 返回值必须查: 该名字下已有残留目录时改名失败, 旧目录原地不动; 静默当成成功会让缓存目录
+        // 没跟着书走 (章节全部重下, 旧目录留成待淘汰的死缓存)
+        if (!oldDir.renameTo(newDir)) {
+            AppLog.put("章节缓存目录改名失败, 原目录未动: ${oldDir.path} → ${newDir.path}")
+        }
     }
 
     override fun clearInvalidCache(maxSize: Long) {
