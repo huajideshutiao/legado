@@ -92,7 +92,7 @@ import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.read.ReaderScreenModelRegistry
 import io.legado.app.ui.book.read.page.provider.AndroidTextMeasurer
 import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
-import io.legado.app.ui.book.read.page.readerFontTypeface
+import io.legado.app.ui.book.read.page.readerLayoutTypeface
 import io.legado.app.ui.book.read.refreshReaderImage
 import io.legado.app.ui.book.source.SourceUiEventBridgeHost
 import io.legado.app.ui.book.video.AndroidVideoPlayPlatformProvider
@@ -1015,8 +1015,9 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
 
 /**
  * 度量字体：[fontPath] = `ReadBookConfig.textFont`，与绘制侧 `loadReaderFontFamily`
- * 走同一份解析（`readerFontTypeface`）取同一个字形对象：content 地址取同一份副本，
- * 文件身份未变时两侧都不重读字体文件；空路径 / 加载失败一并回落系统默认字体。
+ * 同一份字体来源，取同一个字形对象：content 地址取同一份副本，读过文件的一侧登记的标识
+ * 未变时两侧都复用已建字形，度量侧不探测文件、不重读字体文件；
+ * 空路径 / 加载失败一并回落系统默认字体。
  *
  * [weight]（100..900，由 [ReaderFontWeights] 产出，标题与正文不同档）只作用于默认字体：
  * 自定义字体在绘制侧只注册了一个 `Font`，`FontWeight` 对它不起作用，
@@ -1024,7 +1025,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
  * 否则「粗体绘制 / 常规度量」会让每行墨迹宽于列盒。
  */
 private fun readerMeasureTypeface(fontPath: String, weight: Int): Typeface {
-    readerFontTypeface(fontPath)?.let { return it }
+    readerLayoutTypeface(fontPath)?.let { return it }
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
         Typeface.create(Typeface.SANS_SERIF, weight, false)
     } else {

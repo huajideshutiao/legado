@@ -7,6 +7,7 @@ import com.github.catvod.utils.Crypto
 import com.github.catvod.utils.Path
 import io.legado.app.constant.AppLog
 import io.legado.app.utils.FileUtilsBase
+import io.legado.app.utils.randomUUIDString
 import okhttp3.Request
 import java.io.File
 import java.lang.reflect.Method
@@ -30,6 +31,9 @@ internal object TvBoxJarLoader {
     private const val JAR_INIT_CLASS = "com.github.catvod.spider.Init"
     private const val JAR_PROXY_CLASS = "com.github.catvod.spider.Proxy"
     private const val SPIDER_PACKAGE = "com.github.catvod.spider."
+
+    /** 下载中间件后缀 (落在 jar 目标同目录, [FileUtilsBase.replaceFileAtomically] 靠同卷改名就位)。 */
+    private const val TEMP_SUFFIX = ".tmp"
 
     private val loaders = ConcurrentHashMap<String, ClassLoader>()
     private val spiders = ConcurrentHashMap<String, Spider>()
@@ -167,12 +171,22 @@ internal object TvBoxJarLoader {
         return JarSpec(url = texts[0].trim(), md5 = md5)
     }
 
+    /**
+     * 下载 [spec] 整份落到 [target]。
+     *
+     * 中间件名每次下载随机唯一 ([randomUUIDString]): 桌面允许双击连击起两个进程, 同一 jar 规格串
+     * 的两次下载落在同一目标路径上, 共写一份固定名中间件会互相截断; 声明了 md5 时截断件会在校验处被
+     * 拦下, 未声明 md5 时半截件会被换上目标并长期命中缓存, 该影视源此后一直取数失败。时间戳类唯一串
+     * 在跨进程上不保证互异, 这里要的是两次下载绝不共用同一条路径。
+     *
+     * 成败都清掉自己那份; 被强杀的进程留下的那份是随机名且只待在缓存目录, 不会被当 jar 装载。
+     */
     private fun download(spec: JarSpec, target: File) {
         val call = OkHttp.client().newCall(Request.Builder().url(spec.url).build())
         call.execute().use { resp ->
             check(resp.isSuccessful) { "spider jar 下载 HTTP ${resp.code}: ${spec.url}" }
             val body = resp.body
-            val tmp = File(target.absolutePath + ".tmp")
+            val tmp = File(target.parentFile, randomUUIDString() + TEMP_SUFFIX)
             tmp.parentFile?.mkdirs()
             try {
                 body.byteStream().use { input ->

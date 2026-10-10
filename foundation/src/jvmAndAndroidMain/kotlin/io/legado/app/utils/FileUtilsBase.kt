@@ -1,6 +1,7 @@
 package io.legado.app.utils
 
 import androidx.annotation.IntDef
+import io.legado.app.constant.AppLog
 import io.legado.app.help.coroutine.printStackTraceOnDebug
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
@@ -508,18 +509,22 @@ object FileUtilsBase {
     }
 
     /**
-     * 按文件头魔数校正图片扩展名: 已匹配则不动, 否则 renameTo 追加真实扩展名。
+     * 按文件头魔数校正图片扩展名: 已匹配则不动, 否则 renameTo 追加真实扩展名
+     * (判据与 app 端 FileUtils.getImageExtension 同一条)。
      *
-     * 原 desktop 阅读页 fixImageExtension 与漫画 fixExtension 各写一份逐字相同,
-     * 收拢至此单一实现 (对照 app 端 FileUtils.saveImage 的魔数改名语义)。
+     * 改名失败时 [dest] 内容不变、原名保留, 返回 [dest] 本身并留一条日志: 返回的路径始终指向本次
+     * 写入的文件。
      *
-     * @return 最终文件 (未改名时即原文件)
+     * @return 最终文件 (未改名或改名失败时即原文件)
      */
     fun fixImageExtension(dest: File): File {
         val ext = getImageExtension(dest)
         if (dest.name.endsWith(ext, ignoreCase = true)) return dest
         val renamed = File(dest.parentFile, dest.nameWithoutExtension + ext)
-        dest.renameTo(renamed)
+        if (!dest.renameTo(renamed)) {
+            AppLog.put("图片扩展名校正失败, 保留原名: ${dest.path}")
+            return dest
+        }
         return renamed
     }
 

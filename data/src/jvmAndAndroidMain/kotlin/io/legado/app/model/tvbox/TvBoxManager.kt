@@ -16,6 +16,7 @@ import io.legado.app.help.tvbox.TvBoxPlatforms
 import io.legado.app.model.webBook.PluginSourceDelegates
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.GSON
+import io.legado.app.utils.randomUUIDString
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -235,8 +236,18 @@ object TvBoxManager {
         }
     }
 
-    /** 落盘临时件名后缀: 与目标同目录 (同一卷) 才能改名。 */
+    /** 落盘中间件名后缀: 落在目标同目录 (同一卷) 才能改名就位。 */
     private const val TEMP_SUFFIX = ".tmp"
+
+    /**
+     * 本次落盘的中间件: 目标名 + 随机唯一串 + [TEMP_SUFFIX], 落在目标同目录。
+     *
+     * 唯一串取随机 UUID ([randomUUIDString]): 桌面连击双击会起两个实例, 两个实例各自的配置内容
+     * 不同, 共用同一路径的中间件会互相截断, 其中一份半截内容会被整份换上目标并成为下次冷启动读到
+     * 的配置; 时间戳类唯一串在同毫秒的两次落盘上会重名, 这里要的是两次落盘绝不共用同一份中间件。
+     */
+    private fun tempFileFor(file: File): File =
+        File(file.parentFile, "${file.name}.${randomUUIDString()}$TEMP_SUFFIX")
 
     /**
      * 配置落盘走临时文件 + 共享的原子替换 ([FileUtilsBase.replaceFileAtomically]): 半写文件会让
@@ -244,21 +255,32 @@ object TvBoxManager {
      * 可用。
      */
     private fun writeTextAtomically(file: File, text: String) {
-        val tmp = File(file.parentFile, file.name + TEMP_SUFFIX)
-        tmp.writeText(text)
+        val tmp = tempFileFor(file)
         try {
+            tmp.writeText(text)
             FileUtilsBase.replaceFileAtomically(tmp, file)
         } catch (e: IOException) {
             // 导入配置失败时用户看到的就是本模块这句文案; 共享实现报的是通用替换口径, 具体失败环节
             // (原文件被占用/原文件去向) 并入消息里。不挂 cause: 失败提示取异常链最深层消息。
             throw IOException("TVBox 配置落盘失败: ${file.path} (${e.message})")
+        } finally {
+            // 中间件名随机唯一: 中途失败残留的那份不会再有第二次落盘来覆盖, 只能由本次清掉
+            tmp.delete()
         }
     }
 
-    /** 删除 [file] 连同它的落盘中间件, 避免清除后磁盘上仍留着一份可读的旧配置。 */
+    /**
+     * 删除 [file] 连同它的落盘中间件, 避免清除后磁盘上仍留着一份可读的旧配置。
+     *
+     * 清理只做在删除出口: 落盘入口按目标名清理会把另一实例正在写的那份中间件删掉, 让对方的落盘
+     * 白白失败。原子替换的备份件与另一目标的中间件都不在此列。
+     */
     private fun deleteWithLeftovers(file: File) {
         FileUtilsBase.deleteWithReplaceBackup(file)
-        File(file.parentFile, file.name + TEMP_SUFFIX).delete()
+        val tempPrefix = "${file.name}."
+        file.parentFile?.listFiles()?.forEach {
+            if (it.name.startsWith(tempPrefix) && it.name.endsWith(TEMP_SUFFIX)) it.delete()
+        }
     }
 
     // ===== 站点"未添加"集合 (filesDir/tvbox/sites.json; 脏 JSON 退化为空集) =====

@@ -50,6 +50,7 @@ import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
+import java.io.IOException
 import java.nio.file.Paths
 import java.util.Locale
 
@@ -312,9 +313,34 @@ class DesktopFileBookAccessor(
                 FileUtilsBase.delete(desktopResolveStoredRef(book.coverUrl!!).absolutePath)
             }
             if (deleteOriginal) {
-                FileUtilsBase.delete(resolveLocalFile(book.bookUrl).absolutePath)
+                deleteSourceFile(book)
             }
         }
+    }
+
+    /**
+     * 删除本地源文件 (bookUrl 是存储引用 / file: URI / 绝对路径, 解析成真实路径再删)。
+     *
+     * 引用为空、引用解析成空路径、以及解析结果落在文件系统根目录三种情况一律拒绝删除并报出
+     * 原因: 三者都不指向这本书的源文件 (空引用的解析结果是进程工作目录 `File("").absolutePath`),
+     * 而这里对目录的删除是递归的。判定必须发生在删除之前 —— 删除不可撤销, 事后才发现解析结果
+     * 是根目录, 波及的文件已经没了。
+     */
+    private fun deleteSourceFile(book: Book) {
+        val ref = book.bookUrl
+        if (ref.isBlank()) throw IOException("未能删除源文件: 书籍文件引用为空")
+        val file = resolveLocalFile(ref)
+        if (file.path.isBlank()) throw IOException("未能删除源文件: 书籍文件引用为空")
+        val path = file.absolutePath
+        if (isFileSystemRoot(path)) throw IOException("未能删除源文件: $path 是文件系统根目录")
+        if (FileUtilsBase.delete(path)) return
+        if (File(path).exists()) throw IOException("未能删除源文件: $path")
+    }
+
+    /** [path] 是否文件系统根目录 (`/`、`C:\` 这类没有父目录的路径): 对它的删除会波及整盘。 */
+    private fun isFileSystemRoot(path: String): Boolean {
+        val file = File(path)
+        return runCatching { file.canonicalFile }.getOrDefault(file.absoluteFile).parentFile == null
     }
 
     override suspend fun saveBookFile(

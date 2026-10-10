@@ -27,38 +27,44 @@ import java.io.File
  * 同一份内容只复制一次, 源文件变过按新身份再复制并清掉旧副本; 换字体目录 (目录 pref 变过)
  * 与"清除缓存"(整个缓存目录)都会清掉副本。
  *
- * 已加载字形按 (路径, 文件身份) 复用一份: 排版重建只取字形不重读字体文件, 换字体文件或文件
- * 内容变化才重新加载。
+ * 每个字体路径上只有一条结论 ([FontEntry]): 本次读到的文件与它的标识, 以及按它建出的字形 ——
+ * 绘制侧与排版度量侧读同一张表, 两侧因此总是同一份字形。绘制侧每次解析 (进阅读页 / 换字体)
+ * 重读一次字体文件 (内容变过才重建字形) 并更新那条结论; 排版度量侧只按结论复用, 不探测文件、
+ * 不重读字体文件。于是排版重建 (首排 / 视口重排 / 段评补排) 只在结论变化或条目被淘汰时才付一次
+ * 读盘与建字形。
  *
- * 读不到返回 null, 由 [resolveReaderFontFamily] / 排版度量侧回落系统默认字体; 每条失败路径
- * 留一条可查日志, 不弹任何界面。
+ * 读一次字体文件与按它建字形同在副本锁内: 副本通道清掉或换掉副本不会落在两者之间。
+ *
+ * 字体文件读不到时那条结论里已建出的字形继续用 —— 源暂时不可读不让字体平白退回默认, 两侧仍是
+ * 同一份字形; 从未建出字形 (首次加载就读不到) 才两侧一起回落系统默认字体, 由
+ * [resolveReaderFontFamily] / 排版度量侧处理。真回落时留一条可查日志, 同一失败只记一次,
+ * 不弹任何界面。
  */
 
-/** 自定义字体路径 ([ReadBookConfig.textFont]) → 字形; 路径为空或读不到返回 null。 */
+/**
+ * 绘制侧: 读一次字体文件并按这次读到的东西更新本条结论, 与本条结论对同一次读就复用已建字形;
+ * 字体文件读不到时本条已建字形继续用。
+ *
+ * 读盘在 [loadLock] 内执行: 读到哪份文件与按它建字形必须是同一份 (见 [readAndBuild])。
+ */
 fun readerFontTypeface(fontPath: String): Typeface? {
     if (fontPath.isEmpty()) return null
-    val file = readerFontFile(fontPath) ?: return null
-    val identity = fileIdentity(file)
-    synchronized(typefaceLock) {
-        loadedTypefaces[fontPath]?.let { if (it.identity == identity) return it.typeface }
+    return synchronized(loadLock) { readAndBuild(fontPath) }
+}
+
+/**
+ * 排版度量侧: 用 [fontPath] 上那条结论里的字形, 命中路径不探测文件、不重读字体文件 —— 首排 /
+ * 视口重排 / 段评补排每次构造度量器都到这里。
+ *
+ * 本进程还没读过这个路径时真读一次并留下结论 (绘制侧尚未解析过的首排): 与绘制侧同一套读法,
+ * 两侧得到同一条结论。
+ */
+fun readerLayoutTypeface(fontPath: String): Typeface? {
+    if (fontPath.isEmpty()) return null
+    return synchronized(loadLock) {
+        fontEntries[fontPath]?.let { return it.typeface }
+        readAndBuild(fontPath)
     }
-    val typeface = try {
-        Typeface.createFromFile(file)
-    } catch (e: Exception) {
-        return reportFontLoadFailure(fontPath, "字体数据建不出字形", e)
-    }
-    // 文件在但不是字体: 框架按默认字形返回 (android.graphics.Typeface.createFromFile)
-    if (typeface === Typeface.DEFAULT) {
-        return reportFontLoadFailure(fontPath, "字体数据建不出字形", null)
-    }
-    synchronized(typefaceLock) {
-        if (loadedTypefaces.size >= LOADED_CACHE_SIZE) {
-            loadedTypefaces.remove(loadedTypefaces.keys.first())
-        }
-        loadedTypefaces[fontPath] = LoadedTypeface(identity, typeface)
-    }
-    lastFailureReport = null
-    return typeface
 }
 
 /** 缓存条数上界: 正文与标题共用一条, 用户换字体时旧路径各占一条, 一次阅读只用一份字体。 */
@@ -67,34 +73,114 @@ private const val LOADED_CACHE_SIZE = 4
 private const val COPY_DIR = "readerFont"
 private const val MARKER_FILE = "fontFolder"
 
-/** 已加载字形与它对应的字体文件身份 (大小 + 最后修改时刻)。 */
-private class LoadedTypeface(val identity: String, val typeface: Typeface)
+/** 字体文件标识: 大小 + 最后修改时刻 (毫秒), 两者都不变即认为文件内容未变。 */
+private data class FileIdentity(val size: Long, val lastModified: Long)
 
-private val typefaceLock = Any()
+/** 一次读取字体文件的结果。 */
+private sealed interface FontRead {
+    /** [file] 为本次实际读到的文件 (content 地址是它的缓存副本), [identity] 为它当时的标识。 */
+    data class Loaded(val file: File, val identity: FileIdentity) : FontRead
 
-/** 已加载字形, 键为字体文件路径; 超界按加入顺序淘汰最早的一条。 */
-private val loadedTypefaces = LinkedHashMap<String, LoadedTypeface>()
+    /** 文件不存在 / 读盘或复制失败; [reason] 与 [cause] 供真要回落默认字体的一侧记日志。 */
+    data class Unreadable(val reason: String, val cause: Throwable?) : FontRead
+}
 
-/** 复制副本与复用判定一次只做一份字体, 串行执行。 */
+/**
+ * 一个字体路径上的一条结论: [read] 是这次读到的文件与它的标识 (或读不到), [typeface] 是按它建出的
+ * 字形 (null 表示没建出)。
+ */
+private class FontEntry(val read: FontRead, val typeface: Typeface?)
+
+/** 读盘与建字形一次只做一份字体, 串行执行; 内层持 [copyLock], 锁序固定为它在前。 */
+private val loadLock = Any()
+
+/** 结论表, 键为字体路径, 绘制侧与排版度量侧共用同一张; 超界按加入顺序淘汰最早的一条。 */
+private val fontEntries = LinkedHashMap<String, FontEntry>()
+
+/**
+ * 复制副本一次只做一份字体, 串行执行; 读盘与建字形也持此锁 —— 副本被清掉或换掉不会落在
+ * 「读到哪份文件」与「按它建字形」之间。
+ */
 private val copyLock = Any()
 
 /** 已在日志里报过的同一个失败, 免得排版反复取字形时重复写日志。 */
 @Volatile
 private var lastFailureReport: String? = null
 
-/** 字体文件的真实路径: content 地址落到缓存副本, 普通路径原样使用; 取不到返回 null 并记日志。 */
-private fun readerFontFile(fontPath: String): File? {
+/**
+ * 读一次字体文件并按这次读到的东西建字形, 把结论写回 [fontEntries]; 与本条结论对同一次读就复用。
+ *
+ * 调用方持 [loadLock], 本函数持 [copyLock]: 副本通道 (复制副本、换字体目录清副本、同名字体内容
+ * 变过清旧副本) 的删除与替换不会落在「读到哪份文件」与「按它建字形」之间。读盘与建字形一次只做
+ * 一份字体: 首排时并发的章节排版同时到达同一路径, 持锁让后来者复用这一次的结果。
+ *
+ * 建字形期间读到的那份文件被清掉或换掉 (整个缓存目录被清) 时这份数据不作数, 按当前状态重读
+ * (副本没了重新抄一份); 文件没变过仍建不出字形时按这份数据判失败。字体文件读不到时本条已建出的
+ * 字形继续用 (绘制侧手里那份就是它), 返回 null 只发生在从未建出字形时, 调用方回落系统默认字形。
+ */
+private fun readAndBuild(fontPath: String): Typeface? {
+    var typeface: Typeface? = null
+    synchronized(copyLock) {
+        while (true) {
+            val read = readFont(fontPath)
+            val entry = fontEntries[fontPath]
+            if (read is FontRead.Unreadable) {
+                typeface = entry?.typeface
+                    ?: remember(fontPath, read, reportFontLoadFailure(fontPath, read.reason, read.cause))
+                break
+            }
+            if (entry != null && entry.read == read) {
+                typeface = entry.typeface
+                break
+            }
+            var cause: Throwable? = null
+            val built = try {
+                Typeface.createFromFile(read.file)
+            } catch (e: Exception) {
+                cause = e
+                null
+            }
+            // 文件在但不是字体: 框架按默认字形返回 (android.graphics.Typeface.createFromFile)
+            if (built != null && built !== Typeface.DEFAULT) {
+                lastFailureReport = null
+                typeface = remember(fontPath, read, built)
+                break
+            }
+            if (fileIdentity(read.file) == read.identity) {
+                typeface = remember(fontPath, read, reportFontLoadFailure(fontPath, "字体数据建不出字形", cause))
+                break
+            }
+        }
+    }
+    return typeface
+}
+
+/** 留下本次结论并回传字形; 超出上界时淘汰最早的一条。 */
+private fun remember(fontPath: String, read: FontRead, typeface: Typeface?): Typeface? {
+    if (fontPath !in fontEntries && fontEntries.size >= LOADED_CACHE_SIZE) {
+        fontEntries.remove(fontEntries.keys.first())
+    }
+    fontEntries[fontPath] = FontEntry(read, typeface)
+    return typeface
+}
+
+/**
+ * 真读一次字体文件: 取到可加载的文件与它当时的标识; 读不到时连原因一起带回去, 留给真要回落默认
+ * 字体的一侧记日志。
+ */
+private fun readFont(fontPath: String): FontRead {
     if (!fontPath.isContentScheme()) {
         val file = File(fontPath)
-        if (file.isFile) return file
-        return reportFontLoadFailure(fontPath, "文件不存在或不是普通文件", null)
+        if (file.isFile) return FontRead.Loaded(file, fileIdentity(file))
+        return FontRead.Unreadable("文件不存在或不是普通文件", null)
     }
     val context = sharedAppContext
-        ?: return reportFontLoadFailure(fontPath, "取授权或读盘失败: 应用上下文未就绪", null)
+        ?: return FontRead.Unreadable("取授权或读盘失败: 应用上下文未就绪", null)
     return try {
-        copyToCache(context, fontPath.toUri())
+        val copy = copyToCache(context, fontPath.toUri())
+        FontRead.Loaded(copy, fileIdentity(copy))
     } catch (e: Exception) {
-        reportFontLoadFailure(fontPath, "取授权或读盘失败", e)
+        FontRead.Unreadable("取授权或读盘失败", e)
     }
 }
 
@@ -108,8 +194,9 @@ private fun reportFontLoadFailure(path: String, reason: String, cause: Throwable
     return null
 }
 
-/** 字体文件身份: 大小 + 最后修改时刻, 两者都不变即认为内容未变。 */
-private fun fileIdentity(file: File): String = "${file.length()}:${file.lastModified()}"
+/** 取 [file] 当前的标识。 */
+private fun fileIdentity(file: File): FileIdentity =
+    FileIdentity(size = file.length(), lastModified = file.lastModified())
 
 /** 复制 content 地址的字体到缓存副本; 同一份内容 (文件名带源文件身份) 直接复用。复制失败抛异常。 */
 private fun copyToCache(context: Context, uri: Uri): File = synchronized(copyLock) {

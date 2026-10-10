@@ -4,7 +4,6 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.DocumentsContract
 import androidx.core.net.toUri
-import androidx.core.provider.DocumentsContractCompat
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.DirUsage
 import io.legado.app.data.entities.Book
@@ -56,7 +55,8 @@ object AndroidDirAuthorizations {
 
     /**
      * 本地书文件访问前的用途校验: 非本地书直通, 位置未登记直通, 落在非书籍用途选定的目录下抛
-     * [SecurityException] (阅读层据此提示重新选目录, 与 iOS/鸿蒙的授权失败同一形态)。
+     * [SecurityException] (阅读层据此提示重新选目录, 与 iOS/鸿蒙的授权失败同一形态),
+     * 书籍的文件引用为空时抛 [IllegalArgumentException]。
      *
      * 目标就是书籍自身的引用 ([Book.bookUrl], 归一化交给 [locationOf]) —— 本校验只是判定:
      * 不解析"实际会访问哪个文件", 不搜索同名文件, 不读文件内容, 不改写书籍引用也不落库。
@@ -68,9 +68,13 @@ object AndroidDirAuthorizations {
         ensureBookFileUsage(book.bookUrl)
     }
 
-    /** 同上, 按文件引用校验 (导入的源文件同样只允许来自书籍用途登记的目录)。 */
+    /**
+     * 同上, 按文件引用校验 (导入的源文件同样只允许来自书籍用途登记的目录); 引用为空/空白按输入
+     * 不合法拒绝 —— 空引用不属于"未登记引用直通"覆盖的应用私有区与别处分享进来的文件。
+     */
     @Synchronized
     fun ensureBookFileUsage(target: String) {
+        require(target.isNotBlank()) { "本地书文件引用为空" }
         val targetLocation = locationOf(target) ?: return
         val usages = stored().filterValues { entries ->
             entries.any { entry -> locationOf(entry)?.contains(targetLocation) == true }
@@ -90,10 +94,18 @@ object AndroidDirAuthorizations {
         if (raw.isContentScheme()) {
             val uri = raw.toUri()
             val docId = documentIdOf(uri)
-            return Location(uri.authority, docId, docId?.let(::sharedVolumePath))
+            val treeDocId = treeDocumentIdOf(uri)
+            return Location(
+                listOfNotNull(
+                    docId?.let { Position(uri.authority, it, sharedVolumePath(it)) },
+                    treeDocId?.takeIf { it != docId }
+                        ?.let { Position(uri.authority, it, sharedVolumePath(it)) },
+                )
+            )
         }
         val path = if (raw.startsWith("file:")) raw.toUri().path else raw
-        return path?.takeIf { it.isNotBlank() }?.let { Location(null, null, filePath(it)) }
+        return path?.takeIf { it.isNotBlank() }
+            ?.let { Location(listOf(Position(null, null, filePath(it)))) }
     }
 
     /** 规范化绝对路径 (file:// URI 取路径, 相对路径与符号链接按真实位置规范化)。 */
@@ -116,14 +128,19 @@ object AndroidDirAuthorizations {
         return if (relative.isEmpty()) root else "$root/$relative"
     }
 
-    /** SAF 文档标识 (树 URI 取树标识, 文档 URI 取文档标识); 非 DocumentsProvider 的 content URI 返回 null。 */
+    /**
+     * SAF 文档标识: 文档 URI 取该文档标识, 树+文档 URI 取该文档的标识; 取不到文档标识的 URI
+     * (纯树 URI) 退回树标识。非 DocumentsProvider 的 content URI 返回 null。
+     */
     private fun documentIdOf(uri: Uri): String? = runCatching {
-        if (DocumentsContractCompat.isTreeUri(uri)) {
-            DocumentsContract.getTreeDocumentId(uri)
-        } else {
-            DocumentsContract.getDocumentId(uri)
-        }
+        DocumentsContract.getDocumentId(uri)
+    }.recoverCatching {
+        DocumentsContract.getTreeDocumentId(uri)
     }.getOrNull()
+
+    /** 引用所依据的树标识 (树 URI 与树+文档 URI 都有); 其它 content URI 返回 null。 */
+    private fun treeDocumentIdOf(uri: Uri): String? =
+        runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
 
     /** 锁内调用: 登记集合 (volatile 缓存优先, 首次解析 pref)。 */
     private fun stored(): Map<DirUsage, List<String>> {
@@ -142,36 +159,57 @@ object AndroidDirAuthorizations {
     }
 
     /**
-     * 一处目录或文件的可比对位置: SAF 文档位置 (authority + 文档标识) 与文件系统路径。
+     * 一处 SAF 文档位置: authority + 文档标识 + 由文档标识转换出的文件系统路径 (无可靠转换时为 null)。
      *
-     * 两种形态都留着, 使路径形式的书籍文件也能匹配按树 URI 登记的目录 (反之亦然)。
+     * 文档标识与文件系统路径两种形态都留着, 使路径形式的书籍文件也能匹配按树 URI 登记的目录
+     * (反之亦然)。
      */
-    private class Location(
+    private class Position(
         private val authority: String?,
         private val docId: String?,
         private val path: String?,
     ) {
 
         /** 本位置是否覆盖 [target] (文档标识段前缀或路径段前缀)。 */
-        fun contains(target: Location): Boolean =
-            containsDocument(target) || containsPath(target)
+        fun covers(target: Position): Boolean =
+            coversDocument(target) || coversPath(target)
 
-        fun sameAs(other: Location): Boolean {
+        /** 本位置与 [other] 是否同一处。 */
+        fun sameAs(other: Position): Boolean {
             if (docId != null && docId == other.docId && authority == other.authority) return true
             return path != null && path == other.path
         }
 
-        private fun containsDocument(target: Location): Boolean {
+        private fun coversDocument(target: Position): Boolean {
             val rootDocId = docId ?: return false
             if (authority == null || target.authority != authority) return false
             val targetDocId = target.docId ?: return false
             return targetDocId == rootDocId || targetDocId.startsWith("$rootDocId/")
         }
 
-        private fun containsPath(target: Location): Boolean {
+        private fun coversPath(target: Position): Boolean {
             val root = path ?: return false
             val targetPath = target.path ?: return false
             return targetPath == root || targetPath.startsWith("$root/")
         }
+    }
+
+    /**
+     * 一处目录或文件的可比对位置: 一组 SAF 文档位置。
+     *
+     * 树+文档形态的引用 (形如 `content://…/tree/A/document/B`, 取子文件与新建文件都会产出该形态)
+     * 同时带着文档自身的位置 (B) 与引用所依据的树的位置 (A), 覆盖任一即算覆盖这本书的文件 ——
+     * 只有文档标识能区分同一棵树内的不同目录, 而文档标识不逐级延伸的提供方 (云盘等) 上, 可比对的
+     * 只有树标识。
+     */
+    private class Location(private val positions: List<Position>) {
+
+        /** 本位置是否覆盖 [target] (任一对文档标识段前缀或路径段前缀命中即算覆盖)。 */
+        fun contains(target: Location): Boolean =
+            positions.any { mine -> target.positions.any { mine.covers(it) } }
+
+        /** 本位置与 [other] 是否同一处 (同一目录重复选定时替换旧条目)。 */
+        fun sameAs(other: Location): Boolean =
+            positions.any { mine -> other.positions.any { mine.sameAs(it) } }
     }
 }

@@ -273,14 +273,28 @@ object FileBookAccessorImpl : FileBookAccessor {
         throw SecurityException("没有访问权限: $uri", e)
     }
 
-    /** 删除文件路径源文件 (bookUrl 可能带 `file://` 前缀, 解析成真实路径再删)。 */
+    /**
+     * 删除文件路径源文件 (bookUrl 可能带 `file://` 前缀, 解析成真实路径再删)。
+     *
+     * 引用为空或解析结果落在文件系统根目录时拒绝删除: 空引用不指向任何文件 (定位器把它解析成
+     * 进程工作目录), 根目录的删除是递归的 —— 两者都不是这本书的源文件。
+     */
     private fun deleteSourceFile(book: Book) {
         val locator = LocalBookLocators.get()
-        val path = locator.getLocalPath(book) ?: book.bookUrl
+        val ref = book.bookUrl
+        val path = if (ref.isBlank()) "" else (locator.getLocalPath(book) ?: ref)
         // 已删除的书不留路径记忆 (解析会写回缓存)
         locator.removeLocalPathCache(book)
+        if (path.isBlank()) throw IOException("未能删除源文件: 书籍文件引用为空")
+        if (isFileSystemRoot(path)) throw IOException("未能删除源文件: $path 是文件系统根目录")
         if (FileUtils.delete(path)) return
         if (File(path).exists()) throw IOException("未能删除源文件: $path")
+    }
+
+    /** [path] 是否文件系统根目录 (`/` 这类没有父目录的路径): 对它的删除会波及整盘。 */
+    private fun isFileSystemRoot(path: String): Boolean {
+        val file = File(path)
+        return runCatching { file.canonicalFile }.getOrDefault(file.absoluteFile).parentFile == null
     }
 
     /**

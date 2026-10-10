@@ -26,80 +26,139 @@ import java.util.concurrent.atomic.AtomicReference
  * 跨线程投递用 [g_idle_add] (线程安全, 内部会 wakeup 主循环): 任意线程可 [post] 任意闭包到
  * GTK 线程执行; [await] 是 suspend 版, 阻塞等待执行结果 (带超时)。
  *
+ * 线程结束 (初始化失败 / 主循环退出) 即没有线程迭代主上下文: 可用性按**线程是否还在跑**判定,
+ * 线程已结束就整代重建 (见 [ensureStarted]); 待执行的任务挂在进程级默认主上下文里, 由新代抽取。
+ *
  * 副作用与 WebView2Loop 相同: 可见窗口只能是**独立顶层窗口**而非嵌进 Compose 布局,
  * 登录/验证本就是弹窗语义, 可接受。
  */
 internal object GtkLoop {
 
-    @Volatile
-    private var started = false
+    /** 启动等待上限: 超过即按这一次不可用处理, 不让调用方永久挂起。 */
+    private const val START_TIMEOUT_SECONDS = 10L
 
+    /**
+     * 一代 GTK 线程的启动结论: [ready] 是 gtk_init_check 出结论的闸门 (放开后 [failure] 与
+     * [inited] 才是最终值), [failure] 非空表示本代初始化失败 (值为原因), [inited] 表示成功。
+     */
+    private class Generation {
+        val ready = CountDownLatch(1)
+
+        @Volatile
+        var failure: String? = null
+
+        @Volatile
+        var inited = false
+    }
+
+    /** GTK 线程; 线程结束 (初始化失败 / 主循环退出) 即本代不可用 (没有线程迭代主循环)。 */
     @Volatile
-    private var startFailed = false
+    private var gtkThread: Thread? = null
+
+    /** 当前代。 */
+    @Volatile
+    private var generation: Generation? = null
+
+    /** 本代结论的等待闸门; 超时后置 null (之后直接按本代结论判定, 不再让调用方白等)。 */
+    @Volatile
+    private var waitGate: CountDownLatch? = null
 
     /** GTK 线程上的阻塞操作 (如等待异步 JS 回调) 的最长驱动时间。 */
     const val DRIVE_TIMEOUT_MS = AppConst.timeLimit
 
-    /** 启动 GTK 线程 (幂等); 返回是否可用。无显示环境 gtk_init_check 失败即不可用。 */
+    /**
+     * 启动 (线程已结束就整代重建) GTK 线程; 返回是否可用。
+     *
+     * 可用性按**线程是否还在跑**判定: 主循环由这条线程独占迭代, 线程结束后没有线程抽取默认主
+     * 上下文里的任务, 投进去的任务没人执行; 按一次性的"已启动"标记判会让此后每次调用都以为泵
+     * 还在, 任务静默丢弃、只能重启应用。线程已结束就整代重建; 建不起来的那一代只是这一次不可用
+     * (线程随之结束), 下一次调用继续重试。
+     *
+     * 换代只作废随线程失效的东西: GLib 默认主上下文与 GTK/GDK 初始化都是进程级的 (显示连接由
+     * gdk_display_open_default 复用已设的默认显示), 线程只是迭代者, 故这里不清理本地状态 ——
+     * 待执行的 idle 任务 (见 [post]) 与既有会话留给新代接着用。重建以旧线程已结束为前提, 不会
+     * 有两条线程同时碰 GTK。
+     *
+     * 换代把迭代交给一条新线程 —— GTK3 文档要求 GTK/GDK 只在调用 gtk_init 的那条线程上使用,
+     * WebKitGTK 也按首个碰它的线程判定"主线程", 故这条恢复路径的真实行为需在 Linux 实机上验证。
+     *
+     * 幂等: 线程还在 (含正在启动的那一代) 即不新建; 全程持锁, 并发调用者等锁后看到新线程已在
+     * 跑, 不会起出两份。
+     */
     @Synchronized
     fun ensureStarted(): Boolean {
-        if (started) return true
-        if (startFailed) return false
-        val ready = CountDownLatch(1)
-        val failed = AtomicReference<String?>(null)
-        val thread = Thread({
-            runCatching {
-                // gtk_init_check 只在 GTK 线程第一次调用; 传入 null 即可 (JNA 无 argc/argv)
-                val ok = GtkLibs.gtk.gtk_init_check(null, null) != 0
-                if (ok == false) {
-                    failed.set("gtk_init_check 失败 (无显示环境?)")
-                    ready.countDown()
-                    return@Thread
+        if (gtkThread?.isAlive != true) {
+            val gen = Generation()
+            val thread = Thread({ runLoop(gen) }, "legado-gtk")
+            thread.isDaemon = true
+            gtkThread = thread
+            generation = gen
+            waitGate = gen.ready
+            thread.start()
+        }
+        val gen = generation ?: return false
+        val gate = waitGate
+        if (gate != null && gate.count > 0L) {
+            try {
+                if (!gate.await(START_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                    AppLog.put("GTK 线程启动超时, 按不可用处理")
+                    // 卡住的这一代不再让后续调用白等: 之后就绪与否按本代结论判定
+                    waitGate = null
+                    return false
                 }
-            }.onFailure { e ->
-                failed.set("gtk_init_check 异常: ${e.message}")
-                ready.countDown()
-                return@Thread
-            }
-            started = true
-            ready.countDown()
-            // GTK 主循环: 阻塞迭代直到线程中断 (守护线程随进程退出)
-            while (!Thread.currentThread().isInterrupted) {
-                runCatching {
-                    GtkLibs.glib.g_main_context_iteration(null, 1 /* TRUE 阻塞 */)
-                }.onFailure { e ->
-                    AppLog.put("GTK 主循环异常", e)
-                    break
-                }
-            }
-        }, "legado-gtk")
-        thread.isDaemon = true
-        thread.start()
-        try {
-            if (!ready.await(10, TimeUnit.SECONDS)) {
-                startFailed = true
-                AppLog.put("GTK 线程启动超时, 按不可用处理")
+            } catch (e: InterruptedException) {
                 return false
             }
-        } catch (e: InterruptedException) {
-            startFailed = true
-            return false
         }
-        failed.get()?.let {
-            startFailed = true
+        gen.failure?.let {
             AppLog.put("GTK 初始化失败: $it")
             return false
         }
-        if (!started) {
-            startFailed = true
-            return false
-        }
-        return true
+        return gen.inited && gtkThread?.isAlive == true
     }
 
-    /** 投递任务到 GTK 线程 (任意线程可调, 线程安全)。 */
+    /**
+     * 一代 GTK 线程的主体: 初始化 → 放闸门 → 独占迭代默认主上下文。
+     *
+     * 对已初始化过的进程, `gtk_init_check` 是幂等的: GTK/GDK 用 pre_initialized /
+     * gtk_initialized 守护跳过全局初始化, 只重新取默认显示 (已设则直接返回)。
+     */
+    private fun runLoop(gen: Generation) {
+        runCatching {
+            // gtk_init_check 只在 GTK 线程调用; 传入 null 即可 (JNA 无 argc/argv)
+            if (GtkLibs.gtk.gtk_init_check(null, null) == 0) {
+                gen.failure = "gtk_init_check 失败 (无显示环境?)"
+            }
+        }.onFailure { e ->
+            gen.failure = "gtk_init_check 异常: ${e.message}"
+        }
+        val inited = gen.failure == null
+        // 先写结论再放闸门: 等闸门的调用者看到的必然是写完的结论
+        gen.inited = inited
+        gen.ready.countDown()
+        if (!inited) return
+        // GTK 主循环: 阻塞迭代直到线程中断 (守护线程随进程退出)
+        while (!Thread.currentThread().isInterrupted) {
+            runCatching {
+                GtkLibs.glib.g_main_context_iteration(null, 1 /* TRUE 阻塞 */)
+            }.onFailure { e ->
+                AppLog.put("GTK 主循环异常", e)
+                break
+            }
+        }
+    }
+
+    /**
+     * 投递任务到 GTK 线程 (任意线程可调, 线程安全)。
+     *
+     * 任务经 g_idle_add 挂到**进程级默认主上下文** (GLib 文档: 回调由正在迭代该上下文的那条
+     * 线程执行): 队列不随线程失效, 换代后由新代抽取。故先把任务交给队列、再 [ensureStarted]
+     * 确保有线程抽取 —— 泵这一刻起不来只是暂时没人抽, 任务留在队列里等下一次重建, 不由本方法
+     * 丢弃 (重建失败的提示由 [ensureStarted] 给)。
+     * GTK 库不可用 (这台机器没有 WebKitGTK) 时保持原有的拒绝语义。
+     */
     fun post(block: () -> Unit) {
-        if (!started) throw IllegalStateException("GTK 线程未启动")
+        if (!GtkLibs.ensureLoaded()) throw IllegalStateException("GTK 线程未启动")
         val task = object : GtkLibs.GSourceFunc {
             override fun invoke(userData: Pointer?): Int {
                 // JNA 回调被 GC 后 GTK 调用即崩, 执行完才允许释放引用
@@ -112,6 +171,8 @@ internal object GtkLoop {
         // g_idle_add 是线程安全的 (内部 wakeup 主循环), 回调执行前必须持有 JNA 回调引用
         synchronized(pendingIdles) { pendingIdles.add(task) }
         GtkLibs.glib.g_idle_add(task, null)
+        // 入队后再确保有线程抽取: 新代 (或首次启动) 的迭代会取走刚入队的任务
+        ensureStarted()
     }
 
     private val pendingIdles =
