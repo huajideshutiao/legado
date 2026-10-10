@@ -49,7 +49,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
-import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.commit
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
@@ -137,7 +136,6 @@ import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
-import io.legado.app.utils.RealPathUtil
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.createFolderIfNotExist
@@ -477,20 +475,19 @@ class AndroidPlatformCapabilities(
         if (!fontPath.isNullOrBlank()) {
             runCatching {
                 if (fontPath.isContentScheme()) {
-                    // SAF 目录: 优先转真实路径 (对照原版 RealPathUtil 分支), 失败则扫 DocumentFile
-                    val realPath = RealPathUtil.getPath(activity, fontPath.toUri())
-                    if (realPath != null) {
-                        scanFontDir(items, File(realPath), fontRegex)
-                    } else {
-                        DocumentFile.fromTreeUri(activity, fontPath.toUri())?.listFiles()?.forEach {
-                            if (it.name?.matches(fontRegex) == true) {
-                                items.add(FontItem(it.uri.toString(), it.name.orEmpty()))
-                            }
+                    // 选定的字体目录是 SAF 树引用: 一律用已授权的系统列举 (对照原版 loadFontFiles
+                    // 的 FileDoc.list 分支), 不转文件系统路径 —— 只有主存储卷转得出真实路径,
+                    // 其它卷与第三方提供方得到的是假路径, 照它列举只会得到空列表
+                    FileDoc.fromUri(fontPath.toUri(), true)
+                        .list { !it.isDir && it.name.matches(fontRegex) }
+                        ?.forEach { doc ->
+                            items.add(FontItem(doc.uri.toString(), doc.name))
                         }
-                    }
                 } else {
                     scanFontDir(items, File(fontPath), fontRegex)
                 }
+            }.onFailure {
+                AppLog.put("字体目录读取失败, 本次只用内置字体目录: $fontPath\n${it.message}")
             }
         }
         // 对照 getLocalFonts: externalFiles/font
