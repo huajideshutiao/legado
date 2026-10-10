@@ -258,6 +258,6 @@ object MangaExtensionServiceProviders {
         this.impl = impl
     }
 
-    /** 未注册端 (desktop 等) 返回 null, UI 据此隐藏入口。 */
+    /** 未注册该服务的端 (iOS/鸿蒙) 返回 null, UI 据此隐藏入口。 */
     fun getOrNull(): MangaExtensionService? = impl
 }
