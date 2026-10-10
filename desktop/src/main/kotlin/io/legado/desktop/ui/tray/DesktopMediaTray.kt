@@ -555,7 +555,7 @@ object DesktopMediaTray {
             audioActive -> AudioPlayShared.book?.toReadRoute()
             aloudActive -> ActiveReadBookRegistry.current?.bookValue?.toReadRoute()
             exportBinding.value != null -> AppRoute.BookshelfManage()
-            checkSourceBinding.value != null -> AppRoute.BookSourceManage()
+            checkSourceBinding.value != null -> AppRoute.BookSourceManage
             else -> null
         }
         if (route != null) {

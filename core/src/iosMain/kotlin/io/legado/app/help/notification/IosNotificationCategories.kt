@@ -2,6 +2,7 @@
 
 package io.legado.app.help.notification
 
+import io.legado.app.constant.NotificationId
 import io.legado.app.ui.compose.platform.syncGetString
 import platform.UserNotifications.UNNotificationAction
 import platform.UserNotifications.UNNotificationActionOptionNone
@@ -47,6 +48,20 @@ object IosNotificationCategories {
 
     /** 书源校验通知的"取消"动作标识 (对照原版该通知上的 IntentAction.stop 动作)。 */
     const val CheckSourceCancel = "legado.check_source.cancel"
+
+    /**
+     * 通知 id → 通知分类 (只有挂自定义动作的通知才有; 返回 null 即通知上无动作按钮)。
+     *
+     * 发送侧 ([IosNotificationProgress] 与 `IosNotificationService`) 按同一映射挂分类, 动作处理在
+     * `IosNotificationDelegate`。
+     */
+    fun of(id: Int): String? = when (id) {
+        NotificationId.ExportBookService -> Export
+        NotificationId.UpdateBookService -> UpdateBook
+        NotificationId.CacheBookService -> CacheBook
+        NotificationId.CheckSourceService -> CheckSource
+        else -> null
+    }
 
     /** 全部分类 ([UNUserNotificationCenter.setNotificationCategories] 为整体替换, 一次提交全集)。 */
     fun all(): Set<UNNotificationCategory> = setOf(

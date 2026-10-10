@@ -2,6 +2,7 @@ package io.legado.app.help.service
 
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.NotificationId
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.file.FileDownloaders
 import io.legado.app.help.notification.NotificationProgresses
@@ -102,9 +103,10 @@ class NativeServiceLauncher(
  * 取已注册的真实实现。
  *
  * # 行为对照
- * - [onProgressUpdate]: active=true 调 [NotificationProgresses.get().showProgress] (title/content/count/total),
+ * - [onProgressUpdate]: active=true 调 [NotificationProgresses.get().showProgress] (id/title/content/count/total),
  *   active=false 调 [NotificationProgresses.get().cancel] (与接口契约"false=应取消"一致)
  * - [onProgressCancel]: 调 [NotificationProgresses.get().cancel]
+ * - 进度通知固定用 [NotificationId.UpdateBookService] (与 app 端该通知同一 id)
  * - [toastForceRefreshBusy]: Toasters.get().toast("正在刷新中, 请稍后再试") (与桌面端文案一致)
  * - [toastForceRefreshStart]: Toasters.get().toast("开始强制刷新 $count 本") (与桌面端文案一致)
  * - [toastForceRefreshDone]: Toasters.get().toast("刷新完成") (与桌面端文案一致)
@@ -126,15 +128,17 @@ object NativeUpdateBookCallback : UpdateBookCallback {
     override fun onProgressUpdate(active: Boolean, title: String, content: String, count: Int, total: Int) {
         // active=false: 接口契约"应取消", 调 cancel (与 onProgressCancel 一致)
         if (!active) {
-            NotificationProgresses.get().cancel()
+            NotificationProgresses.get().cancel(NotificationId.UpdateBookService)
             return
         }
         // active=true: 显示进度通知 (title + content 文案由 UpdateBookShared 拼好, count/total 为进度)
-        NotificationProgresses.get().showProgress(title, content, count, total)
+        NotificationProgresses.get().showProgress(
+            NotificationId.UpdateBookService, title, content, count, total,
+        )
     }
 
     override fun onProgressCancel() {
-        NotificationProgresses.get().cancel()
+        NotificationProgresses.get().cancel(NotificationId.UpdateBookService)
     }
 
     override fun toastForceRefreshBusy() {
@@ -164,6 +168,9 @@ object NativeUpdateBookCallback : UpdateBookCallback {
  * 已下沉到 nativeMain 共用, 避免平台 actual 重复)。
  */
 fun registerNativeUpdateBookCallback() {
+    // 启动即收掉上个进程残留的进度通知 (native 端无前台服务, 进程死亡不带走通知;
+    // 与 registerIosCacheBookServiceNotifications 同一处理)。
+    NotificationProgresses.get().cancel(NotificationId.UpdateBookService)
     UpdateBookCallbacks.registerDefault(NativeUpdateBookCallback)
 }
 

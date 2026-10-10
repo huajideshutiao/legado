@@ -4,6 +4,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.utils.NetworkUtils.getAbsoluteURL
 import io.legado.app.utils.NetworkUtils.getLocalIPAddress
+import okhttp3.HttpUrl
 import okhttp3.internal.publicsuffix.PublicSuffixDatabase
 import java.net.InetAddress
 import java.net.NetworkInterface
@@ -185,6 +186,17 @@ actual object NetworkUtils {
     }
 
     /**
+     * 取公共后缀库要求的主机规范形: IDN 转 punycode (xn--)、大小写归一为小写、末尾点保留。
+     *
+     * 复用 okhttp 自家请求链同一实现 (`HttpUrl.Builder.host` 内部走 `toCanonicalHost`), 与
+     * `HttpUrl.topPrivateDomain` / `Cookie.parse` 交给 `getEffectiveTldPlusOne` 的主机同形;
+     * 主机无法规范化时返回 null。
+     */
+    private fun toCanonicalHost(host: String): String? = kotlin.runCatching {
+        HttpUrl.Builder().scheme("http").host(host).build().host
+    }.getOrNull()
+
+    /**
      * 获取域名，供cookie保存和读取，处理失败返回传入的url
      * http://1.2.3.4 => 1.2.3.4
      * https://www.example.com =>  example.com
@@ -201,7 +213,8 @@ actual object NetworkUtils {
             //判断是否为ip
             if (isIPAddress(host)) return host
             //PublicSuffixDatabase处理域名
-            PublicSuffixDatabase.get().getEffectiveTldPlusOne(host) ?: host
+            val canonicalHost = toCanonicalHost(host) ?: return host
+            PublicSuffixDatabase.get().getEffectiveTldPlusOne(canonicalHost) ?: canonicalHost
         }.getOrDefault(baseUrl)
     }
 
@@ -215,7 +228,8 @@ actual object NetworkUtils {
             //判断是否为ip
             if (isIPAddress(host)) return host
             //PublicSuffixDatabase处理域名
-            PublicSuffixDatabase.get().getEffectiveTldPlusOne(host) ?: host
+            val canonicalHost = toCanonicalHost(host) ?: return host
+            PublicSuffixDatabase.get().getEffectiveTldPlusOne(canonicalHost) ?: canonicalHost
         }.getOrDefault(null)
     }
 

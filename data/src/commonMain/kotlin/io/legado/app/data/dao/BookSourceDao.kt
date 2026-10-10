@@ -90,6 +90,10 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
     @Query("select distinct bookSourceGroup from book_sources where trim(bookSourceGroup) <> ''")
     fun flowGroupsUnProcessed(): Flow<List<String>>
 
+    /** 书源地址 → 图标地址 (列表行首图标位用); 与 book_sources_part 分列, 让列表行只带渲染需要的图标列 */
+    @Query("select bookSourceUrl, bookSourceIcon from book_sources")
+    fun flowIcons(): Flow<List<BookSourceIcon>>
+
     @Query(
         """select distinct bookSourceGroup from book_sources 
         where enabled = 1 and trim(bookSourceGroup) <> ''"""
@@ -305,3 +309,8 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
         }.flowOn(IoDispatcher)
     }
 }
+
+data class BookSourceIcon(
+    val bookSourceUrl: String,
+    val bookSourceIcon: String?,
+)

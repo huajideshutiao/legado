@@ -774,8 +774,8 @@ class UpdateBookShared(
      * 平台差异通过 [UpdateBookCallback.onProgressUpdate] 抽象:
      * - app 端 callback 实现: startForegroundService<UpdateBookService> + NotificationManagerCompat.notify
      *   (NotificationCompat.Builder 设置进度, 与原 updateUpdateNotification 一致)
-     * - 桌面端 callback 实现: NotificationProgresses.get().showProgress (SystemTray 文本通知) +
-     *   StateFlow 暴露给 UI
+     * - 桌面端 callback 实现: NotificationProgresses.get().showProgress(NotificationId.UpdateBookService, ...)
+     *   (SystemTray 文本通知) + StateFlow 暴露给 UI
      * - iOS/鸿蒙 callback 实现: NativeUpdateBookCallback 桥接 NotificationProgresses + Toasters
      *
      * 两个 job 任一在跑时显示对应文案 + isRefreshing=true, 都空闲时清空 + 取消通知。
@@ -878,7 +878,7 @@ interface UpdateBookCallback {
 
     /**
      * 取消进度通知 (对照 app 端 `updateUpdateNotification` 内 `stopService<UpdateBookService>` /
-     * 桌面端 `NotificationProgresses.get().cancel()`)。
+     * 桌面端 `NotificationProgresses.get().cancel(NotificationId.UpdateBookService)`)。
      *
      * 在 [UpdateBookShared.cancelRefreshJobs] / [UpdateBookShared.updateProgress] (无任务分支) /
      * [UpdateBookShared.onCleared] 时调用。

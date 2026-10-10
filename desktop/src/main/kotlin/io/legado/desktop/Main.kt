@@ -721,7 +721,7 @@ private fun runDesktopApp() = application {
         // debug 判定与 registerJvmDebugState 同源 (run 任务注入 -Dlegado.debug=true)
         LaunchedEffect(Unit) {
             upVersion(
-                DesktopAppInfo.versionCode.toLong(),
+                DesktopAppInfo.versionCode,
                 System.getProperty("legado.debug")?.toBoolean() == true,
                 preferenceUpVersionStore(),
             )

@@ -35,20 +35,22 @@ private val visibilityScope = CoroutineScope(SupervisorJob() + Dispatchers.Defau
  * (legado_napi.cpp threadsafe_function 跨线程调度) →
  * `EntryAbility.ets 回调` → `notificationManager.publish({ id, content: { ... } })`
  *
- * `cancel()` 同理, action=CANCEL → `notificationManager.cancel(id)`
+ * `cancel(id)` 同理, action=CANCEL → `notificationManager.cancel(id)`
  *
  * # 通知形态 (对照 app 端 `UpdateBookService` 的通知)
  * 常驻 (`setOngoing(true)`) + 只提醒一次 (`setOnlyAlertOnce(true)`) + "取消"按钮
  * (`addAction(..., IntentAction.stop)`); 取消动作由宿主经统一平台事件通道回传
- * (type="notificationAction", 见 [cancelOhosUpdateBookRefresh])。
+ * (type="notificationAction", 按 id 路由, 见 `OhosPlatformCapabilities.onNotificationAction`
+ * 与 [cancelOhosUpdateBookRefresh])。
  *
  * # 可见性 (对照 app 端 MainActivity.onStart/onStop → MainViewModel.updateUpdateNotification)
- * 应用可见时不呈现该通知 (原版 `isActivityVisible=true` 直接 `stopService`), 不可见且有任务时
+ * 应用可见时不呈现进度通知 (原版 `isActivityVisible=true` 直接 `stopService`), 不可见且有任务时
  * 按最近一次进度重发; 订阅见 [registerOhosNotificationProgress]。
  *
  * # 通知 id 管理
- * 固定用 [NotificationId.UpdateBookService] (与 app 端该通知同一 id): 进度从"更新目录"
- * 切到"强制刷新"只换标题, 不另起一条通知。
+ * 由调用方传入 ([io.legado.app.constant.NotificationId] 常量): 同一 id 覆盖式更新同一条通知
+ * (进度从"更新目录"切到"强制刷新"只换标题, 不另起一条), 不同 id 各占一条互不覆盖;
+ * 通知按钮动作与点击路由由宿主按同一 id 分派。
  *
  * # 长时任务
  * 不申请保活 (长时任务文档"使用场景"表无一可用类型): "更新目录/强制刷新"是批量元数据请求,
@@ -81,44 +83,45 @@ class OhosNotificationProgress : NotificationProgress {
     /** 应用是否可见 (对照原版 MainViewModel.isActivityVisible: 可见时不呈现进度通知)。 */
     private var appVisible = true
 
-    /** 最近一次进度: 可见性变化时据它恢复通知 (对照原版按当前计数重发同一条通知)。 */
-    private var lastProgress: ProgressSnapshot? = null
+    /** 最近一次进度 (按通知 id 分开存): 可见性变化时据它恢复通知
+     * (对照原版按当前计数重发同一条通知)。 */
+    private val progressById = mutableMapOf<Int, ProgressSnapshot>()
 
-    override fun showProgress(title: String, content: String, progress: Int, max: Int) {
-        val snapshot = ProgressSnapshot(title, content, progress, max)
+    override fun showProgress(id: Int, title: String, content: String, progress: Int, max: Int) {
+        val snapshot = ProgressSnapshot(id, title, content, progress, max)
         val visible = synchronized(lock) {
-            lastProgress = snapshot
+            progressById[id] = snapshot
             appVisible
         }
         if (visible) {
             // 可见时不呈现 (对照原版 updateUpdateNotification 的 isActivityVisible 分支: 撤掉通知)
-            OhosNativeBridge.cancelNotification(NotificationId.UpdateBookService)
+            OhosNativeBridge.cancelNotification(id)
             return
         }
         publish(snapshot)
     }
 
-    override fun cancel() {
+    override fun cancel(id: Int) {
         // 任务结束: 清掉留存进度, 之后可见性变化不再恢复通知 (对照原版无任务时不 startService)
-        synchronized(lock) { lastProgress = null }
-        OhosNativeBridge.cancelNotification(NotificationId.UpdateBookService)
+        synchronized(lock) { progressById.remove(id) }
+        OhosNativeBridge.cancelNotification(id)
     }
 
     /**
      * 应用可见性变化 (对照原版 MainActivity.onStart/onStop → updateUpdateNotification):
-     * 可见→撤掉通知、不可见→按最近一次进度恢复。订阅见 [registerOhosNotificationProgress]。
+     * 可见→撤掉全部在跟的进度通知、不可见→按各自最近一次进度恢复。
+     * 订阅见 [registerOhosNotificationProgress]。
      */
     internal fun setAppVisible(visible: Boolean) {
-        val snapshot = synchronized(lock) {
+        val progress = synchronized(lock) {
             appVisible = visible
-            lastProgress
+            progressById.values.toList()
         }
-        if (visible || snapshot == null) {
-            // 可见即撤掉 (顺带收掉上个进程残留的通知); 无留存进度则无可恢复
-            OhosNativeBridge.cancelNotification(NotificationId.UpdateBookService)
+        if (visible) {
+            progress.forEach { OhosNativeBridge.cancelNotification(it.id) }
             return
         }
-        publish(snapshot)
+        progress.forEach { publish(it) }
     }
 
     /** 发送/覆盖本条通知 (未注册 tsfn 时由 [OhosNativeBridge] 丢弃)。 */
@@ -130,7 +133,7 @@ class OhosNotificationProgress : NotificationProgress {
             snapshot.content
         }
         OhosNativeBridge.showNotification(
-            id = NotificationId.UpdateBookService,
+            id = snapshot.id,
             title = snapshot.title,
             content = progressText,
             progress = snapshot.progress,
@@ -146,6 +149,7 @@ class OhosNotificationProgress : NotificationProgress {
 
     /** 最近一次进度的快照 (可见性变化时重发用)。 */
     private data class ProgressSnapshot(
+        val id: Int,
         val title: String,
         val content: String,
         val progress: Int,
@@ -180,7 +184,7 @@ fun registerOhosNotificationProgress() {
     // 可见性变化立刻刷新通知 (对照原版 MainActivity.onStart/onStop → updateUpdateNotification):
     // 可见性取共享层唯一真源 [AppForegroundState.isForeground] (鸿蒙由 ArkTS 的
     // onForeground/onBackground 经统一平台事件通道置位)。StateFlow 首值即当前态 (启动时为可见),
-    // 启动那一次会收掉上个进程残留的通知 (鸿蒙无前台服务, 进程死亡不带走通知)。
+    // 启动那一次会撤掉本进程已在跟的进度通知 (上个进程残留的通知由各业务在启动注册时按自家 id 收掉)。
     AppForegroundState.isForeground
         .onEach { visible -> impl.setAppVisible(visible) }
         .launchIn(visibilityScope)

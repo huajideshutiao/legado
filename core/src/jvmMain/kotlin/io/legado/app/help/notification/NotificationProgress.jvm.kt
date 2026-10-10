@@ -16,12 +16,19 @@ import java.awt.Window
  * - 桌面端通知无"持久显示 + 进度条"概念, showProgress 显示 "title | content (progress/max)"
  *   文本气泡, 每次调用覆盖上一条; 真进度条走 [DesktopTaskbar] (任务栏/Dock)
  * - cancel 只清任务栏进度, 气泡由系统自动超时消失
+ * - 托盘气泡与任务栏进度都是单条 (平台 API 限制), 通知标识只用于判定"上屏进度是否属于本次取消的
+ *   调用方": 取消别的标识不清掉当前这条
  *
  * 模式参考 `registerAndroidMediaNotificationProvider`。
  */
 class DesktopNotificationProgress : NotificationProgress {
 
-    override fun showProgress(title: String, content: String, progress: Int, max: Int) {
+    /** 当前上屏的进度所属通知标识 (null = 无进度上屏)。 */
+    @Volatile
+    private var shownId: Int? = null
+
+    override fun showProgress(id: Int, title: String, content: String, progress: Int, max: Int) {
+        shownId = id
         DesktopTaskbar.show(progress, max)
         // 拼接进度文本: "content (progress/max)" 或 "content"
         val progressText = if (max > 0) {
@@ -37,7 +44,9 @@ class DesktopNotificationProgress : NotificationProgress {
         AppLog.putDebug("$title | $progressText", tag = "progress")
     }
 
-    override fun cancel() {
+    override fun cancel(id: Int) {
+        if (shownId != id) return
+        shownId = null
         DesktopTaskbar.clear()
         // 桌面端托盘气泡由系统自动超时消失, 无需主动取消 (no-op)
     }

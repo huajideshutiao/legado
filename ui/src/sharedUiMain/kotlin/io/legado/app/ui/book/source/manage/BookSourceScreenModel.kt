@@ -48,6 +48,7 @@ class BookSourceScreenModel(
 
     private var sourceFlowJob: Job? = null
     private var groupsJob: Job? = null
+    private var iconsJob: Job? = null
 
     // 域名缓存, 不随数据变化失效
     private val hostMap = hashMapOf<String, String>()
@@ -68,6 +69,7 @@ class BookSourceScreenModel(
     init {
         upBookSource(_state.value.searchKey)
         observeGroups()
+        observeIcons()
     }
 
     fun getSourceHost(origin: String): String =
@@ -87,6 +89,21 @@ class BookSourceScreenModel(
                 .throttleLatest(500)
                 .collect { groups ->
                     _state.value = _state.value.copy(groups = groups)
+                }
+        }
+    }
+
+    private fun observeIcons() {
+        iconsJob?.cancel()
+        iconsJob = scope.launch {
+            appDb.bookSourceDao.flowIcons()
+                .catch { AppLog.put("书源界面获取图标出错", it) }
+                .flowOn(IoDispatcher)
+                .throttleLatest(500)
+                .collect { icons ->
+                    _state.value = _state.value.copy(
+                        icons = icons.associate { it.bookSourceUrl to it.bookSourceIcon },
+                    )
                 }
         }
     }

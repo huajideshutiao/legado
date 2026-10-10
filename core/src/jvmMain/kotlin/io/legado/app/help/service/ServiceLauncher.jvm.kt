@@ -2,6 +2,7 @@ package io.legado.app.help.service
 
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.NotificationId
 import io.legado.app.help.file.FileDownloaders
 import io.legado.app.help.file.desktopAppRootDir
 import io.legado.app.help.notification.NotificationProgresses
@@ -109,19 +110,25 @@ class DesktopServiceLauncher(
 /**
  * [UpdateBookCallback] 的桌面实现: 把进度/提示桥接到已注册的 [NotificationProgresses]
  * (SystemTray 通知) 与 [Toasters]。文案与 nativeMain `NativeUpdateBookCallback` 一致。
+ *
+ * 进度通知固定用 [NotificationId.UpdateBookService] (与 app 端该通知同一 id)。
  */
 object DesktopUpdateBookCallback : UpdateBookCallback {
 
     override fun onProgressUpdate(active: Boolean, title: String, content: String, count: Int, total: Int) {
         if (!active) {
-            runCatching { NotificationProgresses.get().cancel() }
+            runCatching { NotificationProgresses.get().cancel(NotificationId.UpdateBookService) }
             return
         }
-        runCatching { NotificationProgresses.get().showProgress(title, content, count, total) }
+        runCatching {
+            NotificationProgresses.get().showProgress(
+                NotificationId.UpdateBookService, title, content, count, total,
+            )
+        }
     }
 
     override fun onProgressCancel() {
-        runCatching { NotificationProgresses.get().cancel() }
+        runCatching { NotificationProgresses.get().cancel(NotificationId.UpdateBookService) }
     }
 
     override fun toastForceRefreshBusy() {

@@ -207,7 +207,7 @@ object DesktopCore {
         // 注册当前版本号 provider (供下沉的启动期默认数据补齐按版本推进; 桌面端取
         // DesktopAppInfo.versionCode, 与下沉前 DesktopDefaultDataInit 内的取值同源)
         AppVersionProviders.register(object : AppVersionProvider {
-            override val versionCode: Long get() = DesktopAppInfo.versionCode.toLong()
+            override val versionCode: Long get() = DesktopAppInfo.versionCode
         })
         // 注册桌面端 Host 类 provider (启动期最早, 让 shared commonMain 调用 AppLog/appString 时有输出)
         // - AppLogHost: 桥接到 println, 未注册时 AppLog 副作用 (write/toast/debugPrint) 静默 no-op

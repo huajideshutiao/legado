@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.source
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,14 +29,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.model.Debug
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDropdownMenu
@@ -49,6 +56,8 @@ import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.utils.toStringArray
+import kotlinx.coroutines.flow.first
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.add_book_source
 import legado.ui.generated.resources.book_source
@@ -141,6 +150,9 @@ fun BookSourceListScreen(
         }
     }
     val checkState by Debug.checkState.collectAsState()
+    // 行首图标的加载闸门: 滚动中不发起请求, 滑停后放行。
+    // 读取走快照观察 (不在组合期读), 滚动起停不给每一行添重组
+    val isScrollIdle = remember(listState) { { !listState.isScrollInProgress } }
     // 手动排序且未按域名分组时才允许拖拽 (对照原 itemTouchCallback.isCanDrag)
     val canDrag = state.sort == BookSourceSort.Default && !state.groupSourcesByDomain
     RuleManageScaffold(
@@ -191,6 +203,8 @@ fun BookSourceListScreen(
             callbacks = callbacks,
             item = item,
             checked = state.selected.contains(item.bookSourceUrl),
+            iconUrl = state.icons[item.bookSourceUrl],
+            isScrollIdle = isScrollIdle,
             headerUrls = headerUrls,
             canDrag = canDrag,
             debugMsg = checkState.messages[item.bookSourceUrl].orEmpty(),
@@ -205,6 +219,8 @@ fun BookSourceListScreen(
 data class BookSourceListState(
     val sources: List<BookSourcePart> = emptyList(),
     val selected: Set<String> = emptySet(),
+    /** 书源地址 → 图标地址; 行首图标位渲染用, 与列表行数据分开下发 */
+    val icons: Map<String, String?> = emptyMap(),
     val searchKey: String = "",
     val groups: List<String> = emptyList(),
     val sort: BookSourceSort = BookSourceSort.Default,
@@ -378,6 +394,8 @@ private fun RuleItemScope.BookSourceItem(
     callbacks: BookSourceListCallbacks,
     item: BookSourcePart,
     checked: Boolean,
+    iconUrl: String?,
+    isScrollIdle: () -> Boolean,
     headerUrls: Set<String>,
     canDrag: Boolean,
     debugMsg: String,
@@ -438,6 +456,12 @@ private fun RuleItemScope.BookSourceItem(
                 checked = checked,
                 onCheckedChange = { callbacks.onToggle(item, it) },
             )
+            BookSourceIcon(
+                url = iconUrl,
+                name = item.bookSourceName,
+                isScrollIdle = isScrollIdle,
+            )
+            Spacer(Modifier.width(DesignTokens.spacingDefault))
             Box(Modifier.weight(1f)) {
                 Text(
                     text = item.getDisPlayNameGroup(),
@@ -564,6 +588,55 @@ private fun BookSourceItemMenu(
             DropdownMenuItem(onClick = { onDismiss(); callbacks.onEnableExplore(!item.enabledExplore, item) }) {
                 Text(txt, color = colors.primaryText)
             }
+        }
+    }
+}
+
+/**
+ * 行首图标位: 图标按此方框等比填满并裁剪, 字段留空与取不到/非图片时回退书源名首字占位。
+ *
+ * 方框边长取行高 (行内勾选框交互区 48dp), 占位与图标同框同圆角, 两类行不会一行高一行矮;
+ * 加载中沿用占位显示, 不空一块也不闪;
+ * 滚动中的行不发起请求 (等 [isScrollIdle] 转真再取), 滚出视口的行随组合释放取消加载。
+ */
+@Composable
+private fun BookSourceIcon(
+    url: String?,
+    name: String,
+    isScrollIdle: () -> Boolean,
+) {
+    val colors = AppTheme.colors
+    val loader = remember { BookImageLoaders.getOrNull() }
+    var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+    val sizePx = with(LocalDensity.current) { DesignTokens.viewHeightXl.roundToPx() }
+    val firstChar = remember(name) { name.toStringArray().firstOrNull().orEmpty() }
+    LaunchedEffect(url, loader, sizePx, isScrollIdle) {
+        if (url.isNullOrBlank() || loader == null) return@LaunchedEffect
+        snapshotFlow(isScrollIdle).first { it }
+        bitmap = loader.loadImageOrNull(url, null, sizePx, sizePx)
+    }
+    Box(
+        Modifier
+            .size(DesignTokens.viewHeightXl)
+            .clip(DesignTokens.shapeDefault)
+            .background(colors.fillet),
+        contentAlignment = Alignment.Center,
+    ) {
+        val loaded = bitmap
+        if (loaded != null) {
+            Image(
+                bitmap = loaded,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Text(
+                text = firstChar,
+                color = colors.secondaryText,
+                fontSize = 18.sp,
+                maxLines = 1,
+            )
         }
     }
 }

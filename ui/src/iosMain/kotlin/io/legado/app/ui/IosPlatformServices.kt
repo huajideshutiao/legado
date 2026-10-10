@@ -9,6 +9,7 @@ import io.legado.app.help.file.pickDocuments
 import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
 import io.legado.app.help.log.NativeCrashLogs
 import io.legado.app.help.notification.IosNotificationCategories
+import io.legado.app.help.notification.IosNotificationIdentifiers
 import io.legado.app.help.notification.cancelIosUpdateBookRefresh
 import io.legado.app.help.openURL
 import io.legado.app.help.service.IosCacheBookNotifications
@@ -407,7 +408,7 @@ internal object IosNotificationService : NotificationService {
         IosNotificationPublisher.cancel(identifier)
     }
 
-    private fun identifierOf(id: Int): String = "legado-$id"
+    private fun identifierOf(id: Int): String = IosNotificationIdentifiers.of(id)
 
     /**
      * 通知 id → 点击后的目标路由 (逐字对齐 app 端各通知 contentIntent 里的 route extra)。
@@ -424,12 +425,7 @@ internal object IosNotificationService : NotificationService {
     }
 
     /** 通知 id → 通知分类 (只有挂自定义动作的通知才需要; 返回 null 即通知上无动作按钮)。 */
-    private fun categoryOf(id: Int): String? = when (id) {
-        NotificationId.ExportBookService -> IosNotificationCategories.Export
-        NotificationId.CacheBookService -> IosNotificationCategories.CacheBook
-        NotificationId.CheckSourceService -> IosNotificationCategories.CheckSource
-        else -> null
-    }
+    private fun categoryOf(id: Int): String? = IosNotificationCategories.of(id)
 
     /**
      * 通知标识 → 前台呈现选项 (0 = UNNotificationPresentationOptionNone, 即前台不展示)。
