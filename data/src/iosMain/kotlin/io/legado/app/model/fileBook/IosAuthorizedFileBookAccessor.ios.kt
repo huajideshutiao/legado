@@ -7,6 +7,7 @@ import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.book.requireBookSaveDir
 import io.legado.app.lib.webdav.WebDav
+import io.legado.app.utils.File
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.IosSecurityScopeLease
 import io.legado.app.utils.IosSecurityScopedStorage
@@ -31,7 +32,8 @@ import io.legado.app.utils.IosSecurityScopedStorage
  *   (导入浏览器压缩包上架 / 文件关联导入); 压缩包分支内部还会把解出的书写进"书籍保存位置",
  *   故同时持落地目录租约;
  * - [importRemoteBook]: 整段持落地目录租约 (内部用 [NativeFileBookAccessor.saveBookFile] 落盘);
- * - [deleteBook]: 源文件在外部目录的删原文件, 整个动作期间持租约 (书架删原文件走这里)。
+ * - [deleteBook]: 源文件在外部目录的删原文件, 整个动作期间持租约 (书架删原文件走这里);
+ *   源文件本就不存在视为删除已达成 (见该方法注释)。
  *
  * 沙盒内文件 (`{filesDir}/books` 导入副本) 由授权层自动放行, 不产生额外 scope。
  */
@@ -94,14 +96,43 @@ class IosAuthorizedFileBookAccessor(
         }
     }
 
+    /**
+     * 删本地书 (清章节缓存 + 删封面 + 按 [deleteOriginal] 删源文件); 源文件在授权目录时整段持租约。
+     *
+     * 源文件本就不存在时按删除已达成处理: 不进删除协调, 也不因源文件缺席而走进失败分支 ——
+     * 系统删除协调按 `forDeleting` 通知的是"被删除的那个条目", 条目不存在时报错, 会被上层当成
+     * "源文件删不掉"提示给用户 (库里已删、文件本来也不在)。缓存与封面照旧清理。
+     */
     override fun deleteBook(book: Book, deleteOriginal: Boolean) {
         // 只有删原文件需要授权 (封面/章节缓存都在沙盒内)
         if (!deleteOriginal || !book.bookUrl.startsWith("file:")) {
             delegate.deleteBook(book, deleteOriginal)
             return
         }
-        leaseAround(delegate.resolveLocalFile(book.bookUrl).path, write = true) {
+        val path = delegate.resolveLocalFile(book.bookUrl).path
+        if (!sourceFileExists(path)) {
+            delegate.deleteBook(book, deleteOriginal = false)
+            return
+        }
+        leaseAround(path, write = true) {
             delegate.deleteBook(book, deleteOriginal)
+        }
+    }
+
+    /**
+     * 在 security scope 内判断源文件是否存在 (沙盒内路径同样适用)。
+     *
+     * 授权之外还要的是"文件在不在", 故直接持租约取值, 不走
+     * [IosSecurityScopedStorage.withAccess] 的读协调: 读协调对不存在的目标报错, 拿不到一个干净的
+     * "不存在"结论。授权失效时 [IosSecurityScopedStorage.acquireLease] 抛 SecurityException ——
+     * 此源文件是否存在无法判定, 按授权失败如实上报。
+     */
+    private fun sourceFileExists(path: String): Boolean {
+        val lease = IosSecurityScopedStorage.acquireLease(path)
+        return try {
+            File(path).exists()
+        } finally {
+            lease.close()
         }
     }
 

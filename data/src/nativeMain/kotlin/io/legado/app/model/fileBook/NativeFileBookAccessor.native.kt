@@ -10,6 +10,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.SecurityException
+import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.archiveName
 import io.legado.app.help.book.getRemoteUrl
@@ -206,8 +207,9 @@ class NativeFileBookAccessor : FileBookAccessor {
     }
 
     override fun deleteBook(book: Book, deleteOriginal: Boolean) {
-        // 与 desktop 一致: 删封面 + (可选) 原文件
+        // 与 app/desktop 同一条链: 先清章节缓存, 再删封面 / (可选) 原文件
         runCatching {
+            BookStorageProviders.get().clearCache(book)
             book.coverUrl?.takeIf { it.isNotBlank() }?.let { File(it).delete() }
             if (deleteOriginal) {
                 resolveLocalFile(book.bookUrl).delete()

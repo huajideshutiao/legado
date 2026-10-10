@@ -1,6 +1,7 @@
 package io.legado.app.model.fileBook
 
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.core.net.toUri
 import io.legado.app.App
 import io.legado.app.constant.AppPattern
@@ -12,6 +13,7 @@ import io.legado.app.exception.EmptyFileException
 import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.archiveName
 import io.legado.app.help.book.getArchiveUri
@@ -51,6 +53,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
+import java.io.IOException
 import java.io.InputStream
 import java.util.Locale
 
@@ -217,22 +220,67 @@ object FileBookAccessorImpl : FileBookAccessor {
         )
     }
 
-    /** 删除书籍 (原 `FileBook.deleteBook`)。 */
+    /**
+     * 删除书籍 (原 `FileBook.deleteBook`)。
+     *
+     * 章节缓存与封面在应用私有区, 删不掉不影响用户的源文件, 尽力而为即可;
+     * 源文件删不掉则抛出原因 —— 库里记录已删、文件还在磁盘上, 上层据此提示书名与原因。
+     * 源文件本就不在时删除意图已达成, 不抛。
+     */
     override fun deleteBook(book: Book, deleteOriginal: Boolean) {
         kotlin.runCatching {
             BookHelp.clearCache(book)
             if (!book.coverUrl.isNullOrEmpty()) {
                 FileUtils.delete(book.coverUrl!!)
             }
-            if (deleteOriginal) {
-                if (book.bookUrl.isContentScheme()) {
-                    val uri = book.bookUrl.toUri()
-                    FileDoc.fromUri(uri, false).delete()
-                } else {
-                    FileUtils.delete(book.bookUrl)
-                }
-            }
         }
+        if (!deleteOriginal) return
+        if (book.bookUrl.isContentScheme()) {
+            deleteSourceDocument(book)
+        } else {
+            deleteSourceFile(book)
+        }
+    }
+
+    /**
+     * 删除 content scheme (SAF) 源文件。
+     *
+     * [androidx.documentfile.provider.DocumentFile.delete] 把失败与异常一律折成 false, 故删不掉时
+     * 再看目标是否还在: 不在说明删除已达成, 还在则如实报错。
+     */
+    private fun deleteSourceDocument(book: Book) {
+        val uri = book.bookUrl.toUri()
+        if (FileDoc.fromUri(uri, false).asDocumentFile()?.delete() == true) return
+        if (sourceDocumentGone(uri)) return
+        throw IOException("未能删除源文件: $uri")
+    }
+
+    /**
+     * content scheme 目标是否已不在 (删除意图已达成)。
+     *
+     * 只有解析器明确答"没有这个文档"才算: 文档不在时返回空结果或报 [FileNotFoundException];
+     * 拿不到结果 (返回 null) 与已无访问权限都不算 —— 授权失效时抛 [SecurityException] 让上层如实提示。
+     * 判定不用 `DocumentFile.exists()`: 它把查询异常吞成 false, 分不出"文件不在"与"没有访问权限",
+     * 会把授权失效当成已删除。
+     */
+    private fun sourceDocumentGone(uri: Uri): Boolean = try {
+        App.instance.contentResolver
+            .query(uri, arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID), null, null, null)
+            ?.use { it.count == 0 } ?: false
+    } catch (_: FileNotFoundException) {
+        true
+    } catch (e: SecurityException) {
+        throw SecurityException("没有访问权限: $uri", e)
+    }
+
+    /** 删除文件路径源文件 (bookUrl 可能带 `file://` 前缀, 解析成真实路径再删)。 */
+    private fun deleteSourceFile(book: Book) {
+        val locator = LocalBookLocators.get()
+        val path = locator.getLocalPath(book) ?: book.bookUrl
+        // 已删除的书不留路径记忆 (解析会写回缓存)
+        locator.removeLocalPathCache(book)
+        if (FileUtils.delete(path)) return
+        if (File(path).exists()) throw IOException("未能删除源文件: $path")
     }
 
     /**

@@ -11,12 +11,11 @@ import io.legado.app.utils.File
  *
  * # 共用原因
  * iOS 与鸿蒙两端 LocalBookLocator 主体逻辑完全一致 (本地书路径解析 + 文件操作:
- * getLocalPath/getArchivePath/cacheLocalPath/removeLocalPathCache/getLastModified/deleteBook),
- * 仅 iOS 端原用 NSFileManager, 鸿蒙端用 kotlin.io.File;
+ * getLocalPath/getArchivePath/cacheLocalPath/removeLocalPathCache/getLastModified),
  * Kotlin/Native 在 iOS/linuxArm64 (鸿蒙) 上均支持 [kotlin.io.File],
  * 故统一改为 [kotlin.io.File] 实现下沉到 nativeMain 共用, 平台源集用 typealias 别名 + 各自 register 函数。
  *
- * # 路径解析规则 (与 jvmMain JvmLocalBookLocator / 原 iOS IosLocalBookLocator / 原 ohos OhosLocalBookLocator 行为对齐)
+ * # 路径解析规则 (与 jvmMain [JvmLocalBookLocator] 行为对齐)
  * - bookUrl 形如 `file:///var/mobile/.../book.txt` (iOS) 或 `file:///data/storage/.../book.txt` (鸿蒙)
  *   → 取 URL path 部分 (POSIX 路径)
  * - bookUrl 形如 `/var/mobile/.../book.txt` 或 `/data/storage/.../book.txt` → 直接当本地路径
@@ -26,19 +25,11 @@ import io.legado.app.utils.File
  * 从 book.origin 提取 (形如 `local_book::archive.rar`), 由 [Book.archiveName] 扩展提供
  * (BookExtensionsShared.kt, commonMain 已下沉)。
  *
- * # 缓存
+ * # 缓存与文件操作
  * 用 [Volatile] + [MutableMap] 缓存 bookUrl → 本地路径, 避免重复 URI 解析
- * (与 jvmMain JvmLocalBookLocator 行为对齐; Kotlin/Native 无 ConcurrentHashMap, 用 Volatile 替代)。
- *
- * # 与原 iOS 端差异 (统一为 kotlin.io.File 后)
- * - 文件操作: iOS 用 NSFileManager.attributesOfItemAtPath (NSFileModificationDate) / removeItemAtPath;
- *   统一后用 [File.lastModified] (返回 epoch millis, 与 iOS NSDate.timeIntervalSince1970*1000 等价) /
- *   [File.delete] / [File.deleteRecursively]
- * - deleteBook 语义: 原 iOS 端文件不存在时 removeItemAtPath 返回 false (删除失败);
- *   统一后采用鸿蒙端语义 (文件不存在视为删除成功, 更合理: 已不在即已删除)
- * - deleteBook 分支: 统一后保留鸿蒙端的 isDirectory 分支 (异常场景 bookUrl 指向目录时用 deleteRecursively 兜底)
- * - 并发 Map: 与两端一致, 用 [Volatile MutableMap] + synchronized 块
- *   (LocalBookLocator 访问频率低, 不需要高并发优化)
+ * (Kotlin/Native 无 ConcurrentHashMap, 用 Volatile + synchronized 块;
+ * 访问频率低, 不需要高并发优化)。
+ * 最后修改时间用 [File.lastModified] (epoch millis, 与 JVM `.toMillis()` 等价)。
  *
  * 模式参考 [io.legado.app.help.book.JvmLocalBookLocator]。
  */
@@ -93,29 +84,6 @@ class NativeLocalBookLocator : LocalBookLocator {
         }
     }
 
-    override fun deleteBook(book: Book): Boolean {
-        val path = getLocalPath(book) ?: return false
-        return try {
-            val file = File(path)
-            if (!file.exists()) {
-                // 文件不存在视为删除成功 (与原 iOS removeItemAtPath 返回 false 不同,
-                // 但语义更合理: 已不在即已删除), 同时清理缓存
-                removeLocalPathCache(book)
-                return true
-            }
-            // 单文件用 delete(); 若 bookUrl 指向目录 (异常场景) 用 deleteRecursively 兜底
-            val ok = if (file.isDirectory) file.deleteRecursively() else file.delete()
-            if (ok) {
-                removeLocalPathCache(book)
-                true
-            } else {
-                false
-            }
-        } catch (e: Exception) {
-            false
-        }
-    }
-
     /**
      * 解析 bookUrl 为本地文件路径。
      *
@@ -124,8 +92,7 @@ class NativeLocalBookLocator : LocalBookLocator {
      * - `/var/mobile/.../book.txt` 或 `/data/storage/.../book.txt` → 直接当本地路径
      * - `http(s)://...` → null (网络书源, 非本地)
      *
-     * 与 jvmMain JvmLocalBookLocator.parseLocalPath / 原 iOS IosLocalBookLocator.parseLocalPath
-     * 行为对齐, 但不依赖 java.net.URI:
+     * 与 jvmMain [JvmLocalBookLocator] 的 parseLocalPath 行为对齐, 但不依赖 java.net.URI:
      * file URL 形态较统一 (file:// + POSIX 路径), 直接字符串剥离即可。
      */
     private fun parseLocalPath(bookUrl: String): String? {

@@ -58,17 +58,6 @@ class JvmLocalBookLocator : LocalBookLocator {
         }
     }
 
-    override fun deleteBook(book: Book): Boolean {
-        val path = getLocalPath(book) ?: return false
-        return try {
-            Files.delete(Paths.get(path))
-            removeLocalPathCache(book)
-            true
-        } catch (e: Exception) {
-            false
-        }
-    }
-
     /**
      * 解析 bookUrl 为本地文件路径 (委托 [desktopResolveStoredRef], 缓存的是解析后的绝对路径)。
      *

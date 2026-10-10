@@ -28,8 +28,6 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelpShared
-import io.legado.app.help.book.BookStorageProviders
-import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
@@ -453,7 +451,7 @@ fun BookshelfManageRoute(
             onConfirm = { deleteOriginal ->
                 // 对照 app alertDelSelection / deleteBook: 持久化 deleteBookOriginal 偏好
                 platform.setDeleteBookOriginal(deleteOriginal)
-                handleDelete(target, deleteOriginal, screenModel, scope)
+                handleDelete(target, deleteOriginal, manageVm, screenModel)
                 deleteTarget = null
             },
             onDismiss = { deleteTarget = null },
@@ -714,30 +712,15 @@ private fun handleGroupSelect(
 private fun handleDelete(
     target: DeleteTarget,
     deleteOriginal: Boolean,
+    manageVm: BookshelfManageViewModelShared,
     screenModel: BookshelfManageScreenModel,
-    scope: kotlinx.coroutines.CoroutineScope,
 ) {
     val books = when (target) {
         is DeleteTarget.Single -> listOf(target.book)
         DeleteTarget.Selection -> screenModel.selection()
     }
     if (books.isEmpty()) return
-    scope.launch(IoDispatcher) {
-        AppDbProviders.get().bookDao.delete(*books.toTypedArray())
-        // 对照 shared VM deleteBook / FileBook.deleteBook: 本地书始终清缓存+删封面,
-        // deleteOriginal 控制是否额外删源文件
-        books.filter { it.isLocal }.forEach { book ->
-            if (deleteOriginal) {
-                // LocalBookLocators.deleteBook 委托 FileBook.deleteBook(book, true):
-                // 清缓存 + 删封面 + 删源文件
-                LocalBookLocators.get().deleteBook(book)
-            } else {
-                // 对照 FileBook.deleteBook(book, false): 清缓存 + 删封面, 保留源文件
-                // (LocalBookLocators.deleteBook 硬编码 deleteOriginal=true, 不能用于此分支)
-                BookStorageProviders.get().clearCache(book)
-            }
-        }
-    }
+    manageVm.deleteBook(books, deleteOriginal)
 }
 
 // ---- 对话框状态类型 ----

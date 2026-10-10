@@ -12,12 +12,15 @@ import kotlin.concurrent.Volatile
  * 操作方法, 供桌面 JVM / iOS / 鸿蒙 commonMain 业务调用。
  *
  * 实现注册:
- * - Android: app 端启动早期调用 [LocalBookLocators.register] 注入委托给
- *   [io.legado.app.help.book.BookHelp] 的实现 (本任务不涉及, 后续任务做)。
+ * - Android: app 端启动早期注入 [io.legado.app.help.book.AndroidLocalBookLocator]
+ *   (ContentResolver / DocumentFile 实现)。
  * - 桌面 JVM: desktop 模块启动时注入 [io.legado.app.help.book.JvmLocalBookLocator]
  *   (java.nio.file.Path 实现)。
- * - iOS / 鸿蒙: 共用 nativeMain [io.legado.app.help.book.NativeLocalBookLocator]
- *   (`kotlin.io.File` 实现)。
+ * - iOS / 鸿蒙: 共用 nativeMain [NativeLocalBookLocator] (`kotlin.io.File` 实现);
+ *   iOS 在它外面再包一层 security-scoped 授权 ([io.legado.app.help.book.IosLocalBookLocator])。
+ *
+ * 本接口只做路径定位与只读查询: 删文件动作只有统一入口
+ * [io.legado.app.model.fileBook.FileBookAccessor] 一个 (各端授权在它外层挂点)。
  *
  * 模式参考 [BookStorageProviders] / [io.legado.app.help.book.BookHelpProviders]。
  */
@@ -49,18 +52,13 @@ interface LocalBookLocator {
      * 取本地书文件最后修改时间 (epoch millis); 文件不存在返回 0。
      */
     fun getLastModified(book: Book): Long
-
-    /**
-     * 删除本地书文件 (本地书场景); 非本地书或删除失败返回 false。
-     */
-    fun deleteBook(book: Book): Boolean
 }
 
 /**
  * [LocalBookLocator] provider 容器。宿主启动早期注册一次。
  *
- * shared 内访问点用 `LocalBookLocators.get().getLocalPath(...)` 替代
- * 原 `BookHelp.getBookPFD(...)` 等 Android 专属方法的桌面端调用路径。
+ * shared 内访问点用 `LocalBookLocators.get().getLocalPath(...)` 取本地书路径 ——
+ * `BookHelp.getBookPFD(...)` 一类 Android 专属方法不下沉 commonMain。
  */
 object LocalBookLocators {
     @Volatile

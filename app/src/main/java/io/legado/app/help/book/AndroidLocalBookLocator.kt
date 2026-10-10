@@ -5,7 +5,6 @@ import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import io.legado.app.App
 import io.legado.app.data.entities.Book
-import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.isContentScheme
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -80,23 +79,6 @@ class AndroidLocalBookLocator : LocalBookLocator {
             }
         } catch (e: Exception) {
             0L
-        }
-    }
-
-    /**
-     * 删除本地书文件 (本地书场景); 非本地书或删除失败返回 false。
-     *
-     * 委托 [FileBook.deleteBook]`(book, deleteOriginal = true)`:
-     * 内部清缓存 + 删封面 + 删原文件 (content scheme 走 FileDoc, 普通路径走 FileUtils)。
-     */
-    override fun deleteBook(book: Book): Boolean {
-        if (!book.isLocal) return false
-        return try {
-            FileBook.deleteBook(book, deleteOriginal = true)
-            removeLocalPathCache(book)
-            true
-        } catch (e: Exception) {
-            false
         }
     }
 

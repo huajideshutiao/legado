@@ -177,9 +177,9 @@ class App : Application() {
         registerAndroidFileCacheProvider()
         registerAndroidBackstageWebView()
         registerAndroidBookInfoRefresher()
-        // 注册 BookHelp 章节缓存 / 图片缓存 / 本地书定位三个平台 provider
+        // 注册 BookHelp 章节缓存 / 图片缓存 / 本地书路径定位三个平台 provider
         // (commonMain 下沉的业务编排层经 BookStorageProviders/BookImageStorageProviders/
-        // LocalBookLocators 间接调用 app 端 BookHelp, 须在任何 commonMain 业务调用前完成注册)
+        // LocalBookLocators 取章节缓存与本地书路径, 须在任何 commonMain 业务调用前完成注册)
         BookStorageProviders.register(AndroidBookStorage)
         BookImageStorageProviders.register(AndroidBookImageStorage)
         LocalBookLocators.register(AndroidLocalBookLocator())

@@ -6,12 +6,15 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.toast.Toasters
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.manage.BookshelfManagePlatformProviders.get
+import io.legado.app.ui.compose.platform.syncGetString
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
@@ -174,8 +177,10 @@ class BookshelfManageViewModelShared(
      * # 实现细节保持
      *
      * - `appDb.bookDao.delete(*books.toTypedArray())` 先从数据库删除;
-     * - 本地书 (isLocal) 调 [BookshelfManagePlatform.deleteLocalBook] 删除源文件
-     *   (替代原 `FileBook.deleteBook(it, deleteOriginal)`, 行为等价)。
+     * - 本地书 (isLocal) 调 [BookshelfManagePlatform.deleteLocalBook] 删源文件并清掉它的路径记忆。
+     *
+     * 删源文件失败 (典型是目录授权失效) 必须报出来: 库里已删、文件还在磁盘上, 不说的话
+     * 用户只能看到书从书架消失而不知道文件没删。单本失败不阻断其余书 (批量删除)。
      *
      * 业务在 IO 跑 (DAO + 文件 I/O)。
      *
@@ -185,9 +190,14 @@ class BookshelfManageViewModelShared(
     fun deleteBook(books: List<Book>, deleteOriginal: Boolean = false) {
         Coroutine.async(scope = scope) {
             appDb.bookDao.delete(*books.toTypedArray())
-            books.forEach {
-                if (it.isLocal) {
-                    platform.deleteLocalBook(it, deleteOriginal)
+            books.forEach { book ->
+                if (!book.isLocal) return@forEach
+                // 路径记忆只关缓存, 不碰文件 (删文件唯一走统一入口)
+                LocalBookLocators.get().removeLocalPathCache(book)
+                runCatching {
+                    platform.deleteLocalBook(book, deleteOriginal)
+                }.onFailure { e ->
+                    reportLocalBookSourceFileDeleteFailure(book, e)
                 }
             }
         }
@@ -323,6 +333,19 @@ class BookshelfManageViewModelShared(
 }
 
 /**
+ * 删本地书源文件失败的统一反馈: 记日志 + 既有文案提示书名与原因。
+ *
+ * 删源文件只有统一入口一个 (各端 accessor), 它删不掉时抛异常, 各调用方
+ * (书架删除 / 书籍详情页下架) 都经本函数反馈。
+ */
+fun reportLocalBookSourceFileDeleteFailure(book: Book, e: Throwable) {
+    AppLog.put("删除本地书源文件失败\n${book.name}\n${e.message}", e)
+    Toasters.get().toast(
+        syncGetString("delete_local_book_file_failed", book.name, e.message.orEmpty())
+    )
+}
+
+/**
  * 书架管理平台专属依赖聚合接口 (KMP 注入点)。
  *
  * 用一个聚合接口封装所有平台专属依赖, 避免在 [BookshelfManageViewModelShared] 构造函数
@@ -331,15 +354,17 @@ class BookshelfManageViewModelShared(
  * 各端实现:
  * - **Android**: `AndroidBookshelfManagePlatform` 包装 `Book.migrateTo` /
  *   `BookHelp.getChapterFiles` / `FileBook.deleteBook`;
- * - **桌面**: 简化实现 (用 BookStorageProviders / LocalBookLocators 替代 BookHelp/FileBook,
- *   migrateBook 取 default 章节);
- * - **iOS / 鸿蒙**: 暂未实现 (stub), 后续补。
+ * - **桌面**: `DesktopBookshelfManagePlatform` (BookStorageProviders 取章节文件,
+ *   删源文件走 `FileBook.deleteBook`);
+ * - **iOS / 鸿蒙**: `NativeBookshelfManagePlatform` (与桌面同一口径: BookStorageProviders 取章节文件,
+ *   删源文件走 `FileBook.deleteBook`)。
  *
  * # 为何不扩展既有 Provider 接口
  *
  * - [io.legado.app.help.book.BookHelpAccessor] 仅暴露 saveContent, 不含 getChapterFiles
  *   (BookHelp 重 Android 依赖留 app 端);
- * - [io.legado.app.help.book.LocalBookLocator] 有 deleteBook(book) 但无 deleteOriginal 参数;
+ * - [io.legado.app.model.fileBook.FileBookAccessor.deleteBook] 带 deleteOriginal 参数但只删字节,
+ *   与书架批量删除要的"先删库再删文件"顺序不同;
  * - 用聚合接口注入只改 BookshelfManageViewModel 一处, 不扩散既有 accessor, 符合
  *   "避免超多 Provider 接口" 原则。
  *
@@ -385,8 +410,9 @@ interface BookshelfManagePlatform {
     /**
      * 删除本地书源文件 (对照 `FileBook.deleteBook(book, deleteOriginal)`)。
      *
-     * app 端委托 `FileBook.deleteBook(book, deleteOriginal)` (内部走 DocumentFile /
-     * ContentResolver, 重 Android 依赖留 app 端)。
+     * 各端统一委托 `FileBook.deleteBook(book, deleteOriginal)` —— 删源文件只有这一个入口
+     * (清章节缓存 + 删封面 + 按 deleteOriginal 删源文件); iOS/鸿蒙的目录授权由该入口外层的
+     * 授权装饰器挂点, 授权失效时抛异常而不是默不作声。
      *
      * @param book 待删除的本地书
      * @param deleteOriginal 是否同时删除源文件 (本地 txt/epub 等场景)

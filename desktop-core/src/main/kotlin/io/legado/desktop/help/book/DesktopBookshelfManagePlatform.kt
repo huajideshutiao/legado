@@ -2,7 +2,7 @@ package io.legado.desktop.help.book
 
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.BookStorageProviders
-import io.legado.app.help.book.LocalBookLocators
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.manage.BookshelfManagePlatform
 import io.legado.app.ui.book.manage.BookshelfManagePlatformProviders
 
@@ -12,10 +12,7 @@ import io.legado.app.ui.book.manage.BookshelfManagePlatformProviders
  * 对照 app 端 `AndroidBookshelfManagePlatform` (内类于 BookshelfManageViewModel):
  * - **migrateBook**: 用接口默认实现 (下沉后的 `Book.migrateTo`), 与 app 端同一份代码。
  * - **getChapterFiles**: 委托 [BookStorageProviders.get].getChapterFiles(book).toHashSet()。
- * - **deleteLocalBook**: 委托 [LocalBookLocators.get].deleteBook(book) (JvmLocalBookLocator 实现,
- *   desktop Main.kt 注册)。deleteOriginal 参数在桌面端忽略 (本地书直接删除源文件,
- *   与 app 端 FileBook.deleteBook(book, deleteOriginal) 行为对齐: deleteOriginal=true 删源文件,
- *   deleteOriginal=false 仅删数据库记录由调用方处理)。
+ * - **deleteLocalBook**: 委托 [FileBook.deleteBook] (统一入口: 清章节缓存 + 删封面 + 可选删源文件)。
  *
  * 注册: 经 [registerDesktopBookshelfManagePlatform] 注册到 shared [BookshelfManagePlatformProviders],
  * 供 [io.legado.app.ui.book.manage.BookshelfManageViewModelShared] 经
@@ -31,16 +28,11 @@ class DesktopBookshelfManagePlatform : BookshelfManagePlatform {
     }
 
     /**
-     * 删除本地书源文件: 委托 [LocalBookLocators.get].deleteBook(book) (JvmLocalBookLocator)。
-     *
-     * deleteOriginal 参数在桌面端忽略 (本地书直接删除源文件, 与 app 端 FileBook.deleteBook(book, true)
-     * 行为一致; deleteOriginal=false 场景仅删数据库记录, 由调用方 BookshelfManageViewModelShared.deleteBook
-     * 在 dao.delete 后判断 isLocal 决定是否调本方法, 故本方法被调用即意味着 deleteOriginal=true)。
+     * 删除本地书源文件: 委托 [FileBook.deleteBook] (与 Android 端同一条链: 清章节缓存 +
+     * 删封面 + 按 deleteOriginal 删源文件)。
      */
     override fun deleteLocalBook(book: Book, deleteOriginal: Boolean) {
-        if (deleteOriginal) {
-            LocalBookLocators.get().deleteBook(book)
-        }
+        FileBook.deleteBook(book, deleteOriginal)
     }
 }
 

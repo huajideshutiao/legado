@@ -9,8 +9,9 @@ import kotlin.time.Clock
 /**
  * native (iOS/鸿蒙) 端 [BackupRestoreHook]: 记录备份时间戳 + 恢复完成提示。
  *
- * zip 复制/解压、config.xml 旧格式均无平台特例, 交回 [BackupShared] 的
- * [BackupFileOps] 默认实现 (返回 false / null)。
+ * 恢复侧无平台特例 (config.xml 旧格式 / 解压都走 [RestoreShared] 默认实现); 备份侧只有一处
+ * 平台差异: 用户选定的备份目录在沙盒之外, 写入前必须先取得该目录的持久授权
+ * ([copyBackupIntoUserDir])。
  *
  * app 端 onRestoreFinished 还有换图标/日夜间刷新: 换图标是唯一平台差异
  * (见 [applyRestoredLauncherIcon]), 主题由 AppTheme 订阅配置自动重组。
@@ -31,6 +32,10 @@ private object NativeBackupRestoreHook : BackupRestoreHook {
 
     override fun onBackupStart() = markBackupTime()
 
+    /** 备份 zip 落地到用户选定目录前先取得该目录授权, 再写 ([copyBackupIntoUserDir])。 */
+    override fun copyBackupTo(zipFilePath: String, destination: String, fileName: String): Boolean =
+        copyBackupIntoUserDir(zipFilePath, destination, fileName)
+
     override fun onRestoreFromZipFinished() = markBackupTime()
 
     override suspend fun onRestoreFinished() {
@@ -43,6 +48,21 @@ private object NativeBackupRestoreHook : BackupRestoreHook {
 fun registerNativeBackupRestoreHook() {
     BackupRestoreHooks.register(NativeBackupRestoreHook)
 }
+
+/**
+ * 把备份 zip 写进用户选定目录 (内容与 [BackupFileOps.copyFile] 同一份)。
+ *
+ * 用户选定目录在应用沙盒之外: iOS 靠 security-scoped 租约, 鸿蒙靠已持久化的目录授权激活 ——
+ * 两者都必须在写入前取得, 否则跨启动后写入被系统拒绝; 授权失效时报明确失败 (不谎报已备份)。
+ * 沙盒内目录 (平台惯例目录) 无需授权, 两端原行为直通。
+ *
+ * @return true = 已由本端完成复制
+ */
+internal expect fun copyBackupIntoUserDir(
+    zipFilePath: String,
+    destination: String,
+    fileName: String,
+): Boolean
 
 /**
  * 恢复完成后同步桌面图标 (对照 app 端 Restore.kt 的 LauncherIconHelp.changeIcon)。

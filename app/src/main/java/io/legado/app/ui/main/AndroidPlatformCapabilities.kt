@@ -100,6 +100,7 @@ import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.import.local.ImportBook
 import io.legado.app.ui.book.import.local.ImportBookViewModel
 import io.legado.app.ui.book.info.WebFileImportShared
+import io.legado.app.ui.book.manage.reportLocalBookSourceFileDeleteFailure
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.read.config.HttpTtsEditDialog
 import io.legado.app.ui.book.source.BookSourceSort
@@ -720,6 +721,10 @@ class AndroidPlatformCapabilities(
             }.onSuccess { activity.runOnUiThread { onComplete(null) } }
                 .onFailure {
                     AppLog.put("删除书籍失败\n${it.message}", it)
+                    // 本地书删源文件走统一入口, 删不掉的原因要能看见 (与书架删除同一文案)
+                    if (book.isLocal && deleteOriginal) {
+                        reportLocalBookSourceFileDeleteFailure(book, it)
+                    }
                     activity.runOnUiThread { onComplete(false) }
                 }
         }
