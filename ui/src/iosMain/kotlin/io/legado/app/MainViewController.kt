@@ -80,8 +80,8 @@ fun MainViewController(): UIViewController {
     // 须在 UI 首帧之前挂上: 冷启动时用户点通知, 系统可能在首帧前就派发 response。
     IosNotificationPublisher.installDelegate()
     // 当前版本号 provider (供启动期默认数据补齐按版本推进; iOS 无 PackageManager,
-    // 取 CFBundleShortVersionString 经 versionNameToVersionCode 解析 —— 与下方 "更新日志" 弹窗
-    // 用的是同一个版本指纹, 保证两边对"当前是哪个版本"的口径一致)。
+    // 取 CFBundleShortVersionString 经 versionNameToVersionCode 解析成单调版本号 —— 与下方
+    // "更新日志" 弹窗用同一个值, 保证两边对"当前是哪个版本"的口径一致)。
     // 在这里 (组合之前, 非 @Composable 上下文) 注册: 下方 LaunchedEffect 内才注册会让"谁先读版本号"
     // 变成隐式约定, 而启动维护协程与弹窗协程是并发的。
     AppVersionProviders.register(object : AppVersionProvider {

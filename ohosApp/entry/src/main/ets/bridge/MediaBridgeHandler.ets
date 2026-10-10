@@ -627,6 +627,9 @@ async function startVideoPip(): Promise<void> {
       });
     }
     await videoPipController.startPiP();
+    // startPiP 兑现 = 系统已把小窗拉起 (声明文件: 拉不起来按 1300012/1300013/1300014/1300015 拒),
+    // 据此回传一次进入结果 —— stateChange 事件不送达时请求期也得有人结算
+    emitEvent(PLAYER_ID_VIDEO, { event: 'onPipStateChanged', isPip: true });
   } catch (e) {
     const err = e as Error;
     videoPipController = undefined;

@@ -17,7 +17,8 @@
  * 系统挂起/取消长时任务 (用户删除长时任务通知、原因码判定不合规等) 时按接入规范**不立即再次申请**:
  * 音频记 [audioSuppressed] (下一次 acquireAudioTask, 即用户重新播放时解除), 后台作业把该 owner
  * 记入 [workSuppressed] (该业务 release 后解除, 即下一轮业务可再申请)。同时把事件回送 KMP
- * (type="continuousTaskCancel", 带被取消的 owner 业务通知 id)。
+ * (type="continuousTaskCancel", 带被取消的 owner 业务通知 id)。事件按系统回传的任务 id 归属:
+ * 本地"当前持有者"在音频与后台作业交叠时会指错被取消的那条业务。
  *
  * 回调不是可信的"保活没了"信号: 只有"移除通知"与"冻结"两类原因会回传, 其余 (低速、一致性管控等)
  * 不回传。故业务不得靠它决定去留 —— 本模块在进后台 ([verifyWorkTasks]) 与实况窗心跳时按系统真实
@@ -81,6 +82,8 @@ interface TaskHolder {
   kind: number;
   mode: string;
   wantAgent: WantAgent;
+  /** 系统为这条长时任务分配的 id (申请拿到槽位时由系统回传): 取消事件按它归属, 未回传时无此字段。 */
+  continuousTaskId?: number;
 }
 
 /** 最近一次申请时拿到的 UIAbility context (音频结束后恢复后台作业时还要用)。 */
@@ -195,19 +198,30 @@ async function reconcile(): Promise<void> {
     const wantAgentObj: WantAgent | undefined = audioWantAgent;
     if (wantAgentObj != undefined) {
       try {
-        await backgroundTaskManager.startBackgroundRunning(context, [MODE_AUDIO], wantAgentObj);
-        current = { owner: OWNER_AUDIO, kind: KIND_AUDIO, mode: MODE_AUDIO, wantAgent: wantAgentObj };
+        const res: backgroundTaskManager.ContinuousTaskNotification =
+          await backgroundTaskManager.startBackgroundRunning(context, [MODE_AUDIO], wantAgentObj);
+        current = {
+          owner: OWNER_AUDIO, kind: KIND_AUDIO, mode: MODE_AUDIO, wantAgent: wantAgentObj,
+          continuousTaskId: res.continuousTaskId
+        };
         console.info('[Legado] audio continuous task started');
         return;
       } catch (e) {
-        // 音频没拿到槽位 (无权限/已有其它任务/类型校验不过等): 只记日志并继续往下,
-        // 让刚让位的后台作业把槽位拿回去 —— 不能因为音频申请失败把两条保活都丢掉
+        // 音频没拿到槽位 (无权限/已有其它任务/类型校验不过等): 槽位空着也不能给后台作业 ——
+        // 音频仍是优先级最高的业务, 后台作业占槽后音频下次申请又得先把它们赶下来
         console.error('[Legado] audio continuous task failed: ' + JSON.stringify(e));
+        return;
       }
     }
   } else if (audioDesired) {
     // 音频被系统取消过 (抑制中): 不重申请, 后台作业也不占槽 (音频仍在播放, 优先级最高)
     return;
+  } else if (current != undefined && current.kind === KIND_AUDIO) {
+    // 音频退场 (releaseAudioTask): 系统那条音频长时任务必须停掉并把槽位交回 —— 只把"想占"
+    // 置否的话音频任务会一直占着槽位, 同一次应用存活期内等待中的后台作业再也申请不到保活
+    await releaseSystemTask(context);
+    current = undefined;
+    console.info('[Legado] audio continuous task released');
   }
 
   // 2) 后台作业: 业务已结束的先释放, 再按先到先得拿一个槽位
@@ -225,7 +239,10 @@ async function reconcile(): Promise<void> {
     try {
       const res: backgroundTaskManager.ContinuousTaskNotification =
         await backgroundTaskManager.startBackgroundRunning(context, [holder.mode], holder.wantAgent);
-      current = holder;
+      current = {
+        owner: holder.owner, kind: holder.kind, mode: holder.mode, wantAgent: holder.wantAgent,
+        continuousTaskId: res.continuousTaskId
+      };
       transferNotificationId = holder.mode === MODE_DATA_TRANSFER ? res.notificationId : 0;
       if (holder.mode === MODE_DATA_TRANSFER) {
         clearTransferHeartbeat();
@@ -315,17 +332,22 @@ export async function releaseWorkTask(
  * 决定自己的去留, 它只当提示: 保活由各业务在状态变化、进后台与心跳时重述并按状态自检。
  *
  * @param reason backgroundTaskManager.ContinuousTaskCancelReason 原值
+ * @param continuousTaskId 系统回传的被取消长时任务 id (ContinuousTaskCancelInfo.id)
  */
-export function notifySystemCancelled(reason: number): void {
-  const cancelled: TaskHolder | undefined = current;
+export function notifySystemCancelled(reason: number, continuousTaskId: number): void {
+  // 按系统回传的任务 id 归属: 与本地"当前持有者"无关 (交叠时会算到另一条业务上),
+  // 对不上号的回调与本地持有态无关, 不得改动任何状态
+  const cancelled: TaskHolder | undefined =
+    current != undefined && current.continuousTaskId === continuousTaskId ? current : undefined;
+  if (cancelled == undefined) {
+    console.info('[Legado] continuous task cancelled by system (not the one we hold), id=' +
+      continuousTaskId + ', reason=' + reason);
+    return;
+  }
   current = undefined;
   transferNotificationId = 0;
   transferTemplate = undefined;
   clearTransferHeartbeat();
-  if (cancelled == undefined) {
-    console.info('[Legado] continuous task cancelled by system (not held by us), reason=' + reason);
-    return;
-  }
   if (cancelled.kind === KIND_AUDIO) {
     audioSuppressed = true;
     console.info('[Legado] audio continuous task cancelled by system, reason=' + reason);

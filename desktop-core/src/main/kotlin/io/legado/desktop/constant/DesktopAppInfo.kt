@@ -1,5 +1,6 @@
 package io.legado.desktop.constant
 
+import io.legado.app.ui.about.versionNameToVersionCode
 import io.legado.desktop.constant.DesktopAppInfo.FALLBACK_VERSION_NAME
 import io.legado.desktop.constant.DesktopAppInfo.versionCode
 import io.legado.desktop.constant.DesktopAppInfo.versionName
@@ -20,13 +21,15 @@ import java.util.jar.Manifest
  *   (jpackage 打包后的 app jar manifest 由 Gradle jar task 写入); 读不到则回落
  *   [FALLBACK_VERSION_NAME] (= `desktop/build.gradle.kts`
  *   `nativeDistributions.packageVersion` 默认值)
- * - [versionCode]: 桌面端无 `packageManager.versionCode`, 从 [versionName] 解析
- *   `major*10000+minor*100+patch` (与 app 端 versionCode 语义不同), 解析失败回落 1;
+ * - [versionCode]: 桌面端无 `packageManager.versionCode`, 从 [versionName] 用
+ *   [versionNameToVersionCode] 解析成单调版本号 (与 iOS/鸿蒙 同一编码, 版本越新值越大,
+ *   跨年不受影响; 取值数值空间与 app 端的 10000+提交数 不同), 解析不出时回落 1;
  *   供崩溃日志版本字段与默认数据按版本推进使用
  *
  * # 与 app 端的差异
  *
- * - app 端 versionCode 为 Long (`PackageManager.longVersionCode`); 桌面端用 Int (无大版本号需求)
+ * - app 端 versionCode 为 Long (`PackageManager.longVersionCode`); 桌面端同为 Long
+ *   (位槽编码的取值在 1e10 量级, Int 装不下)
  * - app 端 AppInfo 还含 appVariant (签名校验, 桌面端无签名); 桌面端不暴露
  *
  * @see io.legado.app.constant.AppConstAndroid.kt (app 端 appInfo 来源)
@@ -50,21 +53,19 @@ object DesktopAppInfo {
     }
 
     /**
-     * 应用版本号 (Int), 桌面端无 PackageManager, 从 [versionName] 解析 `major*10000+minor*100+patch`。
+     * 应用版本号 (Long), 桌面端无 PackageManager, 从 [versionName] 用 [versionNameToVersionCode]
+     * 解析成单调版本号 —— 与 iOS/鸿蒙 同一编码: 三端写入的键 `appVersionCode` 随备份在三端之间走,
+     * 取值口径必须相同, 否则恢复别端备份后版本门会把"更新"判成"已记过"。
      *
-     * 例: "1.0.0" → 10000, "3.25.7" → 325007。解析失败回落 1。
-     * 注: 与 app 端 Long versionCode 语义不同。使用处: 崩溃日志的版本字段
-     * ([io.legado.desktop.help.DesktopCrashHandler]) 与默认数据按版本推进的本地记录
+     * 例: "1.0.0" → 10000000000, "3.26.081614" → 32608161400, "3.27.010112" → 32701011200
+     * (跨年仍是递增)。
+     * 注: 与 app 端 10000+提交数 的数值空间不同, 但同为版本越新值越大 (各端只与自己那份记录比)。
+     * 解析不出 (版本名无任何数字段) 时回落 1, 保证首启仍会补一次默认数据。使用处: 崩溃日志的
+     * 版本字段 ([io.legado.desktop.help.DesktopCrashHandler]) 与默认数据按版本推进的本地记录
      * ([io.legado.desktop.help.DesktopDefaultDataInit] 的 appVersionCode 比对)。
      */
-    val versionCode: Int by lazy {
-        val parts = versionName.split(".").mapNotNull { it.toIntOrNull() }
-        when (parts.size) {
-            3 -> parts[0] * 10000 + parts[1] * 100 + parts[2]
-            2 -> parts[0] * 10000 + parts[1] * 100
-            1 -> parts[0] * 10000
-            else -> 1
-        }
+    val versionCode: Long by lazy {
+        versionNameToVersionCode(versionName).coerceAtLeast(1L)
     }
 
     /**

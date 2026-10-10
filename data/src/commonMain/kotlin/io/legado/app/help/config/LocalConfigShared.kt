@@ -1,5 +1,11 @@
 package io.legado.app.help.config
 
+import io.legado.app.help.storage.DataStorageProviders
+import io.legado.app.help.storage.FilesJsonStore
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.toJson
+
 /**
  * LocalConfig 的 KMP 共享逻辑 (与 app 端 [io.legado.app.help.config.LocalConfig] 配套)。
  *
@@ -8,6 +14,8 @@ package io.legado.app.help.config
  * 依赖 `appCtx.getSharedPreferences("local", MODE_PRIVATE)` (Android Context),
  * 不能直接下沉 shared/commonMain。本 KMP 版抽掉 Android 专属依赖, 仅保留:
  * - [LocalConfigKeys] 配置 key 常量 (平台无关字符串, 供 app 端 / 桌面端统一引用)
+ * - [DeviceLocalConfig] 设备本地配置空间 (不进备份的本机专有字符串配置)
+ * - [effectiveBookExportDir] / [rememberBookExportDir] 依赖 [DeviceLocalConfig] 的导出目录记忆
  * - [HelpVersion] 各 help 引导的最新版本号常量 (平台无关数值)
  * - [isLastVersion] 版本比较算法 (平台无关, 通过函数参数注入 get/put 操作)
  * - [isFirstOpen] 首次打开判断算法 (平台无关, 通过函数参数注入 get/put 操作)
@@ -72,6 +80,82 @@ object LocalConfigKeys {
     const val firstOpen = "firstOpen"
     const val deleteBookOriginal = "deleteBookOriginal"
     const val appCrash = "appCrash"
+
+    /**
+     * 用户选定的"导出书籍"落地目录标识 (书架管理 → 选择导出文件夹)。
+     *
+     * 值存 [DeviceLocalConfig] (设备本地空间, 不进备份): Android 端是 SAF 授权的
+     * `content://` 树引用, 桌面/iOS/鸿蒙 是普通绝对路径 —— 都带本机授权/本机目录语义,
+     * 跟着备份走到别的设备上必然失效。取值顺序见 [effectiveBookExportDir]。
+     */
+    const val bookExportPath = "bookExportPath"
+}
+
+/**
+ * 设备本地配置空间: `{filesDir}/localConfig.json`, JSON 字符串键值表。
+ *
+ * 与 [PreferenceProviders] 的分工: 后者的值随备份写进 config.json 并在恢复时写回, 只该存
+ * "跟着用户走"的偏好; 描述本机的值 (本机目录/授权引用) 存本空间, 恢复别人的备份不影响它。
+ * 本文件不在 [io.legado.app.help.storage.BackupShared] 的打包清单里, 备份与恢复都不读写它。
+ *
+ * 读写走 [FilesJsonStore] (与设备本地的 restoreIgnore.json 同一套做法)。
+ */
+object DeviceLocalConfig {
+
+    private const val fileName = "localConfig.json"
+
+    /** 进程内缓存: 读一次文件后按本对象写回, 与 [io.legado.app.help.storage.BackupConfigShared] 同做法。 */
+    private var cache: MutableMap<String, String>? = null
+
+    fun getString(key: String): String? = load()[key]
+
+    fun putString(key: String, value: String?) {
+        val config = load()
+        if (value == null) {
+            config.remove(key)
+        } else {
+            config[key] = value
+        }
+        FilesJsonStore.writeText(fileName, GSON.toJson(config))
+    }
+
+    private fun load(): MutableMap<String, String> {
+        cache?.let { return it }
+        val config = FilesJsonStore.readText(fileName)
+            ?.let { GSON.fromJsonObject<HashMap<String, String>>(it).getOrNull() }
+            ?.toMutableMap()
+            ?: mutableMapOf()
+        cache = config
+        return config
+    }
+}
+
+/**
+ * 有效导出目录 (与备份路径 [io.legado.app.help.storage.DataStorage.defaultBackupDir] 同一套
+ * "用户选定目录 + 可为 null 的平台惯例目录"语义, 逐字对照
+ * [io.legado.app.ui.route.BackupConfigRoute] 的 onBackup 三分支;
+ * 书籍保存位置的 [io.legado.app.help.book.effectiveBookSaveDir] 是同一形制):
+ *
+ * 1. 用户已在"书架管理 → 选择导出文件夹"选过 ([LocalConfigKeys.bookExportPath]) → 用选定目录;
+ * 2. 未选过但平台有惯例导出目录 ([io.legado.app.help.storage.DataStorage.defaultBookExportDir])
+ *    → 用惯例目录, 不写记忆、不打扰用户;
+ * 3. 都没有 (Android/鸿蒙: 写公共目录须用户授权, 惯例目录为 null) → 返回 null,
+ *    调用方拉起目录选择器, 选中后写 [rememberBookExportDir] 再继续。
+ *
+ * 只负责取出"目录标识", 不做路径解析: Android 端选过的值是 SAF `content://` 树引用,
+ * 桌面/iOS/鸿蒙 是普通绝对路径, 由各端写入方自行解析。
+ */
+fun effectiveBookExportDir(): String? =
+    DeviceLocalConfig.getString(LocalConfigKeys.bookExportPath)
+        ?.takeIf { it.isNotBlank() }
+        ?: DataStorageProviders.getOrNull()?.defaultBookExportDir
+
+/**
+ * 记住用户选定的导出目录 ([effectiveBookExportDir] 第 1 分支); [path] 为空表示忘掉记忆
+ * (选定目录授权失效时调用, 下次导出重新让用户选)。
+ */
+fun rememberBookExportDir(path: String?) {
+    DeviceLocalConfig.putString(LocalConfigKeys.bookExportPath, path?.takeIf { it.isNotBlank() })
 }
 
 /**

@@ -19,6 +19,7 @@ import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.source.SearchBookFilter
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.model.webBook.BookListPager
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.PluginFilterSession
 import io.legado.app.model.webBook.WebBook.getBookListAwait
@@ -170,16 +171,14 @@ class ExploreShowViewModelShared(
     /** URL 解析出的参数 chip 列表 (可被 onUrlResolved 回调追加)。 */
     val exploreOptions = mutableListOf<ExploreOption>()
 
-    /** 当前分页页码 (1-based, 成功加载一页后 +1)。 */
-    var page = 1
-        private set
+    /** 翻页游标: 页码 + 上一页解析出的下一页地址 (与主页无限流共用同一份裁决)。 */
+    private val pager = BookListPager()
 
-    /** 上一页解析出的下一页地址 (配置了下一页地址规则时非空, 翻页直接请求它)。 */
-    private var nextPageUrl: String? = null
+    /** 当前分页页码 (1-based, 成功加载一页后 +1)。 */
+    val page: Int get() = pager.page
 
     /** 最近一次拉取后, 是否还有下一页。书源配了 hasMoreRule 走 JS, 否则按"本页非空就当还有"。 */
-    var hasNextPage: Boolean = true
-        private set
+    val hasNextPage: Boolean get() = pager.hasNextPage
 
     /** 已加载的发现结果 (按 bookUrl 去重, values 暴露给 [booksFlow])。
      * 用 Map 而非 LinkedHashSet: SearchBook 已改结构相等, 而 time 是构造参数 (当前毫秒),
@@ -426,9 +425,8 @@ class ExploreShowViewModelShared(
     fun explore(resetPage: Boolean = false) {
         val source = bookSource ?: return
         if (resetPage) {
-            page = 1
+            pager.reset()
             books.clear()
-            nextPageUrl = null
         }
         val selectedOptions = exploreOptions.associate { it.name to it.resolvedValue }
         // 搜索模式 key=搜索词 (WebBook 内部 url 取 searchUrl + 注入 KEY 变量), 发现模式 key=exploreUrl
@@ -439,9 +437,9 @@ class ExploreShowViewModelShared(
         }
         Coroutine.async(scope) {
             getBookListAwait(
-                source, key, page, isSearch = isSearchMode,
+                source, key, pager.page, isSearch = isSearchMode,
                 pluginFilters = if (isSearchMode) null else pluginExploreFilters,
-                nextPageUrl = nextPageUrl,
+                nextPageUrl = pager.nextPageUrl,
                 onUrlResolved = { analyzeUrl: AnalyzeUrlCore ->
                     val oldSize = exploreOptions.size
                     mergeOptions(parseExploreOptionsFromUrl(analyzeUrl.ruleUrl))
@@ -461,10 +459,8 @@ class ExploreShowViewModelShared(
             }
             items.forEach { b -> books.getOrPut(b.bookUrl) { b } }
             // 兜底: 翻到第二页起, 去重后整体未增长则视为到底; 防止 hasMoreRule 缺失或配错时无限触底
-            hasNextPage = pageResult.hasNextPage && (page == 1 || books.size > prevSize)
-            nextPageUrl = pageResult.nextPageUrl
+            pager.advance(pageResult, prevSize, books.size)
             _booksFlow.tryEmit(books.values.toList())
-            page++
         }.onError {
             it.printStackTraceOnDebug()
             _errorFlow.tryEmit(it.stackTraceStr)

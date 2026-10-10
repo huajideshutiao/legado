@@ -16,11 +16,12 @@ import io.legado.app.help.book.isImage
 import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.config.effectiveBookExportDir
+import io.legado.app.help.config.rememberBookExportDir
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.file.desktopStoredLocalRef
 import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.storage.DataStorageProviders
-import io.legado.app.help.storage.effectiveBookExportDir
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.Debug
 import io.legado.app.model.fileBook.FileBook
@@ -686,7 +687,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     }
 
     // 导出书籍正文, 格式取导出配置 (0=txt 1=epub, 对照 app 端 AppConfig.exportType;
-    // 图片书自动走 cbz), 目录取"用户选过的偏好键, 否则平台惯例目录"
+    // 图片书自动走 cbz), 目录取"用户选过的设备本地记忆, 否则平台惯例目录"
     // (三分支与备份路径同一形制, 见 DataStorage.defaultBookExportDir)
     override fun exportAllBooks(books: List<Book>) {
         if (books.isEmpty()) return
@@ -704,8 +705,9 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
                 "选择导出目录",
                 initialDir = effectiveBookExportDir()?.let(::File),
             ) ?: return@launch
-            // 记忆落偏好键 (PreferKey.bookExportPath): 与安卓同一个键、同一套三分支
-            prefs.putString(PreferKey.bookExportPath, dir.absolutePath)
+            // 记忆落设备本地配置空间 (rememberBookExportDir): 选定的是本机目录, 不能随备份
+            // 走到别的设备; 与安卓同一个键、同一套三分支
+            rememberBookExportDir(dir.absolutePath)
             if (books.isNotEmpty()) {
                 // 对照 app 端 exportDir 回调: 开启自定义导出时先弹章节配置对话框。
                 // 本类同名成员是"自定义导出"开关当前值 (菜单勾选态), 走全限定名取上面那条带导出类型的判定

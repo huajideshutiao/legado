@@ -25,6 +25,48 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
 /**
+ * 列表翻页游标: 页码 + 上一页解析出的下一页地址。
+ *
+ * 发现页/单源搜索页与主页无限流共用同一份翻页裁决 (对照 app 端 ExploreShowViewModel.explore):
+ * - 配了"下一页地址"规则的源直接请求上一页解析出的地址, 未配置/取不到时回落到页码模板;
+ * - 从第 2 页起, 去重后列表不再增长即认定为到底 (源忽略页码时不会反复请求同一页)。
+ */
+class BookListPager {
+
+    /** 下一次请求的页码 (1-based)。 */
+    var page: Int = 1
+        private set
+
+    /** 上一页解析出的下一页地址 (null = 按页码模板翻页)。 */
+    var nextPageUrl: String? = null
+        private set
+
+    /** 是否还有下一页 (重载第 1 页后、本次请求出结果前为 true)。 */
+    var hasNextPage: Boolean = true
+        private set
+
+    /** 重载第 1 页: 页码、下一页地址、到底标记一并复位。 */
+    fun reset() {
+        page = 1
+        nextPageUrl = null
+        hasNextPage = true
+    }
+
+    /**
+     * 提交一页结果并推进游标。
+     *
+     * @param result 本页解析结果 (下一页地址 + 是否还有下一页)
+     * @param prevSize 本页合并去重前的条数
+     * @param curSize 本页合并去重后的条数
+     */
+    fun advance(result: BookListPage, prevSize: Int, curSize: Int) {
+        hasNextPage = result.hasNextPage && (page == 1 || curSize > prevSize)
+        nextPageUrl = result.nextPageUrl
+        page++
+    }
+}
+
+/**
  * webBook 编排层入口。
  *
  * 从 app 下沉到 shared jvmAndAndroidMain, 现下沉到 commonMain。

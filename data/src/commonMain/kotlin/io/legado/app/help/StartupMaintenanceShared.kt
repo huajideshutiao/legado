@@ -64,6 +64,9 @@ object StartupMaintenanceShared {
      * 3. httpTTS / txtTocRule / dictRule: 各自再加一层资源版本门
      *    ([LocalConfigShared.isLastVersion], 与 `LocalConfig.needUpXxx` 同一算法)
      *
+     * 版本门要求 [AppVersionProviders] 注册进来的当前版本号随版本推进单调不减
+     * (iOS/鸿蒙/桌面 由 `versionNameToVersionCode` 的定宽位槽编码保证): 按数值大小判"版本是否推进"。
+     *
      * # `appVersionCode` 本文件只读, 不写
      *
      * 写这个键的只有各端的更新日志弹窗 (`upVersion`: `LocalConfig.versionCode = appInfo.versionCode`);

@@ -79,14 +79,39 @@ suspend fun upVersion(
     }
 }
 
+/** 日期码位宽: `MMddHH[mm]` 的定宽位数 (月/日/时/分各 2 位)。 */
+private const val dateCodeDigits = 8
+
+/** 版本名各段的位槽: 日期码 8 位 / 年段 2 位 / 主段 2 位。 */
+private const val dateCodeSlot = 100_000_000L
+private const val yearSlot = dateCodeSlot * 100L
+private const val majorSlot = yearSlot * 100L
+
 /**
- * versionName → 数字版本号 (major*10000 + minor*100 + patch, 与桌面端
- * DesktopAppInfo.versionCode 同一算法), 供无包信息 API 的端 (iOS/鸿蒙) 从
- * 版本名推导比对基准; 段缺失/非数字按 0 计, 仅作"版本是否变化"的指纹。
+ * versionName → 单调版本号 (各段按定宽位槽拼接), 供无包信息 API 的端 (iOS/鸿蒙/桌面)
+ * 从版本名推导比对基准。
+ *
+ * 版本名形如 `3.<yy>.<MMddHH>` (CI/测试构建是分钟码 `3.<yy>.<MMddHHmm>`, 见
+ * `BuildTimestampValueSource` 与 `.github/workflows/test.yml`), 各段都是零填充定宽数字。
+ * 位槽宽度保证低位段 (日期码) 的进位挤不掉高位段 (年段): 数值大小顺序 == 逐段比较的
+ * 版本先后 (先主段、再年段、最后日期码), 跨年 (3.26.* → 3.27.*) 与 6/8 位日期码混比
+ * 都判得对 —— 6 位日期码右补零到 8 位 (MMddHHmm) 后按同一刻度比较。
+ *
+ * [upVersion] 用它判"版本是否变化" (相等性), 启动维护
+ * ([io.legado.app.help.StartupMaintenanceShared.initDefaultData]) 用它判"版本是否推进" (大小)。
+ *
+ * 三端 (iOS/鸿蒙/桌面) 写回同一个键 `appVersionCode`, 该键随备份在三端之间走 —— 任一端单独换
+ * 编码都会让恢复别端备份后的版本门判错, 改动这里必须三端同批。
+ *
+ * 段缺失/非数字按 0 计; 日期码取前 8 位参与比较; 第 4 段及以后不参与。
  */
 fun versionNameToVersionCode(versionName: String): Long {
     val parts = versionName.split('.')
-    return (parts.getOrNull(0)?.toLongOrNull() ?: 0L) * 10000L +
-        (parts.getOrNull(1)?.toLongOrNull() ?: 0L) * 100L +
-        (parts.getOrNull(2)?.toLongOrNull() ?: 0L)
+    val major = parts.getOrNull(0)?.toLongOrNull() ?: 0L
+    val yearCode = parts.getOrNull(1)?.toLongOrNull() ?: 0L
+    val dateCode = parts.getOrNull(2).orEmpty()
+        .padEnd(dateCodeDigits, '0')
+        .take(dateCodeDigits)
+        .toLongOrNull() ?: 0L
+    return major * majorSlot + yearCode * yearSlot + dateCode
 }

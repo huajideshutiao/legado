@@ -13,7 +13,8 @@ import io.legado.app.help.StartupMaintenanceShared
  * 已上移到 :data commonMain 的 [StartupMaintenanceShared.initDefaultData], 四端共用同一份实现。
  * 原先卡在桌面端无法上移的只有"当前版本号"一个平台值, 现已由
  * [io.legado.app.help.AppVersionProvider] 抽象注入, 桌面端取值源仍是
- * [DesktopAppInfo.versionCode] (MANIFEST Implementation-Version 解析, 语义与下沉前逐字相同)。
+ * [DesktopAppInfo.versionCode] (MANIFEST Implementation-Version 解析: 版本名 → 单调版本号,
+ * 与 iOS/鸿蒙 同一编码)。
  *
  * 本文件只剩"转发"一件事, 保留原函数入口以免调用方 (`DesktopCore`) 变动 —— 版本号 provider 的注册
  * 放在桌面核心启动序列里 (`DesktopCore.registerEarlyProviders`, 与其他 provider 同步注册), 而不是

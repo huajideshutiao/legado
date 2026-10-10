@@ -8,6 +8,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.HomeTabHelpShared
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.model.webBook.BookListPager
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.WebBook.getBookListAwait
 import io.legado.app.model.webBook.parseExploreOptionsFromUrl
@@ -54,8 +55,9 @@ class HomeViewModelShared(
         /** 每个展示项的参数选项 (可变 ExploreOption 实例, VM/Adapter/控件三处共享, 用户点 chip 直接改实例字段) */
         val sectionOptionsMap = mutableMapOf<String, List<ExploreOption>>()
         var infiniteSection: HomeSection? = null
-        var infinitePage: Int = 1
-        var infiniteHasMore: Boolean = true
+
+        /** 无限流翻页游标 (页码 + 上一页解析出的下一页地址), 与发现页/单源搜索页同一份裁决 */
+        val infinitePager = BookListPager()
         var infiniteLoading: Boolean = false
 
         // 按 bookUrl 去重 (理由同 ExploreShowViewModelShared.books): SearchBook 已改结构相等,
@@ -112,7 +114,7 @@ class HomeViewModelShared(
     fun isLoading(tabTitle: String, sectionId: String) =
         stateOf(tabTitle).loadingSet.contains(sectionId)
 
-    fun hasMoreInfinite(tabTitle: String) = stateOf(tabTitle).infiniteHasMore
+    fun hasMoreInfinite(tabTitle: String) = stateOf(tabTitle).infinitePager.hasNextPage
 
     fun infiniteSection(tabTitle: String) = stateOf(tabTitle).infiniteSection
 
@@ -201,11 +203,10 @@ class HomeViewModelShared(
         val state = stateOf(tabTitle)
         val section = state.infiniteSection ?: return
         if (state.infiniteLoading) return
-        if (!resetPage && !state.infiniteHasMore) return
+        if (!resetPage && !state.infinitePager.hasNextPage) return
         if (resetPage) {
-            state.infinitePage = 1
+            state.infinitePager.reset()
             state.infiniteBookMap.clear()
-            state.infiniteHasMore = true
         }
         state.infiniteLoading = true
         state.loadingSet.add(section.id)
@@ -213,19 +214,20 @@ class HomeViewModelShared(
         Coroutine.async(scope) {
             val source = appDb.bookSourceDao.getBookSource(section.sourceUrl)
                 ?: return@async
-            // 搜索类展示项走搜索模式 (翻页同源 {{page}} 模板)
+            // 搜索类展示项走搜索模式 (WebBook 内部 url 取 searchUrl, 翻页地址与页码由游标裁决)
             val selectedOptions = state.sectionOptionsMap[section.id]
                 ?.takeIf { it.isNotEmpty() }
                 ?.associate { it.name to it.resolvedValue }
             val result = getBookListAwait(
-                source, section.searchKey ?: section.exploreUrl, state.infinitePage,
+                source, section.searchKey ?: section.exploreUrl, state.infinitePager.page,
                 isSearch = section.searchKey != null,
-                selectedOptions = selectedOptions
+                selectedOptions = selectedOptions,
+                nextPageUrl = state.infinitePager.nextPageUrl,
             )
+            val prevSize = state.infiniteBookMap.size
             result.books.forEach { b -> state.infiniteBookMap.getOrPut(b.bookUrl) { b } }
-            state.infiniteHasMore = result.hasNextPage && result.books.isNotEmpty()
+            state.infinitePager.advance(result, prevSize, state.infiniteBookMap.size)
             state.sectionBooksMap[section.id] = state.infiniteBookMap.values.toList()
-            state.infinitePage++
             _sectionUpdatedFlow.tryEmit(tabTitle to section.id)
         }.onError {
             AppLog.put("主页[$tabTitle]无限流[${section.title}]加载失败", it)
@@ -264,8 +266,7 @@ class HomeViewModelShared(
         if (sourceChanged) {
             if (section.style == HomeSection.STYLE_INFINITE_GRID) {
                 state.infiniteBookMap.clear()
-                state.infinitePage = 1
-                state.infiniteHasMore = true
+                state.infinitePager.reset()
             } else {
                 state.sectionBooksMap.remove(section.id)
                 state.sectionOptionsMap.remove(section.id)

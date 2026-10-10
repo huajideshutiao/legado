@@ -13,6 +13,8 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.config.effectiveBookExportDir
+import io.legado.app.help.config.rememberBookExportDir
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.book.getExportFileName
@@ -26,7 +28,6 @@ import io.legado.app.help.notification.cancelOhosUpdateBookRefresh
 import io.legado.app.help.service.OhosCacheBookNotifications
 import io.legado.app.help.service.OhosWebServiceNotifications
 import io.legado.app.help.source.OhosCheckSource
-import io.legado.app.help.storage.effectiveBookExportDir
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.tts.OhosReadAloudHost
 import io.legado.app.help.upLoadToDirectLink
@@ -438,7 +439,7 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
         services.notifications.cancelNotification(NotificationId.ExportBookService)
     }
 
-    // 导出书籍正文, 直接写进有效导出目录 (用户选过 → 偏好键; 鸿蒙无惯例目录, 见
+    // 导出书籍正文, 直接写进有效导出目录 (用户选过 → 设备本地记忆; 鸿蒙无惯例目录, 见
     // OhosDataStorage.defaultBookExportDir —— 应用沙盒对文件管理器不可见, 写进去用户找不着),
     // 不经系统分享面板 (对照 app 端 ExportBookService 的落盘语义)
     override fun exportAllBooks(books: List<Book>) {
@@ -510,7 +511,7 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
             dir.isDirectory || dir.mkdirs()
         } catch (e: Exception) {
             AppLog.put("导出目录不可用\n${e.message}", e)
-            prefs.remove(PreferKey.bookExportPath)
+            rememberBookExportDir(null)
             Toasters.get().toast("导出目录不可用，请重新选择")
             return null
         }
@@ -525,19 +526,17 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
      * 选择导出文件夹 (对照 BookshelfManageActivity.selectExportFolder 与 exportDir 回调):
      * 复用 [PlatformServiceProviders] 的目录选择器选一个用户可见的公共目录
      * (DocumentViewPicker + 授权持久化写模式 + 官方转换路径 + 记入授权表供重启后激活),
-     * 选中后记偏好键 [PreferKey.bookExportPath]; 开了自定义导出章节先弹章节配置, 否则直接导出。
+     * 选中后记入设备本地配置空间 ([rememberBookExportDir]); 开了自定义导出章节先弹章节配置, 否则直接导出。
      */
     override fun selectExportFolder(books: List<Book>) {
         scope.launch {
             val path = services.files.pickDirectory() ?: return@launch
-            prefs.putString(PreferKey.bookExportPath, path)
+            rememberBookExportDir(path)
             if (books.isEmpty()) return@launch
             // 对照 BookshelfManageActivity.exportDir 回调的 enableCustomExport():
-            // 开关与"导出类型为 epub"两条相与 (app 端逐字是
-            // AppConfig.enableCustomExport && AppConfig.exportType == 1)
-            if (prefs.getBoolean(PreferKey.enableCustomExport, false) &&
-                prefs.getInt(PreferKey.exportType, 0) == 1
-            ) {
+            // 开关与"导出类型为 epub"两条相与 (同 [io.legado.app.utils.enableCustomExport], 不分第二份判据);
+            // 本类同名成员只是开关当前值 (菜单勾选态), 故走全限定名
+            if (io.legado.app.utils.enableCustomExport()) {
                 showExportSectionConfig(path, books)
             } else {
                 exportAllBooks(books)

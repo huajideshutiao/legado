@@ -20,6 +20,7 @@ import io.legado.app.ui.root.VideoPlayTarget
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +32,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.concurrent.Volatile
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -103,6 +105,12 @@ data class PlaybackSnapshot(
  */
 /** 位移残留容差 (归一化位移): 极轻的捏合会因锚点公式留下远小于它的位移 */
 private const val PanDefaultEpsilon = 0.005f
+
+/**
+ * 小窗请求期的兜底时长: 系统进入小窗的过渡在数百毫秒内完成, 平台迟迟不回送结果就按"没进去"
+ * 收尾 —— 请求期不结束页面会一直停在纯画面渲染, 用户连唤出控制栏的入口都没有。
+ */
+private const val PipRequestTimeoutMs = 2000L
 
 data class VideoZoom(
     val scale: Float = 1f,
@@ -239,9 +247,17 @@ interface VideoPlayPlatformProvider {
      * [controller] 供平台取当前媒体宽高比（Android 需显式声明宽高比，iOS/鸿蒙系统自动适配）。
      * 平台不支持（桌面）或系统版本不支持（Android API<26）时走默认空实现 —— 按钮显隐由
      * [rememberIsInPictureInPicture] 是否返回 null 决定，正常走不到这里。
-     * 返回是否已向系统请求进入: 系统拒绝时共享层据此结束请求期 (见 [onEnterPictureInPicture])。
+     *
+     * [onSettled] 是本次请求的结果信号: 进入成功与进入失败都必须回传恰好一次。请求期的结束不能
+     * 按平台态取值变化推断 —— 进入失败时平台把态置成与请求前相同的值, 取值不变就永远等不到
+     * 结束信号。
+     *
+     * @return 是否已向系统发起进入请求 (false = 平台当场判定没进去, 共享层立即结束请求期)
      */
-    fun enterPictureInPicture(controller: VideoPlayerController?): Boolean = false
+    fun enterPictureInPicture(
+        controller: VideoPlayerController?,
+        onSettled: () -> Unit,
+    ): Boolean = false
 
     /**
      * 平台「画中画」真实态（可选）。
@@ -292,9 +308,19 @@ class VideoPlayScreenModel : ScreenModel {
      * 鸿蒙的窗口状态事件), 只按它收起覆盖层, 系统过渡期间窗口里就是带着标题栏与选集的整页界面,
      * 缩小到小窗时先露出的就是那片页底 (视频页所在窗口底色为亮色, 观感即白屏)。请求期内先按
      * 小窗语义渲染, 系统过渡拿到的最小画面里只有视频。
+     *
+     * 请求期的结束一律由结算结果决定: 平台回传进入成功/失败、平台当场拒绝、平台不回送结果超时,
+     * 三条路径见 [requestEnterPictureInPicture]。
      */
     private val _pipEntering = MutableStateFlow(false)
     val pipEntering: StateFlow<Boolean> = _pipEntering.asStateFlow()
+
+    /**
+     * 本次小窗请求的结算信号 (平台回传结果时完成); null = 没有请求在飞。
+     * 请求从主线程发起、结算判定在自管 scope 上, 跨线程读写故加 @Volatile。
+     */
+    @Volatile
+    private var pipRequestSettle: CompletableDeferred<Unit>? = null
 
     /**
      * 播控器。不写成 val: 桌面端媒体播放组件是首次进本页才按需下载的, 构造期可能还没装好,
@@ -559,15 +585,24 @@ class VideoPlayScreenModel : ScreenModel {
 
     /**
      * 界面已按小窗语义绘制完成后真正请求系统进入 (调用方先等过两帧, 见画中画钮)。
-     * 系统拒绝时立刻结束请求期, 页面回到常规渲染。
+     * 平台当场判定没进去时立刻结束请求期, 页面回到常规渲染。
      */
     fun requestEnterPictureInPicture() {
-        if (platform?.enterPictureInPicture(controller) != true) onPictureInPictureRequestSettled()
-    }
-
-    /** 请求期结束 (系统确认进入 / 拒绝 / 退出小窗): 此后视觉态只由平台真实态决定。 */
-    fun onPictureInPictureRequestSettled() {
-        _pipEntering.value = false
+        // 上一次请求没结算就被新请求顶掉: 它的信号不再改动状态 (结算身份对不上), 计时到点自行结束
+        val settle = CompletableDeferred<Unit>()
+        pipRequestSettle = settle
+        val onSettled: () -> Unit = { settle.complete(Unit) }
+        if (platform?.enterPictureInPicture(controller, onSettled = onSettled) != true) onSettled()
+        scope.launch {
+            // 进入成功 / 进入失败 / 平台不回送结果三条路径都在这里收口。不能只等平台回传结果:
+            // 进入失败时平台把态置成与请求前相同的值, 取值不变就永远等不到结束信号, 页面会一直
+            // 停在纯画面渲染 (标题栏/控制栏/选集/手势全不见), 只能退出页面重进。
+            withTimeoutOrNull(PipRequestTimeoutMs) { settle.await() }
+            if (pipRequestSettle === settle) {
+                pipRequestSettle = null
+                _pipEntering.value = false
+            }
+        }
     }
 
     // ---- 菜单动作 (对照 Activity onCompatOptionsItemSelected / VideoTitleActions) ----

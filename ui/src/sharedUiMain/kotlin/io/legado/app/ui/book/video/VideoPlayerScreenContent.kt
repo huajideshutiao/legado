@@ -1003,11 +1003,9 @@ fun VideoPlayerHostContainer(
     // 只有视频 —— 平台真实态要到系统动画结束后才翻 true (见 [VideoPlayScreenModel.pipEntering])
     val pipEntering by screenModel.pipEntering.collectAsState()
     val pipEnterScope = rememberCoroutineScope()
+    // 平台真实态只决定"此刻在不在小窗", 不参与请求期结算: 请求期由平台回传的结果结束
+    // (见 [VideoPlayScreenModel.requestEnterPictureInPicture]), 取值没变也照样结束
     val pipState = platform.rememberIsInPictureInPicture()
-    // 平台态一旦可用就说明系统已接管 (进入成功 / 已退出): 请求期到此结束
-    LaunchedEffect(pipState) {
-        if (pipState != null) screenModel.onPictureInPictureRequestSettled()
-    }
     val isPip = pipState == true || pipEntering
     // 系统级全屏以平台真实态为准: 桌面真全屏由窗口决定 (ESC / 标题栏 / 原生控制条三条入口
     // 都会改窗口全屏), 页面自存副本必然分叉成"按一次 ESC 只退一半"; 全屏切换失败的平台上

@@ -168,14 +168,31 @@ object OhosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
     /** 画中画真实态 (ArkTS PiPWindow stateChange 事件驱动, Compose 可观察)。 */
     internal var pipActive: Boolean by mutableStateOf(false)
 
+    /** 本次小窗请求的结算回调 (ArkTS 回传进入结果/失败时调用并作废); null = 没有请求在飞。 */
+    private var pipRequestSettled: (() -> Unit)? = null
+
     @Composable
     override fun rememberIsInPictureInPicture(): Boolean? = pipActive
 
-    /** 经 media 命令通道请求 ArkTS 拉起画中画 (PiPWindow); 失败由 onPipStateChanged 事件回 toast。 */
-    override fun enterPictureInPicture(controller: VideoPlayerController?): Boolean {
+    /**
+     * 经 media 命令通道请求 ArkTS 拉起画中画 (PiPWindow); 进入成功/失败由 onPipStateChanged 事件
+     * 结算, 不回送结果时由共享层超时结束请求期。
+     */
+    override fun enterPictureInPicture(
+        controller: VideoPlayerController?,
+        onSettled: () -> Unit,
+    ): Boolean {
         val c = controller as? OhosVideoPlayerController ?: return false
+        pipRequestSettled = onSettled
         c.enterPictureInPicture()
         return true
+    }
+
+    /** 把 ArkTS 回传的进入结果结算给共享层 (无请求在飞时是 no-op, 用户自己开关小窗也走这里)。 */
+    internal fun settlePipRequest() {
+        val settled = pipRequestSettled ?: return
+        pipRequestSettled = null
+        settled()
     }
 }
 
@@ -604,8 +621,8 @@ class OhosVideoPlayerController(
                 // 小窗窗口态由 ArkTS PiPWindow stateChange 推来; isPip 缺省视为 false
                 val active = event.isPip == true
                 OhosVideoPlayPlatformProvider.pipActive = active
-                // 拉起失败 (toast 文案随事件来) 或已退出小窗: 结束请求期, 页面回常规渲染
-                screenModel.onPictureInPictureRequestSettled()
+                // 进入成功/失败的结果已到 (toast 文案随事件来): 结算请求期, 页面回常规渲染
+                OhosVideoPlayPlatformProvider.settlePipRequest()
                 event.message?.let { Toasters.get().toast(it) }
                 return
             }

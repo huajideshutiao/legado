@@ -256,8 +256,9 @@ function registerContinuousTaskCancelListener(): void {
   try {
     backgroundTaskManager.on('continuousTaskCancel',
       (info: backgroundTaskManager.ContinuousTaskCancelInfo): void => {
-        console.info('[Legado] continuous task cancelled, reason=' + info.reason);
-        notifySystemCancelled(info.reason);
+        console.info('[Legado] continuous task cancelled, id=' + info.id + ', reason=' + info.reason);
+        // 归属只认系统回传的任务 id: 本地"当前持有者"在音频与后台作业交叠时会算到另一条业务上
+        notifySystemCancelled(info.reason, info.id);
       });
     console.info('[Legado] continuousTaskCancel listener installed');
   } catch (e) {

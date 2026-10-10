@@ -28,7 +28,8 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.file.exportFile
-import io.legado.app.help.storage.effectiveBookExportDir
+import io.legado.app.help.config.effectiveBookExportDir
+import io.legado.app.help.config.rememberBookExportDir
 import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
 import io.legado.app.help.openURL
 import io.legado.app.help.copyToClipboard as copyTextToClipboard
@@ -565,7 +566,7 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
         IosNotificationService.cancelNotification(NotificationId.ExportBookService)
     }
 
-    // 导出书籍正文, 直接写进有效导出目录 (用户选过 → 偏好键, 否则惯例目录
+    // 导出书籍正文, 直接写进有效导出目录 (用户选过 → 设备本地记忆, 否则惯例目录
     // Documents/export —— iOS 的 Documents 经"文件"App 可见, 用户自己就能找到),
     // 不经系统分享面板 (对照 app 端 ExportBookService 的落盘语义)
     override fun exportAllBooks(books: List<Book>) {
@@ -629,7 +630,7 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 
     /**
      * 选择导出文件夹 (对照 BookshelfManageActivity.selectExportFolder 与 exportDir 回调):
-     * 选定目录存 security-scoped bookmark 并记偏好键 [PreferKey.bookExportPath];
+     * 选定目录存 security-scoped bookmark 并记入设备本地配置空间 ([rememberBookExportDir]);
      * 开了自定义导出 (且导出类型为 epub) 先弹章节配置, 否则立即导出。
      *
      * 与 [pickBookTreeUri] 同一入口 ([pickDirectoryDocument]) + 同一授权表
@@ -643,7 +644,7 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
                 Toasters.get().toast("无法保存导出目录的访问授权")
                 return@launch
             }
-            prefs.putString(PreferKey.bookExportPath, path)
+            rememberBookExportDir(path)
             if (books.isEmpty()) return@launch
             // 本类同名成员是"自定义导出"开关当前值 (菜单勾选态), 走全限定名取上面那条带导出类型的判定
             if (io.legado.app.utils.enableCustomExport()) {
@@ -662,8 +663,8 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
      * 同模式 —— 直接持 [IosSecurityScopedStorage.acquireLease] 而不走 NSFileCoordinator
      * (协调器会对尚不存在的目标路径报错); 沙盒内的惯例目录无需 scope, 租约为空操作。
      *
-     * 授权已失效 (用户在系统里撤销/换过目录) 时清掉偏好键, 下次导出重新让用户选目录
-     * (与图片保存目录写入失败即忘掉记忆目录同一处理)。
+     * 授权已失效 (用户在系统里撤销/换过目录) 时清掉记忆目录 ([rememberBookExportDir]), 下次导出
+     * 重新让用户选目录 (与图片保存目录写入失败即忘掉记忆目录同一处理)。
      *
      * @return 目录与租约 (调用方必须在 finally 里 [IosSecurityScopeLease.close]);
      *   已提示并返回 null 表示本次不能导出
@@ -673,7 +674,7 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
         val lease = try {
             IosSecurityScopedStorage.acquireLease(path)
         } catch (e: Exception) {
-            prefs.remove(PreferKey.bookExportPath)
+            rememberBookExportDir(null)
             AppLog.put("导出目录不可用, 已清除记忆目录\n${e.message}", e)
             Toasters.get().toast("导出目录不可用，请重新选择")
             return null

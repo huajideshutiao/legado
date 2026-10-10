@@ -217,13 +217,12 @@ fun ReadRssRoute(
             screenModel.dispatch(ReadRssUiEvent.VideoFullScreenChanged(full))
         }
         callbacks.shouldOverrideUrl = { url -> interceptUrl(url, source, scope) }
-        // 原 ReadRssActivity.onPageFinished: 每次网页加载完成后执行源注入脚本。
-        // 正文分支的脚本已随正文 HTML 内联执行, 这里只补"直接加载网址"分支
-        // (源没写正文规则时, 原版的浮层按钮/网页样式全靠这条通路)。
+        // 对照 ReadRssActivity.onPageFinished: 每次网页加载完成后执行源注入脚本, 正文分支与
+        // 直接加载网址分支都执行。正文分支内联的那次执行发生在正文 DOM 解析之前, 删广告/
+        // 改样式/定尺寸这类依赖 DOM 的脚本要等这条通路才生效。
         callbacks.onPageFinished = {
-            val config = screenModel.state.value.webConfig
             val js = source?.contentRule?.webJs
-            if (config != null && config.html.isNullOrEmpty() && !js.isNullOrBlank()) {
+            if (!js.isNullOrBlank()) {
                 callbacks.host?.evaluateJavascript(js) { }
             }
         }
@@ -439,8 +438,7 @@ fun ReadRssRoute(
                 html = config.html,
                 headerMap = config.headerMap,
                 actions = rssActions,
-                // 直接加载网址分支才需要外部注入; 正文分支的脚本已内联在 HTML 里
-                js = if (config.html.isNullOrEmpty()) source?.contentRule?.webJs else null,
+                js = source?.contentRule?.webJs,
             )
             if (opened) {
                 rssWindowOpened = true

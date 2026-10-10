@@ -4,6 +4,8 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
 import io.legado.app.data.AppDbProviders
+import io.legado.app.help.media.RemoteMediaCommand
+import io.legado.app.help.media.SystemMediaControl
 import io.legado.app.model.ActiveReadAloudHostPorts
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.AudioPlayCommanders
@@ -77,21 +79,17 @@ object HeadlessReadAloud {
      *
      * 分支顺序与上列原版逐条对齐, 平台相关的两处门槛 (`isMediaKey` 开关与
      * `mediaButtonOnExit / activitySize()`) 只对媒体键成立, 快捷方式恒放行, 故不在此列。
-     * 朗读/有声书的暂停与继续都落到跨平台出口 ([ReadBookPlatforms] / [AudioPlayShared]),
-     * 与阅读页媒体键 (`ReadBookViewModelShared.toggleReadAloud`)、系统播控
-     * (`SystemMediaControl`) 同一套。
+     * 朗读在跑时的暂停/继续交 [SystemMediaControl.onRemoteCommand] (朗读优先且连带切换有声书,
+     * 与系统播控卡片、桌面任务栏媒体键同一份); 有声书的暂停/继续落到跨平台出口 [AudioPlayShared];
+     * 都没有时交 [start]。
      */
     fun startFromShortcut() {
         val platform = ReadBookPlatforms.get()
         val audioRunning = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
         when {
-            // 朗读在跑: 暂停 / 继续
+            // 朗读在跑: 暂停 / 继续 (连带切换有声书)
             platform.isReadAloudRun ->
-                if (platform.isReadAloudPause) {
-                    ActiveReadAloudHostPorts.currentReadBook?.readAloud(play = true)
-                } else {
-                    platform.pauseReadAloud()
-                }
+                SystemMediaControl.onRemoteCommand(RemoteMediaCommand.TogglePlayPause)
 
             // 有声书在跑: 暂停 / 继续 (停止态按停止前的会话重新拉流, 与系统播控同一分支)
             audioRunning -> when (AudioPlayShared.status) {

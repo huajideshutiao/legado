@@ -125,21 +125,34 @@ class AndroidVideoPlayPlatformProvider(
     /** 视频渲染面引用 (画中画源矩形按它算); 渲染面离开组合时置空 */
     private var playerView: PlayerView? = null
 
-    /** [MainActivity.onPictureInPictureModeChanged] 转发入口。 */
+    /** 本次小窗请求的结算回调 (进入结果送达时调用并作废); null = 没有请求在飞。 */
+    private var pipRequestSettled: (() -> Unit)? = null
+
+    /** [MainActivity.onPictureInPictureModeChanged] 转发入口, 同时是进入请求的结果送达点。 */
     internal fun onPipModeChanged(isInPip: Boolean) {
         this.isInPip = isInPip
+        val settled = pipRequestSettled ?: return
+        pipRequestSettled = null
+        settled()
     }
 
     @Composable
     override fun rememberIsInPictureInPicture(): Boolean? =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) isInPip else null
 
-    override fun enterPictureInPicture(controller: VideoPlayerController?): Boolean {
+    override fun enterPictureInPicture(
+        controller: VideoPlayerController?,
+        onSettled: () -> Unit,
+    ): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
         val c = controller as? AndroidVideoPlayerController
         activeController = c
+        pipRequestSettled = onSettled
         // 系统拒绝 (策略禁用/窗口不可用) 回 false: 共享层据此结束请求期, 页面回到常规渲染
-        return activity.enterPictureInPictureMode(buildPipParams(c))
+        val accepted = activity.enterPictureInPictureMode(buildPipParams(c))
+        // 拒绝时结果已经在手, 结算由共享层按返回值完成 (迟到的模式回调不得再结算一次)
+        if (!accepted) pipRequestSettled = null
+        return accepted
     }
 
     /** 播放态/视频比例变化时刷新小窗参数 (RemoteAction 图标随播放态切换); 非小窗态是 no-op。 */

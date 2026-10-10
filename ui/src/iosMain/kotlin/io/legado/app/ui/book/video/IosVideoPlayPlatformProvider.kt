@@ -85,6 +85,21 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
     /** 当前页面渲染面创建的画中画控制器 (单视频页, 以最新写入者为准)。 */
     internal var pipController: AVPictureInPictureController? = null
 
+    /**
+     * 当前小窗请求的结算回调 (进入成功/失败的结果送达时调用并作废); null = 没有请求在飞。
+     *
+     * 启动完成、启动失败、退出小窗三个 delegate 回调都送到这里: 请求期不能按平台态取值变化
+     * 结束 —— 启动失败时 [pipActive] 与请求前同值, 取值不变就永远等不到结束信号。
+     */
+    private var pipRequestSettled: (() -> Unit)? = null
+
+    /** 把画中画回调送来的结果结算给共享层 (无请求在飞时是 no-op)。 */
+    internal fun settlePipRequest() {
+        val settled = pipRequestSettled ?: return
+        pipRequestSettled = null
+        settled()
+    }
+
     /** 当前渲染面视图 (手势层读画面宽高比用它; 渲染面离开组合时置空)。 */
     private var playerLayerView: PlayerLayerView? = null
 
@@ -227,7 +242,10 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
     override fun rememberIsInPictureInPicture(): Boolean? =
         if (AVPictureInPictureController.isPictureInPictureSupported()) pipActive else null
 
-    override fun enterPictureInPicture(controller: VideoPlayerController?): Boolean {
+    override fun enterPictureInPicture(
+        controller: VideoPlayerController?,
+        onSettled: () -> Unit,
+    ): Boolean {
         // 小窗要完整画面: 先同步把层变换复位再启动 —— 只改状态得等下一帧落层, 系统可能
         // 已把放大裁剪的首帧抽进小窗
         playerLayerView?.applyZoom(1.0, 0.0, 0.0)
@@ -236,6 +254,7 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
         // layer 尚无可显示画面时 start 会被系统拒 (走 delegate failedToStart 回滚并落日志),
         // 先判可起性回 false: 共享层据此结束请求期, 页面回常规渲染
         if (!pip.pictureInPicturePossible) return false
+        pipRequestSettled = onSettled
         pip.startPictureInPicture()
         return true
     }
@@ -781,14 +800,16 @@ private class PlayerLayerView : UIView {
     }
 }
 
-/** 画中画生命周期回调 → 共享层平台真实态 ([IosVideoPlayPlatformProvider.pipActive]) 与日志。 */
+/** 画中画生命周期回调 → 共享层平台真实态 ([IosVideoPlayPlatformProvider.pipActive])、请求结算与日志。 */
 private class IosPipDelegate : NSObject(), AVPictureInPictureControllerDelegateProtocol {
     override fun pictureInPictureControllerDidStartPictureInPicture(pictureInPictureController: AVPictureInPictureController) {
         IosVideoPlayPlatformProvider.pipActive = true
+        IosVideoPlayPlatformProvider.settlePipRequest()
     }
 
     override fun pictureInPictureControllerDidStopPictureInPicture(pictureInPictureController: AVPictureInPictureController) {
         IosVideoPlayPlatformProvider.pipActive = false
+        IosVideoPlayPlatformProvider.settlePipRequest()
     }
 
     override fun pictureInPictureController(
@@ -796,6 +817,7 @@ private class IosPipDelegate : NSObject(), AVPictureInPictureControllerDelegateP
         failedToStartPictureInPictureWithError: NSError,
     ) {
         IosVideoPlayPlatformProvider.pipActive = false
+        IosVideoPlayPlatformProvider.settlePipRequest()
         AppLog.put("iOS 画中画启动失败: ${failedToStartPictureInPictureWithError.localizedDescription}")
     }
 }

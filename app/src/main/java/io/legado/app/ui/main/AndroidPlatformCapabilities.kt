@@ -81,15 +81,13 @@ import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.toShelfJsonMap
-import io.legado.app.constant.PreferKey
 import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
-import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ThemeConfig
+import io.legado.app.help.config.effectiveBookExportDir
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.storage.effectiveBookExportDir
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.lib.theme.MonetColorExtract
 import io.legado.app.model.BookCover
@@ -1455,9 +1453,10 @@ class AndroidPlatformCapabilities(
     }
 
     // 对照 BookshelfManageActivity.selectExportFolder (既有的"选择导出文件夹"入口):
-    // 读同一份偏好键作选择器默认项 (写出选择结果由选择器回调负责, 见 MainActivity 的 exportDir)
+    // 读设备本地记忆的导出目录 ([effectiveBookExportDir]) 作选择器默认项
+    // (写出选择结果由选择器回调负责, 见 MainActivity 的 exportDir)
     override fun selectExportFolder(books: List<Book>) {
-        val path = PreferenceProviders.get().getString(PreferKey.bookExportPath)
+        val path = effectiveBookExportDir()
         activity.pendingExportBooks = books
         activity.launchExportFolderPicker(path)
     }

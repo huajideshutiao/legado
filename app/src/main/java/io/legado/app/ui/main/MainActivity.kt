@@ -50,8 +50,8 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.LocalReadConfigProviders
-import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadConfigProviders
+import io.legado.app.help.config.rememberBookExportDir
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.image.registerReaderImageResolver
@@ -247,12 +247,12 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
             val uri = result.uri ?: return@registerHandleFile
             if (result.value == "cache") {
                 // 文件夹选择: 保存路径 + 启动 ExportBookService
-                // 记忆落偏好键 (PreferKey.bookExportPath) 而不是原来的 ACache:
-                // ACache 是缓存目录下的磁盘缓存, 会被清理动作抹掉, 抹掉后用户选过的导出位置就丢了;
-                // 偏好键不会被清。读取方见 effectiveBookExportDir (三分支与备份路径同一形制)
+                // 记忆落设备本地配置空间 (rememberBookExportDir), 不落随备份走的默认偏好:
+                // 选定的是本机 SAF 授权引用, 跟着备份到别的设备必然失效。
+                // 读取方见 effectiveBookExportDir (三分支与备份路径同一形制)
                 val dirPath = if (uri.isContentScheme()) uri.toString() else uri.path
                     ?: return@registerHandleFile
-                PreferenceProviders.get().putString(PreferKey.bookExportPath, dirPath)
+                rememberBookExportDir(dirPath)
                 val books = pendingExportBooks
                 pendingExportBooks = null
                 if (books != null && books.isNotEmpty()) {
