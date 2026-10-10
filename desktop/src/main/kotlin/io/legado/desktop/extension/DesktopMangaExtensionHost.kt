@@ -16,6 +16,7 @@ import io.legado.app.help.extension.isValidExtensionPackageName
 import io.legado.app.help.extension.requireValidExtensionPackageName
 import io.legado.app.help.extension.trust.TrustHelper
 import io.legado.app.help.file.desktopAppRootDir
+import io.legado.app.utils.FileUtilsBase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import net.dongliu.apk.parser.ApkFile
@@ -226,12 +227,7 @@ class DesktopMangaExtensionHost(
         }
 
         override fun placeApk(file: File, info: ExtensionApkInfo, replaced: Boolean) {
-            val target = File(extDir, "${info.pkgName}.$APK_EXTENSION")
-            extDir.mkdirs()
-            if (!file.renameTo(target)) {
-                file.copyTo(target, overwrite = true)
-                file.delete()
-            }
+            FileUtilsBase.replaceFileAtomically(file, File(extDir, "${info.pkgName}.$APK_EXTENSION"))
         }
 
         override fun onInstalled(pkgName: String) {

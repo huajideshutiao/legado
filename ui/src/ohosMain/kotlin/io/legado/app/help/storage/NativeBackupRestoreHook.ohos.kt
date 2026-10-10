@@ -7,12 +7,11 @@ import io.legado.app.help.file.OhosDirAuthorizations
 internal actual fun applyRestoredLauncherIcon() = Unit
 
 /**
- * 备份 zip 写进用户选定目录: 写入前先激活该目录的持久授权。
+ * 备份 zip 写进用户选定目录: 写入前先按备份用途激活该目录的持久授权。
  *
- * 鸿蒙的目录授权是持久态 (选目录时已 persistPermission), 但重启后必须先 activatePermission ——
- * 备份既有"手动备份"(选目录后预检可写性时已激活) 也有"自动备份"(直接写记忆目录) 两条入口,
- * 后者不经过预检, 故授权统一在写入前按需激活 ([OhosDirAuthorizations.ensureActivatedFor],
- * 未登记路径直通, 按备份用途匹配: 为书籍/导出/字体选的目录不放行), 激活失败抛明确异常,
+ * 鸿蒙的目录授权在选择目录时已 persistPermission 持久化, 重启后须先 activatePermission ——
+ * 手动备份与自动备份两条入口都在写入前按需激活 ([OhosDirAuthorizations.ensureActivatedFor],
+ * 备份目录须在备份用途下已登记, 应用私有目录直通), 激活失败或未登记抛明确异常,
  * 备份随之报失败原因, 不会静默丢备份。
  */
 internal actual fun copyBackupIntoUserDir(

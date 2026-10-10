@@ -1,5 +1,6 @@
 package io.legado.app.help.extension
 
+import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.extension.model.InstallStep
@@ -118,7 +119,13 @@ abstract class ExtensionInstallScaffold {
     /** 读取已安装的同包扩展元信息; 未安装返回 null。 */
     protected abstract fun readInstalledInfo(pkgName: String): ExtensionApkInfo?
 
-    /** 校验通过后落盘; [replaced] 为 true 表示覆盖已有同包扩展。 */
+    /**
+     * 校验通过后落盘; [replaced] 为 true 表示覆盖已有同包扩展。
+     *
+     * 覆盖必须原子替换 ([io.legado.app.utils.FileUtilsBase.replaceFileAtomically] 是这条机制的
+     * 共享实现): 旧文件在新文件整份就位后才消失, 任一步失败旧扩展原样可用, 异常由 [install]
+     * 收敛成 [InstallStep.Error]。
+     */
     protected abstract fun placeApk(file: File, info: ExtensionApkInfo, replaced: Boolean)
 
     /** 落盘后触发重扫; 走安装广播的端无需覆写。 */
@@ -150,6 +157,8 @@ abstract class ExtensionInstallScaffold {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                // 界面只把安装状态拨回可重试, 失败原因只能从这里查
+                AppLog.put("扩展安装失败: ${extension.pkgName}", e)
                 emit(InstallStep.Error(e.message))
             } finally {
                 installJobs.remove(extension.pkgName, job)

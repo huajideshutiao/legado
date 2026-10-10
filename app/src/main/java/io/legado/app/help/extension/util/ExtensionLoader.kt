@@ -25,6 +25,7 @@ import io.legado.app.help.extension.model.ContentWarning
 import io.legado.app.help.extension.model.MangaExtension
 import io.legado.app.help.extension.requireValidExtensionPackageName
 import io.legado.app.help.extension.trust.TrustHelper
+import io.legado.app.utils.FileUtilsBase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
@@ -104,17 +105,14 @@ internal object ExtensionLoader {
     /**
      * 将已通过 `checkExtensionInstallable` 校验的扩展 apk 落为私有扩展文件
      * (Android 14+ 只读), 并按新增/覆盖通知重扫。
+     *
+     * 落盘用原子替换: 覆盖已装扩展时旧文件在新文件整份就位后才消失, 任一步失败旧扩展原样可用。
      */
     fun installPrivateExtensionFile(context: Context, file: File, pkgName: String, replaced: Boolean) {
         requireValidExtensionPackageName(pkgName)
         val target = File(getPrivateExtensionDir(context), "$pkgName.$PRIVATE_EXTENSION_EXTENSION")
-        try {
-            target.delete()
-            file.copyAndSetReadOnlyTo(target)
-        } catch (e: Exception) {
-            target.delete()
-            throw e
-        }
+        FileUtilsBase.replaceFileAtomically(file, target)
+        target.setReadOnly()
         if (replaced) {
             ExtensionInstallReceiver.notifyReplaced(context, pkgName)
         } else {
@@ -568,16 +566,6 @@ internal object ExtensionLoader {
         if (publicSourceDir == null) {
             publicSourceDir = apkPath
         }
-    }
-
-    private fun File.copyAndSetReadOnlyTo(target: File) {
-        target.parentFile?.mkdirs()
-        inputStream().use { input ->
-            target.outputStream().use { output ->
-                input.copyTo(output)
-            }
-        }
-        target.setReadOnly()
     }
 
     private data class ExtensionInfo(

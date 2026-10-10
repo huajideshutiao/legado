@@ -26,20 +26,26 @@ import okio.Path.Companion.toPath
  * (既是书籍目录又是导出目录时两边都可用); 同一用途内命中多条 (父目录与子目录各选定过一次) 时
  * 逐条尝试, 已失效的条目跳过、其余可用条目照旧放行。
  *
- * 已登记目录的访问只在激活成功后放行; 激活失败抛 [SecurityException] (带 errCode/policyCode),
- * 由调用链处理, 不降级成"文件不存在"。未登记路径 (沙盒内/手机降级路径) 原行为直通。
+ * 放行判据: 应用私有目录 ([AppFilesDirs] 的 filesDir/cacheDir 及其子目录, 本端无外部存储目录)
+ * 直通; 私有目录之外的路径必须在本用途下已登记。未登记抛 [SecurityException]; 已登记目录的访问只在
+ * 激活成功后放行, 激活失败同样抛 [SecurityException] (带 errCode/policyCode), 由调用链处理,
+ * 不降级成"文件不存在"。设备无目录授权持久化能力 ([NO_PERSIST_CAPABILITY]) 时该登记没有可激活的
+ * 持久授权, 按该登记放行 —— 该设备上选目录时无从持久化授权, 用途匹配照旧生效。
  */
 object OhosDirAuthorizations {
 
     /** 授权集合的 pref key (值: JSON Map<用途, Map<授权URI, 沙箱路径>>)。 */
     private const val KEY_DIR_POLICIES = "ohosDirAuthPolicies"
 
+    /** 设备无目录授权持久化能力 (FolderAuthorization) 的 errCode; 该设备上持久化同样不可用。 */
+    private const val NO_PERSIST_CAPABILITY = 801
+
     private val lock = SynchronizedObject()
 
     /** 授权集合缓存 (用途 → uri → 沙箱路径), 与 pref 同步写回。 */
     private var cachedPolicies: Map<DirUsage, Map<String, String>>? = null
 
-    /** 记录刚持久化成功的目录授权 (同一用途内同路径重复选择替换旧条目, 其余条目保留)。 */
+    /** 登记 [usage] 用途下选定的目录 (同一用途内同路径重复选择替换旧条目, 其余条目保留)。 */
     fun remember(uri: String, path: String, usage: DirUsage) {
         synchronized(lock) {
             val normalizedPath = path.toPath(normalize = true).toString()
@@ -55,21 +61,24 @@ object OhosDirAuthorizations {
     }
 
     /**
-     * 访问 [path] 前确保 [usage] 用途下所属授权目录已激活: 未登记路径直通; 已登记目录激活成功才返回,
-     * 失败抛 [SecurityException]。
+     * 访问 [path] 前确保 [usage] 用途下所属授权目录可用: 应用私有目录直通; 私有目录之外的路径须在
+     * 本用途下已登记, 未登记或激活失败抛 [SecurityException]。
      *
      * @return 授权表判定使用的规范化路径 (登记与匹配都按它比较)
      */
     fun ensureActivatedFor(path: String, usage: DirUsage): String {
         val effectivePath = path.toPath(normalize = true).toString()
-        synchronized(lock) {
-            activateFirstAvailable(effectivePath, usage)
+        if (!isAppPrivatePath(effectivePath)) {
+            synchronized(lock) {
+                activateFirstAvailable(effectivePath, usage)
+            }
         }
         return effectivePath
     }
 
     /**
-     * 锁内调用：逐个尝试 [usage] 用途下覆盖 [path] 的授权条目, 激活成功即返回。
+     * 锁内调用：逐个尝试 [usage] 用途下覆盖 [path] 的授权条目, 激活成功即返回; 该用途下无登记时抛
+     * [SecurityException]。
      *
      * 同一用途内可能有多条命中 (父目录与子目录各选定过一次): 命中条目已失效时后面的可用条目仍要放行,
      * 全部失败才报错 (报第一条的失败原因)。
@@ -77,14 +86,33 @@ object OhosDirAuthorizations {
      * 每次访问都重新激活, 不把进程内旧激活结果当作当前授权。
      */
     private fun activateFirstAvailable(path: String, usage: DirUsage) {
+        val matchedUris = matchingUris(path, usage)
+        if (matchedUris.isEmpty()) {
+            AppLog.put("目录未按用途登记: $path ($usage)")
+            throw SecurityException("没有访问权限: $path")
+        }
         var firstFailure: Exception? = null
-        for (uri in matchingUris(path, usage)) {
+        for (uri in matchedUris) {
             val result = activateDirectoryPermissions(listOf(uri))
             if (result.ok && uri in result.activatedUris) return
+            if (result.code == NO_PERSIST_CAPABILITY) return
             val failure = activationFailure(uri, result)
             if (firstFailure == null) firstFailure = failure
         }
         firstFailure?.let { throw it }
+    }
+
+    /** [path] 是否落在应用私有目录内 (这类路径无目录授权也可访问)。 */
+    private fun isAppPrivatePath(path: String): Boolean {
+        val appDirs = AppFilesDirs.get()
+        return underRoot(appDirs.filesDir, path) || underRoot(appDirs.cacheDir, path)
+    }
+
+    /** [path] 是否等于 [root] 或其子路径 (按路径段前缀判; [root] 为空时不匹配)。 */
+    private fun underRoot(root: String, path: String): Boolean {
+        if (root.isBlank()) return false
+        val normalizedRoot = root.toPath(normalize = true).toString().trimEnd('/')
+        return path == normalizedRoot || path.startsWith("$normalizedRoot/")
     }
 
     /** 锁内调用：激活失败的如实原因 (逐条记日志, 由调用方决定是否上报)。 */
@@ -94,7 +122,7 @@ object OhosDirAuthorizations {
         val message = "目录授权激活失败 (errCode=${result.code} policyCode=$policyCode)" +
             (detail?.message ?: result.message)?.let { " $it" }.orEmpty()
         AppLog.put("$message uri=$uri")
-        return if (result.code == 201 || result.code == 801 || detail != null) {
+        return if (result.code == 201 || detail != null) {
             SecurityException(message)
         } else {
             IOException(message)
