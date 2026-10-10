@@ -26,8 +26,11 @@ import io.legado.app.utils.IosSecurityScopedStorage
  *   (EPUB 整文件解析、CBZ 随机读 zip 中央目录), 无法从外部按流配对, 故对整个解析调用持租约,
  *   调用返回即释放;
  * - [getLastModified] / 其它属性读取: 单次调用内起停;
- * - [importLocalFile] / [importFromArchive] / [deleteBook]: 源文件在外部目录的导入与删原文件,
- *   整个动作期间持租约 (导入浏览器压缩包上架 / 文件关联导入 / 书架删原文件都走这里)。
+ * - [importLocalFile] / [importFromArchive]: 源文件在外部目录的导入, 整个动作期间持租约
+ *   (导入浏览器压缩包上架 / 文件关联导入); 压缩包分支内部还会把解出的书写进"书籍保存位置",
+ *   故同时持落地目录租约;
+ * - [importRemoteBook]: 整段持落地目录租约 (内部用 [NativeFileBookAccessor.saveBookFile] 落盘);
+ * - [deleteBook]: 源文件在外部目录的删原文件, 整个动作期间持租约 (书架删原文件走这里)。
  *
  * 沙盒内文件 (`{filesDir}/books` 导入副本) 由授权层自动放行, 不产生额外 scope。
  */
@@ -67,7 +70,11 @@ class IosAuthorizedFileBookAccessor(
     }
 
     override fun importLocalFile(uriStr: String): Book {
-        return leaseAround(delegate.resolveLocalFile(uriStr).path) {
+        // 源文件 (可能在别的授权目录) 与解出书籍的落地目录 ("书籍保存位置") 都要持租约:
+        // 压缩包分支由 delegate 内部调用 saveBookFile, 不会回到本类. 故这里是唯一的授权点
+        return withAccesses(
+            listOf(delegate.resolveLocalFile(uriStr).path, requireBookSaveDir())
+        ) {
             delegate.importLocalFile(uriStr)
         }
     }
@@ -104,9 +111,10 @@ class IosAuthorizedFileBookAccessor(
      * [IosSecurityScopedStorage.withAccess] 的 NSFileCoordinator: 新建文件时协调器会对尚不存在的
      * 目标路径报错, 而这里需要的只是授权本身; 沙盒默认目录无需 scope, 租约为空操作。
      *
-     * 覆写四个落盘入口 (`saveBookFile` 两个重载 / `saveBookFileFromWebDav` / `downloadRemoteBook`)
+     * 覆写所有能直接或间接触发写入的入口 ([importLocalFile] / [importFromArchive] /
+     * `saveBookFile` 两个重载 / [saveBookFileFromWebDav] / [downloadRemoteBook] / [importRemoteBook])
      * 的原因: `by delegate` 只转发未被覆写的方法, delegate 内部再调 `saveBookFile` 不会回到本类,
-     * 故每个能直接触发写入的入口都要单独包一层。
+     * 故每个能触达落盘的入口都要单独包一层。
      */
     override fun saveBookFile(inputStream: InputStream, fileName: String): String {
         val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir())
@@ -143,6 +151,28 @@ class IosAuthorizedFileBookAccessor(
         val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir())
         return try {
             delegate.downloadRemoteBook(book)
+        } finally {
+            lease.close()
+        }
+    }
+
+    /**
+     * 导入远程书 (WebDav 浏览导入): delegate 内部经 `saveBookFile` 把书落到"有效书籍保存位置",
+     * 该调用不回到本类, 故整段持落地目录租约 (内部还可能再走 importFromArchive/importLocalFile,
+     * 它们的落地目录与本租约同一份)。
+     */
+    override suspend fun importRemoteBook(
+        webDav: WebDav,
+        serverID: Long?,
+        name: String,
+        path: String,
+        size: Long,
+        lastModify: Long,
+        downloadFile: Boolean
+    ): Book {
+        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir())
+        return try {
+            delegate.importRemoteBook(webDav, serverID, name, path, size, lastModify, downloadFile)
         } finally {
             lease.close()
         }

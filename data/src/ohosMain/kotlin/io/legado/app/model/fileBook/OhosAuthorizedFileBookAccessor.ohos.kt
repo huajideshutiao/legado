@@ -33,8 +33,12 @@ class OhosAuthorizedFileBookAccessor(
         withActivation(book) { delegate.getHandler(book) }
 
     override fun importLocalFile(uriStr: String): Book =
+        // 源文件 (可能在别的授权目录) 与解出书籍的落地目录 ("书籍保存位置") 都要激活授权:
+        // 压缩包分支由 delegate 内部调用 saveBookFile, 不会回到本类, 故这里是唯一的授权点
         withActivation(delegate.resolveLocalFile(uriStr).path) {
-            delegate.importLocalFile(uriStr)
+            withActivation(requireBookSaveDir()) {
+                delegate.importLocalFile(uriStr)
+            }
         }
 
     override fun importFromArchive(
@@ -64,9 +68,10 @@ class OhosAuthorizedFileBookAccessor(
      * 保存新书到"有效书籍保存位置" (用户已选 → 选定目录, 未选 → 沙盒默认 `{filesDir}/books`):
      * 写入前确保目录授权已激活 ([OhosDirAuthorizations.ensureActivatedFor]; 授权是持久态, 激活一次即可)。
      *
-     * 覆写四个落盘入口 (`saveBookFile` 两个重载 / `saveBookFileFromWebDav` / `downloadRemoteBook`)
+     * 覆写所有能直接或间接触发写入的入口 ([importLocalFile] / [importFromArchive] /
+     * `saveBookFile` 两个重载 / [saveBookFileFromWebDav] / [downloadRemoteBook] / [importRemoteBook])
      * 的原因: `by delegate` 只转发未被覆写的方法, delegate 内部再调 `saveBookFile` 不会回到本类,
-     * 故每个能直接触发写入的入口都要单独包一层。
+     * 故每个能触达落盘的入口都要单独包一层。
      */
     override fun saveBookFile(inputStream: InputStream, fileName: String): String {
         OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir())
@@ -90,6 +95,24 @@ class OhosAuthorizedFileBookAccessor(
     override fun downloadRemoteBook(book: Book): Boolean {
         OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir())
         return delegate.downloadRemoteBook(book)
+    }
+
+    /**
+     * 导入远程书 (WebDav 浏览导入): delegate 内部经 `saveBookFile` 把书落到"有效书籍保存位置",
+     * 该调用不回到本类, 故写入前先激活落地目录授权 (内部还可能再走 importFromArchive/importLocalFile,
+     * 它们的落地目录与本授权同一份)。
+     */
+    override suspend fun importRemoteBook(
+        webDav: WebDav,
+        serverID: Long?,
+        name: String,
+        path: String,
+        size: Long,
+        lastModify: Long,
+        downloadFile: Boolean
+    ): Book {
+        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir())
+        return delegate.importRemoteBook(webDav, serverID, name, path, size, lastModify, downloadFile)
     }
 
     private fun <T> withActivation(path: String, block: () -> T): T {
