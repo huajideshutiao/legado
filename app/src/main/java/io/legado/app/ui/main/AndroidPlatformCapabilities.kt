@@ -98,7 +98,10 @@ import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.fileBook.importFromArchive
 import io.legado.app.service.WebService
 import io.legado.app.ui.book.import.ImportFileItem
+import io.legado.app.ui.book.import.ImportBookDirHost
+import io.legado.app.ui.book.import.ImportDirRef
 import io.legado.app.ui.book.import.local.ImportBook
+import io.legado.app.ui.book.import.local.ImportBookShared
 import io.legado.app.ui.book.import.local.ImportBookViewModel
 import io.legado.app.ui.book.info.WebFileImportShared
 import io.legado.app.ui.book.manage.reportLocalBookSourceFileDeleteFailure
@@ -167,11 +170,8 @@ import io.legado.app.utils.writeToOutputStream
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -202,12 +202,53 @@ class AndroidPlatformCapabilities(
     override val capabilityScope: CoroutineScope
         get() = activity.lifecycleScope
 
-    // 导入书籍: 复用 ImportBookViewModel 维护 rootDoc/subDocs 状态 (对照 ImportBookActivity)
-    // 经 ViewModelProvider 绑定 activity ViewModelStore, lifecycle 由 activity 管理
+    // 导入书籍: 目录状态机在 data/commonMain ImportBookShared (四端一份),
+    // 本类只注入 FileDoc/SAF 列举能力; 上架仍走 ImportBookViewModel (需要 Context toast)
     private val importViewModel by lazy {
         ViewModelProvider(activity).get(ImportBookViewModel::class.java)
     }
-    private var scanDocJob: Job? = null
+
+    /** FileDoc 的目录引用包装 (状态机经它列举/条目化) */
+    private inner class AndroidImportDirRef(val fileDoc: FileDoc) : ImportDirRef {
+        override val displayName: String get() = fileDoc.name
+        override val isDirectory: Boolean get() = fileDoc.isDir
+        override val pathKey: String get() = fileDoc.uri.toString()
+
+        override suspend fun listChildren(): List<ImportDirRef>? =
+            fileDoc.list()?.map { AndroidImportDirRef(it) }
+
+        override suspend fun toItem(isUpDir: Boolean): ImportFileItem =
+            ImportBook(fileDoc, isUpDir = isUpDir)
+    }
+
+    private val importDirHost = object : ImportBookDirHost {
+        override fun dirRefOf(item: ImportFileItem): ImportDirRef? =
+            (item as? ImportBook)?.takeIf { it.file.isDir }?.let { AndroidImportDirRef(it.file) }
+
+        override suspend fun resolveRoot(pathKey: String): ImportDirRef? {
+            var path = pathKey
+            if (path.isBlank()) {
+                if (AppConfig.importBookPath.isNullOrBlank()) {
+                    AppConfig.importBookPath = AppConfig.defaultBookTreeUri
+                }
+                path = AppConfig.importBookPath ?: return null
+            }
+            val rootUri = if (path.isUri()) path.toUri() else Uri.fromFile(File(path))
+            val doc = runCatching {
+                if (rootUri.isContentScheme()) {
+                    androidx.documentfile.provider.DocumentFile.fromTreeUri(activity, rootUri)
+                } else {
+                    androidx.documentfile.provider.DocumentFile.fromFile(File(rootUri.path!!))
+                }
+            }.getOrNull()
+            if (doc == null || doc.name.isNullOrEmpty() || !doc.isDirectory) return null
+            return AndroidImportDirRef(FileDoc.fromDocumentFile(doc))
+        }
+    }
+
+    init {
+        ImportBookShared.attach(importDirHost)
+    }
 
     /**
      * 选目录流程的在途标记: 存储说明框弹出期间与选择器返回之前都为真, 两者共用。
@@ -225,39 +266,6 @@ class AndroidPlatformCapabilities(
      * onActivityCreated 执行一次); 退出页面时复位, 下次进入重新问。
      */
     private var importStorageChecked = false
-
-    // ===== 导入书籍状态流 (对照 ImportBookActivity.initData/upDocs/scanFolder) =====
-
-    // 文件列表: 订阅 viewModel.dataFlow, 子目录时前置"返回上级"项 (对照 initData 的 collect)
-    private val importItemsState by lazy {
-        MutableStateFlow<List<ImportFileItem>>(emptyList()).also { state ->
-            // 首次订阅时的初始化 (对照原版 initData 内 dataFlowStart = { initRootDoc() });
-            // 与 initImportBookData 的重读互为兜底: 谁后执行谁把列表读出来, 不会丢
-            importViewModel.dataFlowStart = { ensureRootDoc() }
-            activity.lifecycleScope.launch(IO) {
-                importViewModel.dataFlow.conflate().collect { docs ->
-                    val items = if (importViewModel.subDocs.isNotEmpty()) {
-                        listOf(ImportBook(importViewModel.subDocs.last(), isUpDir = true)) + docs
-                    } else {
-                        docs
-                    }
-                    state.value = items
-                }
-            }
-        }
-    }
-
-    // 面包屑路径: rootDoc.name/.../当前目录/ (对照 upDocs 内 showBreadcrumb)
-    private val importPathState = MutableStateFlow<String?>(null)
-
-    // 扫描加载中 (对照 scanFolder 的 refreshProgressBar.isAutoLoading)
-    private val importLoadingState = MutableStateFlow(false)
-
-    // 空态文案可见 (对照 initRootDoc/initRootPath 的 tvEmptyMsg)
-    private val importEmptyMsgState = MutableStateFlow(false)
-
-    // 是否还有上级目录 (返回键据此逐级返回, 对照 setupBackPress { goBackDir() })
-    private val importHasParentDirState = MutableStateFlow(false)
 
     // ===== 全局转场动画平台 spec (方案 A: 动画单一注入点参数化) =====
     // Android: 澎湃 OS activity 转场语义, 逐字复刻 miui-services.jar 的
@@ -545,13 +553,12 @@ class AndroidPlatformCapabilities(
     }
 
     /**
-     * 导入页退出时的收尾: 停掉本页发起的目录扫描 (对照原版 Activity 销毁即取消 scanDocJob),
-     * 否则页面已关仍在后台遍历目录; 并复位"已问过存储位置", 下次进入重新走一遍。
+     * 导入页退出时的收尾: 停掉本页发起的目录扫描/读取, 否则页面已关仍在后台遍历目录;
+     * 并复位"已问过存储位置", 下次进入重新走一遍。
      * 选目录选择器在途时保留在途请求 (选择器返回时照旧消费)。
      */
     override fun onImportBookPageCleared() {
-        scanDocJob?.cancel()
-        scanDocJob = null
+        ImportBookShared.cancelPageJobs()
         importStorageChecked = false
     }
 
@@ -569,15 +576,19 @@ class AndroidPlatformCapabilities(
     }
 
     /**
-     * 选定新目录后重建根目录并读一次目录 (对照原版 selectFolder 回调里的 initRootDoc(true))。
-     *
-     * 用 `changedFolder = true` 那条语义: 清掉当前层级 (含在子目录里换目录的情形); 直接读
-     * 刚选定的目录, 不再经过存储位置引导。
+     * 选定新目录后重建根目录并读一次目录 (对照原版 selectFolder 回调里的 initRootDoc(true)):
+     * 直接按新选定的目录重建, 不再经过存储位置引导。
      */
     private fun rebuildImportRoot() {
-        importViewModel.subDocs.clear()
-        importViewModel.rootDoc = null
-        initImportRootDoc()
+        activity.lifecycleScope.launch {
+            val path = AppConfig.importBookPath
+            val ref = path?.takeIf { it.isNotBlank() }?.let { importDirHost.resolveRoot(it) }
+            if (ref != null) {
+                ImportBookShared.setRoot(ref)
+            } else {
+                ImportBookShared.clearImportRoot()
+            }
+        }
     }
 
     override fun openImportFile(filePath: String) {
@@ -592,52 +603,35 @@ class AndroidPlatformCapabilities(
 
     // 对照 ImportBookActivity.onScanFolder / scanFolder
     override fun scanImportFolder() {
-        importViewModel.rootDoc?.let { doc ->
-            val lastDoc = importViewModel.subDocs.lastOrNull() ?: doc
-            importLoadingState.value = true
-            scanDocJob?.cancel()
-            scanDocJob = activity.lifecycleScope.launch(IO) {
-                try {
-                    importViewModel.scanDoc(lastDoc)
-                } finally {
-                    // 仅当前 job 收尾时清 loading (被新扫描替换的旧 job 不动状态)
-                    if (scanDocJob == kotlinx.coroutines.currentCoroutineContext()[Job]) {
-                        importLoadingState.value = false
-                    }
-                }
-            }
-        }
+        ImportBookShared.scanImportFolder()
     }
 
-    // ===== 导入书籍状态流 override (对照 ImportBookActivity 同名字段) =====
+    // ===== 导入书籍状态流 override (对照 ImportBookActivity 同名字段; 源在 ImportBookShared) =====
 
-    override fun importBookItems(): StateFlow<List<ImportFileItem>> = importItemsState
+    override fun importBookItems(): StateFlow<List<ImportFileItem>> = ImportBookShared.items
 
-    override fun importBookPath(): StateFlow<String?> = importPathState
+    override fun importBookPath(): StateFlow<String?> = ImportBookShared.path
 
-    override fun importBookLoading(): StateFlow<Boolean> = importLoadingState
+    override fun importBookLoading(): StateFlow<Boolean> = ImportBookShared.loading
 
-    override fun importBookEmptyMsgVisible(): StateFlow<Boolean> = importEmptyMsgState
+    override fun importBookEmptyMsgVisible(): StateFlow<Boolean> = ImportBookShared.emptyMsgVisible
 
-    override fun importBookHasParentDir(): StateFlow<Boolean> = importHasParentDirState
+    override fun importBookHasParentDir(): StateFlow<Boolean> = ImportBookShared.hasParentDir
 
     /**
-     * 对照 ImportBookActivity.onActivityCreated: 启动 dataFlow 收集 + setBookStorage + initData。
+     * 对照 ImportBookActivity.onActivityCreated: setBookStorage + initData。
      *
-     * 单页导航下页面与 ViewModel 跨进出复用, 故"每次进页面重走一遍初始化"由本方法承担
-     * (读目录经 [ensureRootDoc], 已有根目录时只重读当前目录)。
+     * 单页导航下页面跨进出复用, 故"每次进页面重走一遍初始化"由本方法承担
+     * (目录状态机已有根目录时只重读当前目录)。
      *
      * @return true = 尚无可用目录, 页面据此拉起一次选择器
      */
     override suspend fun initImportBookData(): Boolean {
-        // dataFlow 只在首次订阅时启动 (读取结果经 viewModel.dataCallback 推送), 先订阅再读目录
-        importItemsState
         if (!importStorageChecked) {
             importStorageChecked = true
             ensureImportStorage()
         }
-        ensureRootDoc()
-        return importViewModel.rootDoc == null
+        return ImportBookShared.initPage()
     }
 
     // 对照 ImportBookActivity.onAlertImportFileName / alertImportFileName
@@ -671,16 +665,12 @@ class AndroidPlatformCapabilities(
 
     // 对照 ImportBookActivity.onSearchTextChange / viewModel.updateCallBackFlow
     override fun updateImportBookFilter(key: String) {
-        importViewModel.updateCallBackFlow(key)
+        ImportBookShared.updateImportBookFilter(key)
     }
 
-    // 对照 ImportBookActivity.upSort: 更新 sort + 持久化 + 非扫描中重排当前列表
+    // 对照 ImportBookActivity.upSort: 更新排序 + 持久化 + 非扫描中重排当前列表
     override fun updateImportBookSort(sort: Int) {
-        importViewModel.sort = sort
-        AppConfig.localBookImportSort = sort
-        if (scanDocJob?.isActive != true) {
-            importViewModel.dataCallback?.upAdapter()
-        }
+        ImportBookShared.updateImportBookSort(sort)
     }
 
     // 对照 ImportBookActivity.onItemClick isDir 分支 / startRead
@@ -690,12 +680,12 @@ class AndroidPlatformCapabilities(
 
     // 对照 ImportBookActivity.onItemClick isDir 分支 / nextDoc
     override fun navigateImportDir(item: ImportFileItem) {
-        (item as? ImportBook)?.let { nextDoc(it.file) }
+        ImportBookShared.navigateImportDir(item)
     }
 
     // 对照 ImportBookActivity.onItemClick isUpDir 分支 / goBackDir
     override fun goBackImportDir() {
-        goBackDir()
+        ImportBookShared.goBackImportDir()
     }
 
     // 对照原版 AboutFragment.saveLog
@@ -1879,109 +1869,6 @@ class AndroidPlatformCapabilities(
             onCancelled { selected.complete(false) }
         }
         selected.await()
-    }
-
-    /**
-     * 按偏好初始化导入根目录 (对照 ImportBookActivity.initRootDoc)。
-     *
-     * 已有根目录时只重读当前目录 (对照原版 `if (rootDoc != null && !changedFolder) upPath()`):
-     * 重进页面能看到别处新增的文件, 且不清掉当前层级 (在子目录里点扫描不会跳回根目录)。
-     */
-    private fun ensureRootDoc() {
-        if (importViewModel.rootDoc != null) {
-            upPath()
-            return
-        }
-        initImportRootDoc()
-    }
-
-    /**
-     * 建立根目录 (对照 ImportBookActivity.initRootDoc 的 lastPath 分支): 未选过导入目录时沿用
-     * 已设置的保存位置; 两者都取不到时按"尚未有目录"显示空态, 是否拉起选择器由
-     * [initImportBookData] 的返回值决定。
-     */
-    private fun initImportRootDoc() {
-        if (AppConfig.importBookPath.isNullOrBlank()) {
-            AppConfig.importBookPath = AppConfig.defaultBookTreeUri
-        }
-        val path = AppConfig.importBookPath
-        if (path.isNullOrBlank()) {
-            clearImportRootDoc()
-            return
-        }
-        initRootDocFromPath(path)
-    }
-
-    /** 清掉根目录与列表 (目录缺失/失效时的共同终态)。 */
-    private fun clearImportRootDoc() {
-        importEmptyMsgState.value = true
-        importViewModel.rootDoc = null
-        importViewModel.subDocs.clear()
-        importHasParentDirState.value = false
-        importPathState.value = null
-        importItemsState.value = emptyList()
-    }
-
-    /**
-     * 按目录标识建立根目录 (对照 ImportBookActivity.initRootPath): 目录失效 (被删/权限被撤/
-     * 已不是目录) 时显示空态并清掉列表 (重新选目录由 [initImportBookData] 的返回值统一拉起),
-     * 成功则读一次目录。
-     */
-    private fun initRootDocFromPath(path: String) {
-        val rootUri = if (path.isUri()) path.toUri() else Uri.fromFile(File(path))
-        val doc = kotlin.runCatching {
-            if (rootUri.isContentScheme()) {
-                androidx.documentfile.provider.DocumentFile.fromTreeUri(activity, rootUri)
-            } else {
-                androidx.documentfile.provider.DocumentFile.fromFile(File(rootUri.path!!))
-            }
-        }.getOrNull()
-        if (doc == null || doc.name.isNullOrEmpty() || !doc.isDirectory) {
-            clearImportRootDoc()
-            return
-        }
-        importViewModel.subDocs.clear()
-        importViewModel.rootDoc = FileDoc.fromDocumentFile(doc)
-        upPath()
-    }
-
-    @Synchronized
-    private fun nextDoc(fileDoc: FileDoc) {
-        importViewModel.subDocs.add(fileDoc)
-        upPath()
-    }
-
-    @Synchronized
-    private fun goBackDir(): Boolean {
-        return if (importViewModel.subDocs.isNotEmpty()) {
-            importViewModel.subDocs.removeAt(importViewModel.subDocs.lastIndex)
-            upPath()
-            true
-        } else {
-            false
-        }
-    }
-
-    @Synchronized
-    private fun upPath() {
-        importViewModel.rootDoc?.let {
-            scanDocJob?.cancel()
-            upDocs(it)
-        }
-    }
-
-    private fun upDocs(rootDoc: FileDoc) {
-        // 对照 ImportBookActivity.upDocs: 拼面包屑路径 + 隐藏空态 + 加载目录
-        var lastDoc = rootDoc
-        var path = rootDoc.name + File.separator
-        for (doc in importViewModel.subDocs) {
-            lastDoc = doc
-            path = path + doc.name + File.separator
-        }
-        importPathState.value = path
-        importEmptyMsgState.value = false
-        importHasParentDirState.value = importViewModel.subDocs.isNotEmpty()
-        importViewModel.loadDoc(lastDoc)
     }
 
     private fun startRead(fileDoc: FileDoc) {
