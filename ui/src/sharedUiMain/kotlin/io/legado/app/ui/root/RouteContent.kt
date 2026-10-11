@@ -3,7 +3,6 @@ package io.legado.app.ui.root
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.route.AboutRoute
 import io.legado.app.ui.route.AudioPlayRoute
 import io.legado.app.ui.route.BackupConfigRoute
@@ -145,14 +144,10 @@ fun RouteContent(
         }
 
         is AppRoute.Main -> {
-            // 导入壳 (全平台共享, 对照 master AssociationActivity 透明壳语义):
-            // 深链导入进行中 (LegadoDeepLinkHandler.pending 非空) 时不渲染书架/发现等
-            // 主界面页面, 只保留容器 (Activity/导航/主题, 由平台根正常组合) + 共享导入
-            // 对话框; 导入完成 pending 置空后主界面自然出现。
-            val pending by LegadoDeepLinkHandler.pending.collectAsState()
-            if (pending == null) {
-                MainRoute(entry, navigator, screenModelStore)
-            }
+            // 深链导入 (壳/主界面内) 的对话框由 [DeepLinkImportHost] 挂载, 浮在书架之上;
+            // 不因 pending 拆掉书架: 壳是透明的, 拆掉后透出的是纯色空容器而非主界面
+            // (2026-10-11 实机取证后拍板修复)
+            MainRoute(entry, navigator, screenModelStore)
             true
         }
 
