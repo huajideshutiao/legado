@@ -298,19 +298,19 @@ fun AppDialogSurface(
 
 /**
  * 半屏贴底弹层统一面板容器：仅上两角 16dp (sheetShape) + 底栏色 (bottomBackground)
- * 收口于此; [AppBottomSheetDialog] 面板一律用它, 不再各自声明 shape/底色。
- * 全屏态需要去掉圆角的面板 (如半屏 WebView) 仍用 Surface 自行裁剪。
+ * 收口于此, 形状与底色均不开放修改, 保证全仓半屏弹层同一观感;
+ * [AppBottomSheetDialog] 面板一律用它。全屏态需要去掉圆角的面板 (如半屏 WebView)
+ * 仍用 Surface 自行裁剪。
  */
 @Composable
 fun AppSheetSurface(
     modifier: Modifier = Modifier,
-    color: Color = AppTheme.colors.bottomBackground,
     content: @Composable () -> Unit,
 ) {
     Surface(
         modifier = modifier,
         shape = AppTheme.DesignTokens.sheetShape,
-        color = color,
+        color = AppTheme.colors.bottomBackground,
         content = content,
     )
 }
