@@ -60,7 +60,9 @@ import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.napi.registerOhosNativeBridge
 import io.legado.app.ui.book.changesource.registerNativeChangeBookSourcePlatform
 import io.legado.app.utils.KS_JSON
+import io.legado.app.utils.RuleRegexes
 import io.legado.app.utils.registerOhosScreenInfoProvider
+import io.legado.app.utils.registerRuleRegexForJsonPath
 import kotlinx.serialization.decodeFromString
 import io.legado.app.ui.book.manage.registerNativeBookshelfManagePlatform
 import io.legado.app.ui.book.read.page.provider.registerSkiaTextMeasurer
@@ -178,6 +180,13 @@ fun registerOhosProviders() {
     // 1.15 正则替换超时处理器 (超时提示走 Toasters, 崩溃落盘走 NativeCrashLogWriter;
     // 须在 Toaster/AppLog/AppFilesDirs 之后、registerNativeWebBookProviders() 之前)
     registerNativeRegexErrorHandler()
+
+    // 1.16 规则正则引擎: 鸿蒙暂无等价能力 (K/N stdlib 的 kotlin.text.Regex 在两端相同,
+    // 匹配按迭代次数递归会写穿线程栈, 且无中断检查点), 此处显式回退默认实现 ——
+    // 与 iOS 的 ICU 引擎不同, 该端仍存在爆栈风险, 待后续方案落地后在此换成新实现。
+    // 本行存在的意义: 把"本端未换引擎"变成可搜索的显式事实, 不靠"没写就是默认"推断。
+    RuleRegexes.register(null)
+    registerRuleRegexForJsonPath()
 
     // 2. 配置 provider (AppConfigAccessor 委托 1.06 已注册的 PreferenceProvider)
     registerNativeAppConfigAccessor()

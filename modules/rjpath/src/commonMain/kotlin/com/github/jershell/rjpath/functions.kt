@@ -7,6 +7,25 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
+ * `match()` 函数的正则匹配能力 (由宿主注入)。
+ *
+ * rjpath 是内嵌第三方模块, 不依赖本项目其它模块; 而 JSONPath 的 `match(值, 模式)` 里的模式串
+ * 来自书源规则, 在 native 端 `kotlin.text.Regex` 的匹配按迭代次数递归, 病态规则可把线程栈写穿
+ * 直接闪退且无法中止。故匹配动作改为可注入 (宿主注册 `RuleRegexes` 实现, 带时间上限),
+ * 未注入时退回 `Regex` 直调 (与本参数引入前行为一致)。
+ *
+ * 是普通 interface 而非 `fun interface`: 两种匹配模式 (ENTIRE/CONTAINS) 语义不同,
+ * 各需一个抽象成员, 而 `fun interface` 只允许一个。
+ */
+interface RegexMatcher {
+    /** 全量匹配 (`RegexMatchMode.ENTIRE`)。 */
+    fun matchesEntire(input: String, pattern: String): Boolean
+
+    /** 包含匹配 (`RegexMatchMode.CONTAINS`)。 */
+    fun containsMatch(input: String, pattern: String): Boolean
+}
+
+/**
  * Function registry for JSONPath
  */
 class FunctionRegistry(options: RJPathOptions) {
@@ -81,7 +100,7 @@ class MatchFunction(private val options: RJPathOptions) : FunctionExtension {
     override fun evaluate(arguments: List<JsonElement>): JsonElement {
         require(arguments.size == 2) { "match() expects exactly two arguments" }
         val (str, pattern) = arguments.map { it.jsonPrimitive.content }
-        return JsonPrimitive(options.regexMatchMode.matches(Regex(pattern), str))
+        return JsonPrimitive(options.regexMatchMode.matches(RegexMatchers.get(), pattern, str))
     }
 }
 

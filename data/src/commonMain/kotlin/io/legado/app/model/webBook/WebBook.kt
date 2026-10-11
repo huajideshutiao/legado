@@ -19,6 +19,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.analyzeRule.RuleData
 import io.legado.app.model.analyzeRule.UrlOptionSerializer
 import io.legado.app.utils.NetworkUtils
+import io.legado.app.utils.RuleRegexes
 import io.legado.app.utils.decodeOrNull
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -80,6 +81,9 @@ class BookListPager {
  * 包名保持 io.legado.app.model.webBook, app 端调用方 import 零改动。
  */
 object WebBook {
+
+    /** 书源 URL 匹配规则的单次匹配上限 (毫秒), 与替换规则默认超时同口径。 */
+    private const val RULE_REGEX_TIMEOUT = 3000L
 
     /**
      * 搜索和发现
@@ -198,7 +202,12 @@ object WebBook {
             }
         }else AppDbProviders.get().bookSourceDao.getBookSourceAddBook(baseUrl)
             ?: AppDbProviders.get().bookSourceDao.hasBookUrlPattern().find { source ->
-            bookUrl.matches(source.bookUrlPattern!!.toRegex())
+            // 经 [RuleRegexes] 以模式串匹配 (带时间上限): 模式串来自书源, 原写法每次重新编译
+            // 且在 native 端编译/匹配都会递归爆栈
+            val pattern = source.bookUrlPattern ?: return@find false
+            RuleRegexes.get().matchesEntire(
+                bookUrl, pattern, multiline = false, timeout = RULE_REGEX_TIMEOUT
+            )
         }
         // 原版把"没匹配到书源"和"抓取失败"一起裹进 catch-all, 两者都报"未找到匹配书源",
         // 且 source 为 null 时是 `source!!` 抛 NPE 被顺带吞掉。这里把两种失败分开:

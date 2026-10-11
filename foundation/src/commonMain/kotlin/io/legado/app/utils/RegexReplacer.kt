@@ -21,14 +21,20 @@ interface RegexReplacer {
     /**
      * 带超时检测的正则替换 (对应 app 端 CharSequence.replace 扩展)。
      *
-     * @param source     待替换文本
-     * @param regex      正则
-     * @param replacement 替换串 (app 端实现支持 @js: 前缀动态替换)
-     * @param timeout    超时毫秒
+     * 入参为**模式串而非已编译 [Regex]**: native 端 `kotlin.text.Regex` 的编译是递归下降且
+     * 无栈保护, 调用方自行 `Regex(pattern)` 会把爆栈风险留在调用方; 编译与匹配统一交给实现
+     * (native 端实现经 [RuleRegexes] 走 ICU 引擎)。
+     *
+     * @param source      待替换文本
+     * @param pattern     模式串
+     * @param multiline   多行语义 (对应 `Pattern.MULTILINE`)
+     * @param replacement 替换串 (带 `@js:` 前缀时逐匹配求值)
+     * @param timeout     超时毫秒
      */
     fun replace(
         source: CharSequence,
-        regex: Regex,
+        pattern: String,
+        multiline: Boolean,
         replacement: String,
         timeout: Long
     ): String

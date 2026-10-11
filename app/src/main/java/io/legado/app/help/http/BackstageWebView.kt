@@ -15,10 +15,12 @@ import io.legado.app.App
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.exception.RegexTimeoutException
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.getUserAgent
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.utils.EscapeUtils
+import io.legado.app.utils.RuleRegexes
 import io.legado.app.utils.runOnUI
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Runnable
@@ -249,6 +251,20 @@ class BackstageWebView(
 
     }
 
+    /**
+     * 嗅探正则的全量匹配 (对应原 `url.matches(pattern.toRegex())`)。
+     *
+     * 模式串来自书源配置, 经 [RuleRegexes] 的平台实现匹配并带时间上限: 在 native 端
+     * `kotlin.text.Regex` 的编译与匹配都会递归, 病态规则可把线程栈写穿闪退。
+     * 编译失败或超时按“未命中”处理 (嗅探失败不影响正常阅读)。
+     */
+    private fun matchesEntire(text: String, pattern: String): Boolean = try {
+        RuleRegexes.get()
+            .matchesEntire(text, pattern, multiline = false, timeout = SNIFF_REGEX_TIMEOUT)
+    } catch (_: RegexTimeoutException) {
+        false
+    }
+
     private inner class SnifferWebClient : WebViewClient() {
 
         override fun shouldOverrideUrlLoading(
@@ -271,7 +287,8 @@ class BackstageWebView(
 
         private fun shouldOverrideUrlLoading(requestUrl: String): Boolean {
             overrideUrlRegex?.let {
-                if (requestUrl.matches(it.toRegex())) {
+                // 嗅探正则来自书源配置: 经 [RuleRegexes] 的平台实现匹配 (带时间上限)
+                if (matchesEntire(requestUrl, it)) {
                     try {
                         val response = StrResponse(url!!, requestUrl)
                         callback?.onResult(response)
@@ -287,7 +304,8 @@ class BackstageWebView(
 
         override fun onLoadResource(view: WebView, resUrl: String) {
             sourceRegex?.let {
-                if (resUrl.matches(it.toRegex())) {
+                // 嗅探正则来自书源配置: 经 [RuleRegexes] 的平台实现匹配 (带时间上限)
+                if (matchesEntire(resUrl, it)) {
                     try {
                         val response = StrResponse(url!!, resUrl)
                         callback?.onResult(response)
@@ -336,6 +354,9 @@ class BackstageWebView(
     companion object {
         const val JS = "document.documentElement.outerHTML"
         private val quoteRegex = "^\"|\"$".toRegex()
+
+        /** 嗅探正则的单次匹配上限 (毫秒); 嗅探是热路径, 与 iOS 端同口径。 */
+        private const val SNIFF_REGEX_TIMEOUT = 1000L
     }
 
     abstract class Callback {

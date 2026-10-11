@@ -29,7 +29,11 @@ class RegexReplacerUnicodeClassTest {
     @Test
     fun wordClassIncludesChinese() {
         val actual = JvmRegexReplacer.replace(
-            plainChapter, rule07Pattern.toRegex(), "——", 3000L
+            plainChapter,
+            rule07Pattern,
+            false,
+            "——",
+            3000L,
         )
         assertEquals("正常中文正文被误替换, 说明 \\w 未包含中文", plainChapter, actual)
     }
@@ -38,7 +42,7 @@ class RegexReplacerUnicodeClassTest {
     @Test
     fun stillReplacesActualPunctuation() {
         val text = "他--说。"
-        val actual = JvmRegexReplacer.replace(text, rule07Pattern.toRegex(), "——", 3000L)
+        val actual = JvmRegexReplacer.replace(text, rule07Pattern, false, "——", 3000L)
         assertTrue("真实需要净化的字符未被替换", actual != text)
     }
 
@@ -46,10 +50,18 @@ class RegexReplacerUnicodeClassTest {
     @Test
     fun charSequenceMatchesString() {
         val asString = JvmRegexReplacer.replace(
-            plainChapter, rule07Pattern.toRegex(), "——", 3000L
+            plainChapter,
+            rule07Pattern,
+            false,
+            "——",
+            3000L,
         )
         val asCharSequence = JvmRegexReplacer.replace(
-            StringBuilder(plainChapter), rule07Pattern.toRegex(), "——", 3000L
+            StringBuilder(plainChapter),
+            rule07Pattern,
+            false,
+            "——",
+            3000L,
         )
         assertEquals(asString, asCharSequence)
     }

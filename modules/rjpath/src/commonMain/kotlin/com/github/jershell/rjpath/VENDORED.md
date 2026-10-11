@@ -50,9 +50,19 @@ string-literal = %x22 *double-quoted %x22 /   ; "string"
 
 上游已停更（该 commit 之后无任何提交）且无发布通道，故上述修改为永久本地补丁。
 
+### 3. `RegexMatchMode.kt` / `functions.kt`：`match()` 的正则匹配改为可注入
+
+原 `MatchFunction` 直接 `Regex(pattern)` 并调用 `matches`/`containsMatchIn`。该模式串来自书源规则，
+在 Kotlin/Native 上 `kotlin.text.Regex` 的编译与匹配都会递归（编译无栈保护、匹配按迭代次数递归），
+病态规则可把线程栈写穿直接闪退且无法中止。
+
+改为 `RegexMatcher` 函数式接口 + `RegexMatchers` 容器（默认 `DefaultRegexMatcher` 即原行为），
+由宿主（`:foundation` 的 `registerRuleRegexForJsonPath`）注册带时间上限的实现。
+本模块仍不依赖本项目其它模块（仍只依赖 kotlinx-serialization）。
+
 ## 上游复活时如何合并
 
-以 commit `d38d43a` 为基线比对：第 1、2 项均为增量修改。
+以 commit `d38d43a` 为基线比对：第 1、2、3 项均为增量修改。
 `SelectorParser.kt` / `expressions.kt` 若上游出现新版本，应按上表逐条核对上游是否已自行修复，
 再决定取上游还是保留补丁，**不要整文件覆盖**。
 

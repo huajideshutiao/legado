@@ -37,6 +37,7 @@ import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.GSON
+import io.legado.app.utils.RuleRegexes
 import io.legado.app.utils.toJson
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.action_save
@@ -66,7 +67,8 @@ import org.jetbrains.compose.resources.stringResource
  * # 业务对齐 (对照 app 端原版)
  *
  * - 字段: 名称 (name) / 规则 (rule, 正则) / 示例 (example) 三个 EditEntity, 与原版完全一致;
- * - 保存校验: 名称不能为空 + 正则语法校验 (Pattern.MULTILINE 等价于 [RegexOption.MULTILINE]);
+ * - 保存校验: 名称不能为空 + 正则语法校验 (经 [RuleRegexes.validate], 多行语义与
+ *   `Pattern.MULTILINE` 对齐);
  * - 标题栏右侧: 保存 (ic_save) + OverflowMenu (复制规则 / 粘贴规则);
  * - 粘贴规则: 委托 [TxtTocRuleEditViewModelShared.pasteRule], 内部走 [clipTextProvider] 取剪贴板,
  *   GSON.fromJsonObject<TxtTocRule>(text) 解析, 失败 toast "格式不对" (与 app 端一致);
@@ -134,7 +136,7 @@ fun TxtTocRuleEditDialog(
     /**
      * 校验并保存, 与 app 端 save() + checkValid() 完全等价:
      * - 名称非空校验;
-     * - 正则语法校验 (Pattern.MULTILINE 等价于 [RegexOption.MULTILINE]);
+     * - 正则语法校验 (经 [RuleRegexes.validate], 多行语义与 `Pattern.MULTILINE` 对齐);
      * - 校验通过回调 [onConfirm] + [onDismiss]。
      *
      * 正则错误用 AppLog.put(msg, ex, toast=true) 记录 (toast=true 触发宿主 toast, 与 app 端一致)。
@@ -145,13 +147,13 @@ fun TxtTocRuleEditDialog(
             Toasters.get().toast(nameRequiredText)
             return
         }
-        try {
-            // Pattern.compile(rule, Pattern.MULTILINE) 等价于 Regex(rule, RegexOption.MULTILINE)
-            Regex(tocRule.rule, RegexOption.MULTILINE)
-        } catch (ex: Exception) {
+        // 校验走 [RuleRegexes]: native 端 `Regex(pattern)` 的语法解析是递归下降且无栈保护,
+        // 畸形规则会直接爆栈闪退; 平台实现带编译深度/错误包装, 失败返回可展示的错误文本
+        val error = RuleRegexes.get().validate(tocRule.rule, multiline = true)
+        if (error != null) {
             AppLog.put(
-                "$regexErrorText：${ex.message}",
-                ex,
+                "$regexErrorText：$error",
+                null,
                 true,
             )
             return

@@ -59,7 +59,10 @@ import io.legado.app.ui.IosShareInbox
 import io.legado.app.ui.book.changesource.registerNativeChangeBookSourcePlatform
 import io.legado.app.ui.book.manage.registerNativeBookshelfManagePlatform
 import io.legado.app.ui.book.read.page.provider.registerSkiaTextMeasurer
+import io.legado.app.utils.IosRuleRegex
+import io.legado.app.utils.RuleRegexes
 import io.legado.app.utils.registerIosScreenInfoProvider
+import io.legado.app.utils.registerRuleRegexForJsonPath
 import platform.UIKit.UIDevice
 import platform.UIKit.UIScreen
 import kotlin.concurrent.Volatile
@@ -135,6 +138,16 @@ fun registerIosProviders() {
     // 1.15 正则替换超时处理器 (超时提示走 Toasters, 崩溃落盘走 NativeCrashLogWriter;
     // 须在 Toaster/AppLog/AppFilesDirs 之后、registerNativeWebBookProviders() 之前)
     registerNativeRegexErrorHandler()
+
+    // 1.16 规则正则引擎 (书源/替换/目录规则的 `##匹配##替换`、`:regex`、正文去重标题、
+    // JSONPath 的 match() 均经它执行):
+    // K/N stdlib 的 kotlin.text.Regex 匹配按迭代次数递归 (GroupQuantifierSet 每消费一次分组体
+    // 递归一层), 复杂书源规则实测递归 2969 帧后写穿线程栈保护页直接闪退, 且无中断检查点 ——
+    // 超时后线程会持续占满一核。换成系统 NSRegularExpression (ICU: 回溯状态在堆上, 栈用量
+    // 不随模式复杂度增长), 时间上限经 NSMatchingReportProgress 回调实现。
+    // 须在 1.15 之后 (超时副作用走 RegexErrorHandlers)、任何规则解析之前
+    RuleRegexes.register(IosRuleRegex)
+    registerRuleRegexForJsonPath()
 
     // 2. 配置 provider (AppConfigAccessor 委托 1.07 已注册的 PreferenceProvider)
     registerNativeAppConfigAccessor()

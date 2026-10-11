@@ -1,6 +1,7 @@
 package io.legado.app.help.book
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.AppPattern
 import io.legado.app.constant.AppPattern.spaceRegex
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.dao.BookDao
@@ -12,6 +13,8 @@ import io.legado.app.exception.RegexTimeoutException
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.runBlockingInScope
 import io.legado.app.utils.RegexReplacers
+import io.legado.app.utils.RuleMatchSpans
+import io.legado.app.utils.RuleRegexes
 import io.legado.app.utils.escapeRegex
 import kotlinx.coroutines.CancellationException
 import kotlin.concurrent.Volatile
@@ -30,7 +33,8 @@ import kotlin.coroutines.EmptyCoroutineContext
  *   (Android 走 BookHelp, 其他端走 [BookStorageProviders])
  * - `AppConfig.chineseConverterType` → [AppConfigProviders.get].chineseConverterType (已下沉)
  * - `ChineseUtils.t2s/s2t` → [chineseT2S]/[chineseS2T] expect/actual (已下沉)
- * - `mContent.replace(regex, replacement, timeout)` → [RegexReplacers.get].replace (已下沉)
+ * - `mContent.replace(regex, replacement, timeout)` → [RegexReplacers.get].replace (已下沉; 替换串带 @js: 的求值在该层)
+ * - `Pattern.compile(...).matcher(...).find()` (去重标题) → [RuleRegexes.get].find (已下沉, native 端换 ICU 引擎)
  * - `appCtx.toastOnUi` / `isAndroid8` → [ContentProcessorDeps] (平台注入)
  *
  * 其余依赖 [AppLog] / [AppPattern.spaceRegex] / [ContentHelp.reSegment] /
@@ -188,13 +192,18 @@ class ContentProcessorShared(
 
                 // Pattern.quote(book.name) → escapeRegex (非空时才入分支，避免空分支造成回溯/死循环)
                 val namePattern = if (book.name.isNotEmpty()) "|${book.name.escapeRegex()}" else ""
-                var title = chapter.title.escapeRegex().replace(spaceRegex, "\\\\s*")
-                // Pattern.compile(...).matcher(mContent).find() → Regex(...).find(mContent);
-                // 前缀用贪婪 * (对齐原版): 标题以书名/标点开头(如"斗破苍穹 第一章"、"【第1章】")需回溯匹配;
-                // 尾部仅匹配本行水平空白及单次换行 ([ \\t\\u3000\\u00A0]*\\r?\\n?), 严禁使用 (\\s|\\p{P})*
-                // 避免越过换行误吞后续正文段落开头的首字引号/标点符号 (如“《【) 或空行
-                var regex = Regex("^(\\s|\\p{P}$namePattern)*${title}[ \\t\\u3000\\u00A0]*\\r?\\n?")
-                var match = regex.find(headContent)
+                // 标题内的空白放宽成空白类 (见 [AppPattern.spaceClass] 展开串)。
+                // 替换串里的反斜杠会被 [Regex.replace] 当转义吃掉 (原写法 `\\s*` 靠双写才正确),
+                // 故这里用 [Regex.escapeReplacement] 将整段按字面量插入
+                var title = chapter.title.escapeRegex()
+                    .replace(spaceRegex, Regex.escapeReplacement("${AppPattern.spaceClass}*"))
+                // Pattern.compile(...).matcher(mContent).find() → RuleRegexes.find (native 端换 ICU 引擎
+                // 并带时间上限): 前缀用贪婪 * (对齐原版) —— 标题以书名/标点开头(如"斗破苍穹 第一章"、
+                // "【第1章】")需回溯匹配; 尾部仅匹配本行水平空白及单次换行 ([ \\t\\u3000\\u00A0]*\\r?\\n?),
+                // 严禁使用 (\\s|\\p{P})* 避免越过换行误吞后续正文段落开头的首字引号/标点符号。
+                // 前缀的空白类同样显式写全 (含 U+3000), 与尾部口径一致
+                var pattern = "^(${AppPattern.spaceClass}|\\p{P}$namePattern)*${title}[ \t\u3000\u00A0]*\r?\n?"
+                var match = findHeadMatch(pattern, headContent)
                 if (match != null) {
                     // matcher.end() (exclusive) → match.range.last + 1
                     mContent = mContent.substring(match.range.last + 1)
@@ -205,10 +214,10 @@ class ContentProcessorShared(
                         chineseConvert = false
                     )
                     if (displayTitle.isNotBlank()) {
-                        // 对照原版: 第二分支只做 Pattern.quote, 不把空白放宽成 \s*
+                        // 对照原版: 第二分支只做 Pattern.quote, 不把空白放宽成空白类
                         title = displayTitle.escapeRegex()
-                        regex = Regex("^(\\s|\\p{P}$namePattern)*${title}[ \\t\\u3000\\u00A0]*\\r?\\n?")
-                        match = regex.find(headContent)
+                        pattern = "^(${AppPattern.spaceClass}|\\p{P}$namePattern)*${title}[ \t\u3000\u00A0]*\r?\n?"
+                        match = findHeadMatch(pattern, headContent)
                         if (match != null) {
                             mContent = mContent.substring(match.range.last + 1)
                             sameTitleRemoved = true
@@ -254,13 +263,17 @@ class ContentProcessorShared(
                     try {
                         val tmp = if (item.isRegex) {
                             // CharSequence.replace(regex, replacement, timeout) → RegexReplacers.get().replace
+                            // (替换串可带 @js: 前缀, 由该层求值; 匹配本体在 native 端已换 ICU 引擎)
                             RegexReplacers.get().replace(
                                 mContent,
-                                item.regex,
+                                item.pattern,
+                                false,
                                 item.replacement,
                                 item.getValidTimeoutMillisecond()
                             )
                         } else {
+                            // 字面量分支: Kotlin 的 String.replace(String, String) 本就是字面量替换,
+                            // 不会回溯, 无需过正则引擎
                             mContent.replace(item.pattern, item.replacement)
                         }
                         if (mContent != tmp) {
@@ -300,6 +313,25 @@ class ContentProcessorShared(
         }
         contentList.add(mContent)
         return BookContent(sameTitleRemoved, contentList, effectiveReplaceRules)
+    }
+
+    /**
+     * 去重标题的头部匹配。
+     *
+     * 经 [RuleRegexes] 以模式串执行: 该正则的 `(\s|\p{P}|书名)*` 前缀属"可空子表达式叠加量词",
+     * native 端 `kotlin.text.Regex` 会逐次递归直至写穿线程栈 (书打开即闪退), 且不响应协程取消。
+     * 超时按“未命中”处理 (匹配已中止, 取不到结果); 其余异常向上抛, 由本函数的调用方统一记录
+     * —— 与原实现把整个块包在 try/catch 里记日志一致。
+     */
+    private fun findHeadMatch(pattern: String, headContent: String): RuleMatchSpans? = try {
+        RuleRegexes.get().find(headContent, pattern, multiline = false, timeout = HEAD_TITLE_TIMEOUT)
+    } catch (_: RegexTimeoutException) {
+        null
+    }
+
+    private companion object {
+        /** 去重标题的单次匹配上限 (毫秒), 与替换规则默认超时同口径。 */
+        const val HEAD_TITLE_TIMEOUT = 3000L
     }
 }
 

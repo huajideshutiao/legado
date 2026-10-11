@@ -54,7 +54,11 @@ class RegexReplacerAndroidTest {
     @Test
     fun plainChapterUntouched() {
         val actual = AndroidRegexReplacer.replace(
-            chapter, rule07Pattern.toRegex(), rule07Replacement, 3000L
+            chapter,
+            rule07Pattern,
+            false,
+            rule07Replacement,
+            3000L,
         )
         assertEquals("正常中文正文被误替换", expectedUnchanged, actual)
     }
@@ -64,7 +68,11 @@ class RegexReplacerAndroidTest {
     fun replacesActualPunctuation() {
         val text = "他--说。"
         val actual = AndroidRegexReplacer.replace(
-            text, rule07Pattern.toRegex(), rule07Replacement, 3000L
+            text,
+            rule07Pattern,
+            false,
+            rule07Replacement,
+            3000L,
         )
         assertEquals("真实需要净化的字符未被替换", "他——说。", actual)
     }
@@ -74,7 +82,11 @@ class RegexReplacerAndroidTest {
     fun acceptsCharSequence() {
         val asCharSequence: CharSequence = StringBuilder(chapter)
         val actual = AndroidRegexReplacer.replace(
-            asCharSequence, rule07Pattern.toRegex(), rule07Replacement, 3000L
+            asCharSequence,
+            rule07Pattern,
+            false,
+            rule07Replacement,
+            3000L,
         )
         assertEquals(expectedUnchanged, actual)
     }
@@ -85,7 +97,11 @@ class RegexReplacerAndroidTest {
         val text = "他--说。"
         val expected = text.replace(rule07Pattern.toRegex(), rule07Replacement)
         val actual = AndroidRegexReplacer.replace(
-            text, rule07Pattern.toRegex(), rule07Replacement, 3000L
+            text,
+            rule07Pattern,
+            false,
+            rule07Replacement,
+            3000L,
         )
         assertEquals("替换结果与直接 Regex.replace 不一致", expected, actual)
         assertTrue(actual != text)

@@ -37,6 +37,7 @@ import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.utils.RuleRegexes
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.add
 import legado.ui.generated.resources.cancel
@@ -126,7 +127,9 @@ fun SourceFilterEditDialog(
      */
     fun confirm() {
         val patternStr = pattern.trim()
-        if (patternStr.isEmpty() || runCatching { Regex(patternStr) }.isFailure) {
+        // 校验经 [RuleRegexes] 的平台实现: native 端 `Regex(pattern)` 的编译是递归下降且无栈保护,
+        // 畸形规则会在这一步把线程栈写穿闪退
+        if (patternStr.isEmpty() || RuleRegexes.get().validate(patternStr, multiline = false) != null) {
             Toasters.get().toast(invalidPatternText)
             return
         }

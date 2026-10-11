@@ -89,17 +89,17 @@ internal object WindowsWebViewEngine : DesktopWebViewEngineBase() {
         request: WebViewFetchRequest,
     ): WebViewFetchResult {
         val hit = CompletableDeferred<Pair<String, Map<String, String>>>()
-        val (overrideRegex, sourceRegex) = snifferRegexes(request)
+        val (overridePattern, sourcePattern) = snifferPatterns(request)
 
         instance.onNavigationStarting = { url, _ ->
-            val matched = overrideRegex?.matches(url) == true
+            val matched = snifferMatches(url, overridePattern)
             // 导航命中时拿不到子资源请求头, 用空头 + playHeaders 的 Referer/UA 兜底
             if (matched) hit.complete(url to emptyMap())
             // 命中即取消导航, 与 app 端 shouldOverrideUrlLoading 返回 true 等价
             matched
         }
         instance.onResourceRequested = { url, headers ->
-            val matched = sourceRegex?.matches(url) == true
+            val matched = snifferMatches(url, sourcePattern)
             if (matched) hit.complete(url to headers())
             // 命中即返回空响应吞掉该请求 (等价 Android 返回空 WebResourceResponse)
             matched

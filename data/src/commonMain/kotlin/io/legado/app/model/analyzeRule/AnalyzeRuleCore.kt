@@ -20,6 +20,7 @@ import io.legado.app.utils.Closeable
 import io.legado.app.utils.EscapeUtils
 import io.legado.app.utils.KS_JSON_STRICT
 import io.legado.app.utils.NetworkUtils
+import io.legado.app.utils.RuleRegexes
 import io.legado.app.utils.URL
 import io.legado.app.utils.decodeStringMapOrNull
 import io.legado.app.utils.formatDoubleNoDecimal
@@ -71,7 +72,7 @@ open class AnalyzeRuleCore(
     private var analyzeByJSonPath: AnalyzeByJSonPath? = null
 
     private val stringRuleCache = hashMapOf<String, List<SourceRule>>()
-    private val regexCache = hashMapOf<String, Regex?>()
+    private val regexCache = hashMapOf<String, Boolean>()
     private val scriptCache = hashMapOf<String, JsCompiledScript>()
     private var topScopeRef: JsScope? = null
 
@@ -489,39 +490,74 @@ open class AnalyzeRuleCore(
     }
 
     /**
-     * 正则替换
+     * 正则替换 (`##匹配##替换` 的匹配与替换段)。
+     *
+     * 经 [RuleRegexes] 以**模式串**执行: 调用方不得自行 `Regex(...)` —— native 端
+     * `kotlin.text.Regex` 的编译与匹配都会递归 (编译无栈保护, 匹配按迭代次数递归),
+     * 书源规则可把线程栈写穿直接闪退且不响应协程取消。详见 [RuleRegex]。
      */
     private fun replaceRegex(result: String, rule: SourceRule): String {
         if (rule.replaceRegex.isEmpty()) return result
         val replaceRegex = rule.replaceRegex
         val replacement = rule.replacement
-        val regex = compileRegexCache(replaceRegex)
-        if (rule.replaceFirst) {
-            /* ##match##replace### 获取第一个匹配到的结果并进行替换 */
-            if (regex != null) kotlin.runCatching {
-                // regex.toPattern().matcher → regex.find: match.value 对应 matcher.group(0) (整个匹配)
-                val match = regex.find(result)
-                return match?.value?.replaceFirst(regex, replacement) ?: ""
+        if (!isValidRegexCache(replaceRegex)) {
+            // 模式串无法编译: 与原实现 `compileRegexCache` 返回 null 的降级路径一致
+            return if (rule.replaceFirst) replacement else result.replace(replaceRegex, replacement)
+        }
+        return kotlin.runCatching {
+            if (rule.replaceFirst) {
+                // 原实现语义: 只取首个匹配的文本, 再在其中做一次替换 —— 返回值是**该匹配文本**
+                // 的替换结果 (不是整串); 编译成功但无匹配时返回空串 (对齐原版 `else { "" }`)
+                val match = RuleRegexes.get().find(
+                    result, replaceRegex, multiline = false, timeout = RULE_REGEX_TIMEOUT
+                )
+                val matched = match?.value(result)
+                if (matched == null) {
+                    ""
+                } else {
+                    RuleRegexes.get().replace(
+                        source = matched,
+                        pattern = replaceRegex,
+                        multiline = false,
+                        replacement = replacement,
+                        replaceFirst = true,
+                        timeout = RULE_REGEX_TIMEOUT
+                    )
+                }
+            } else {
+                RuleRegexes.get().replace(
+                    source = result,
+                    pattern = replaceRegex,
+                    multiline = false,
+                    replacement = replacement,
+                    replaceFirst = false,
+                    timeout = RULE_REGEX_TIMEOUT
+                )
             }
-            return replacement
-        } else {
-            /* ##match##replace 替换*/
-            if (regex != null) kotlin.runCatching {
-                return result.replace(regex, replacement)
-            }
-            return result.replace(replaceRegex, replacement)
+        }.getOrElse {
+            // 超时或引擎拒绝: 与原实现 runCatching 失败时的降级一致
+            if (rule.replaceFirst) replacement else result
         }
     }
 
-    private fun compileRegexCache(regex: String): Regex? {
-        return regexCache.getOrPutLimit(regex, 16) {
-            try {
-                regex.toRegex()
-            } catch (e: Exception) {
-                null
-            }
+    /**
+     * 模式串可编译性缓存 (对应原 `compileRegexCache`)。
+     *
+     * 经 [RuleRegexes.validate] 判定, 不自行 `pattern.toRegex()` —— native 端的
+     * `kotlin.text.Regex` 编译是递归下降且无栈保护, 畸形规则在这一步就会爆栈。
+     */
+    private fun isValidRegexCache(pattern: String): Boolean =
+        regexCache.getOrPutLimit(pattern, 16) {
+            RuleRegexes.get().validate(pattern, multiline = false) == null
         }
-    }
+
+    /**
+     * 规则正则的单次执行时间上限 (毫秒)。
+     *
+     * 书源规则里 `##匹配##替换` 没有用户可配的超时 (只有替换规则 [io.legado.app.data.entities.ReplaceRule]
+     * 有), 而它正是崩溃点所在路径, 故取与替换规则默认值同口径的 3000ms 作为硬上限。
+     */
+    private val RULE_REGEX_TIMEOUT = 3000L
 
     /**
      * getString 类规则缓存

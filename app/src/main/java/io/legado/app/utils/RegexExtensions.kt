@@ -12,9 +12,16 @@ import io.legado.app.help.CrashHandler
  * 经 [RegexErrorHandler] 注入, 由 [registerAndroidRegexErrorHandler] 注册。
  *
  * 本扩展保留以维持调用方零改动 (WebBookProvidersImpl.RegexReplacer.replace 直接调用本扩展)。
+ *
+ * 入参为模式串: 编译放在 [AndroidRegexReplacer] 内, 避免调用方自行 `Regex(pattern)`
+ * (native 端该调用是递归下降且无栈保护)。
  */
-fun CharSequence.replace(regex: Regex, replacement: String, timeout: Long): String =
-    AndroidRegexReplacer.replace(this, regex, replacement, timeout)
+fun CharSequence.replace(
+    pattern: String,
+    multiline: Boolean,
+    replacement: String,
+    timeout: Long
+): String = AndroidRegexReplacer.replace(this, pattern, multiline, replacement, timeout)
 
 /**
  * 注册 app 端 Android 专属 [RegexErrorHandler], 供 shared [AndroidRegexReplacer] 在

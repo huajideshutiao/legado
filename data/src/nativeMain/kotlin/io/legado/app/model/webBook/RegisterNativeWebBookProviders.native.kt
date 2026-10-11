@@ -18,6 +18,10 @@ import io.legado.app.utils.RegexReplacers
  *   AnalyzeRule.refreshTocUrl 静默跳过, ruleTocUrl 规则失效)
  * - [IntentDataProviders]: 桥接 commonMain [IntentData] 单例 (未注册时 webBook 编排层抛异常)
  * - [RegexReplacers]: 注册 [NativeRegexReplacer] (未注册时替换规则 replace(timeout) 路径抛异常)
+ *
+ * 注: 规则正则 ([RuleRegexes]) 不在本函数注册 —— iOS 用系统 ICU 引擎, 由
+ * `registerIosProviders` 在启动链早期注册; 鸿蒙目前无等价能力, 未注册时回退
+ * [io.legado.app.utils.DefaultRuleRegex] (`kotlin.text.Regex` 直调)。
  */
 fun registerNativeWebBookProviders() {
     BookInfoRefreshers.register(NativeBookInfoRefresher)

@@ -168,7 +168,7 @@ class ReplaceRuleListViewModel {
 
     fun toTop(rule: ReplaceRule) {
         Coroutine.async(scope = scope) {
-            // copy 而非原地改: ReplaceRule.regex 是挂实例的 lazy 缓存, 且原地改不触发重组
+            // copy 而非原地改: 原地改不触发重组
             dao.update(rule.copy(order = dao.minOrder() - 1))
         }
     }

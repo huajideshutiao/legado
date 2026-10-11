@@ -160,12 +160,12 @@ internal object MacWebViewEngine : DesktopWebViewEngineBase() {
         )
     }
 
-    /** 嗅探: hook + performance 轮询; overrideRegex 走导航地址。 */
+    /** 嗅探: hook + performance 轮询; overrideUrlRegex 走导航地址。 */
     private suspend fun runSniffer(
         session: MacSession,
         request: WebViewFetchRequest,
     ): WebViewFetchResult {
-        val (overrideRegex, sourceRegex) = snifferRegexes(request)
+        val (overridePattern, sourcePattern) = snifferPatterns(request)
         val seen = HashSet<String>()
         val sniffed = CompletableDeferred<String>()
         injectWebViewCookies(request.url, platformLabel) { domain, cookie ->
@@ -175,7 +175,7 @@ internal object MacWebViewEngine : DesktopWebViewEngineBase() {
             session.onNavigated = { url ->
                 if (!url.isNullOrBlank()) {
                     harvestTagCookies(url, request.cookieTag) { session.cookies(COOKIE_TIMEOUT_MS) }
-                    if (overrideRegex?.matches(url) == true) sniffed.complete(url)
+                    if (snifferMatches(url, overridePattern)) sniffed.complete(url)
                 }
             }
             session.start(request)
@@ -188,7 +188,7 @@ internal object MacWebViewEngine : DesktopWebViewEngineBase() {
                 val urls = Json.parseToJsonElement(body).jsonArray
                 for (element in urls) {
                     val url = element.jsonPrimitive.contentOrNull ?: continue
-                    if (seen.add(url) && sourceRegex?.matches(url) == true) {
+                    if (seen.add(url) && snifferMatches(url, sourcePattern)) {
                         sniffed.complete(url)
                         break
                     }

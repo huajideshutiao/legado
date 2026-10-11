@@ -19,7 +19,10 @@ import io.legado.app.model.webBook.BookInfoRefresher
 import io.legado.app.model.webBook.BookInfoRefreshers
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.JvmRegexReplacer
+import io.legado.app.utils.JvmRuleRegex
 import io.legado.app.utils.RegexReplacers
+import io.legado.app.utils.RuleRegexes
+import io.legado.app.utils.registerRuleRegexForJsonPath
 import kotlinx.coroutines.runBlocking
 import java.lang.ref.WeakReference
 import java.util.concurrent.ConcurrentHashMap
@@ -49,6 +52,13 @@ fun registerDesktopWebBookProviders() {
     // 与 app 端一致直接注册 shared 实现: 桌面端已注册 QuickJs 引擎与 RegexErrorHandler,
     // 超时检测与 @js: 替换规则均可用
     RegexReplacers.register(JvmRegexReplacer)
+    // 规则正则: 不走默认实现 —— JDK 默认的字符类是 ASCII 的, 而安卓与苹果两端恒为 Unicode
+    // 语义, 同一条书源规则用 \w 取正文时桌面会取不到中文 (详见 JvmRuleRegex)。
+    // JDK 引擎在分组量词迭代长度固定时走循环而非递归 (GroupCurly.match0), 且编译期有
+    // StackOverflowError 包装, 不存在 native 端那种写穿线程栈的失败模式, 故无需换引擎;
+    // rjpath 的 match() 同样接上本实现
+    RuleRegexes.register(JvmRuleRegex)
+    registerRuleRegexForJsonPath()
     // 注: Web 服务封面/插图 provider (DesktopImageControllerProvider) 由 desktop Main.kt /
     // headless Main.kt 独立注册。
     // 注册 Web 服务阅读状态桥 (commonMain ActiveReadBookStateProvider 读 ActiveReadBookRegistry,

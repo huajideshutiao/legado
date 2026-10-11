@@ -1,5 +1,6 @@
 package io.legado.app.help.book
 
+import io.legado.app.constant.AppPattern
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
@@ -17,19 +18,23 @@ object ContentHelp {
     fun reSegment(content: String, chapterName: String): String {
         var content1 = content
         val dict = makeDict(content1)
+        // 空白一律用 [AppPattern.spaceClass] 显式写全: 各端 \s 定义不同, native stdlib 的 \s
+        // 不含 U+3000 全角空格, 而中文正文大量用它做缩进 (不写全则 iOS/鸿蒙与安卓结果不同)
+        val ws = AppPattern.spaceClass
+        val wsb = AppPattern.spaceClassBody
         var p = content1
             .replace("&quot;".toRegex(), "“")
             .replace("[:：]['\"‘”“]+".toRegex(), "：“")
-            .replace("[\"”“]+\\s*[\"”“][\\s\"”“]*".toRegex(), "”\n“")
-            .split("\n(\\s*)".toRegex()).toTypedArray()
+            .replace("[\"”“]+$ws*[\"”“][$wsb\"”“]*".toRegex(), "”\n“")
+            .split("\n($ws*)".toRegex()).toTypedArray()
 
         //初始化StringBuilder的长度,在原content的长度基础上做冗余
         var buffer = StringBuilder((content1.length * 1.15).toInt())
         //          章节的文本格式为章节标题-空行-首段，所以处理段落时需要略过第一行文本。
         buffer.append("  ")
         if (chapterName.trim() != p[0].trim()) {
-            // 去除段落内空格。unicode 3000 象形字间隔（中日韩符号和标点），不包含在\s内
-            buffer.append(p[0].replace("[\u3000\\s]+".toRegex(), ""))
+            // 去除段落内空格 (含 U+3000 象形字间隔)
+            buffer.append(p[0].replace("[$wsb]+".toRegex(), ""))
         }
 
         //如果原文存在分段错误，需要把段落重新黏合
@@ -41,15 +46,15 @@ object ContentHelp {
                 buffer.append("\n")
             }
             // 段落开头以外的地方不应该有空格
-            // 去除段落内空格。unicode 3000 象形字间隔（中日韩符号和标点），不包含在\s内
-            buffer.append(p[i].replace("[\u3000\\s]".toRegex(), ""))
+            // 去除段落内空格 (含 U+3000 象形字间隔)
+            buffer.append(p[i].replace("[$wsb]".toRegex(), ""))
         }
         //     预分段预处理
         //         ”“处理为”\n“。
         //         ”。“处理为”。\n“。不考虑“？”  “！”的情况。
         // ”。xxx处理为 ”。\n xxx
         p = buffer.toString()
-            .replace("[\"”“]+\\s*[\"”“]+".toRegex(), "”\n“")
+            .replace("[\"”“]+$ws*[\"”“]+".toRegex(), "”\n“")
             .replace("[\"”“]+(？。！?!~)[\"”“]+".toRegex(), "”$1\n“")
             .replace("[\"”“]+(？。！?!~)([^\"”“])".toRegex(), "”$1\n$2")
             .replace(
@@ -64,11 +69,11 @@ object ContentHelp {
         }
         buffer = reduceLength(buffer)
         content1 = (buffer.toString() //         处理章节头部空格和换行
-            .replaceFirst("^\\s+".toRegex(), "")
-            .replace("\\s*[\"”“]+\\s*[\"”“][\\s\"”“]*".toRegex(), "”\n“")
-            .replace("[:：][”“\"\\s]+".toRegex(), "：“")
+            .replaceFirst("^$ws+".toRegex(), "")
+            .replace("$ws*[\"”“]+$ws*[\"”“][$wsb\"”“]*".toRegex(), "”\n“")
+            .replace("[:：][”“\"$wsb]+".toRegex(), "：“")
             .replace("\n[\"“”]([^\n\"“”]+)([,:，：][\"”“])([^\n\"“”]+)".toRegex(), "\n$1：“$3")
-            .replace("\n(\\s*)".toRegex(), "\n"))
+            .replace("\n($ws*)".toRegex(), "\n"))
         return content1
     }
 
@@ -475,13 +480,11 @@ object ContentHelp {
      */
     private fun makeDict(str: String): List<String> {
 
-        // 引号中间不包含任何标点
-        // 使用 Kotlin Regex 替代 java.util.regex.Pattern，正则表达式本身保持不变
+        // 引号中间不包含换行与标点 (两端字符类同集合)。
+        // 原写法 `[^\n\p{P}]` 里的换行靠模板字符串的字面换行表达, trimIndent 后易读性差且易错,
+        // 现显式写 \n; 标点用 [PUNCT_CLASS] (两端同名)。
         val regex = Regex(
-            """
-          (?<=["'”“])([^
-          \p{P}]{1,$WORD_MAX_LENGTH})(?=["'”“])
-          """.trimIndent()
+            """(?<=["'”“])([^\n${PUNCT_CLASS}]{1,$WORD_MAX_LENGTH})(?=["'”“])"""
         )
         //Pattern patten = Pattern.compile("(?<=[\"'”“])([^\n\"'”“]{1,16})(?=[\"'”“])");
         val cache: MutableList<String> = ArrayList()
@@ -619,6 +622,9 @@ object ContentHelp {
 
     //  限制字典的长度
     private const val WORD_MAX_LENGTH = 16
+
+    /** 标点类 (Unicode 标点大类, 两端同名)。 */
+    private const val PUNCT_CLASS = "\\p{P}"
 
     private fun match(rule: String, chr: Char): Boolean {
         return rule.indexOf(chr) != -1

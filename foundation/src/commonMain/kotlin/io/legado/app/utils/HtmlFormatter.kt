@@ -4,6 +4,7 @@ import com.fleeksoft.ksoup.Ksoup
 import com.fleeksoft.ksoup.nodes.Element
 import com.fleeksoft.ksoup.nodes.Node
 import com.fleeksoft.ksoup.nodes.TextNode
+import io.legado.app.constant.AppPattern
 
 object HtmlFormatter {
     private val nbspRegex = "(&nbsp;)+".toRegex()
@@ -16,9 +17,11 @@ object HtmlFormatter {
     // 与 otherHtmlRegex 同，但放行 <button>/<img>（含其闭合形式）
     private val otherHtmlRegexKeepRich =
         "</?(?!(?:button|img)\\b)[a-zA-Z]+(?=[ >])[^<>]*>".toRegex()
-    private val indent1Regex = "\\s*\\n+\\s*".toRegex()
-    private val indent2Regex = "^[\\n\\s]+".toRegex()
-    private val lastRegex = "[\\n\\s]+$".toRegex()
+    // 空白显式写 [AppPattern.spaceClass] (含 U+3000): 各端 `\s` 定义不同,
+    // native stdlib 的 `\s` 不含 U+3000 全角空格, 而正文缩进大量用它
+    private val indent1Regex = "${AppPattern.spaceClass}*\n+${AppPattern.spaceClass}*".toRegex()
+    private val indent2Regex = "^[\n${AppPattern.spaceClassBody}]+".toRegex()
+    private val lastRegex = "[\n${AppPattern.spaceClassBody}]+$".toRegex()
 
     fun formatKeepRichTags(html: String?): String = format(html, otherHtmlRegexKeepRich)
 

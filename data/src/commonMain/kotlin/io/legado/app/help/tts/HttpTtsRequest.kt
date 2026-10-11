@@ -3,10 +3,12 @@ package io.legado.app.help.tts
 import io.legado.app.constant.AppConst
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.exception.RegexTimeoutException
 import io.legado.app.help.http.KmpResponse
 import io.legado.app.help.http.header
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.RuleRegexes
 import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.CoroutineContext
 
@@ -18,6 +20,9 @@ object HttpTtsRequest {
 
     /** 网络朗读源读取超时(毫秒) */
     const val READ_TIMEOUT_MS = 300 * 1000L
+
+    /** 期望 Content-Type 正则的单次匹配上限 (毫秒)。 */
+    private const val CONTENT_TYPE_TIMEOUT = 3000L
 
     /** 注入 url 模板 JS 作用域的变量表 */
     fun speakVariables(speakText: String, speakSpeed: Int): Map<AppConst.JsVarName, Any> {
@@ -88,8 +93,16 @@ object HttpTtsRequest {
         if (contentType == "application/json" || contentType.startsWith("text/")) {
             return ContentTypeVerdict.ERROR_BODY
         }
-        if (expected?.isNotBlank() == true && !contentType.matches(expected.toRegex())) {
-            return ContentTypeVerdict.ERROR_MISMATCH
+        if (expected?.isNotBlank() == true) {
+            // 期望正则来自 HttpTTS 源配置 (用户填写), native 端 `kotlin.text.Regex` 的编译与
+            // 匹配都会递归, 畸形规则可把线程栈写穿闪退; 匹配交给 [RuleRegexes] 的平台实现
+            val matched = try {
+                RuleRegexes.get()
+                    .matchesEntire(contentType, expected, multiline = false, timeout = CONTENT_TYPE_TIMEOUT)
+            } catch (_: RegexTimeoutException) {
+                false
+            }
+            if (!matched) return ContentTypeVerdict.ERROR_MISMATCH
         }
         return ContentTypeVerdict.OK
     }

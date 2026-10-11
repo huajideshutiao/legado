@@ -86,7 +86,8 @@ object ReplaceRuleController {
                     // (app 端扩展依赖 Coroutine.async/JsEngines 无法直接下沉 commonMain)
                     RegexReplacers.get().replace(
                         text,
-                        rule.pattern.toRegex(),
+                        rule.pattern,
+                        false,
                         rule.replacement,
                         rule.getValidTimeoutMillisecond()
                     )

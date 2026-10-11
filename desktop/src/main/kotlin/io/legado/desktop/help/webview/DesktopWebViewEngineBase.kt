@@ -2,6 +2,7 @@ package io.legado.desktop.help.webview
 
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.exception.RegexTimeoutException
 import io.legado.app.help.UserAgentProviders
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.utils.NetworkUtils
@@ -29,6 +30,9 @@ import java.util.concurrent.atomic.AtomicInteger
 internal abstract class DesktopWebViewEngineBase : DesktopWebViewEngine {
 
     companion object {
+
+        /** 嗅探正则的单次匹配上限 (毫秒); 嗅探是热路径, 与 Android/iOS 端同口径。 */
+        const val SNIFF_REGEX_TIMEOUT = 1000L
 
         /** JS 取不到结果时的重试上限, 与 app 端 EvalJsRunnable 的 `retry > 30` 一致。 */
         const val MAX_JS_RETRY = 30
@@ -89,10 +93,32 @@ internal abstract class DesktopWebViewEngineBase : DesktopWebViewEngine {
         throw NoStackTraceException("js执行超时")
     }
 
-    /** 嗅探正则对 (overrideUrlRegex, sourceRegex), 空白串视为未配置。 */
-    protected fun snifferRegexes(request: WebViewFetchRequest): Pair<Regex?, Regex?> =
-        request.overrideUrlRegex?.takeIf { it.isNotBlank() }?.toRegex() to
-            request.sourceRegex?.takeIf { it.isNotBlank() }?.toRegex()
+    /**
+     * 嗅探正则对 (overrideUrlRegex, sourceRegex) 的模式串, 空白串视为未配置。
+     *
+     * 返回模式串而非已编译 [Regex]: 嗅探正则来自书源配置, 而 native 端 `kotlin.text.Regex`
+     * 的编译是递归下降且无栈保护, 自行 `toRegex()` 会把爆栈留在调用方。
+     * 匹配一律走 [snifferMatches]。
+     */
+    protected fun snifferPatterns(request: WebViewFetchRequest): Pair<String?, String?> =
+        request.overrideUrlRegex?.takeIf { it.isNotBlank() } to
+            request.sourceRegex?.takeIf { it.isNotBlank() }
+
+    /**
+     * 嗅探正则的全量匹配 (对应原 `pattern.matches(url)`)。
+     *
+     * 经 [RuleRegexes] 的平台实现匹配并带时间上限; 编译失败或超时按"未命中"处理
+     * (嗅探失败不影响正常阅读)。
+     */
+    protected fun snifferMatches(url: String, pattern: String?): Boolean {
+        pattern ?: return false
+        return try {
+            RuleRegexes.get()
+                .matchesEntire(url, pattern, multiline = false, timeout = SNIFF_REGEX_TIMEOUT)
+        } catch (_: RegexTimeoutException) {
+            false
+        }
+    }
 
     /** 嗅探结果: 命中地址作为 body, 原 url 为空时兜底用命中地址。 */
     protected fun snifferResult(request: WebViewFetchRequest, hitUrl: String): WebViewFetchResult =

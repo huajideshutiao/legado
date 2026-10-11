@@ -1,17 +1,20 @@
 package io.legado.app.model.fileBook
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.AppPattern
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.exception.EmptyFileException
+import io.legado.app.exception.RegexTimeoutException
 import io.legado.app.help.DefaultDataShared
 import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.coroutine.runBlockingInScope
 import io.legado.app.utils.EncodingDetect
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.RuleRegexes
 import io.legado.app.utils.StringUtils
 import io.legado.app.utils.TextCharsetCodec
 import io.legado.app.utils.Utf8BomUtils
@@ -39,8 +42,13 @@ internal class TextFileCore(var book: Book) {
 
     @Suppress("ConstPropertyName")
     companion object {
-        private val padRegex = "^[\\n\\s]+".toRegex()
+        // 空白显式写 [AppPattern.spaceClassBody] (含 U+3000): 各端 `\s` 定义不同,
+        // native stdlib 的 `\s` 不含 U+3000 全角空格
+        private val padRegex = "^[\\n${AppPattern.spaceClassBody}]+".toRegex()
         private const val txtBufferSize = 8 * 1024 * 1024
+
+        /** TXT 目录规则的单次匹配上限 (毫秒), 与替换规则默认超时同口径。 */
+        private const val TOC_RULE_TIMEOUT = 3000L
     }
 
     private val blank: Byte = 0x0a
@@ -79,11 +87,11 @@ internal class TextFileCore(var book: Book) {
                 charset = textCharsetCodec(book.charset ?: "UTF-8")
                 if (book.tocUrl.isBlank() || modified) {
                     val blockContent = charset.decode(buffer, 0, length)
-                    book.tocUrl = getTocRule(blockContent)?.pattern ?: ""
+                    book.tocUrl = getTocRule(blockContent) ?: ""
                 }
             }
         }
-        val (toc, wordCount) = analyze(Regex(book.tocUrl, RegexOption.MULTILINE))
+        val (toc, wordCount) = analyze(book.tocUrl)
         book.wordCount = StringUtils.wordCountFormat(wordCount)
         toc.forEachIndexed { index, bookChapter ->
             bookChapter.index = index
@@ -132,10 +140,14 @@ internal class TextFileCore(var book: Book) {
     }
 
     /**
-     * 按规则解析目录
+     * 按规则解析目录。
+     *
+     * [pattern] 为模式串而非已编译 [Regex]: native 端 `kotlin.text.Regex` 的编译与匹配都递归
+     * (编译无栈保护、匹配按迭代次数递归), 病态目录规则可把线程栈写穿闪退且无法中止,
+     * 故编译与匹配一律交给 [RuleRegexes] 的平台实现。
      */
-    private fun analyze(pattern: Regex?): Pair<ArrayList<BookChapter>, Int> {
-        if (pattern == null || pattern.pattern.isEmpty()) {
+    private fun analyze(pattern: String?): Pair<ArrayList<BookChapter>, Int> {
+        if (pattern.isNullOrEmpty()) {
             return analyze()
         }
         val toc = arrayListOf<BookChapter>()
@@ -175,8 +187,15 @@ internal class TextFileCore(var book: Book) {
                 length = end
                 //当前Block下使过的String的指针
                 var seekPos = 0
-                //进行正则匹配 (findAll 惰性序列 = Matcher.find 逐次推进, 语义一致)
-                for (matcher in pattern.findAll(blockContent)) { //获取匹配到的字符在字符串中的起始位置
+                //进行正则匹配: 经 [RuleRegexes] (带时间上限) —— 模式串是用户配置的目录规则,
+                //native 端 `kotlin.text.Regex` 的匹配按迭代次数递归, 病态规则可把线程栈写穿闪退。
+                //超时按“本块无匹配”处理 (匹配已中止, 取不到结果); 其余异常向上抛, 不静默降级
+                val matches = try {
+                    RuleRegexes.get().findAll(blockContent, pattern, multiline = true, timeout = TOC_RULE_TIMEOUT)
+                } catch (_: RegexTimeoutException) {
+                    emptyList()
+                }
+                for (matcher in matches) { //获取匹配到的字符在字符串中的起始位置
                     val chapterStart = matcher.range.first
                     //获取章节内容
                     val chapterContent = blockContent.substring(seekPos, chapterStart)
@@ -202,7 +221,7 @@ internal class TextFileCore(var book: Book) {
                         bookWordCount += wordCount
                         //创建当前章节
                         val curChapter = BookChapter()
-                        curChapter.title = matcher.value
+                        curChapter.title = matcher.value(blockContent)
                         curChapter.start = curOffset + chapterLength
                         curChapter.end = curChapter.start
                         toc.add(curChapter)
@@ -230,7 +249,7 @@ internal class TextFileCore(var book: Book) {
                             }
                             //创建当前章节
                             val curChapter = BookChapter()
-                            curChapter.title = matcher.value
+                            curChapter.title = matcher.value(blockContent)
                             curChapter.start = curOffset + chapterLength
                             curChapter.end = curChapter.start
                             toc.add(curChapter)
@@ -246,7 +265,7 @@ internal class TextFileCore(var book: Book) {
                                 StringUtils.wordCountFormat(lastChapterWordCount)
                             //创建当前章节
                             val curChapter = BookChapter()
-                            curChapter.title = matcher.value
+                            curChapter.title = matcher.value(blockContent)
                             curChapter.start = lastChapter.end
                             curChapter.end = curChapter.start
                             toc.add(curChapter)
@@ -265,13 +284,13 @@ internal class TextFileCore(var book: Book) {
                                 StringUtils.wordCountFormat(chapterContent.length)
                             //创建当前章节
                             val curChapter = BookChapter()
-                            curChapter.title = matcher.value
+                            curChapter.title = matcher.value(blockContent)
                             curChapter.start = lastChapter.end
                             curChapter.end = curChapter.start
                             toc.add(curChapter)
                         } else { //如果章节不存在则创建章节
                             val curChapter = BookChapter()
-                            curChapter.title = matcher.value
+                            curChapter.title = matcher.value(blockContent)
                             curChapter.start = curOffset
                             curChapter.end = curOffset
                             curChapter.wordCount =
@@ -419,22 +438,32 @@ internal class TextFileCore(var book: Book) {
     }
 
     /**
-     * 获取合适的目录规则
+     * 获取合适的目录规则 (返回模式串)。
      */
-    private fun getTocRule(content: String): Regex? {
+    private fun getTocRule(content: String): String? {
         val rules = getTocRules().reversed()
         var maxNum = 1
-        var tocPattern: Regex? = null
+        var tocPattern: String? = null
         for (tocRule in rules) {
-            val pattern = try {
-                Regex(tocRule.rule, RegexOption.MULTILINE)
-            } catch (e: IllegalArgumentException) {
-                AppLog.put("TXT目录规则正则语法错误:${tocRule.name}\n$e", e)
+            // 编译校验经 [RuleRegexes] (平台实现): native 端 `Regex(pattern)` 编译是递归下降
+            // 且无栈保护, 畸形规则会直接爆栈闪退
+            val error = RuleRegexes.get().validate(tocRule.rule, multiline = true)
+            if (error != null) {
+                AppLog.put("TXT目录规则正则语法错误:${tocRule.name}\n$error", null)
                 continue
             }
+            val pattern = tocRule.rule
             var start = 0
             var num = 0
-            for (matcher in pattern.findAll(content)) {
+            // 试算也经 [RuleRegexes] (带时间上限): 候选规则要扫整块内容, 病态规则在 native 端会爆栈。
+            // 超时则跳过该候选规则 (匹配已中止, 无法统计命中数); 其余异常向上抛
+            val trial = try {
+                RuleRegexes.get().findAll(content, pattern, multiline = true, timeout = TOC_RULE_TIMEOUT)
+            } catch (_: RegexTimeoutException) {
+                AppLog.put("TXT目录规则匹配超时:${tocRule.name}", null)
+                continue
+            }
+            for (matcher in trial) {
                 if (start == 0 || matcher.range.first - start > 1000) {
                     num++
                     start = matcher.range.last + 1

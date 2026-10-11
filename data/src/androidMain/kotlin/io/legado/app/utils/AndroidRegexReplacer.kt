@@ -1,6 +1,8 @@
 package io.legado.app.utils
 
 import io.legado.app.exception.RegexTimeoutException
+import kotlinx.atomicfu.atomic
+import io.legado.app.help.casUpdate
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.script.JsBindings
 import io.legado.app.model.script.JsEngines
@@ -46,10 +48,12 @@ object AndroidRegexReplacer : RegexReplacer {
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun replace(
         source: CharSequence,
-        regex: Regex,
+        pattern: String,
+        multiline: Boolean,
         replacement: String,
         timeout: Long
     ): String {
+        val regex = compileCached(pattern, multiline)
         val isJs = replacement.startsWith("@js:")
         val replacement1 = if (isJs) replacement.substring(4) else replacement
         // 关键: 先落地成 String。libcore 的 Matcher 内部同样会 toString(),
@@ -60,8 +64,8 @@ object AndroidRegexReplacer : RegexReplacer {
                 Coroutine.async(executeContext = Dispatchers.IO) {
                     val job = launch {
                         try {
-                            val pattern = regex.toPattern()
-                            val matcher = pattern.matcher(text)
+                            val javaPattern = regex.toPattern()
+                            val matcher = javaPattern.matcher(text)
                             val stringBuffer = StringBuffer()
                             // isJs 路径: 循环外创建共享 scope + 预编译 bytecode,
                             // 避免每次匹配都重新初始化 bootstrap (性能优化, 应对长文本大量匹配)
@@ -103,7 +107,7 @@ object AndroidRegexReplacer : RegexReplacer {
                         job.onJoin {}
                         onTimeout(timeout) {
                             val timeoutMsg =
-                                "替换超时,3秒后还未结束将重启应用\n替换规则$regex\n替换内容:$text"
+                                "替换超时,3秒后还未结束将重启应用\n替换规则$pattern\n替换内容:$text"
                             val exception = RegexTimeoutException(timeoutMsg)
                             block.cancel(exception)
                             val handler = RegexErrorHandlers.getOrNull()
@@ -121,4 +125,31 @@ object AndroidRegexReplacer : RegexReplacer {
             }
         }
     }
+
+    /**
+     * 编译缓存: 调用方传的是模式串, 而阅读热路径上每章×每规则都会调用本实现,
+     * 不缓存则每次重新编译 (原 `ReplaceRule.regex` 是挂实例的懒编译)。
+     *
+     * 用不可变快照 (读侧一次原子取值即返回, 不加锁): 本表读远多于写, 且命中后不再写。
+     * 并发未命中时同一模式串最多重复编译一次 (结果等价, 无副作用)。
+     */
+    private fun compileCached(pattern: String, multiline: Boolean): Regex {
+        val key = (if (multiline) 1 else 0) to pattern
+        cacheRef.value[key]?.let { return it }
+        val regex = if (multiline) Regex(pattern, RegexOption.MULTILINE) else Regex(pattern)
+        cacheRef.casUpdate { cur ->
+            if (!cur.containsKey(key) && cur.size >= CACHE_LIMIT) {
+                val oldest = cur.keys.firstOrNull()
+                (if (oldest == null) cur else cur - oldest) + (key to regex)
+            } else {
+                cur + (key to regex)
+            }
+        }
+        return regex
+    }
+
+    /** key → 编译结果; 不可变快照, 写时整体替换。 */
+    private val cacheRef = atomic<Map<Pair<Int, String>, Regex>>(emptyMap())
+
+    private const val CACHE_LIMIT = 32
 }

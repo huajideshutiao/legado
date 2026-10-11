@@ -7,6 +7,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.rule.BookListRule
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.exception.RegexTimeoutException
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.help.source.SourceDebugLoggers
@@ -17,6 +18,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.RuleData
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.NetworkUtils
+import io.legado.app.utils.RuleRegexes
 import io.legado.app.utils.StringUtils.wordCountFormat
 import io.legado.app.utils.decodeListWithFallbackOrNull
 import kotlinx.coroutines.currentCoroutineContext
@@ -62,7 +64,14 @@ object BookList {
         }
         if (isSearch) bookSource.bookUrlPattern?.let {
             currentCoroutineContext().ensureActive()
-            if (baseUrl.matches(it.toRegex())) {
+            // 经 [RuleRegexes] 以模式串匹配 (带时间上限): 模式串来自书源, 原写法
+            // `matches(it.toRegex())` 每次调用都重新编译, 且在 native 端编译/匹配都会递归爆栈
+            val m = try {
+                RuleRegexes.get().matchesEntire(baseUrl, it, multiline = false, timeout = RULE_REGEX_TIMEOUT)
+            } catch (_: RegexTimeoutException) {
+                false
+            }
+            if (m) {
                 SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "≡链接为详情页")
                 getInfoItem(
                     bookSource,
@@ -338,4 +347,6 @@ object BookList {
         }
     }
 
+    /** 书源 URL 匹配规则的单次匹配上限 (毫秒), 与替换规则默认超时同口径。 */
+    private const val RULE_REGEX_TIMEOUT = 3000L
 }

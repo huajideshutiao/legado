@@ -5,9 +5,11 @@ package io.legado.app.help.http
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.exception.RegexTimeoutException
 import io.legado.app.help.getUserAgent
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.WebViewSnifferScripts
+import io.legado.app.utils.RuleRegexes
 import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -110,6 +112,15 @@ private const val JS_RETRY_INTERVAL_MS = 1000L
 /** 等页面/等嗅探命中的轮询粒度。 */
 private const val POLL_INTERVAL_MS = 100L
 
+/**
+ * 嗅探正则的单次匹配上限 (毫秒)。
+ *
+ * 模式串由书源作者填写且逐个候选地址匹配, 在 native 端 `kotlin.text.Regex` 上会爆栈;
+ * 改走 [RuleRegexes] 平台实现 (iOS 为 ICU 引擎) 并带时间上限。取 1s: 嗅探是轮询热路径,
+ * 单次判定不能占用与正文替换同量级的预算。
+ */
+private const val SNIFF_REGEX_TIMEOUT = 1000L
+
 /** cookie 回写走 IO, 不占主线程 (对照 desktop WindowsWebViewEngine.scope)。 */
 private val cookieScope = CoroutineScope(SupervisorJob() + IoDispatcher)
 
@@ -190,7 +201,7 @@ private class IosBackstageWebViewHandle(
         val view = WKWebView(CGRectMake(0.0, 0.0, 375.0, 667.0), configuration)
         view.customUserAgent = headerMap.getUserAgent()
         val navDelegate = BackstageNavDelegate(
-            overrideRegex = overrideUrlRegex?.takeIf { it.isNotBlank() }?.toRegex(),
+            overridePattern = overrideUrlRegex?.takeIf { it.isNotBlank() },
             onFinish = { finished = true; harvestCookies(it) },
             onFail = { failure = NoStackTraceException("webView加载失败: $it") },
             onHit = { hitUrl = it },
@@ -248,7 +259,9 @@ private class IosBackstageWebViewHandle(
      * `withTimeout(AppConst.timeLimit)` 到点抛 TimeoutCancellationException, 走既有失败路径。
      */
     private suspend fun runSniffer(webView: WKWebView): StrResponse {
-        val source = sourceRegex?.takeIf { it.isNotBlank() }?.toRegex()
+        // 模式串不在此编译: 嗅探正则由书源作者填写, native 端 `kotlin.text.Regex` 的编译是
+        // 递归下降且无栈保护, 畸形规则会在编译这一步爆栈闪退; 匹配交给 [RuleRegexes] 的平台实现
+        val source = sourceRegex?.takeIf { it.isNotBlank() }
         val seen = HashSet<String>()
         var waited = 0L
         var injected = false
@@ -282,14 +295,21 @@ private class IosBackstageWebViewHandle(
      */
     private suspend fun collectResourceHit(
         webView: WKWebView,
-        source: Regex,
+        source: String,
         seen: MutableSet<String>,
     ): String? {
         val body = evaluate(webView, WebViewSnifferScripts.SNIFF_COLLECT_JS) ?: return null
         val urls = runCatching { Json.parseToJsonElement(body).jsonArray }.getOrNull() ?: return null
         for (element in urls) {
             val target = element.jsonPrimitive.contentOrNull ?: continue
-            if (seen.add(target) && source.matches(target)) return target
+            if (!seen.add(target)) continue
+            val matched = try {
+                RuleRegexes.get()
+                    .matchesEntire(target, source, multiline = false, timeout = SNIFF_REGEX_TIMEOUT)
+            } catch (_: RegexTimeoutException) {
+                false
+            }
+            if (matched) return target
         }
         return null
     }
@@ -376,7 +396,7 @@ private class IosBackstageWebViewHandle(
  * [ObjCSignatureOverride] 声明实际重写的是哪个 ObjC 选择器。
  */
 private class BackstageNavDelegate(
-    private val overrideRegex: Regex?,
+    private val overridePattern: String?,
     private val onFinish: (WKWebView) -> Unit,
     private val onFail: (String) -> Unit,
     private val onHit: (String) -> Unit,
@@ -403,7 +423,14 @@ private class BackstageNavDelegate(
         decisionHandler: (WKNavigationActionPolicy) -> Unit,
     ) {
         val target = decidePolicyForNavigationAction.request.URL?.absoluteString
-        if (target != null && overrideRegex?.matches(target) == true) {
+        // 与 sourceRegex 同口径: 模式串不在此编译, 匹配走 [RuleRegexes] 的平台实现
+        val hit = target != null && overridePattern != null && try {
+            RuleRegexes.get()
+                .matchesEntire(target, overridePattern, multiline = false, timeout = SNIFF_REGEX_TIMEOUT)
+        } catch (_: RegexTimeoutException) {
+            false
+        }
+        if (target != null && hit) {
             onHit(target)
             // 对齐原版 shouldOverrideUrlLoading 返回 true: 命中即取消导航
             decisionHandler(WKNavigationActionPolicy.WKNavigationActionPolicyCancel)

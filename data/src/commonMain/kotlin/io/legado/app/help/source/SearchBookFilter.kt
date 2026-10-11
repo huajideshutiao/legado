@@ -4,6 +4,8 @@ import io.legado.app.constant.AppPattern
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SourceFilterRule
+import io.legado.app.exception.RegexTimeoutException
+import io.legado.app.utils.RuleRegexes
 import io.legado.app.utils.splitNotBlank
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.sync.Mutex
@@ -26,7 +28,7 @@ import kotlinx.coroutines.sync.withLock
 object SearchBookFilter {
 
     private data class CompiledRule(
-        val regex: Regex,
+        val pattern: String,
         val fields: Set<SourceFilterRule.Field>,
         val scope: SourceFilterRule.Scope,
     )
@@ -136,7 +138,15 @@ object SearchBookFilter {
         for (field in fields) {
             val text = field.extract(book) ?: continue
             if (text.isEmpty()) continue
-            if (regex.containsMatchIn(text)) return true
+            // 经 [RuleRegexes]: 屏蔽规则模式串来自用户, native 端 `kotlin.text.Regex` 的编译与
+            // 匹配都会递归, 病态规则可把线程栈写穿直接闪退且无法中止。
+            // 只把超时当“未命中”: 编译失败意味着规则写错, 不可与“不匹配”混为一谈
+            val matched = try {
+                RuleRegexes.get().find(text, pattern, multiline = false, timeout = FILTER_TIMEOUT) != null
+            } catch (_: RegexTimeoutException) {
+                false
+            }
+            if (matched) return true
         }
         return false
     }
@@ -167,11 +177,13 @@ object SearchBookFilter {
             runCatching { AppDbProviders.get().sourceFilterRuleDao.enabled() }.getOrNull() ?: return emptyList()
         return raw.mapNotNull { rule ->
             if (rule.pattern.isEmpty()) return@mapNotNull null
-            val regex = runCatching { Regex(rule.pattern) }.getOrNull() ?: return@mapNotNull null
+            // 编译校验经 [RuleRegexes] (平台实现): native 端 `Regex(pattern)` 编译是递归下降
+            // 且无栈保护, 畸形模式串会直接爆栈闪退
+            if (RuleRegexes.get().validate(rule.pattern, multiline = false) != null) return@mapNotNull null
             val fields = SourceFilterRule.parseFields(rule.fields)
             if (fields.isEmpty()) return@mapNotNull null
             CompiledRule(
-                regex = regex,
+                pattern = rule.pattern,
                 fields = fields,
                 scope = SourceFilterRule.parseScope(rule.scope),
             )
@@ -189,4 +201,7 @@ object SearchBookFilter {
         }
         return map
     }
+
+    /** 屏蔽规则的单次匹配上限 (毫秒), 与替换规则默认超时同口径。 */
+    private const val FILTER_TIMEOUT = 3000L
 }
