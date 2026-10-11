@@ -90,6 +90,7 @@
     <string name="previous_chapter">Prior</string>
     <string name="pt_hide_status_bar">Hide status bar</string>
     <string name="read_aloud">Speech</string>
+    <string name="channel_media_play">メディア再生</string>
     <string name="read_aloud_t">Speaking</string>
     <string name="read_aloud_s">Click to open the Reading</string>
     <string name="audio_play">Play</string>

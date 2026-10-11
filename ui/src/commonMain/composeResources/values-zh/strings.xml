@@ -553,6 +553,7 @@
     <string name="reading_completed">朗读完成</string>
     <string name="reading_error">朗读出错</string>
     <string name="read_aloud">朗读</string>
+    <string name="channel_media_play">媒体播放</string>
     <string name="aloud_stop">朗读停止</string>
     <string name="select_cover_image">选择封面图片</string>
     <string name="input_new_cover_url">请输入新的封面 URL</string>

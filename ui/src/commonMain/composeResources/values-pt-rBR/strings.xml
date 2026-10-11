@@ -90,6 +90,7 @@
     <string name="previous_chapter">Anterior</string>
     <string name="pt_hide_status_bar">Ocultar barra de status</string>
     <string name="read_aloud">Voz</string>
+    <string name="channel_media_play">Reprodução de mídia</string>
     <string name="read_aloud_t">Falando</string>
     <string name="read_aloud_s">Clique para abrir a leitura</string>
     <string name="audio_play">Reproduzir</string>

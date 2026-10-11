@@ -89,6 +89,7 @@
     <string name="previous_chapter">上一章</string>
     <string name="pt_hide_status_bar">隱藏狀態欄</string>
     <string name="read_aloud">朗讀</string>
+    <string name="channel_media_play">媒體播放</string>
     <string name="read_aloud_t">正在朗讀</string>
     <string name="read_aloud_s">點擊打開閲讀介面</string>
     <string name="audio_play">播放</string>

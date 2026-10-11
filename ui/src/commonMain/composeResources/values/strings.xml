@@ -553,6 +553,7 @@
     <string name="reading_completed">Read-aloud completed</string>
     <string name="reading_error">Read-aloud error</string>
     <string name="read_aloud">Speech</string>
+    <string name="channel_media_play">Media Playback</string>
     <string name="aloud_stop">Speak Stopped</string>
     <string name="select_cover_image">Select cover image</string>
     <string name="input_new_cover_url">Enter the new cover URL</string>

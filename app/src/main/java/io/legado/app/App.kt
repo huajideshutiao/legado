@@ -438,7 +438,7 @@ class App : Application() {
 
         val readAloudChannel = NotificationChannel(
             channelIdReadAloud,
-            androidAppString("read_aloud"),
+            androidAppString("channel_media_play"),
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
             enableLights(false)
