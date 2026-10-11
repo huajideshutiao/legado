@@ -20,7 +20,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
-import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,6 +44,7 @@ import io.legado.app.help.config.AppConfigRanges
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppDropdownField
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSlider
@@ -154,10 +154,8 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
         properties = AppDialogSizes.properties(),
     ) {
         // 圆角/底色对齐 alert DSL AppAlertDialogContent (AppDialog 窗口无背景)
-        Surface(
+        AppDialogSurface(
             modifier = Modifier.appDialogSize(),
-            shape = DesignTokens.shapeDefault,
-            color = colors.fillet,
         ) {
             Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(
@@ -440,10 +438,8 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
         properties = AppDialogSizes.properties(),
     ) {
         // 圆角/底色对齐 alert DSL AppAlertDialogContent (AppDialog 窗口无背景)
-        Surface(
+        AppDialogSurface(
             modifier = Modifier.appDialogSize(),
-            shape = DesignTokens.shapeDefault,
-            color = colors.fillet,
         ) {
             Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(

@@ -2,6 +2,7 @@
     <!-- ==================== Arco Design 圆角体系 ==================== -->
     <dimen name="arco_radius_sm">4dp</dimen>
     <dimen name="arco_radius_default">8dp</dimen>
+    <dimen name="arco_radius_md">12dp</dimen>
     <dimen name="arco_radius_lg">16dp</dimen>
 
     <!-- ==================== Arco Design 尺寸体系 ==================== -->

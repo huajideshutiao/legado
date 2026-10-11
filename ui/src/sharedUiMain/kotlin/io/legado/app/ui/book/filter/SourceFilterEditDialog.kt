@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
-import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -31,6 +30,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.search.SearchScopeDialog
 import io.legado.app.ui.compose.component.AppCheckbox
+import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppUnderlineTextField
@@ -153,9 +153,7 @@ fun SourceFilterEditDialog(
         onDismiss()
     }
 
-    Surface(
-        shape = DesignTokens.dialogShape,
-        color = colors.fillet,
+    AppDialogSurface(
         modifier = Modifier.fillMaxWidth().padding(DesignTokens.spacingDefault),
     ) {
         Column(Modifier.fillMaxWidth()) {

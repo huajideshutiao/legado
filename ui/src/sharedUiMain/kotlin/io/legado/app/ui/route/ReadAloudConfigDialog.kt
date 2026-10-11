@@ -1,7 +1,6 @@
 package io.legado.app.ui.route
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,10 +19,10 @@ import io.legado.app.ui.book.read.config.ReadAloudConfigScreen
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
@@ -57,9 +56,7 @@ fun ReadAloudConfigDialogHost(
         properties = AppDialogSizes.properties(),
     ) {
         AppTheme {
-            Surface(
-                shape = DesignTokens.dialogShape,
-                color = AppTheme.colors.fillet,
+            AppDialogSurface(
                 modifier = Modifier.appDialogSize(),
             ) {
                 Column {

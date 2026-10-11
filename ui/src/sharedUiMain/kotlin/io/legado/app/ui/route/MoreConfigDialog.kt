@@ -2,7 +2,6 @@ package io.legado.app.ui.route
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,6 +22,7 @@ import io.legado.app.ui.book.read.config.MoreConfigScreen
 import io.legado.app.ui.book.read.page.detectClickArea
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -34,7 +34,7 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 阅读界面更多设置底部弹窗形态 (对照原版 MoreConfigDialog:
  * BasePrefDialogFragment + setupAsBottomDialog(480dp): 全宽贴底、固定高 480dp、
- * 无圆角 (applyFilletBackground=false) + 背景 R.color.background, 无标题栏)。
+ * 无标题栏; 圆角/背景按对话框统一规格 = shapeDefault + bottomBackground, 原版无圆角。
  * 由阅读菜单"设置"按钮弹起, 行为与正文 [MoreConfigBody] 一致。
  */
 @Composable
@@ -48,10 +48,9 @@ fun MoreConfigDialogHost(
         maxHeight = 480.dp,
     ) {
         AppTheme {
-            // 原版 setupAsBottomDialog: MATCH_PARENT 全宽 + 高 480dp + 无圆角 (BasePrefDialogFragment
-            // applyFilletBackground=false); 内容背景 bottomBackground (createPrefContainer)
-            Surface(
-                shape = RoundedCornerShape(0.dp),
+            // 原版 setupAsBottomDialog: MATCH_PARENT 全宽 + 高 480dp (BasePrefDialogFragment);
+            // 圆角按对话框统一规格收口为 shapeDefault, 背景 bottomBackground (createPrefContainer)
+            AppDialogSurface(
                 color = AppTheme.colors.bottomBackground,
                 modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
             ) {

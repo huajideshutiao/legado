@@ -854,7 +854,7 @@ fun ResolutionButton(
             },
             modifier = Modifier.appDialogSize(),
             properties = AppDialogSizes.properties(),
-            shape = DesignTokens.dialogShape,
+            shape = DesignTokens.shapeDefault,
             backgroundColor = AppTheme.colors.background,
         )
     }

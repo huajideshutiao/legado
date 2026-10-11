@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
-import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +33,7 @@ import io.legado.app.ui.compose.component.AppAutoCompleteField
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.appDialogSize
@@ -116,9 +116,7 @@ fun ImportItemsDialog(
     val stateExisting = stringResource(Res.string.import_state_existing)
 
     AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
-        Surface(
-            shape = DesignTokens.dialogShape,
-            color = AppTheme.colors.fillet,
+        AppDialogSurface(
             modifier = surfaceModifier,
         ) {
             ImportListScaffold(

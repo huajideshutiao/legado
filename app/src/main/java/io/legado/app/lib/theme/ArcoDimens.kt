@@ -46,15 +46,17 @@ class ArcoSpacing(context: Context) {
     val max: Int = context.resources.getDimensionPixelSize(R.dimen.arco_spacing_max)
 }
 
-/** Arco Design 圆角体系：sm=4 / default=8 / lg=16 dp；Float 别名复用 Int 缓存 */
+/** Arco Design 圆角体系：sm=4 / default=8 / md=12 / lg=16 dp；Float 别名复用 Int 缓存 */
 class ArcoRadius(context: Context) {
     val sm: Int = context.resources.getDimensionPixelSize(R.dimen.arco_radius_sm)
     val default: Int = context.resources.getDimensionPixelSize(R.dimen.arco_radius_default)
+    val md: Int = context.resources.getDimensionPixelSize(R.dimen.arco_radius_md)
     val lg: Int = context.resources.getDimensionPixelSize(R.dimen.arco_radius_lg)
 
     /** Float 版，用于 GradientDrawable.cornerRadius 等 Float 形参 */
     val smF: Float get() = sm.toFloat()
     val defaultF: Float get() = default.toFloat()
+    val mdF: Float get() = md.toFloat()
     val lgF: Float get() = lg.toFloat()
 }
 

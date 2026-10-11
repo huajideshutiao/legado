@@ -37,6 +37,7 @@ import io.legado.app.constant.ThreadSafeDateFormat
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
@@ -213,9 +214,7 @@ fun BookmarkShareCardDialog(
     var exporting by remember { mutableStateOf(false) }
 
     AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
-        Surface(
-            shape = DesignTokens.dialogShape,
-            color = colors.fillet,
+        AppDialogSurface(
             modifier = Modifier.appDialogSize(),
         ) {
             Column(Modifier.fillMaxWidth()) {

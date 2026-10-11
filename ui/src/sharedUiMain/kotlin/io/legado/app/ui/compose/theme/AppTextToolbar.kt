@@ -30,7 +30,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
@@ -89,7 +88,8 @@ import kotlin.math.roundToInt
 // miuix.toolbar.FloatingActionMode)。Compose 起 ActionMode 时 originatingView 是
 // AndroidComposeView 而非 TextView, 拿不到那套, 故自绘对齐其规格。
 // 唯一按用户指定偏离 miuix: 阴影 8dp (miuix card_elevation 9dp), 背景走动态主题底栏色。
-private val ToolbarShape = RoundedCornerShape(13.09.dp) // dialog_corner_radius 13.089996dp
+// 文本工具条圆角: 原版 dialog_corner_radius 13.09dp 按统一令牌归整为 shapeMd (12dp, arco_radius_md)
+private val ToolbarShape = DesignTokens.shapeMd
 private val ToolbarHeight = 50.dp // floating_toolbar_height
 private val ToolbarTextSize = 16.sp // floating_toolbar_text_size
 private val ToolbarElevation = 8.dp // 用户指定 (miuix card_elevation 9dp)
@@ -519,7 +519,7 @@ private data class MenuMetrics(
     )
 }
 
-/** 卡片外壳: 动态底栏色 + 13.09dp 圆角 + 8dp 阴影; E-Ink 去阴影改描边。 */
+/** 卡片外壳: 动态底栏色 + 12dp 圆角 (shapeMd) + 8dp 阴影; E-Ink 去阴影改描边。 */
 @Composable
 private fun ToolbarSurface(
     eInk: Boolean,

@@ -8,7 +8,6 @@ package io.legado.app.ui.about
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -20,6 +19,7 @@ import io.legado.app.model.Download
 import io.legado.app.ui.compose.MarkdownContentSelectable
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
@@ -63,10 +63,8 @@ internal fun UpdateDialogOverlayContent(overlay: AppOverlay.Dialog, navigator: A
         onDismissRequest = { navigator.dismissOverlay(overlay.key) },
         properties = AppDialogSizes.properties(),
     ) {
-        Surface(
+        AppDialogSurface(
             modifier = Modifier.appDialogSize(),
-            shape = DesignTokens.shapeDefault,
-            color = AppTheme.colors.fillet,
         ) {
             Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(

@@ -1,7 +1,6 @@
 ﻿package io.legado.app.ui.route
 
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -28,10 +27,10 @@ import io.legado.app.ui.compose.component.AppAlertDialogContent
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.utils.stackTraceStr
@@ -61,8 +60,7 @@ fun BgTextConfigDialogHost(
         AppTheme {
             // 原版 BaseBottomDialogFragment: 窗口 MATCH_PARENT 全宽贴底, filletBackground 8dp 圆角;
             // 内容 8dp 间距由 BgTextConfigScreen 内部 padding(8.dp) 提供 (XML root padding=default)。
-            Surface(
-                shape = DesignTokens.shapeDefault,
+            AppDialogSurface(
                 color = AppTheme.colors.bottomBackground,
                 modifier = Modifier.fillMaxWidth(),
             ) {

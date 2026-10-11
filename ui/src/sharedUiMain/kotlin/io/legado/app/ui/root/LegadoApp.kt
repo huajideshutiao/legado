@@ -84,6 +84,7 @@ import io.legado.app.ui.compose.platform.dismissTopLayer
 import io.legado.app.ui.compose.platform.handleBackKey
 import io.legado.app.ui.compose.platform.performBack
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.config.BookshelfLayoutConfigDialog
 import io.legado.app.ui.config.BottomNavConfigDialog
@@ -1298,7 +1299,7 @@ private fun SheetOverlayContent(overlay: AppOverlay.Sheet, navigator: AppNavigat
                     // 全屏态贴齐窗口四边, 圆角去掉 (对齐全屏路由页的观感)
                     .then(
                         if (fullScreen) Modifier
-                        else Modifier.clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                        else Modifier.clip(DesignTokens.sheetShape)
                     ),
             ) {
                 if (overlay.key == "web_view") {

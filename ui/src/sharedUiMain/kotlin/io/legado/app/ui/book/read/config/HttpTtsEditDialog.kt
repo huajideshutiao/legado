@@ -14,12 +14,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
-import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.FormEditFields
 import io.legado.app.ui.compose.component.OverflowMenu
@@ -167,9 +167,7 @@ fun HttpTtsEditDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
-        Surface(
-            shape = DesignTokens.dialogShape,
-            color = colors.fillet,
+        AppDialogSurface(
             modifier = Modifier.appDialogSize(fullHeight = true).padding(
                 start = DesignTokens.spacingDefault,
                 top = DesignTokens.spacingLg,

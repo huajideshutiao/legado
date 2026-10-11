@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -32,6 +33,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -59,6 +62,7 @@ import io.legado.app.ui.compose.platform.PlatformDialogDim
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
 import io.legado.app.ui.compose.theme.AppTextMenuState
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalAppTextMenuState
 import io.legado.app.ui.compose.theme.ProvidePlatformTextMenu
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -257,6 +261,26 @@ fun AppDialog(
             }
         }
     }
+}
+
+/**
+ * 对话框正文统一容器：8dp 圆角 (shapeDefault) + fillet 底色收口于此, 与命令式宿主
+ * filletBackground 同规格; 对话框正文一律用它, 不再各自声明 shape。
+ * 需要其他底色/形状的 (贴底弹层等) 经 color/shape 覆盖。
+ */
+@Composable
+fun AppDialogSurface(
+    modifier: Modifier = Modifier,
+    shape: Shape = AppTheme.DesignTokens.shapeDefault,
+    color: Color = AppTheme.colors.fillet,
+    content: @Composable () -> Unit,
+) {
+    Surface(
+        modifier = modifier,
+        shape = shape,
+        color = color,
+        content = content,
+    )
 }
 
 /**

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -51,6 +50,7 @@ import io.legado.app.ui.book.read.config.ReadStyleController
 import io.legado.app.ui.book.read.config.ReadStyleScreen
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -87,8 +87,7 @@ fun ReadStyleDialogHost(
                 // 背景 filletBackground (bottomBackground 色 + radius.default 8dp 圆角);
                 // 内容横向 8dp 间距由 ReadStyleScreen 内部 padding(horizontal=spacingDefault) 提供
                 // (arco_spacing_default; 原 XML root 为 lg)。
-                Surface(
-                    shape = DesignTokens.shapeDefault,
+                AppDialogSurface(
                     color = AppTheme.colors.bottomBackground,
                     modifier = Modifier.fillMaxWidth(),
                 ) {

@@ -19,7 +19,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
-import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +47,7 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.commitBackgroundImage
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.listItemFocus
 import io.legado.app.ui.compose.component.AppSlider
@@ -371,10 +371,8 @@ fun ThemeCustomizeDialog(
         // 圆角/底色对齐 BaseComposeDialogFragment.filletBackground (AppDialog 窗口本身无背景,
         // 不包 Surface 会整窗透明, 内容直接压在页面上 —— 同 ThemeListDialog 记过的坑)。
         // 高度随内容 (上限 appDialogSize), 对齐 app 端 Column(fillMaxWidth) 的包裹语义
-        Surface(
+        AppDialogSurface(
             modifier = Modifier.appDialogSize(),
-            shape = DesignTokens.shapeDefault,
-            color = colors.fillet,
         ) {
             Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(

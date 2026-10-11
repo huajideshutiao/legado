@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
-import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -25,6 +24,7 @@ import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
@@ -68,10 +68,8 @@ fun GroupManageDialog(
     ) {
         // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
         // 全高型: 高度锁定 0.7 屏高
-        Surface(
+        AppDialogSurface(
             modifier = Modifier.appDialogSize(fullHeight = true),
-            shape = DesignTokens.shapeDefault,
-            color = colors.fillet,
         ) {
             RuleManageScaffold(
                 items = displayGroups,

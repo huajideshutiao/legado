@@ -12,7 +12,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -89,10 +88,8 @@ fun AppAlertDialogContent(
     content: (@Composable () -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
-    Surface(
+    AppDialogSurface(
         modifier = modifier,
-        shape = DesignTokens.shapeDefault,
-        color = colors.fillet,
     ) {
         Column(Modifier.padding(DesignTokens.spacingDefault)) {
             title?.let {

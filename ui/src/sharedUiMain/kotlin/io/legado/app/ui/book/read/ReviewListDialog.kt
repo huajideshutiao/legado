@@ -36,7 +36,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
@@ -175,7 +174,7 @@ fun ReviewListDialog(
     Column(
         modifier
             .fillMaxSize()
-            .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            .clip(DesignTokens.sheetShape)
             .background(rememberColor("background"))
     ) {
         // 顶栏三段: 左关闭槽 + 居中标题 + 右排序槽。标题居中于整条顶栏 (对照原版

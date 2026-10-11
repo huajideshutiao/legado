@@ -11,7 +11,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
-import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -28,6 +27,7 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -114,10 +114,8 @@ private fun ThemeListDialogContent(
 
     // 圆角/底色对齐 BaseComposeDialogFragment.filletBackground + alert DSL AppAlertDialogContent
     // (AppDialog 窗口本身无背景, 不包 Surface 会整窗透明, 如实测主题列表背景丢失)
-    Surface(
+    AppDialogSurface(
         modifier = Modifier.appDialogSize(fullHeight = true),
-        shape = DesignTokens.shapeDefault,
-        color = colors.fillet,
     ) {
         Column(Modifier.fillMaxSize()) {
             DialogTitleBar(

@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -110,7 +109,7 @@ data class ClickActionConfig(
  * # 样式 (对照原版 dialog_click_action_config.xml 全屏半透明覆盖层)
  *
  * - 全屏对话框: 内容 fillMaxSize, 背景 #99343434 半透明 (原版 @color/translucent)
- * - 3x3 网格铺满全屏: 每格 1dp 间隔 + 3dp 圆角半透明卡片 + 白色动作名 (原版 shape_translucent_card)
+ * - 3x3 网格铺满全屏: 每格 1dp 间隔 + shapeSm(4dp) 圆角半透明卡片 + 白色动作名 (原版 shape_translucent_card 3dp)
  * - 底部栏: 原版 LinearLayout (margin arco_spacing_lg, 半透明卡片, 标题 + 关闭按钮)
  *
  * @param clickActionConfig 9 个区域当前动作值
@@ -124,9 +123,9 @@ fun ClickActionDialog(
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    // 原版 @color/translucent (#99343434) / @color/white；卡片圆角 3dp（shape_translucent_card）
+    // 原版 @color/translucent (#99343434) / @color/white；卡片圆角对齐 shapeSm (原版 shape_translucent_card 3dp)
     val translucent = Color(0x99343434)
-    val cardShape = RoundedCornerShape(3.dp)
+    val cardShape = DesignTokens.shapeSm
 
     // 13 个可选动作 (key=动作值, value=动作名), 顺序与原版 actions linkedMapOf 完全一致
     // rememberString 是 @Composable, 不能在 remember{} 内调用, 直接每次重组时构建

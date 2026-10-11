@@ -1,6 +1,5 @@
 package io.legado.app.ui.route
 
-import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
@@ -12,9 +11,9 @@ import io.legado.app.ui.book.read.config.ReadLayoutConfigScreen
 import io.legado.app.ui.book.read.config.TipConfigController
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 版面设置弹窗形态（原 边距/提示 两个对话框合并，对照原版 PaddingConfigDialog +
@@ -33,8 +32,7 @@ fun ReadLayoutConfigDialogHost(
     ) {
         AppTheme {
             // 原版 BaseDialogFragment: 0.9 宽居中 + filletBackground 8dp 圆角
-            Surface(
-                shape = DesignTokens.shapeDefault,
+            AppDialogSurface(
                 color = AppTheme.colors.background,
                 modifier = Modifier.appDialogSize(),
             ) {

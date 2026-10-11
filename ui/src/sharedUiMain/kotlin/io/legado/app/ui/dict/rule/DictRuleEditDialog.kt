@@ -16,7 +16,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
-import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -28,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import io.legado.app.data.entities.DictRule
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
@@ -143,9 +143,7 @@ fun DictRuleEditDialog(
         }
     }
 
-    Surface(
-        shape = DesignTokens.dialogShape,
-        color = colors.fillet,
+    AppDialogSurface(
         modifier = Modifier.fillMaxWidth().padding(DesignTokens.spacingDefault),
     ) {
         Column(Modifier.fillMaxWidth()) {

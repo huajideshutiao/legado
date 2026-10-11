@@ -56,20 +56,23 @@ object AppTheme {
      * 动态主题色走 [AppTheme.colors], 此处仅放静态兜底值。
      */
     object DesignTokens {
-        // Arco 圆角三档 (对齐 dimens.xml arco_radius_sm/default/lg)
+        // Arco 圆角四档 (对齐 dimens.xml arco_radius_sm/default/md/lg)
         val radiusSm: Dp = 4.dp
         val radiusDefault: Dp = 8.dp
+        val radiusMd: Dp = 12.dp
         val radiusLg: Dp = 16.dp
 
-        // 预建形状三档, 调用方直接复用, 不再各处 new RoundedCornerShape
+        // 预建形状四档, 调用方直接复用, 不再各处 new RoundedCornerShape
         val shapeSm: RoundedCornerShape = RoundedCornerShape(radiusSm)
         val shapeDefault: RoundedCornerShape = RoundedCornerShape(radiusDefault)
+        val shapeMd: RoundedCornerShape = RoundedCornerShape(radiusMd)
         val shapeLg: RoundedCornerShape = RoundedCornerShape(radiusLg)
 
-        // 语义别名: 整屏对话框 16dp / 卡片弹层 8dp / 按钮 8dp
+        // 语义别名: 半屏目录 16dp / 卡片弹层 8dp / 按钮 8dp / 贴底弹层顶角 16dp
         val dialogShape: RoundedCornerShape = shapeLg
         val cardShape: RoundedCornerShape = shapeDefault
         val buttonShape: RoundedCornerShape = shapeDefault
+        val sheetShape: RoundedCornerShape = RoundedCornerShape(topStart = radiusLg, topEnd = radiusLg)
 
         // 对话框尺寸占锚点 (桌面=主窗口, 移动端=屏幕) 的比例; 消费方见 AppDialogSizes。
         // 高度 0.8 为全局统一值, 新弹窗一律取这里而非自行乘系数

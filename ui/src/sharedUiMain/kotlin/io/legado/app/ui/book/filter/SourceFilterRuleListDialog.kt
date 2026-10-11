@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
-import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -28,6 +27,7 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextButton
@@ -97,11 +97,9 @@ fun SourceFilterRuleListDialog(
         properties = AppDialogSizes.properties(),
     ) {
         // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
-        Surface(
+        AppDialogSurface(
             // 原版 isFullHeight = true, 高度固定 0.7 屏高
             modifier = Modifier.appDialogSize(fullHeight = true),
-            shape = DesignTokens.shapeDefault,
-            color = colors.fillet,
         ) {
             RuleManageScaffold(
                 items = rules,
@@ -166,10 +164,8 @@ fun SourceFilterRuleListDialog(
             properties = AppDialogSizes.properties(),
         ) {
             // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
-            Surface(
+            AppDialogSurface(
                 modifier = Modifier.appDialogSize(),
-                shape = DesignTokens.shapeDefault,
-                color = colors.fillet,
             ) {
                 SourceFilterEditDialog(
                     rule = editing,
