@@ -119,7 +119,9 @@ import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.rememberStringArray
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.config.ThemeCustomizeDialog
+import io.legado.app.ui.config.MODE_EDIT_CONFIG
+import io.legado.app.ui.config.MODE_EDIT_PREFS
+import io.legado.app.ui.config.MODE_NEW_CONFIG
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
@@ -482,13 +484,11 @@ class AndroidPlatformCapabilities(
         IntentHelp.openTTSSetting()
     }
 
-    // 对照 ReadAloudConfigDialog 的"+"按钮/行编辑: showDialogFragment(HttpTtsEditDialog)
+    // 对照 ReadAloudConfigDialog 的"+"按钮/行编辑: 其他端经 showOverlay("httpTtsEdit") 弹共享编辑窗口
     override fun showHttpTtsEditDialog(engine: HttpTTS?) {
-        if (engine == null) {
-            activity.showDialogFragment<HttpTtsEditDialog>()
-        } else {
-            activity.showDialogFragment(HttpTtsEditDialog(engine.id))
-        }
+        AppNavigatorProviders.get().showOverlay(
+            AppOverlay.Dialog("httpTtsEdit", payload = engine?.id?.toString())
+        )
     }
 
     // 对照 app 端 FontSelectDialog.loadFontFiles: pref 字体目录 + externalFiles/font 合并去重排序
@@ -1705,25 +1705,26 @@ class AndroidPlatformCapabilities(
     // ===== 主题设置弹窗平台能力: 对照 ThemeConfigFragment 同名方法 =====
 
     // 主题自定义编辑 (对照 ThemeCustomizeDialog.editConfig / newConfig)
-// 仍走 Fragment (ThemeCustomizeDialog 未下沉 shared)
+    // 经 showOverlay("theme_customize") 弹 shared 完整实现 (含背景图/模糊, 选图走 FilePickerService)
     override fun showThemeCustomizeDialog(configIndex: Int?, isNight: Boolean) {
-        if (configIndex != null) {
-            ThemeCustomizeDialog.editConfig(configIndex)
-                .show(activity.supportFragmentManager, "themeCustomize")
-        } else {
-            ThemeCustomizeDialog.newConfig(isNight)
-                .show(activity.supportFragmentManager, "themeCustomize")
-        }
+        val mode = if (configIndex == null) MODE_NEW_CONFIG else MODE_EDIT_CONFIG
+        AppNavigatorProviders.get().showOverlay(
+            AppOverlay.Dialog("theme_customize", payload = "$mode,${configIndex ?: -1},$isNight")
+        )
     }
 
     // 对照 ThemeConfigFragment: "customizeDayTheme" -> ThemeCustomizeDialog.editPrefs(false)
     override fun showCustomizeDayThemeDialog() {
-        activity.showDialogFragment(ThemeCustomizeDialog.editPrefs(false))
+        AppNavigatorProviders.get().showOverlay(
+            AppOverlay.Dialog("theme_customize", payload = "$MODE_EDIT_PREFS,-1,false")
+        )
     }
 
     // 对照 ThemeConfigFragment: "customizeNightTheme" -> ThemeCustomizeDialog.editPrefs(true)
     override fun showCustomizeNightThemeDialog() {
-        activity.showDialogFragment(ThemeCustomizeDialog.editPrefs(true))
+        AppNavigatorProviders.get().showOverlay(
+            AppOverlay.Dialog("theme_customize", payload = "$MODE_EDIT_PREFS,-1,true")
+        )
     }
 
     // 莫奈取色: 壁纸取色 API 仅 Android 12+ (S=31) 提供; eInk 显隐门在 ThemeConfigRoute
