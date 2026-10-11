@@ -14,7 +14,9 @@ import kotlin.concurrent.Volatile
  * (CacheBookShared) 用到的方法, 由 app 端 WebBookProvidersImpl 包装 BookHelp 实现,
  * 在 App.onCreate 经 [BookHelpProviders.register] 注册。
  *
- * 桌面端 DesktopBookHelpAccessor 仅实现 saveContent (无图片缓存, 其余走默认实现)。
+ * 桌面端 DesktopBookHelpAccessor 与 iOS/鸿蒙 NativeBookHelpAccessor 的图片编排走共享
+ * [io.legado.app.help.book.BookImageDownloadShared] (与 app 端同链路, 落盘走
+ * BookImageStorageProviders)。
  *
  * 模式参考 BookInfoRefreshers / SourceDebugLoggers。
  */
@@ -36,10 +38,10 @@ interface BookHelpAccessor {
     /**
      * 保存章节内图片 (漫画/插画, 对应 BookHelp.saveImages)。
      *
-     * 仅 app 端有真实实现 (BitmapFactory + ChapterContentParser.extractImages + 并发下载);
-     * 桌面端无图片缓存管理能力, 默认 no-op (与原 DesktopCacheBook 跳过 saveImages 行为一致)。
+     * 四端实现均委托共享编排 [io.legado.app.help.book.BookImageDownloadShared]
+     * (并发 + per-src 去重 + 插件源分流 + 解密, 同一链路); 默认空实现留给无图片缓存能力的实现。
      *
-     * suspend 因 BookHelp.saveImages 内部 flowImages.onEachParallel.collect 为挂起调用。
+     * suspend 因图片下载为挂起调用。
      */
     suspend fun saveImages(
         bookSource: BookSource,
@@ -48,7 +50,7 @@ interface BookHelpAccessor {
         content: String,
         concurrency: Int
     ) {
-        // 默认 no-op: 桌面端/iOS/鸿蒙无图片缓存管理
+        // 默认空实现: 无图片缓存能力的实现可不覆写
     }
 
     /**
@@ -58,7 +60,7 @@ interface BookHelpAccessor {
      * 供 [io.legado.app.model.ImageProvider] 下沉后调用 (原 app 端直接 BookHelp.getImage)。
      *
      * 默认抛出: 桌面/iOS/鸿蒙端 ImageProvider 为 stub 不会调用本方法
-     * (与 [saveImages] 默认 no-op 模式一致, 此处返回 File 故用 error)。
+     * (与 [saveImages] 默认实现同一约定, 此处返回 File 故用 error)。
      */
     fun getImage(book: Book, src: String): File =
         error("BookHelpAccessor.getImage not implemented; desktop/native/ohos use ReaderImageResolver")
@@ -67,7 +69,9 @@ interface BookHelpAccessor {
      * 判断图片是否已缓存 (对应 BookHelp.isImageExist)。
      *
      * 供 [io.legado.app.model.ImageProvider] 下沉后调用。
-     * 默认 false: 桌面/iOS/鸿蒙端无图片缓存 (与 [hasImageContent] 默认 false 一致)。
+     * 默认 false: 桌面/iOS/鸿蒙端图片管线走
+     * [io.legado.app.help.image.ReaderImageResolver], 不经 ImageProvider, 不会调用本方法
+     * (Android 端 ImageProvider.cacheImage 经本方法查缓存)。
      */
     fun isImageExist(book: Book, src: String): Boolean = false
 
@@ -78,7 +82,7 @@ interface BookHelpAccessor {
      * 失败只记日志不抛出 (与 app 端一致)。chapter 仅用于日志。
      * 供 [io.legado.app.model.ImageProvider] 下沉后调用。
      *
-     * 默认 no-op: 桌面/iOS/鸿蒙端无图片缓存管理 (与 [saveImages] 默认 no-op 一致)。
+     * 默认空实现: 图片缓存能力由各端实现覆写提供 (与 [saveImages] 默认实现同一约定)。
      */
     suspend fun saveImage(
         bookSource: BookSource?,
@@ -86,14 +90,15 @@ interface BookHelpAccessor {
         src: String,
         chapter: BookChapter? = null
     ) {
-        // 默认 no-op: 桌面端/iOS/鸿蒙无图片缓存管理
+        // 默认空实现: 无图片缓存能力的实现可不覆写
     }
 
     /**
      * 检测图片是否已完整下载 (对应 BookHelp.hasImageContent)。
      *
-     * 仅 app 端有真实实现 (BitmapFactory.Options.inJustDecodeBounds 解码探测);
-     * 桌面端无图片缓存, 默认返回 false (与原 DesktopCacheBook 跳过该分支行为一致)。
+     * Android 端 WebBookProvidersImpl 按章节校验图片完整性 (正文全部图片解码成功);
+     * 桌面/iOS/鸿蒙端按整本 images 缓存目录是否有内容判定 (图片未按章组织, 见
+     * [io.legado.app.help.book.BookImageStorage.hasImageContent]); 默认 false。
      */
     fun hasImageContent(book: Book, bookChapter: BookChapter): Boolean = false
 
@@ -140,7 +145,7 @@ interface BookHelpAccessor {
      * 清理平台专属临时文件 (对应 app 端 `BookHelp.clearInvalidCache` 末段)。
      *
      * app 端 override 清理 `ArchiveUtils.TEMP_PATH` + `filesDir/share*.json` + `books.json`;
-     * 其他端无此类临时文件, 默认 no-op (与 [saveImages] 默认 no-op 模式一致)。
+     * 其他端无此类临时文件, 默认 no-op (与 [saveImages] 默认实现同一约定)。
      */
     suspend fun clearCacheExtra()
 }

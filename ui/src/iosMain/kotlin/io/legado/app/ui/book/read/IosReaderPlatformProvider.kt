@@ -9,9 +9,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.toArgb
 import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.Bookmark
-import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.AppWebDavShared
+import io.legado.app.help.book.BookImageDownloadShared
 import io.legado.app.help.showSourceLogin
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
@@ -22,7 +22,6 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfigProviders
-import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.tts.IosReadAloudHost
@@ -197,13 +196,11 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
         )
     }
 
-    /** 保存到相册: 下载解码 → UIImageWriteToSavedPhotosAlbum (无完成回调, 保存后提示)。 */
+    /** 保存到相册: 读已缓存图片字节 → UIImageWriteToSavedPhotosAlbum (无完成回调, 保存后提示)。 */
     private fun saveImageToAlbum(screenModel: ReaderScreenModel, src: String) {
-        val book = screenModel.viewModel.book.value
-        val bookSource = screenModel.viewModel.bookSource.value
         Toasters.get().toast("正在保存")
         scope.launch {
-            val image = loadImage(src, book, bookSource)
+            val image = loadCachedImage(screenModel.currentBook, screenModel.currentChapter, src)
             if (image == null) {
                 Toasters.get().toast("图片保存失败")
                 return@launch
@@ -213,11 +210,14 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
         }
     }
 
-    /** 下载并解码图片 (ImageBitmapLoader 内部网络/磁盘切 IO, 本 scope 在主线程, 返回即可直接操作 UIKit)。 */
-    private suspend fun loadImage(src: String, book: Book?, bookSource: BookSource?): UIImage? {
-        val bytes = runCatching { ImageBitmapLoader().loadBytes(src, book, bookSource) }.getOrNull()
+    /**
+     * 取已缓存的图并解成 [UIImage] (只读缓存/本地书内嵌图, 不触发下载); 取不到返回 null。
+     *
+     * 字节读取在 [BookImageDownloadShared.imageBytesToSave] 内部切 IO, 返回后可直接操作 UIKit。
+     */
+    private suspend fun loadCachedImage(book: Book?, chapter: BookChapter?, src: String): UIImage? {
+        val bytes = book?.let { BookImageDownloadShared.imageBytesToSave(it, src, chapter) }
             ?: return null
-        if (bytes.isEmpty()) return null
         return runCatching {
             val nsData = bytes.usePinned { pinned ->
                 NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())

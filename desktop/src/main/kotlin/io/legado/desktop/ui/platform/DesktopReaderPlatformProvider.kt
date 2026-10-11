@@ -12,10 +12,11 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.book.BookImageDownloadShared
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
-import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.storage.DataStorageProviders
@@ -269,10 +270,9 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         refreshReaderImage(screenModel.currentBook, screenModel.currentChapter, src)
     }
 
-    /** 保存图片: 原生保存对话框选路径 → 下载解码字节 (书源防盗链+解密链路) → 落盘, toast 提示路径。 */
+    /** 保存图片: 原生保存对话框选路径 → 读图片缓存字节 → 落盘, toast 提示路径。 */
     private fun saveImage(screenModel: ReaderScreenModel, src: String) {
         val book = screenModel.currentBook
-        val bookSource = screenModel.viewModel.bookSource.value
         imageActionScope.launch {
             // 阻塞式选择器必须切 IO (对照漫画阅读页 onSaveImage 的 withContext(IoDispatcher))
             val destPath = withContext(Dispatchers.IO) {
@@ -284,7 +284,7 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
             } ?: return@launch
             Toasters.get().toast("正在保存")
             val savedPath = withContext(Dispatchers.IO) {
-                writeImageBytes(src, book, bookSource, File(destPath))
+                writeImageBytes(src, book, screenModel.currentChapter, File(destPath))
             }
             Toasters.get().toast(if (savedPath != null) "保存成功\n$savedPath" else "保存失败")
         }
@@ -298,7 +298,6 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
      */
     private fun saveImageToSelectedDir(screenModel: ReaderScreenModel, src: String) {
         val book = screenModel.currentBook
-        val bookSource = screenModel.viewModel.bookSource.value
         imageActionScope.launch {
             val dir = withContext(Dispatchers.IO) {
                 FileDialogs.pickDirectory(title = "选择保存目录")
@@ -306,7 +305,7 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
             Toasters.get().toast("正在保存")
             val savedPath = withContext(Dispatchers.IO) {
                 writeImageBytes(
-                    src, book, bookSource,
+                    src, book, screenModel.currentChapter,
                     File(dir, "legado-${System.currentTimeMillis()}.jpg"),
                 )
             }
@@ -318,18 +317,22 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         }
     }
 
-    /** 下载解码字节写入 [dest], 返回最终绝对路径 (写入后按魔数修正扩展名); 失败返回 null。 */
+    /**
+     * 取已缓存图片字节写入 [dest], 返回最终绝对路径 (写入后按魔数修正扩展名); 取不到缓存返回 null。
+     *
+     * 保存只导出已看过的图 (对照原版 BaseReadViewModel.saveImage 的读取段), 不触发下载;
+     * 建议名恒为 .jpg, 与实际格式不符时按魔数改名 (shared 统一 helper, 与漫画保存一致)。
+     */
     private suspend fun writeImageBytes(
         src: String,
         book: Book?,
-        bookSource: io.legado.app.data.entities.BookSource?,
+        chapter: BookChapter?,
         dest: File,
     ): String? = try {
-        val bytes = ImageBitmapLoader().loadBytes(src, book, bookSource)
+        val bytes = book?.let { BookImageDownloadShared.imageBytesToSave(it, src, chapter) }
             ?: return null
         dest.parentFile?.mkdirs()
         dest.writeBytes(bytes)
-        // 建议名恒为 .jpg, 与实际格式不符时按魔数改名 (shared 统一 helper, 与漫画保存一致)
         FileUtilsBase.fixImageExtension(dest).absolutePath
     } catch (e: Exception) {
         AppLog.put("保存图片出错\n${e.localizedMessage}", e)

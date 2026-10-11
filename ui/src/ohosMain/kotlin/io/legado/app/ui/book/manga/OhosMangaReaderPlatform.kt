@@ -5,11 +5,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
-import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.help.image.MangaImageBytesLoader
 import io.legado.app.napi.OhosDownloadProgressEvents
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.entities.MangaCellState
@@ -17,9 +15,6 @@ import io.legado.app.ui.book.manga.render.MangaSkiaImage
 import io.legado.app.ui.book.manga.render.mangaProgressText
 import io.legado.app.ui.book.manga.render.preloadMangaImage
 import io.legado.app.ui.root.PlatformServiceProviders
-import io.legado.app.ui.root.imageExtension
-import io.legado.app.utils.systemCurrentTimeMillis
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 
 // 鸿蒙漫画阅读平台能力: 图片流复用 shared 提取器, 渲染走 Skia 三端共用的 MangaSkiaImage
@@ -60,7 +55,8 @@ object OhosMangaReaderPlatform : MangaReaderScreenModel.Platform {
     }
 
     /**
-     * 保存图片: 取原始字节 → 按魔数生成正确扩展名 → 写进记住的保存目录。
+     * 保存图片: 只导出已缓存的图 (对照原版 BaseReadViewModel.saveImage 的读取段) → 按实际格式命名
+     * → 写进记住的保存目录。
      *
      * 目录记忆与选定目录的持久化授权由 [io.legado.app.ui.root.FilePickerService.saveImageRememberingDir]
      * 统一处理 (对照原版 ReadMangaActivity.saveImage: 没记住目录先选一次并记 ACache imagePathKey,
@@ -71,16 +67,8 @@ object OhosMangaReaderPlatform : MangaReaderScreenModel.Platform {
         book: Book?,
         source: BookSource?,
     ): Boolean? = withContext(IoDispatcher) {
-        book ?: return@withContext false
-        val files = PlatformServiceProviders.get().files
-        runCatching {
-            val bytes = MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
-                ?: return@runCatching false
-            val name = "manga-${systemCurrentTimeMillis()}${imageExtension(bytes, url)}"
-            files.saveImageRememberingDir(name, bytes)
-        }.getOrElse {
-            AppLog.put("保存图片出错\n${it.message}", it)
-            false
+        saveCachedMangaImage(url, book) { name, bytes ->
+            PlatformServiceProviders.get().files.saveImageRememberingDir(name, bytes)
         }
     }
 

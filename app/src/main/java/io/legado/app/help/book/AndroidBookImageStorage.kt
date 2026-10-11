@@ -71,28 +71,12 @@ object AndroidBookImageStorage : BookImageStorage {
         }
     }
 
-    /**
-     * 批量下载并保存图片。
-     *
-     * 接口传 [urls] 列表, 适配到 [BookHelp.saveImage] (单张下载, 内部含去重 / 互斥锁 /
-     * 解码校验)。逐张下载后用 [BookHelp.isImageExist] 校验落盘成功;
-     * 任一失败返回 false (部分已保存的文件保留, 由调用方决定是否清理)。
-     *
-     * [chapter] 参数透传给 [BookHelp.saveImage] 用于日志。
-     */
-    override suspend fun saveImages(
-        book: Book,
-        chapter: BookChapter,
-        urls: List<String>
-    ): Boolean {
-        return urls.all { url ->
-            try {
-                BookHelp.saveImage(null, book, url, chapter)
-                BookHelp.isImageExist(book, url)
-            } catch (e: Exception) {
-                false
-            }
-        }
+    /** 校验字节流是否为有效图片, 委托 [BookHelp.checkImage] (BitmapFactory + SVG 兼底)。 */
+    override fun checkImageBytes(bytes: ByteArray): Boolean = BookHelp.checkImage(bytes)
+
+    /** 原始字节落盘 (不校验), 委托 [BookHelp.writeImage]。 */
+    override fun writeImageBytes(book: Book, chapter: BookChapter, url: String, bytes: ByteArray) {
+        BookHelp.writeImage(book, url, bytes)
     }
 
     /**

@@ -1,27 +1,19 @@
 package io.legado.desktop.help.book
 
-import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelpAccessor
+import io.legado.app.help.book.BookImageDownloadShared
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.OLD_COVERS_REF_SEGMENT
-import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
-import io.legado.app.ui.book.read.page.provider.ChapterContentParserShared
 import io.legado.app.utils.MD5Utils
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.withContext
 
 /**
  * 桌面端 [BookHelpAccessor] 实现: 委托 [BookStorageProviders.get].saveText 落盘章节正文,
- * 图片下载复用 [BookImageStorageProviders] (JvmBookImageStorage) + 共享正文图片提取
- * ([ChapterContentParserShared]), 供 shared commonMain 中下沉的 webBook 编排层 (BookContent.kt)
+ * 图片下载编排下沉 [BookImageDownloadShared] (与 Android BookHelp.saveImage 同链路),
+ * 供 shared commonMain 中下沉的 webBook 编排层 (BookContent.kt)
  * 通过 [io.legado.app.help.book.BookHelpProviders] 间接调用 saveContent / saveImages。
  *
  * # 注册时机
@@ -31,8 +23,8 @@ import kotlinx.coroutines.withContext
  * # 与 app 端 [io.legado.app.model.webBook.WebBookProvidersImpl] 区别
  * - app 端 `saveContent` 委托 `BookHelp.saveContent`, 内部做 saveText + postEvent
  *   (图片由 CacheBookShared 另调 [saveImages]); 桌面端 saveContent 同样只落盘文本
- * - [saveImages] / [saveImage]: 用 [AnalyzeUrlFactories] 带书源防盗链头下载 (与 app 端
- *   BookHelp.saveImage 同链路), 落盘走 JvmBookImageStorage 的 images 缓存目录 (与阅读页
+ * - [saveImages] / [saveImage]: 下载走共享编排 (带书源防盗链头/解密/插件源分流),
+ *   落盘走 [BookImageStorageProviders] 的 images 缓存目录 (与阅读页
  *   BookImageStorageProviders.getImagePath 同源, 下载后阅读页即可命中缓存)
  *
  * 模式参考 app 端 WebBookProvidersImpl 的 BookHelpAccessor 实现段。
@@ -57,10 +49,10 @@ class DesktopBookHelpAccessor : BookHelpAccessor {
     }
 
     /**
-     * 批量下载章节内图片 (漫画/插画): 提取正文 <img> src → 并发下载 → 写入 images 缓存。
-     *
-     * 对照 app 端 BookHelp.saveImages (flowImages + onEachParallel), 提取走 shared
-     * [ChapterContentParserShared.extractImages], 下载走 [saveImage]。
+     * 批量下载章节内图片 (漫画/插画): 编排下沉 [BookImageDownloadShared.saveImages]
+     * (提取正文 <img> src → 并发 → 下载 → 解密 → 校验 → 落盘, 与 Android BookHelp.saveImages
+     * 同链路), 落盘走 [BookImageStorageProviders] 的 images 缓存目录 (与阅读页
+     * getImagePath 同源, 下载后阅读页即可命中缓存)。
      */
     override suspend fun saveImages(
         bookSource: BookSource,
@@ -69,20 +61,13 @@ class DesktopBookHelpAccessor : BookHelpAccessor {
         content: String,
         concurrency: Int,
     ) {
-        coroutineScope {
-            val urls = ChapterContentParserShared.extractImages(content)
-                .map { it.src }
-                .filter { it.isNotBlank() }
-            urls.map { src ->
-                async(Dispatchers.IO) { saveImage(bookSource, book, src, bookChapter) }
-            }.awaitAll()
-        }
+        BookImageDownloadShared.saveImages(bookSource, book, bookChapter, content, concurrency)
     }
 
     /**
-     * 下载并保存单张图片 (带书源防盗链 header / cookie / JS, 与 app 端 BookHelp.saveImage 同链路)。
-     *
-     * 已存在跳过; 失败只记日志不抛出 (与 app 端一致)。
+     * 下载并保存单张图片, 编排下沉 [BookImageDownloadShared.saveImage]
+     * (带书源防盗链 header / cookie / JS, 含插件源图片分流与解密, 与 app 端同链路)。
+     * 失败只记日志不抛出 (与 app 端一致)。
      */
     override suspend fun saveImage(
         bookSource: BookSource?,
@@ -90,26 +75,7 @@ class DesktopBookHelpAccessor : BookHelpAccessor {
         src: String,
         chapter: BookChapter?,
     ) {
-        val storage = runCatching { BookImageStorageProviders.get() }.getOrNull()
-            ?: return
-        val ch = chapter ?: BookChapter(url = src, bookUrl = book.bookUrl)
-        if (storage.isImageExist(book, ch, src)) return
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val analyzeUrl = AnalyzeUrlFactories.create(
-                    src,
-                    source = bookSource,
-                    coroutineContext = currentCoroutineContext(),
-                )
-                val bytes = analyzeUrl.getByteArrayAwait()
-                if (bytes.isNotEmpty()) storage.saveImage(book, ch, src, bytes)
-            }.onFailure {
-                AppLog.put(
-                    "${book.name} ${chapter?.title} 图片 $src 下载失败\n${it.localizedMessage}",
-                    it
-                )
-            }
-        }
+        BookImageDownloadShared.saveImage(bookSource, book, src, chapter)
     }
 
     /** 图片是否已缓存 (供 CacheBookShared.hasImageContent 分支短路重复下载)。 */

@@ -1,28 +1,18 @@
 package io.legado.app.help.book
 
-import io.ktor.client.HttpClient
-import io.ktor.client.request.get
-import io.ktor.client.statement.bodyAsBytes
-import io.ktor.http.isSuccess
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.utils.MD5Utils
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import io.legado.app.utils.File
 
 /**
- * [BookImageStorage] iOS/鸿蒙 (Native target) 共用真实实现
- * (基于 [kotlin.io.File] + Ktor HttpClient)。
+ * [BookImageStorage] iOS/鸿蒙 (Native target) 共用真实实现 (基于 [kotlin.io.File])。
  *
  * # 共用原因
- * iOS 与鸿蒙两端 BookImageStorage 主体逻辑完全一致 (图片缓存 I/O + Ktor CIO 并发下载),
- * 仅 iOS 端原用 NSFileManager + NSData, 鸿蒙端用 kotlin.io.File;
- * Kotlin/Native 在 iOS/linuxArm64 (鸿蒙) 上均支持 [kotlin.io.File],
- * 故统一改为 [kotlin.io.File] 实现下沉到 nativeMain 共用, 平台源集用 typealias 别名 + 各自 register 函数。
+ * iOS 与鸿蒙两端 BookImageStorage 主体逻辑完全一致 (图片缓存 I/O), 仅 iOS 端原用
+ * NSFileManager + NSData、鸿蒙端用 kotlin.io.File; Kotlin/Native 在 iOS/linuxArm64 (鸿蒙)
+ * 上均支持 [kotlin.io.File], 故统一改为 [kotlin.io.File] 实现下沉到 nativeMain 共用,
+ * iOS/鸿蒙宿主启动链各调一次 [registerNativeBookImageStorage]。
  *
  * # 目录结构
  * - cacheRootPath: `{AppFilesDirs.filesDir}/book_cache/` (与 [NativeBookStorage] 同源)
@@ -35,7 +25,6 @@ import io.legado.app.utils.File
  * - [getImagePath]/[isImageExist]: [File.exists]
  * - [hasImageContent]: 目录存在 + 至少一个文件 (短路语义)
  * - [clearCache]: [File.deleteRecursively]
- * - [saveImages]: Ktor CIO 并发下载 (限制 8 并发, 与 JVM 桌面端对齐)
  *
  * # 与原 iOS 端差异 (统一为 kotlin.io.File 后)
  * - 文件 I/O: iOS 用 NSFileManager + NSData.writeToFile(atomically=true);
@@ -87,34 +76,15 @@ class NativeBookImageStorage(
         }
     }
 
-    override suspend fun saveImages(book: Book, chapter: BookChapter, urls: List<String>): Boolean = coroutineScope {
-        if (urls.isEmpty()) return@coroutineScope true
-        // 并发下载, 限制 8 并发 (与 JVM 桌面端 fixed 8 / iOS 端 async(Dispatchers.IO) 对齐,
-        // 避免依赖未注入的 AppConfig.threadCount)
-        val results = urls.map { url ->
-            async(Dispatchers.IO) {
-                try {
-                    // 已存在跳过 (与 Android BookHelp.saveImage 内 isImageExist 短路对齐)
-                    if (isImageExist(book, chapter, url)) return@async true
-                    val client = HttpClient()
-                    try {
-                        val response = client.get(url)
-                        if (!response.status.isSuccess()) {
-                            false
-                        } else {
-                            val bytes = response.bodyAsBytes()
-                            saveImage(book, chapter, url, bytes) != null
-                        }
-                    } finally {
-                        client.close()
-                    }
-                } catch (e: Exception) {
-                    // 网络 / IO 异常视为失败, 不中断其他下载 (与 Android BookHelp.saveImage 行为对齐)
-                    false
-                }
-            }
-        }.awaitAll()
-        results.all { it }
+    /** 校验字节流是否为有效图片 (字节头 magic number, 与本类 [saveImage] 校验同源)。 */
+    override fun checkImageBytes(bytes: ByteArray): Boolean = isValidImage(bytes)
+
+    /** 原始字节落盘 (不校验, 校验失败也照写, 与 Android BookHelp.writeImage 行为对齐)。 */
+    override fun writeImageBytes(book: Book, chapter: BookChapter, url: String, bytes: ByteArray) {
+        val path = resolveImageFile(book, url)
+        val file = File(path)
+        file.parentFile?.mkdirs()
+        file.writeBytes(bytes)
     }
 
     /**

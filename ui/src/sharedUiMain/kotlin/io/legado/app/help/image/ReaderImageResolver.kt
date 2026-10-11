@@ -8,14 +8,13 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.book.BookImageStorageProviders
+import io.legado.app.help.book.BookImageDownloadShared
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.image.ReaderImageCache.PLACEHOLDER_SIZE
 import io.legado.app.help.image.ReaderImageCache.bind
 import io.legado.app.help.image.ReaderImageCache.sizeOf
 import io.legado.app.help.image.ReaderImageCache.version
-import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.read.page.provider.ImageResolver
 import io.legado.app.ui.book.read.page.provider.ImageResolverProviders
@@ -25,7 +24,6 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.decodeToImageBitmap
@@ -313,16 +311,16 @@ private fun probeSvgSize(bytes: ByteArray): ImageSize? {
  *
  * 取图顺序对照 app 端 `ImageProvider.cacheImage`：
  * 1. 本地书（PDF / EPUB / CBZ，含 WebDav 下载件）：[FileBook.getImage] 直接取流
- *    （桌面 PDF 的页面渲染与图片缓存写入在 `DesktopPdfFile.getImage` 内部完成）
- * 2. 网络书：先查图片磁盘缓存（[BookImageStorageProviders]），未命中用 [AnalyzeUrlCore]
- *    带书源 header/cookie/JS 下载并写入缓存
+ *    （桌面 PDF 的页面渲染与图片缓存写入在 PDF 渲染后端 DesktopPdfRenderPort 内部完成）
+ * 2. 网络书：[BookImageDownloadShared.loadImageBytes]（磁盘缓存命中读缓存文件；未命中下载 →
+ *    插件源分流 → 解密 → 校验 → 落盘），与章节图片批量下载同一条编排
  *
  * 解码走 [decodeBytesSampled] (I2 图片加载深度优化): 按 [SAMPLE_MAX_DIM] 长边上限解码前采样
  * (jvm ImageIO setSourceSubsampling / android inSampleSize / iOS Skia 后缩放 / ohos 全尺寸),
  * 采样失败依次回落 [decodeSvgFallback] (SVG 矢量按目标长边渲染, 对齐原版
  * `decodeBitmap ?: SvgUtils.createBitmap`) 与 compose resources `decodeToImageBitmap`
  * 全尺寸解码 (格式兜底如桌面 WEBP)。尺寸探测 [probeImageSize] 支持 SVG 头 (width/height/viewBox),
- * 排版拿固有宽高比算行高, 无需整解码。字节路径不变 (原图字节仍在磁盘/ImageBytesCache,
+ * 排版拿固有宽高比算行高, 无需整解码。字节来源不变 (磁盘缓存的原始字节, 采样解码不回写缓存,
  * 未来加放大可再解全图)。
  */
 class ReaderImageResolver(
@@ -344,23 +342,7 @@ class ReaderImageResolver(
                 FileBook.getImage(book, src)?.readAllAndClose()
             }.getOrNull()
         }
-        val storage = runCatching { BookImageStorageProviders.get() }.getOrNull()
-        // 磁盘缓存命中：经平台图片加载器读文件字节（Android 端该实现为 stub，退化为重新下载）
-        storage?.let { s ->
-            runCatching { s.getImagePath(book, chapter, src) }.getOrNull()?.let { path ->
-                ImageBitmapLoader().loadBytes(path, book, bookSource)
-                    ?.let { return@withContext it }
-            }
-        }
-        val downloaded = runCatching {
-            AnalyzeUrlCore(
-                rawUrl = src,
-                source = bookSource,
-                coroutineContext = currentCoroutineContext(),
-            ).getByteArrayAwait()
-        }.getOrNull() ?: return@withContext null
-        storage?.let { runCatching { it.saveImage(book, chapter, src, downloaded) } }
-        downloaded
+        BookImageDownloadShared.loadImageBytes(bookSource, book, src, chapter)
     }
 }
 

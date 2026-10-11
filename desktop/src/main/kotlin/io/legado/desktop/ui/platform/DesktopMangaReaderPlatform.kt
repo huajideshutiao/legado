@@ -5,24 +5,20 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
-import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.glide.progress.ProgressManager
-import io.legado.app.help.image.MangaImageBytesLoader
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.entities.MangaCellState
 import io.legado.app.ui.book.manga.render.MangaSkiaImage
 import io.legado.app.ui.book.manga.render.mangaProgressText
 import io.legado.app.ui.book.manga.render.preloadMangaImage
+import io.legado.app.ui.book.manga.saveCachedMangaImage
 import io.legado.app.ui.root.PlatformServiceProviders
-import io.legado.app.ui.root.imageExtension
-import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.desktop.help.DesktopBattery
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -78,32 +74,23 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
     }
 
     /**
-     * 保存图片到 [destPath] (destPath 由 shared 路由经 FileDialogs 保存框取得的绝对路径)。
+     * 保存图片到本端落点 (桌面经保存对话框取绝对路径)。
      *
-     * 取字节直接复用 [MangaImageBytesLoader] (图片缓存 → 本地书 FileBook → 按书源下载+解密),
-     * 与阅读页同一条链路。落盘后按魔数校正扩展名 (对照 app 端 FileUtils.saveImage)。
+     * 取字节只读图片缓存/本地书内嵌图 (见 shared [saveCachedMangaImage]), 与阅读页同一条读取口径。
      */
     override suspend fun saveImage(
         url: String,
         book: Book?,
         source: BookSource?,
     ): Boolean? = withContext(Dispatchers.IO) {
-        book ?: return@withContext false
-        val files = PlatformServiceProviders.get().files
-        runCatching {
-            val bytes = MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
-                ?: return@runCatching false
-            val name = "manga-${systemCurrentTimeMillis()}${imageExtension(bytes, url)}"
-            val destPath = files.saveFile(name)
-                ?: return@runCatching null
+        saveCachedMangaImage(url, book) { name, bytes ->
+            val destPath = PlatformServiceProviders.get().files.saveFile(name)
+                ?: return@saveCachedMangaImage null
             File(destPath).apply {
                 parentFile?.mkdirs()
                 writeBytes(bytes)
             }
             true
-        }.getOrElse {
-            AppLog.put("保存图片出错\n${it.localizedMessage}", it)
-            false
         }
     }
 

@@ -7,6 +7,8 @@ import io.ktor.http.isSuccess
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookSource
+import io.legado.app.help.book.BookHelpProviders
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.model.ActiveReadBookStateProvider
 import kotlinx.coroutines.runBlocking
@@ -20,8 +22,9 @@ import io.legado.app.utils.File
  */
 object NativeImageControllerProvider : ImageControllerProvider {
 
-    // 与 app 端 BookControllerImageProviderImpl 一致: 按 bookUrl 缓存 book, 避免重复查库
+    // 与 app 端 BookControllerImageProviderImpl 一致: 按 bookUrl 缓存 book/bookSource, 避免重复查库
     private var book: Book? = null
+    private var bookSource: BookSource? = null
     private var bookUrl: String = ""
 
     override fun getCover(coverPath: String?): ByteArray? = runCatching {
@@ -33,21 +36,28 @@ object NativeImageControllerProvider : ImageControllerProvider {
         if (file.exists()) file.readBytes() else null
     }.getOrNull()
 
-    /** width 参数忽略 (native 端无位图缩放); 缓存未命中时经 BookImageStorage 下载一次再读。 */
+    /**
+     * width 参数忽略 (native 端无位图缩放); 缓存未命中时经 [BookHelpProviders] 的图片下载编排
+     * 补一次缓存 (与其它三端同一链路: 带书源防盗链头 / 解密脚本 / 同图去重) 再读本地文件。
+     */
     override fun getImg(bookUrl: String, src: String, width: Int): ByteArray? = runCatching {
         val cached = if (this.bookUrl == bookUrl) this.book else null
         val book = cached
             ?: runBlocking { AppDbProviders.get().bookDao.getBook(bookUrl) }?.also {
                 this.book = it
                 this.bookUrl = bookUrl
+                // 书源与书一起取: 图片下载需要书源才能带上防盗链头 / 解密脚本
+                this.bookSource = runBlocking {
+                    AppDbProviders.get().bookSourceDao.getBookSource(it.origin)
+                }
             }
             ?: return@runCatching null
         val storage = BookImageStorageProviders.get()
-        // NativeBookImageStorage 路径仅由 book+url 派生, chapter 只参与签名, 占位即可
+        // BookImageStorage 路径仅由 book+url 派生, chapter 只参与签名, 占位即可
         val chapter = BookChapter(url = src, bookUrl = bookUrl)
         var path = storage.getImagePath(book, chapter, src)
         if (path == null) {
-            runBlocking { storage.saveImages(book, chapter, listOf(src)) }
+            runBlocking { BookHelpProviders.get().saveImage(bookSource, book, src, chapter) }
             path = storage.getImagePath(book, chapter, src)
         }
         path?.let { File(it).takeIf(File::exists)?.readBytes() }

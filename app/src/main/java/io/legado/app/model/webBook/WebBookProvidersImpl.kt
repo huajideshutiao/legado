@@ -351,7 +351,7 @@ object WebBookProvidersImpl :
         BookHelp.saveContent(bookSource, book, bookChapter, content)
     }
 
-    // CacheBookShared 下沉新增: 漫画/插画图片保存 (app 端真实实现, 桌面端默认 no-op)
+    // CacheBookShared 下沉新增: 漫画/插画图片保存 (委托 BookHelp.saveImages, 四端同一共享编排)
     override suspend fun saveImages(
         bookSource: io.legado.app.data.entities.BookSource,
         book: io.legado.app.data.entities.Book,
@@ -362,7 +362,7 @@ object WebBookProvidersImpl :
         BookHelp.saveImages(bookSource, book, bookChapter, content, concurrency)
     }
 
-    // CacheBookShared 下沉新增: 图片完整性检测 (app 端真实实现, 桌面端默认 false)
+    // CacheBookShared 下沉新增: 图片完整性检测 (委托 BookHelp.hasImageContent, 按章节校验图片完整性)
     override fun hasImageContent(
         book: io.legado.app.data.entities.Book,
         bookChapter: io.legado.app.data.entities.BookChapter
