@@ -1,6 +1,6 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -10,7 +10,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.HttpTTS
@@ -21,8 +20,10 @@ import io.legado.app.ui.book.read.config.ReadAloudConfigScreen
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
@@ -32,12 +33,14 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import legado.ui.generated.resources.Res
+import legado.ui.generated.resources.aloud_config
 import legado.ui.generated.resources.system_tts
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 朗读设置对话框形态 (对照原版 ReadAloudConfigDialog: BasePrefDialogFragment 居中对话框,
- * 背景用 backgroundColor, 无标题栏)。由朗读控制面板"设置"按钮弹起。
+ * 朗读设置对话框形态 (公共对话框基类: 0.9 宽居中 + fillet 底色 + dialogShape 圆角 +
+ * DialogTitleBar 标题栏; 2026-10-11 用户拍板偏离原版 BasePrefDialogFragment 的
+ * 无圆角/无标题形态, 对齐其他对话框)。由朗读控制面板"设置"按钮弹起。
  *
  * 暂无对应 ScreenModel, 电话暂停开关/朗读引擎摘要等状态用 remember { mutableStateOf } 暂存,
  * 待宿主下沉后替换为 ScreenModel 统一管理。
@@ -54,16 +57,20 @@ fun ReadAloudConfigDialogHost(
         properties = AppDialogSizes.properties(),
     ) {
         AppTheme {
-            // 原版 BasePrefDialogFragment: 0.9 宽居中 + applyFilletBackground=false 无圆角,
-            // 背景 backgroundColor (createPrefContainer); 内容边距由 preference 列表自带
             Surface(
-                shape = RoundedCornerShape(0.dp),
-                color = AppTheme.colors.background,
+                shape = DesignTokens.dialogShape,
+                color = AppTheme.colors.fillet,
                 modifier = Modifier.appDialogSize(),
             ) {
-                ReadAloudConfigContent(
-                    onSysTtsConfig = { PlatformCapabilityProviders.get().openTtsSettings() },
-                )
+                Column {
+                    DialogTitleBar(
+                        title = stringResource(Res.string.aloud_config),
+                        onBack = onDismiss,
+                    )
+                    ReadAloudConfigContent(
+                        onSysTtsConfig = { PlatformCapabilityProviders.get().openTtsSettings() },
+                    )
+                }
             }
         }
     }
