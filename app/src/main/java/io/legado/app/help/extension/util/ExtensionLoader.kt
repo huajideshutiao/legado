@@ -21,6 +21,7 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.extension.EXTENSION_ICON_MAX_PIXEL_SIZE
 import io.legado.app.help.extension.ExtensionApkInfo
 import io.legado.app.help.extension.ExtensionInstallScaffold
+import io.legado.app.help.extension.ExtensionManifestContract
 import io.legado.app.help.extension.isValidExtensionPackageName
 import io.legado.app.help.extension.model.ContentWarning
 import io.legado.app.help.extension.model.MangaExtension
@@ -49,28 +50,6 @@ import java.security.MessageDigest
  * 视频扩展无 tachiyomix.* 元数据时 lib 版本回退 versionName 前两段 ("14.10"→14.0)。
  */
 internal object ExtensionLoader {
-
-    private const val EXTENSION_FEATURE = "tachiyomi.extension"
-    private const val ANIME_EXTENSION_FEATURE = "tachiyomi.animeextension"
-    private const val METADATA_SOURCE_CLASS = "tachiyomi.extension.class"
-    private const val METADATA_SOURCE_FACTORY = "tachiyomi.extension.factory"
-    private const val METADATA_NSFW = "tachiyomi.extension.nsfw"
-    private const val ANIME_METADATA_SOURCE_CLASS = "tachiyomi.animeextension.class"
-    private const val ANIME_METADATA_SOURCE_FACTORY = "tachiyomi.animeextension.factory"
-    private const val ANIME_METADATA_NSFW = "tachiyomi.animeextension.nsfw"
-
-    private const val METADATA_NAME = "tachiyomix.name"
-    private const val METADATA_EXTENSION_LIB = "tachiyomix.extensionLib"
-    private const val METADATA_CONTENT_WARNING = "tachiyomix.contentWarning"
-
-    /** 漫画扩展受支持的扩展库版本 (tachiyomix 契约)。 */
-    private val SUPPORTED_LIB_VERSIONS = listOf(1.4, 1.6)
-
-    /** 视频扩展受支持的扩展库版本 (Aniyomi 整数系; extensions-lib 无 15 tag 但 app 0.15 在用, 保留)。 */
-    private val ANIME_SUPPORTED_LIB_VERSIONS = listOf(14.0, 15.0, 16.0, 17.0)
-
-    /** 扩展家族: 由 feature 键判定 (两 feature 不会同时声明)。 */
-    private enum class ExtensionKind { MANGA, ANIME }
 
     @Suppress("DEPRECATION")
     private val PACKAGE_FLAGS = PackageManager.GET_CONFIGURATIONS or
@@ -349,26 +328,27 @@ internal object ExtensionLoader {
         val pkgName = pkgInfo.packageName
         val kind = extensionKindOf(pkgInfo)
 
-        val extName = metaData?.getString(METADATA_NAME)
+        val extName = metaData?.getString(ExtensionManifestContract.METADATA_NAME)
             ?: appInfo?.let {
-                pkgManager.getApplicationLabel(it).toString()
-                    .substringAfter("Aniyomi: ").substringAfter("Tachiyomi: ")
+                ExtensionManifestContract.stripLabelPrefix(
+                    pkgManager.getApplicationLabel(it).toString()
+                )
             }
             ?: pkgName
         val versionName = pkgInfo.versionName
         val versionCode = PackageInfoCompat.getLongVersionCode(pkgInfo)
         val signatures = getSignatures(pkgInfo).orEmpty()
-        val nsfwKey = if (kind == ExtensionKind.ANIME) ANIME_METADATA_NSFW else METADATA_NSFW
+        val nsfwKey =
+            if (kind == ExtensionManifestContract.ExtensionKind.ANIME) {
+                ExtensionManifestContract.ANIME_METADATA_NSFW
+            } else {
+                ExtensionManifestContract.METADATA_NSFW
+            }
         val contentWarning = when {
             metaData == null -> ContentWarning.SAFE
-            metaData.containsKey(METADATA_CONTENT_WARNING) -> {
-                when (metaData.getInt(METADATA_CONTENT_WARNING)) {
-                    1 -> ContentWarning.MIXED
-                    2 -> ContentWarning.NSFW
-                    else -> ContentWarning.SAFE
-                }
-            }
-            metaData.getInt(nsfwKey) == 1 -> ContentWarning.NSFW
+            metaData.containsKey(ExtensionManifestContract.METADATA_CONTENT_WARNING) ->
+                ExtensionManifestContract.contentWarningOfDeclared(metaData.getInt(ExtensionManifestContract.METADATA_CONTENT_WARNING))
+            ExtensionManifestContract.isNsfwFlag(metaData.getInt(nsfwKey)) -> ContentWarning.NSFW
             else -> ContentWarning.SAFE
         }
 
@@ -399,18 +379,16 @@ internal object ExtensionLoader {
 
         // 校验扩展库版本; metadata 未声明时回退 versionName 前两段 (视频扩展实测无 tachiyomix.* 元数据,
         // 版本名即 lib 代系: "14.10"→14.0)
-        val libVersion = metaData.getFloat(METADATA_EXTENSION_LIB)
-            .takeUnless { it == 0.0f }
-            ?.toString()
-            ?.toDouble()
-            ?: versionName.substringBeforeLast('.').toDoubleOrNull()
-        val supportedVersions =
-            if (kind == ExtensionKind.ANIME) ANIME_SUPPORTED_LIB_VERSIONS else SUPPORTED_LIB_VERSIONS
-        if (libVersion == null || libVersion !in supportedVersions) {
+        val declaredLibVersion = ExtensionManifestContract.parseLibVersion(
+            metaData?.getFloat(ExtensionManifestContract.METADATA_EXTENSION_LIB), versionName
+        )
+        val libVersion = ExtensionManifestContract.supportedLibVersion(kind, declaredLibVersion)
+        if (libVersion == null) {
             AppLog.put(
-                "扩展库版本 $libVersion 不受支持, 仅支持 ${supportedVersions.joinToString()}: $extName"
+                "扩展库版本 $declaredLibVersion 不受支持, " +
+                    "仅支持 ${ExtensionManifestContract.supportedLibVersions(kind).joinToString()}: $extName"
             )
-            return notLoaded(MangaExtension.NotLoaded.Reason.UnsupportedLibVersion, libVersion)
+            return notLoaded(MangaExtension.NotLoaded.Reason.UnsupportedLibVersion, declaredLibVersion)
         }
 
         if (signatures.isEmpty()) {
@@ -440,7 +418,11 @@ internal object ExtensionLoader {
         }
 
         val sourceClassKey =
-            if (kind == ExtensionKind.ANIME) ANIME_METADATA_SOURCE_CLASS else METADATA_SOURCE_CLASS
+            if (kind == ExtensionManifestContract.ExtensionKind.ANIME) {
+                ExtensionManifestContract.ANIME_METADATA_SOURCE_CLASS
+            } else {
+                ExtensionManifestContract.METADATA_SOURCE_CLASS
+            }
         val sourceClasses = metaData.getString(sourceClassKey)
         if (sourceClasses.isNullOrBlank()) {
             AppLog.put("扩展缺少源类声明: $extName")
@@ -450,16 +432,8 @@ internal object ExtensionLoader {
         // 分号分隔, "." 开头为扩展包内相对类名; 漫画/视频源按实例类型分流
         val mangaSources = ArrayList<Source>()
         val animeSources = ArrayList<AnimeSource>()
-        sourceClasses
-            .split(";")
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .forEach { sourceClass ->
-                val className = if (sourceClass.startsWith(".")) {
-                    pkgInfo.packageName + sourceClass
-                } else {
-                    sourceClass
-                }
+        ExtensionManifestContract.expandSourceClassNames(sourceClasses, pkgName)
+            .forEach { className ->
                 try {
                     when (val obj = Class.forName(className, false, classLoader)
                         .getDeclaredConstructor().newInstance()) {
@@ -489,7 +463,11 @@ internal object ExtensionLoader {
         }
 
         val factoryKey =
-            if (kind == ExtensionKind.ANIME) ANIME_METADATA_SOURCE_FACTORY else METADATA_SOURCE_FACTORY
+            if (kind == ExtensionManifestContract.ExtensionKind.ANIME) {
+                ExtensionManifestContract.ANIME_METADATA_SOURCE_FACTORY
+            } else {
+                ExtensionManifestContract.METADATA_SOURCE_FACTORY
+            }
         return MangaExtension.Loaded(
             name = extName,
             pkgName = pkgName,
@@ -527,17 +505,14 @@ internal object ExtensionLoader {
 
     private fun isPackageAnExtension(pkgInfo: PackageInfo): Boolean {
         return pkgInfo.reqFeatures.orEmpty().any {
-            it.name == EXTENSION_FEATURE || it.name == ANIME_EXTENSION_FEATURE
+            ExtensionManifestContract.isExtensionFeature(it.name)
         }
     }
 
     /** 两 feature 不会同时声明, 视频键优先判定。 */
-    private fun extensionKindOf(pkgInfo: PackageInfo): ExtensionKind {
-        return if (pkgInfo.reqFeatures.orEmpty().any { it.name == ANIME_EXTENSION_FEATURE }) {
-            ExtensionKind.ANIME
-        } else {
-            ExtensionKind.MANGA
-        }
+    private fun extensionKindOf(pkgInfo: PackageInfo): ExtensionManifestContract.ExtensionKind {
+        return ExtensionManifestContract.extensionKindOf(pkgInfo.reqFeatures.orEmpty().map { it.name })
+            ?: ExtensionManifestContract.ExtensionKind.MANGA
     }
 
     /**

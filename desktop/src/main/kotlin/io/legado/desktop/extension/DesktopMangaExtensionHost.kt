@@ -7,9 +7,10 @@ import io.legado.app.help.extension.ExtensionApkInfo
 import io.legado.app.help.extension.ExtensionInstallScaffold
 import io.legado.app.help.extension.EXTENSION_ICON_MAX_BYTES
 import io.legado.app.help.extension.EXTENSION_ICON_MAX_PIXEL_SIZE
+import io.legado.app.help.extension.ExtensionManifestContract
 import io.legado.app.help.extension.MangaExtensionHost
 import io.legado.app.help.extension.MangaExtensionManager
-import io.legado.app.help.extension.model.ContentWarning as ModelContentWarning
+import io.legado.app.help.extension.model.ContentWarning
 import io.legado.app.help.extension.model.InstallStep
 import io.legado.app.help.extension.model.MangaExtension
 import io.legado.app.help.extension.isValidExtensionPackageName
@@ -80,7 +81,7 @@ class DesktopMangaExtensionHost(
                         versionName = manifest.versionName.orEmpty(),
                         versionCode = manifest.versionCode,
                         isShared = false,
-                        contentWarning = ModelContentWarning.SAFE,
+                        contentWarning = ContentWarning.SAFE,
                         signatures = emptyList(),
                         reason = MangaExtension.NotLoaded.Reason.Failed(
                             e.message ?: e::class.simpleName.orEmpty(),
@@ -111,13 +112,13 @@ class DesktopMangaExtensionHost(
         fun notLoaded(
             reason: MangaExtension.NotLoaded.Reason,
         ) = MangaExtension.NotLoaded(
-            name = manifest.label?.substringAfter("Aniyomi: ")?.substringAfter("Tachiyomi: ")
+            name = manifest.label?.let { ExtensionManifestContract.stripLabelPrefix(it) }
                 ?: pkgName,
             pkgName = pkgName,
             versionName = manifest.versionName.orEmpty(),
             versionCode = manifest.versionCode,
             isShared = false,
-            contentWarning = ModelContentWarning.SAFE,
+            contentWarning = ContentWarning.SAFE,
             signatures = signatures,
             reason = reason,
         )
@@ -161,11 +162,7 @@ class DesktopMangaExtensionHost(
             versionCode = versionCode,
             libVersion = libVersion,
             lang = lang,
-            contentWarning = when (contentWarning) {
-                ContentWarning.SAFE -> ModelContentWarning.SAFE
-                ContentWarning.MIXED -> ModelContentWarning.MIXED
-                ContentWarning.NSFW -> ModelContentWarning.NSFW
-            },
+            contentWarning = contentWarning,
             isShared = false,
             signatures = signatures,
             pkgFactory = pkgFactory,
@@ -182,7 +179,7 @@ class DesktopMangaExtensionHost(
             versionName = versionName,
             versionCode = versionCode,
             isShared = false,
-            contentWarning = ModelContentWarning.SAFE,
+            contentWarning = ContentWarning.SAFE,
             signatures = signatures,
             libVersion = libVersion,
             reason = when (reason) {
@@ -213,7 +210,7 @@ class DesktopMangaExtensionHost(
                 pkgName = manifest.packageName,
                 versionCode = manifest.versionCode,
                 isExtension = manifest.reqFeatures.any {
-                    it == EXTENSION_FEATURE || it == ANIME_EXTENSION_FEATURE
+                    ExtensionManifestContract.isExtensionFeature(it)
                 },
                 signatures = runCatching { ApkSignatures.sha256HexList(file) }.getOrDefault(emptyList()),
             )
@@ -363,10 +360,5 @@ class DesktopMangaExtensionHost(
 
     companion object {
         private const val APK_EXTENSION = "apk"
-
-        // 与 Android 端 ExtensionLoader 的 feature 键一致 (预检 + 安装校验用;
-        // JvmExtensionLoader 内部按同一契约识别)
-        private const val EXTENSION_FEATURE = "tachiyomi.extension"
-        private const val ANIME_EXTENSION_FEATURE = "tachiyomi.animeextension"
     }
 }

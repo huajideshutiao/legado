@@ -2,6 +2,7 @@
 
 package io.legado.app.help.extension.model
 
+import io.legado.app.help.extension.ExtensionManifestContract
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.protobuf.ProtoNumber
 
@@ -71,8 +72,9 @@ data class NetworkRepoInfo(
  */
 fun NetworkLegacyExtension.toAvailable(repo: MangaExtensionRepo): MangaExtension.Available {
     val storeBaseUrl = repo.indexUrl.removeSuffix("index.min.json").trimEnd('/')
+    val extName = ExtensionManifestContract.stripLabelPrefix(name)
     return MangaExtension.Available(
-        name = name.substringAfter("Aniyomi: ").substringAfter("Tachiyomi: "),
+        name = extName,
         pkgName = pkg,
         apkUrl = "$storeBaseUrl/apk/$apk",
         iconUrl = "$storeBaseUrl/icon/$pkg.png",
@@ -92,7 +94,7 @@ fun NetworkLegacyExtension.toAvailable(repo: MangaExtensionRepo): MangaExtension
             listOf(
                 MangaExtension.Available.Source(
                     id = 0,
-                    name = this@toAvailable.name.substringAfter("Aniyomi: ").substringAfter("Tachiyomi: "),
+                    name = extName,
                     lang = lang,
                 )
             )
@@ -165,7 +167,7 @@ fun NetworkExtensionStore.ExtensionList.toAvailable(repo: MangaExtensionRepo): L
         val langs = extension.sources.map { it.language }.toSet()
         val lang = if (langs.size == 1) langs.first() else "all"
         MangaExtension.Available(
-            name = extension.name.substringAfter("Aniyomi: ").substringAfter("Tachiyomi: "),
+            name = ExtensionManifestContract.stripLabelPrefix(extension.name),
             pkgName = extension.packageName,
             apkUrl = extension.resources?.apkUrl.orEmpty(),
             iconUrl = extension.resources?.iconUrl.orEmpty(),

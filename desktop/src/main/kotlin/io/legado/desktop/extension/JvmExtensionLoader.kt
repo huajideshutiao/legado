@@ -1,27 +1,23 @@
 // JVM 版扩展加载器 (desktop): 真实扩展 APK → dex2jar 转 jar → ChildFirstURLClassLoader →
-// 按 manifest 契约实例化 Source/AnimeSource。识别契约与 Android 端
-// io.legado.app.help.extension.util.ExtensionLoader 逐字一致 (feature 键 / metadata 键 /
-// lib 版本白名单 / 名称前缀剥离 / 相对类名补包 / SHA-256 签名)。
+// 按 manifest 契约实例化 Source/AnimeSource。识别契约的键名/白名单/映射规则下沉在
+// io.legado.app.help.extension.ExtensionManifestContract, 与 Android 端共用。
 // dex→jar 与 manifest 解析方式参考 Suwayomi-Server AndroidCompat 实证实现 (de.femtopedia.dex2jar
 // fork 保持 com.googlecode.d2j 包名; net.dongliu:apk-parser 还原 AXML)。
 package io.legado.desktop.extension
 
-import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.AnimeSourceFactory
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
+import io.legado.app.help.extension.ExtensionManifestContract
 import io.legado.app.help.extension.isValidExtensionPackageName
 import io.legado.app.help.extension.safeExtensionFileNameSegment
+import io.legado.app.help.extension.model.ContentWarning
 import io.legado.desktop.help.dex.DexJarConverter
 import java.io.File
 import java.net.URLClassLoader
 import java.util.zip.ZipFile
-
-enum class ExtensionKind { MANGA, ANIME }
-
-enum class ContentWarning { SAFE, MIXED, NSFW }
 
 sealed interface JvmExtension {
     val pkgName: String
@@ -66,25 +62,6 @@ sealed interface JvmExtension {
 
 object JvmExtensionLoader {
 
-    private const val EXTENSION_FEATURE = "tachiyomi.extension"
-    private const val ANIME_EXTENSION_FEATURE = "tachiyomi.animeextension"
-    private const val METADATA_SOURCE_CLASS = "tachiyomi.extension.class"
-    private const val METADATA_SOURCE_FACTORY = "tachiyomi.extension.factory"
-    private const val METADATA_NSFW = "tachiyomi.extension.nsfw"
-    private const val ANIME_METADATA_SOURCE_CLASS = "tachiyomi.animeextension.class"
-    private const val ANIME_METADATA_SOURCE_FACTORY = "tachiyomi.animeextension.factory"
-    private const val ANIME_METADATA_NSFW = "tachiyomi.animeextension.nsfw"
-
-    private const val METADATA_NAME = "tachiyomix.name"
-    private const val METADATA_EXTENSION_LIB = "tachiyomix.extensionLib"
-    private const val METADATA_CONTENT_WARNING = "tachiyomix.contentWarning"
-
-    /** 漫画扩展受支持的扩展库版本 (tachiyomix 契约)。 */
-    private val SUPPORTED_LIB_VERSIONS = listOf(1.4, 1.6)
-
-    /** 视频扩展受支持的扩展库版本 (Aniyomi 整数系)。 */
-    private val ANIME_SUPPORTED_LIB_VERSIONS = listOf(14.0, 15.0, 16.0, 17.0)
-
     /**
      * 加载单个扩展 APK。
      *
@@ -116,12 +93,9 @@ object JvmExtensionLoader {
             return notLoaded(JvmExtension.Reason.Malformed, "非法扩展包名: $pkgName")
         }
 
-        // 两 feature 不会同时声明, 视频键优先判定 (与 Android 端 extensionKindOf 一致)
-        val kind = when {
-            ANIME_EXTENSION_FEATURE in manifest.reqFeatures -> ExtensionKind.ANIME
-            EXTENSION_FEATURE in manifest.reqFeatures -> ExtensionKind.MANGA
-            else -> return notLoaded(JvmExtension.Reason.Malformed, "缺少扩展 feature 声明")
-        }
+        // 两 feature 不会同时声明, 视频键优先判定
+        val kind = ExtensionManifestContract.extensionKindOf(manifest.reqFeatures)
+            ?: return notLoaded(JvmExtension.Reason.Malformed, "缺少扩展 feature 声明")
 
         val metaData = manifest.metaData
         if (manifest.versionName.isNullOrBlank() || metaData.isEmpty()) {
@@ -129,17 +103,17 @@ object JvmExtensionLoader {
         }
 
         // metadata 未声明时回退 versionName 前两段 (视频扩展实测无 tachiyomix.* 元数据: "14.10"→14.0)
-        val libVersion = metaData[METADATA_EXTENSION_LIB]?.toFloatOrNull()
-            ?.takeUnless { it == 0.0f }
-            ?.toDouble()
-            ?: manifest.versionName.substringBeforeLast('.').toDoubleOrNull()
-        val supportedVersions =
-            if (kind == ExtensionKind.ANIME) ANIME_SUPPORTED_LIB_VERSIONS else SUPPORTED_LIB_VERSIONS
-        if (libVersion == null || libVersion !in supportedVersions) {
+        val declaredLibVersion = ExtensionManifestContract.parseLibVersion(
+            metaData[ExtensionManifestContract.METADATA_EXTENSION_LIB]?.toFloatOrNull(),
+            manifest.versionName,
+        )
+        val libVersion = ExtensionManifestContract.supportedLibVersion(kind, declaredLibVersion)
+        if (libVersion == null) {
             return notLoaded(
                 JvmExtension.Reason.UnsupportedLibVersion,
-                "扩展库版本 $libVersion 不受支持, 仅支持 ${supportedVersions.joinToString()}",
-                libVersion = libVersion,
+                "扩展库版本 $declaredLibVersion 不受支持, " +
+                    "仅支持 ${ExtensionManifestContract.supportedLibVersions(kind).joinToString()}",
+                libVersion = declaredLibVersion,
             )
         }
 
@@ -159,21 +133,22 @@ object JvmExtensionLoader {
         }
 
         val contentWarning = when {
-            metaData.containsKey(METADATA_CONTENT_WARNING) -> when (metaData[METADATA_CONTENT_WARNING]?.toIntOrNull()) {
-                1 -> ContentWarning.MIXED
-                2 -> ContentWarning.NSFW
-                else -> ContentWarning.SAFE
-            }
-            kind == ExtensionKind.ANIME &&
-                metaData[ANIME_METADATA_NSFW]?.toIntOrNull() == 1 -> ContentWarning.NSFW
-            kind == ExtensionKind.MANGA && metaData[METADATA_NSFW]?.toIntOrNull() == 1 -> ContentWarning.NSFW
+            metaData.containsKey(ExtensionManifestContract.METADATA_CONTENT_WARNING) ->
+                ExtensionManifestContract.contentWarningOfDeclared(
+                    metaData[ExtensionManifestContract.METADATA_CONTENT_WARNING]?.toIntOrNull() ?: 0
+                )
+            kind == ExtensionManifestContract.ExtensionKind.ANIME &&
+                ExtensionManifestContract.isNsfwFlag(metaData[ExtensionManifestContract.ANIME_METADATA_NSFW]?.toIntOrNull()) ->
+                ContentWarning.NSFW
+            kind == ExtensionManifestContract.ExtensionKind.MANGA &&
+                ExtensionManifestContract.isNsfwFlag(metaData[ExtensionManifestContract.METADATA_NSFW]?.toIntOrNull()) ->
+                ContentWarning.NSFW
             else -> ContentWarning.SAFE
         }
 
-        val extName = metaData[METADATA_NAME]
+        val extName = metaData[ExtensionManifestContract.METADATA_NAME]
             ?: manifest.label
-                ?.substringAfter("Aniyomi: ")
-                ?.substringAfter("Tachiyomi: ")
+                ?.let { ExtensionManifestContract.stripLabelPrefix(it) }
             ?: pkgName
 
         // APK → dex → jar (Suwayomi PackageTools.dex2jar 同参数面; fork 的 open 无多 dex 重载,
@@ -204,7 +179,11 @@ object JvmExtensionLoader {
         }
 
         val sourceClassKey =
-            if (kind == ExtensionKind.ANIME) ANIME_METADATA_SOURCE_CLASS else METADATA_SOURCE_CLASS
+            if (kind == ExtensionManifestContract.ExtensionKind.ANIME) {
+                ExtensionManifestContract.ANIME_METADATA_SOURCE_CLASS
+            } else {
+                ExtensionManifestContract.METADATA_SOURCE_CLASS
+            }
         val sourceClasses = metaData[sourceClassKey]
         if (sourceClasses.isNullOrBlank()) {
             classLoader.close()
@@ -214,16 +193,8 @@ object JvmExtensionLoader {
         // 分号分隔, "." 开头为扩展包内相对类名; 漫画/视频源按实例类型分流 (与 Android 端逐字一致)
         val mangaSources = ArrayList<Source>()
         val animeSources = ArrayList<AnimeSource>()
-        sourceClasses
-            .split(";")
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .forEach { sourceClass ->
-                val className = if (sourceClass.startsWith(".")) {
-                    pkgName + sourceClass
-                } else {
-                    sourceClass
-                }
+        ExtensionManifestContract.expandSourceClassNames(sourceClasses, pkgName)
+            .forEach { className ->
                 try {
                     when (val obj = Class.forName(className, false, classLoader)
                         .getDeclaredConstructor().newInstance()) {
@@ -255,7 +226,11 @@ object JvmExtensionLoader {
         }
 
         val factoryKey =
-            if (kind == ExtensionKind.ANIME) ANIME_METADATA_SOURCE_FACTORY else METADATA_SOURCE_FACTORY
+            if (kind == ExtensionManifestContract.ExtensionKind.ANIME) {
+                ExtensionManifestContract.ANIME_METADATA_SOURCE_FACTORY
+            } else {
+                ExtensionManifestContract.METADATA_SOURCE_FACTORY
+            }
         return JvmExtension.Loaded(
             name = extName,
             pkgName = pkgName,
