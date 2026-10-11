@@ -20,6 +20,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.getRealBookSort
 import io.legado.app.help.book.BookHelpShared
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.removeType
@@ -108,10 +109,11 @@ fun BookshelfManageRoute(
             // 对照 app 端 AppConfig.getBookSortByGroupId: 分组自定义排序 (bookSort>=0) 优先,
             // 否则回退全局 bookshelfSort (3=手动排序可拖拽, canDrag 由 ScreenModel 解析)
             resolveBookSort = { groupId ->
-                val groupSort = runCatching {
-                    AppDbProviders.get().bookGroupDao.getByID(groupId)?.bookSort ?: -1
-                }.getOrDefault(-1)
-                if (groupSort >= 0) groupSort else AppConfigProviders.get().bookshelfSort
+                val group = runCatching {
+                    AppDbProviders.get().bookGroupDao.getByID(groupId)
+                }.getOrNull()
+                group?.getRealBookSort(AppConfigProviders.get().bookshelfSort)
+                    ?: AppConfigProviders.get().bookshelfSort
             },
             // 缓存文件扫描委托 shared VM (对照 app 端 viewModel.loadCacheFiles)
             loadCacheFiles = { books -> manageVm.loadCacheFiles(books) },

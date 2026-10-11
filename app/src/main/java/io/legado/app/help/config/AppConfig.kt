@@ -6,8 +6,8 @@ import io.legado.app.App
 import io.legado.app.BuildConfig
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.getRealBookSort
 import io.legado.app.help.i18n.androidAppString
-import io.legado.app.ui.book.getRealBookSort
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
@@ -273,7 +273,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var bookshelfSort by intPref(PreferKey.bookshelfSort, 0)
 
     fun getBookSortByGroupId(groupId: Long): Int {
-        return runBlocking { appDb.bookGroupDao.getByID(groupId) }?.getRealBookSort()
+        return runBlocking { appDb.bookGroupDao.getByID(groupId) }?.getRealBookSort(bookshelfSort)
             ?: bookshelfSort
     }
 

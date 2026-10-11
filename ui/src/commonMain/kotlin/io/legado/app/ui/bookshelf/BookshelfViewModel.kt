@@ -5,6 +5,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.data.entities.getRealBookSort
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.casUpdate
 import io.legado.app.help.config.AppConfigProviders
@@ -343,12 +344,11 @@ class BookshelfViewModel {
 
     /**
      * 取分组实际排序方式 (对照 app 端 BookGroup.getRealBookSort)。
-     * bookSort < 0 时回退到全局书架排序配置。
+     * 分组不存在或 bookSort < 0 时回退到全局书架排序配置。
      */
     private fun sortOf(groupId: Long): Int {
         val group = _bookGroups.value.find { it.groupId == groupId }
-        val raw = group?.bookSort ?: -1
-        return if (raw < 0) appConfig.bookshelfSort else raw
+        return group?.getRealBookSort(appConfig.bookshelfSort) ?: appConfig.bookshelfSort
     }
 
     /**
