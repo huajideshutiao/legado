@@ -11,10 +11,19 @@ import androidx.activity.addCallback
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
+import io.legado.app.ui.compose.platform.AndroidAppConfigProvider
+import io.legado.app.ui.compose.platform.AndroidEventBusProvider
+import io.legado.app.ui.compose.platform.AndroidThemeStoreProvider
+import io.legado.app.ui.compose.platform.LocalAppConfigProvider
+import io.legado.app.ui.compose.platform.LocalEventBusProvider
+import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.dialogs.AlertDialogHandle
 import io.legado.app.ui.compose.dialogs.ComposeAlertDialogHost
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.i18n.androidAppString
@@ -45,7 +54,23 @@ class PermissionActivity : AppCompatActivity() {
         intent.getIntExtra(KEY_INPUT_PERMISSIONS_CODE, 1000)
         val permissions = intent.getStringArrayExtra(KEY_INPUT_PERMISSIONS)!!
         // alert DSL 请求的渲染宿主 (本 Activity 自身弹的权限说明框)
-        setContent { ComposeAlertDialogHost() }
+        // alert DSL 请求的渲染宿主 (本 Activity 自身弹的权限说明框); 包 AppTheme:
+        // 宿主正文读 AppTheme.colors, 不包则弹窗即抛 AppColors not provided 崩溃;
+        // 本 Activity 不走 BaseComposeActivity 的 setContent, 主题依赖的 Provider 需自备
+        setContent {
+            val themeStoreProvider = remember { AndroidThemeStoreProvider() }
+            val appConfigProvider = remember { AndroidAppConfigProvider() }
+            val eventBusProvider = remember { AndroidEventBusProvider() }
+            CompositionLocalProvider(
+                LocalThemeStoreProvider provides themeStoreProvider,
+                LocalAppConfigProvider provides appConfigProvider,
+                LocalEventBusProvider provides eventBusProvider,
+            ) {
+                AppTheme {
+                    ComposeAlertDialogHost()
+                }
+            }
+        }
         when (intent.getIntExtra(KEY_INPUT_REQUEST_TYPE, Request.TYPE_REQUEST_PERMISSION)) {
             //权限请求
             Request.TYPE_REQUEST_PERMISSION -> showSettingDialog(permissions, rationale) {

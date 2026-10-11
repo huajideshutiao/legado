@@ -73,6 +73,7 @@ import io.legado.app.ui.about.checkUpdateAndPrompt
 import io.legado.app.ui.about.notifyAppCrash
 import io.legado.app.ui.about.upVersion
 import io.legado.app.ui.association.DeepLinkImportHost
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
@@ -597,43 +598,49 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
                     capabilities = capabilities,
                 )
             }
-            // 书源 JS 弹窗事件桥宿主 (对照 desktop Main.kt / iOS MainViewController):
-            // 订阅 FlowBus(SOURCE_UI_REQUEST) 弹共享登录/源变量/验证码对话框
-            SourceUiEventBridgeHost()
-            // legado:// deep link 导入对话框宿主 (对照 iOS/鸿蒙 MainViewController 末尾挂载)。
-            // 仅前台 (RESUMED) 挂载: 透明壳 AssociationActivity 在前台时挂它自己的一份,
-            // MainActivity 若同时消费共享 pending 会双弹窗 (后台 Activity 的 Compose Dialog
-            // 窗口仍会显示); 壳 finish 后 MainActivity 回到前台, 宿主自然恢复。
-            val lifecycleOwner = LocalLifecycleOwner.current
-            var hostVisible by remember {
-                mutableStateOf(
-                    lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-                )
-            }
-            DisposableEffect(lifecycleOwner) {
-                val observer = LifecycleEventObserver { _, event ->
-                    hostVisible = when (event) {
-                        Lifecycle.Event.ON_RESUME -> true
-                        Lifecycle.Event.ON_PAUSE -> false
-                        else -> hostVisible
-                    }
+            // 书源 JS 弹窗/深链导入/查词/文件选择/alert DSL 等全局对话框宿主区:
+            // 统一包 AppTheme —— 这些宿主挂在 LegadoApp 主题作用域外, 而宿主正文
+            // (AppAlertDialogContent/HandleFileDialogContent 等) 直接读 AppTheme.colors,
+            // 不包则弹窗即抛 AppColors not provided 崩溃 (对照原版 ComposeDialog 基类自带主题)
+            AppTheme {
+                // 书源 JS 弹窗事件桥宿主 (对照 desktop Main.kt / iOS MainViewController):
+                // 订阅 FlowBus(SOURCE_UI_REQUEST) 弹共享登录/源变量/验证码对话框
+                SourceUiEventBridgeHost()
+                // legado:// deep link 导入对话框宿主 (对照 iOS/鸿蒙 MainViewController 末尾挂载)。
+                // 仅前台 (RESUMED) 挂载: 透明壳 AssociationActivity 在前台时挂它自己的一份,
+                // MainActivity 若同时消费共享 pending 会双弹窗 (后台 Activity 的 Compose Dialog
+                // 窗口仍会显示); 壳 finish 后 MainActivity 回到前台, 宿主自然恢复。
+                val lifecycleOwner = LocalLifecycleOwner.current
+                var hostVisible by remember {
+                    mutableStateOf(
+                        lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+                    )
                 }
-                lifecycleOwner.lifecycle.addObserver(observer)
-                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                DisposableEffect(lifecycleOwner) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        hostVisible = when (event) {
+                            Lifecycle.Event.ON_RESUME -> true
+                            Lifecycle.Event.ON_PAUSE -> false
+                            else -> hostVisible
+                        }
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                }
+                if (hostVisible) {
+                    DeepLinkImportHost()
+                }
+                // 阅读页长按文本的自绘浮动操作菜单 (对照桌面 DesktopReaderPlatformProvider.TextSelectionHost)
+                readerPlatform.TextSelectionHost()
+                // 阅读页长按图片的自绘浮动操作菜单 (与文本菜单同款样式, 见 ReaderImageActionMenu)
+                ReaderImageActionMenu.Host()
+                // 查词对话框 (选中词 → 词典查询, 本地/在线词典规则; 四端同一份, 见 shared ReaderDictWord)
+                ReaderDictWord.Host()
+                // 文件选择/导出对话框宿主 (原 HandleFileDialog/FilePickerDialog Fragment 的声明式形态)
+                HandleFileHost()
+                // alert/selector DSL 请求宿主 (原 ComposeDialog 窗口的声明式形态)
+                ComposeAlertDialogHost()
             }
-            if (hostVisible) {
-                DeepLinkImportHost()
-            }
-            // 阅读页长按文本的自绘浮动操作菜单 (对照桌面 DesktopReaderPlatformProvider.TextSelectionHost)
-            readerPlatform.TextSelectionHost()
-            // 阅读页长按图片的自绘浮动操作菜单 (与文本菜单同款样式, 见 ReaderImageActionMenu)
-            ReaderImageActionMenu.Host()
-            // 查词对话框 (选中词 → 词典查询, 本地/在线词典规则; 四端同一份, 见 shared ReaderDictWord)
-            ReaderDictWord.Host()
-            // 文件选择/导出对话框宿主 (原 HandleFileDialog/FilePickerDialog Fragment 的声明式形态)
-            HandleFileHost()
-            // alert/selector DSL 请求宿主 (原 ComposeDialog 窗口的声明式形态)
-            ComposeAlertDialogHost()
         }
     }
 
