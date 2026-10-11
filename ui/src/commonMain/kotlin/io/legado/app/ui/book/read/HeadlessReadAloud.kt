@@ -4,6 +4,9 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
 import io.legado.app.data.AppDbProviders
+import io.legado.app.data.entities.Book
+import io.legado.app.help.book.delBookCore
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.media.RemoteMediaCommand
 import io.legado.app.help.media.SystemMediaControl
 import io.legado.app.model.ActiveReadAloudHostPorts
@@ -130,7 +133,7 @@ object HeadlessReadAloud {
         launchSession()
     }
 
-    private fun launchSession() {
+    private fun launchSession(initialBook: Book? = null) {
         val scope = screenModelScope("无头朗读")
         val readBook = ReadBookShared()
         // 构造即挂朗读端口 (ReadBookViewModelShared.init), 与阅读页同一入口
@@ -140,7 +143,7 @@ object HeadlessReadAloud {
         // 供朗读侧读"当前阅读实例": 书内 TTS 引擎设置、通知书名、Android 起播页号都读它
         ActiveReadBookRegistry.attach(readBook)
         scope.launch {
-            val book = AppDbProviders.get().bookDao.lastReadBook()
+            val book = initialBook ?: AppDbProviders.get().bookDao.lastReadBook()
             if (book == null) {
                 close(created)
                 return@launch
@@ -167,6 +170,32 @@ object HeadlessReadAloud {
                 if (current != null && current !== readBook) close(created)
             }
         }
+        scope.launch {
+            // 朗读结束后收掉临时书 (未入架) 的库残留: 页面在朗读活跃期退出时不再删它
+            // (那一刻删会把朗读正在读的章节从库里摘掉), 改由持有这本书的会话在朗读结束后按库里
+            // 最新状态判一次 —— 期间用户把它加进书架就不会误删。
+            ReadBookPlatforms.get().awaitReadAloudStopped()
+            val book = readBook.bookValue ?: return@launch
+            if (ActiveReadBookRegistry.current !== readBook) return@launch
+            val stored = AppDbProviders.get().bookDao.getBook(book.name, book.author) ?: return@launch
+            if (stored.isNotShelf) book.delBookCore()
+        }
+    }
+
+    /**
+     * 阅读页退出且朗读正在运行时调用: 把朗读的数据源交给无头会话。
+     *
+     * 朗读的章节/位置端口来自阅读实例, 而页面实例随页面销毁; 会话用同一套装载通路按页面退出时的
+     * 内存状态 (书 + 进度) 重新装载并接管注册表与端口, 页面因此可以照常清理, 不必为朗读把它们保活。
+     *
+     * @return true 表示已交给会话 (临时书的库残留清理也随之交给它)
+     */
+    fun takeOverFromPage(source: ReadBookShared): Boolean {
+        val book = source.bookValue ?: return false
+        // 页面是当前注册实例: 先收掉可能存在的旧会话 (它的阅读页接管逻辑已失效), 再按页面状态重装
+        synchronized(lock) { session.also { session = null } }?.let { close(it) }
+        launchSession(book)
+        return true
     }
 
     /**
@@ -175,14 +204,11 @@ object HeadlessReadAloud {
      * 预下载跑在自己的作用域 ([ReadBookViewModelShared] 的下载 scope), 不随下面 [CoroutineScope.cancel]
      * 一起停, 必须显式取消。朗读端口与阅读状态留给下一个活动实例接管 (都由注册表按引用判等),
      * 不在此处调 `onCleared` —— 它会顺手删掉未入架的最近阅读书, 而这里可能正被阅读页接手。
+     *
+     * 会话已被新会话顶替时也要释放自己的资源 (取消协程/摘自己的注册), 否则旧会话的协程无人回收。
      */
     private fun close(target: Session) {
-        val owned = synchronized(lock) {
-            if (session !== target) return@synchronized false
-            session = null
-            true
-        }
-        if (!owned) return
+        synchronized(lock) { if (session === target) session = null }
         target.viewModel.cancelPreDownloadTask()
         ActiveReadBookRegistry.detach(target.readBook)
         target.scope.cancel()

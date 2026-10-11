@@ -21,6 +21,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
 
@@ -95,6 +96,16 @@ abstract class ReadAloudHostShared(
 
     /** 对应 app 端 `BaseReadAloudService.pause`。 */
     override val isPause: Boolean get() = controllerRef?.state?.value != ReadAloudState.PLAYING
+
+    /**
+     * 挂起等待朗读停止: 运行中(播放/暂停/等待装载)即挂起, 到空闲或终态即返回。
+     * controller.state 是 StateFlow, 重放当前值, 等待开始前发生的停止不会错过。
+     */
+    suspend fun awaitStopped() {
+        controller.state.first {
+            it != ReadAloudState.PLAYING && it != ReadAloudState.PAUSED && it != ReadAloudState.WAITING
+        }
+    }
 
     /**
      * 开始朗读 (对照 `ReadAloud.play(context, play, pageIndex, startPos)` → `newReadAloud`):

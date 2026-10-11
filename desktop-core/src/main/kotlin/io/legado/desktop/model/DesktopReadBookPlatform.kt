@@ -29,6 +29,8 @@ object DesktopReadBookPlatform : ReadBookPlatform {
     // 对照 app 端 AndroidReadBookPlatform 的 BaseReadAloudService / ReadAloud 门面。
     override val isReadAloudRun: Boolean get() = DesktopReadAloudHost.isRun
 
+    override suspend fun awaitReadAloudStopped() = DesktopReadAloudHost.awaitStopped()
+
     override val isReadAloudPause: Boolean get() = DesktopReadAloudHost.isPause
 
     override fun playReadAloud(play: Boolean, startPos: Int) {

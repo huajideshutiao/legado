@@ -15,6 +15,13 @@ interface ReadBookPlatform {
     /** 朗读服务是否运行中 (app: `BaseReadAloudService.isRun`) */
     val isReadAloudRun: Boolean
 
+    /**
+     * 挂起等待朗读停止 (播放/暂停/等待装载均算运行中): 空闲或终态即返回。
+     * 实现必须基于状态量 (重放当前值) 而非事件流, 保证等待开始前发生的停止不会被错过
+     * (无头朗读会话在朗读结束后收尾临时书的库残留依赖它)。
+     */
+    suspend fun awaitReadAloudStopped()
+
     /** 朗读是否处于暂停态 (app: `BaseReadAloudService.pause`) */
     val isReadAloudPause: Boolean
 

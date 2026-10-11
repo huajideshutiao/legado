@@ -16,6 +16,8 @@ private object OhosReadBookPlatform : ReadBookPlatform {
     // 朗读: 桥接到 OhosReadAloudHost (对照 desktop DesktopReadBookPlatform 接 DesktopReadAloudHost)
     override val isReadAloudRun: Boolean get() = OhosReadAloudHost.isRun
 
+    override suspend fun awaitReadAloudStopped() = OhosReadAloudHost.awaitStopped()
+
     override val isReadAloudPause: Boolean get() = OhosReadAloudHost.isPause
 
     override fun playReadAloud(play: Boolean, startPos: Int) {

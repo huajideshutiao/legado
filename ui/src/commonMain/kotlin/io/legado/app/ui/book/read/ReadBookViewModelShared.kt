@@ -1785,10 +1785,23 @@ class ReadBookViewModelShared(
      * 退出阅读界面时调用（唯一调用方 [io.legado.app.ui.book.read.ReaderScreenModel.onCleared]）：
      * 摘注册 + 取消在途任务 + 清理未入架书。
      *
+     * 朗读活跃期：[HeadlessReadAloud.takeOverFromPage] 先按当前内存状态把数据源交给进程级无头会话
+     * (原版 ReadBook 是进程级单例，页面销毁不影响它，朗读的通知/跨章/进度上传都靠它)，页面侧照常清理，
+     * 不再为朗读保活；临时书（未入架）的库残留也随之交给会话，否则此刻删会把朗读正在读的章节摘掉。
+     *
+     * [pageCleanup] 是页面侧与实例同寿命的收尾（摘注册表/补传进度/取消 UI scope）。
+     *
      * 落库上传不在这里做：[uploadProgress] 每次调用都是一次真实 WebDav PUT（无去重/节流，
      * 见 AppWebDavShared.uploadBookProgress），由宿主按"活跃期结束"调一次即可。
      */
-    fun onCleared() {
+    fun onCleared(pageCleanup: () -> Unit) {
+        val handedOver = if (ReadBookPlatforms.get().isReadAloudRun) {
+            HeadlessReadAloud.takeOverFromPage(readBook)
+        } else false
+        clearNow(pageCleanup, cleanUnshelved = !handedOver)
+    }
+
+    private fun clearNow(pageCleanup: () -> Unit, cleanUnshelved: Boolean) {
         ActiveReadBookRegistry.detachViewModel(this)
         ActiveReadAloudHostPorts.detach(readAloudOwner)
         loadGuard.clear()
@@ -1802,11 +1815,12 @@ class ReadBookViewModelShared(
         // `if (!ReadBook.inBookshelf && !isChangingConfigurations) removeFromBookshelf(null)` 兜底；
         // 走独立 scope，UI scope 取消不影响删除）。确定入架（已去 notShelf 标记）或已删除的书不重复处理。
         val book = readBook.book.value
-        if (book != null && book.isNotShelf) {
+        if (cleanUnshelved && book != null && book.isNotShelf) {
             progressSyncScope.launch {
                 book.delBookCore()
             }
         }
+        pageCleanup()
     }
     // endregion
 

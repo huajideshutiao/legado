@@ -17,6 +17,8 @@ private object IosReadBookPlatform : ReadBookPlatform {
 
     override val isReadAloudRun: Boolean get() = IosReadAloudHost.isRun
 
+    override suspend fun awaitReadAloudStopped() = IosReadAloudHost.awaitStopped()
+
     override val isReadAloudPause: Boolean get() = IosReadAloudHost.isPause
 
     override fun playReadAloud(play: Boolean, startPos: Int) {

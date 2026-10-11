@@ -940,14 +940,17 @@ class ReaderScreenModel(
     }
 
     override fun onCleared() {
-        ActiveReadBookRegistry.detach(readBook)
-        // 对照原版 ReadBookActivity.onDestroy: 立即结束阅读计时 (不等待 end 的延迟结算)
+        // 对照原版 ReadBookActivity.onDestroy: 立即结束阅读计时 (不等待 end 的延迟结算)。
+        // 阅读计时与朗读计时独立 (朗读期由朗读侧另记 READ_ALOUD), 朗读豁免期同样立即结束,
+        // 避免页面退出后阅读时长虚增
         ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.READ_BOOK)
-        // 活跃期已上传过就不再上传: 每次 uploadProgress 都是一次真实 WebDav PUT。
-        // 宿主整体销毁等没走 [onPause] 的路径在此补一次, 不丢进度
-        if (!progressUploaded) viewModel.uploadProgress()
-        viewModel.onCleared()
-        scope.cancel()
+        viewModel.onCleared(pageCleanup = {
+            ActiveReadBookRegistry.detach(readBook)
+            // 活跃期已上传过就不再上传: 每次 uploadProgress 都是一次真实 WebDav PUT。
+            // 宿主整体销毁等没走 [onPause] 的路径在此补一次, 不丢进度
+            if (!progressUploaded) viewModel.uploadProgress()
+            scope.cancel()
+        })
     }
 
     /**

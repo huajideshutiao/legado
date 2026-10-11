@@ -14,6 +14,9 @@ import android.telephony.TelephonyManager
 import androidx.annotation.CallSuper
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
@@ -71,6 +74,12 @@ abstract class BaseReadAloudService : BaseService() {
         @JvmStatic
         var pause = true
             private set
+
+        /** 朗读服务运行态状态流: 与 [isRun] 同点维护, 重放当前值, 豁免清理的收尾等待源 */
+        private val _isRunFlow = MutableStateFlow(false)
+
+        @JvmStatic
+        val isRunFlow: StateFlow<Boolean> = _isRunFlow.asStateFlow()
 
         @JvmStatic
         val timeMinute: Int
@@ -212,6 +221,7 @@ abstract class BaseReadAloudService : BaseService() {
     override fun onCreate() {
         super.onCreate()
         isRun = true
+        _isRunFlow.value = true
         pause = false
         sleepTimer = SleepTimer(
             scope = lifecycleScope,
@@ -251,6 +261,7 @@ abstract class BaseReadAloudService : BaseService() {
         super.onDestroy()
         playbackLock.release()
         isRun = false
+        _isRunFlow.value = false
         pause = true
         ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.READ_ALOUD)
         audioFocus.abandon()

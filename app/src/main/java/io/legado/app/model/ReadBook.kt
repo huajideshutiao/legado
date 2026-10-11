@@ -4,6 +4,7 @@ import io.legado.app.App
 import io.legado.app.model.fileBook.TextFile
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.CacheBookService
+import kotlinx.coroutines.flow.first
 
 /**
  * 注册 [ReadBookShared] 的 Android 平台出口 (朗读/缓存服务运行态 + 图片/本地 txt 缓存清理)。
@@ -20,6 +21,10 @@ fun registerAndroidReadBookPlatform() {
 private object AndroidReadBookPlatform : ReadBookPlatform {
 
     override val isReadAloudRun: Boolean get() = BaseReadAloudService.isRun
+
+    override suspend fun awaitReadAloudStopped() {
+        BaseReadAloudService.isRunFlow.first { !it }
+    }
 
     override val isReadAloudPause: Boolean get() = BaseReadAloudService.pause
 
