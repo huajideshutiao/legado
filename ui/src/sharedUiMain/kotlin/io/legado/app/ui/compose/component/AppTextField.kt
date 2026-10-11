@@ -16,7 +16,6 @@ import androidx.compose.foundation.text.input.KeyboardActionHandler
 import androidx.compose.foundation.text.input.OutputTransformation
 import androidx.compose.foundation.text.input.TextFieldDecorator
 import androidx.compose.foundation.text.input.TextFieldLineLimits
-import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material.ExperimentalMaterialApi
@@ -27,12 +26,7 @@ import androidx.compose.material.TextFieldDefaults
 import androidx.compose.material.TextFieldDefaults.indicatorLine
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.Stable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -103,7 +97,7 @@ fun AppTextField(
     AppTextFieldCore(
         value = value,
         onValueChange = onValueChange,
-        adapter = StringValueAdapter,
+        adapter = StringFieldAdapter,
         modifier = modifier,
         enabled = enabled,
         readOnly = readOnly,
@@ -154,7 +148,7 @@ fun AppTextField(
     AppTextFieldCore(
         value = value,
         onValueChange = onValueChange,
-        adapter = TextFieldValueAdapter,
+        adapter = TextFieldValueFieldAdapter,
         modifier = modifier,
         enabled = enabled,
         readOnly = readOnly,
@@ -176,60 +170,14 @@ fun AppTextField(
 }
 
 /**
- * 两个 [AppTextField] 重载唯一的差异面: state ↔ 外部 value 的双同步口径与装饰盒显示文本。
- * 方法均为纯函数 (非 `@Composable`), 实现为无状态单例, 故标 [Stable]。
+ * 两个 [AppTextField] 重载的公共实现体, 取值差异全部经 [adapter] 注入。
  */
-@Stable
-private interface AppTextFieldValueAdapter<T : Any> {
-    /** 用外部初始值构造 state */
-    fun initialState(value: T): TextFieldState
-
-    /** state → 外部值: 出向同步的取值与 snapshotFlow 去重口径 */
-    fun read(state: TextFieldState): T
-
-    /** 外部值 → state (程序化修改): 仅在不一致时写入 */
-    fun syncInto(state: TextFieldState, value: T)
-
-    /** 装饰盒 (label 浮动/占位符判定) 用的显示文本 */
-    fun displayText(value: T): String
-}
-
-/** String 重载: 只比文本 */
-private object StringValueAdapter : AppTextFieldValueAdapter<String> {
-    override fun initialState(value: String) = TextFieldState(value)
-    override fun read(state: TextFieldState) = state.text.toString()
-    override fun displayText(value: String) = value
-    override fun syncInto(state: TextFieldState, value: String) {
-        if (state.text.toString() != value) {
-            state.edit { replace(0, length, value) }
-        }
-    }
-}
-
-/** TextFieldValue 重载: 文本+选区 (IME composition / undo-redo 场景需要保留选区) */
-private object TextFieldValueAdapter : AppTextFieldValueAdapter<TextFieldValue> {
-    override fun initialState(value: TextFieldValue) = TextFieldState(value.text, value.selection)
-    override fun read(state: TextFieldState) =
-        TextFieldValue(state.text.toString(), state.selection)
-
-    override fun displayText(value: TextFieldValue) = value.text
-    override fun syncInto(state: TextFieldState, value: TextFieldValue) {
-        if (state.text.toString() != value.text || state.selection != value.selection) {
-            state.edit {
-                replace(0, length, value.text)
-                selection = value.selection
-            }
-        }
-    }
-}
-
-/** 两个 [AppTextField] 重载的公共实现体, 取值差异全部经 [adapter] 注入 */
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
 private fun <T : Any> AppTextFieldCore(
     value: T,
     onValueChange: (T) -> Unit,
-    adapter: AppTextFieldValueAdapter<T>,
+    adapter: SyncedFieldAdapter<T>,
     modifier: Modifier,
     enabled: Boolean,
     readOnly: Boolean,
@@ -265,18 +213,8 @@ private fun <T : Any> AppTextFieldCore(
         )
         // 新版 TextFieldState API (受控双同步): 用户编辑 → onValueChange;
         // 外部 value → state (程序化修改)。旧版 value/onValueChange 契约保持不变。
-        // state 用初始值初始化: snapshotFlow 收集即发首帧, 若 state 初始为空会把空串
-        // 推给 onValueChange 清空外部值 (书源编辑界面初始赋值后字段被清空的问题)。
-        val state = remember { adapter.initialState(value) }
-        val currentValue by rememberUpdatedState(value)
-        val currentOnValueChange by rememberUpdatedState(onValueChange)
-        LaunchedEffect(state) {
-            snapshotFlow { adapter.read(state) }
-                .collect { if (it != currentValue) currentOnValueChange(it) }
-        }
-        LaunchedEffect(state, value) {
-            adapter.syncInto(state, value)
-        }
+        // 同步语义见 rememberSyncedTextFieldState (出向/入向同一收集体, 按触发侧决定动作)
+        val state = rememberSyncedTextFieldState(value, onValueChange, adapter)
         // 呈现变换实例稳定 (remember): BasicTextField 内部按 (state, codepointTransformation,
         // outputTransformation) remember TransformedTextFieldState, 实例一变就重建 TextLayoutState
         // 缓存 → 全文重变换+重布局。内联新建实例会让每次重组都全量重算 (无变换字段也中招);
@@ -321,7 +259,7 @@ private fun <T : Any> AppTextFieldCore(
             cursorBrush = SolidColor(colors.cursorColor(isError).value),
             decorator = TextFieldDecorator { innerTextField ->
                 AppDecorationBox(
-                    text = adapter.displayText(value),
+                    text = adapter.text(value),
                     innerTextField = innerTextField,
                     enabled = enabled,
                     singleLine = singleLine,

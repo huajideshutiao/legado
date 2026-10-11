@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.input.TextFieldLineLimits
-import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
@@ -24,9 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -48,6 +45,7 @@ import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.horizontalMouseWheel
+import io.legado.app.ui.compose.component.rememberSyncedTextFieldValueState
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberImeVisible
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -364,25 +362,8 @@ private fun PanelInput(
     val colors = AppTheme.colors
     var focused by remember { mutableStateOf(false) }
     // 新版 TextFieldState API: TextFieldValue 契约 (文本+选区) 经双同步保留。
-    // state 用初始文本+选区初始化 (防 snapshotFlow 首帧把空串推给外部清空值)
-    val state = remember { TextFieldState(value.text, value.selection) }
-    val currentValue by rememberUpdatedState(value)
-    val currentOnValueChange by rememberUpdatedState(onValueChange)
-    LaunchedEffect(state) {
-        snapshotFlow { state.text.toString() to state.selection }
-            .collect { (text, selection) ->
-                val newValue = TextFieldValue(text, selection)
-                if (newValue != currentValue) currentOnValueChange(newValue)
-            }
-    }
-    LaunchedEffect(state, value) {
-        if (state.text.toString() != value.text || state.selection != value.selection) {
-            state.edit {
-                replace(0, length, value.text)
-                selection = value.selection
-            }
-        }
-    }
+    // 同步语义见 rememberSyncedTextFieldValueState (出向/入向同一收集体, 按触发侧决定动作)
+    val state = rememberSyncedTextFieldValueState(value, onValueChange)
     Row(
         Modifier
             .fillMaxWidth()
