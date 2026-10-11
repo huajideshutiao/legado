@@ -1,7 +1,6 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,13 +43,11 @@ fun MoreConfigDialogHost(
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
-        maxHeight = 480.dp,
     ) {
         AppTheme {
-            // 原版 setupAsBottomDialog: MATCH_PARENT 全宽 + 高 480dp (BasePrefDialogFragment);
-            // 圆角/底色收口于半屏弹层统一规格 (AppSheetSurface: 仅上两角 16dp + bottomBackground)
+            // 面板占满所属弹层 (贴底、整窗宽、上两角 16dp、底栏色, 高度到 0.8 锚点)
             AppSheetSurface(
-                modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
+                modifier = Modifier.fillMaxSize(),
             ) {
                 MoreConfigBody(
                     readBookConfig = readBookConfig,

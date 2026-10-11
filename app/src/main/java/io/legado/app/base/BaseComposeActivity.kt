@@ -32,6 +32,7 @@ import io.legado.app.ui.compose.platform.AppKeyRouter
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import androidx.compose.ui.platform.LocalWindowInfo
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.disableAutoFill
@@ -92,7 +93,7 @@ abstract class BaseComposeActivity(
                 LocalAppConfigProvider provides appConfigProvider,
                 LocalEventBusProvider provides eventBusProvider,
             ) {
-                AppTheme { Content() }
+                AppTheme(anchor = LocalWindowInfo.current.containerSize) { Content() }
             }
         }
         onBackPressedDispatcher.addCallback(this) {

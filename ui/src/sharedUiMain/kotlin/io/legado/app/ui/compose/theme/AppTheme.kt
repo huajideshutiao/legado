@@ -21,8 +21,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.ui.compose.component.LocalDialogAnchorSize
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
@@ -226,7 +228,15 @@ private fun AppColors.toColors(): Colors {
  * @see io.legado.app.ui.compose.platform
  */
 @Composable
-fun AppTheme(content: @Composable () -> Unit) {
+fun AppTheme(
+    /**
+     * 宿主窗口可用区 (px), 作为对话框尺寸锚点; 平台根在自己的窗口处读 [LocalWindowInfo] 传入。
+     * 对话框层读到的是对话框自己的窗口 (与内容尺寸互为反馈), 故只能在宿主根读。
+     * 内嵌 AppTheme (对话框内再包主题) 不传, 继承宿主锚点。
+     */
+    anchor: IntSize? = null,
+    content: @Composable () -> Unit,
+) {
     val themeStore = LocalThemeStoreProvider.current
     val appConfig = LocalAppConfigProvider.current
     val eventBus = LocalEventBusProvider.current
@@ -240,9 +250,12 @@ fun AppTheme(content: @Composable () -> Unit) {
     }
     recreateTick
     val colors = readAppColors(themeStore, appConfig.isEInkMode)
+    // 不传锚点时继承外层 (宿主) 的锚点, 不覆盖成 null
+    val dialogAnchor = anchor ?: LocalDialogAnchorSize.current
     CompositionLocalProvider(
         LocalAppColors provides colors,
         LocalEInk provides appConfig.isEInkMode,
+        LocalDialogAnchorSize provides dialogAnchor,
     ) {
         // 文本选择菜单: 自绘澎湃样式弹层, 顶掉 Android 的平台 ActionMode (见 AppTextToolbar)
         ProvideAppTextToolbar {

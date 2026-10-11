@@ -269,13 +269,9 @@ fun ReviewListDialogHost(
     parentReview: Review? = null,
     onDismiss: () -> Unit,
 ) {
-    // 全局统一 0.8 锚点高 (走 AppDialogSizes.fullHeight, 别再自行乘系数); 桌面端锚点 = 主窗口
-    val sheetHeight = AppDialogSizes.fullHeight()
-
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
-        maxHeight = sheetHeight,
     ) {
         AppTheme {
             // fillMaxSize 跟随外层: 默认被 maxHeight 钳在 0.8 锚点高, 上拉拖拽展开时

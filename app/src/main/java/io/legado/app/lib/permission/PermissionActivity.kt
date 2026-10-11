@@ -23,6 +23,7 @@ import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.dialogs.AlertDialogHandle
 import io.legado.app.ui.compose.dialogs.ComposeAlertDialogHost
+import androidx.compose.ui.platform.LocalWindowInfo
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
@@ -66,7 +67,7 @@ class PermissionActivity : AppCompatActivity() {
                 LocalAppConfigProvider provides appConfigProvider,
                 LocalEventBusProvider provides eventBusProvider,
             ) {
-                AppTheme {
+                AppTheme(anchor = LocalWindowInfo.current.containerSize) {
                     ComposeAlertDialogHost()
                 }
             }

@@ -7,6 +7,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.window.ComposeUIViewController
 import io.legado.app.constant.AppLog
 import io.legado.app.help.config.NativeSystemTheme
@@ -130,7 +131,8 @@ fun MainViewController(): UIViewController {
             // 写进 Configuration.fontScale 生效, 不需要这一层)。未设档位时不覆写, 保留平台自身
             // fontScale (iOS 跟系统 Dynamic Type, 桌面/鸿蒙恒 1) —— 语义对照原版 getFontScale
             AppFontScaleScope {
-                AppTheme {
+                // 对话框尺寸锚点取宿主窗口可用区 (对话框层读到的是对话框自己的窗口, 会与内容互相反馈)
+                AppTheme(anchor = LocalWindowInfo.current.containerSize) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         // 零薄壳: shared LegadoApp 统一管理导航栈 + ScreenModel 生命周期,
                         // 所有路由由 shared RouteContent 直接渲染; 根级键盘焦点由 shared 内部处理

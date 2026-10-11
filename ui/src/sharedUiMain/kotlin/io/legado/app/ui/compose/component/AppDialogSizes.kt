@@ -16,13 +16,12 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ScreenInfoProviders
 
 /**
- * 对话框尺寸锚点 (px), 由各平台宿主注入对话框应参照的容器尺寸:
- * - 桌面端: 主窗口尺寸 (Main.kt 在 Window 组合内注入, 跟随 resize)
- * - 移动端: 不注入, 回落屏幕尺寸 (对齐原版 displayMetrics)
+ * 对话框尺寸锚点 (px) = 宿主窗口可用区, 由平台根经 [AppTheme] 的 anchor 参数注入
+ * (各端都注入; 未注入时回落屏幕尺寸兜底)。
  *
- * 不能用对话框内的 [androidx.compose.ui.platform.LocalWindowInfo]:
+ * 不能在对话框层读 [androidx.compose.ui.platform.LocalWindowInfo]:
  * 独立窗口/独立视图的对话框宿主 (Android/iOS/鸿蒙) 里它返回的是**对话框自身窗口**的
- * 尺寸, 与内容尺寸互为反馈 (内容高 = f(0.7×窗高), 窗高 = 内容高), 帧间持续漂移,
+ * 尺寸, 与内容尺寸互为反馈 (内容高 = f(0.8×窗高), 窗高 = 内容高), 帧间持续漂移,
  * 表现为滚动时对话框高度不断变高。
  */
 val LocalDialogAnchorSize = compositionLocalOf<IntSize?> { null }
@@ -30,7 +29,7 @@ val LocalDialogAnchorSize = compositionLocalOf<IntSize?> { null }
 /**
  * 对话框尺寸: 宽 = 0.9 倍且上限 800dp, 全高模式高 = 0.8 锚点高。
  *
- * 基准取 [LocalDialogAnchorSize] (桌面 = 主窗口, 移动端 = 屏幕)。
+ * 基准取 [LocalDialogAnchorSize] (由宿主根注入的窗口可用区; 未注入时回落屏幕尺寸)。
  * 不 remember: 两次乘法 + coerce 极轻, 每次重组重算才能跟随窗口 resize。
  */
 object AppDialogSizes {
