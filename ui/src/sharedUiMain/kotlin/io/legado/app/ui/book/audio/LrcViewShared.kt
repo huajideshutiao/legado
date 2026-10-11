@@ -96,7 +96,7 @@ import kotlin.math.roundToInt
  * | 滚轮: AXIS_VSCROLL*lineMargin*3, 上滚看前(减) | 同 (Scroll 事件跨平台, 方向语义等价) |
  * | fling: OverScroller 物理衰减 + min/maxFlingVelocity 门限 | ScrollableDefaults.flingBehavior() (Android 端同一套 AOSP spline) + 同门限 |
  * | 手动滚动 5s 后 autoScroll=true + 回中当前行 | 同 (manualTick 重置计时, 切行取消) |
- * | setLrcData: 重置 + 滚到第一行中心 | 数据变化时同 |
+ * | setLrcData: 重置 + 滚到第一行中心 | 单实例 + 数据变化显式 reset; 复位后由切行直接定位当前句 |
  * | onSizeChanged: 重排 + autoScroll 时回中当前行 | 同 (宽度变化保留 currentIndex) |
  * | 默认色 0xFFFFFFFF / 0x80FFFFFF | 同 |
  *
@@ -111,7 +111,6 @@ fun LrcViewShared(
     secondaryColor: Color,
     onLineClick: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    resetKey: Any? = null,
     isPlaying: Boolean = AudioPlayShared.status == Status.PLAY,
     playSpeed: Float = AudioPlayShared.playSpeed,
 ) {
@@ -121,11 +120,11 @@ fun LrcViewShared(
     val hPaddingPx = with(LocalDensity.current) { H_PADDING.toPx() }
 
     var viewportW by remember { mutableIntStateOf(0) }
-    val runtimeKey = resetKey ?: (lrcData to AudioPlayShared.durChapterIndex)
-    // 每份歌词一套运行态: 数据变化即整体复位 (等价原版 setLrcData 的重置)
-    val lrc = remember(runtimeKey) { LrcRuntime() }
+    // 单实例运行态 (对齐原版 LrcView 的字段模型): 不随数据换实例, 复位走显式 reset。
+    // 以换实例代替复位会让所有持旧引用的 effect/手势断供 (行表空 → 点击/拖动静默失效)
+    val lrc = remember { LrcRuntime() }
 
-    // 运行态换新或控件退出时，显式取消旧对象的动画 Job，避免泄漏
+    // 控件退出时取消动画 Job，避免泄漏
     DisposableEffect(lrc) {
         onDispose {
             lrc.cancelJobs()
@@ -146,7 +145,15 @@ fun LrcViewShared(
         )
     }
 
+    // 歌词数据变化 → 显式复位 (复刻原版 setLrcData: 索引归位/停滚动动画/回中)。
+    // 必须注册在下方两个 effect 之前: 同一组合内 effect 按出现顺序串行执行,
+    // 同帧保证 "先复位 → 再喧行表 → 再按当前句定位" 的顺序
+    LaunchedEffect(lrcData) {
+        lrc.reset()
+    }
+
     // 排版结果到达后同步给运行态; 当视口重排且处于 autoScroll 时，校正回当前行中心
+    // (复刻原版 onSizeChanged: 只重排版不复位索引, 宽度变化保留 currentIndex)
     LaunchedEffect(lines) {
         lrc.lines = lines
         if (lrc.autoScroll && lines.isNotEmpty() && lrc.currentIndex in lines.indices) {
@@ -257,9 +264,9 @@ fun LrcViewShared(
             .clipToBounds()
             // 只有测量要重排才需要宽度进组合; 高度/命中判定直接用手势与绘制作用域自带的 size
             .onSizeChanged { viewportW = it.width }
-            // 点击/拖动/fling (复刻 GestureDetector: onScroll/onFling/onSingleTapUp)。
-            // key 用 lrc: 换歌后运行态整体换新, 手势协程必须重新绑定
-            .pointerInput(lrc) {
+            // 点击/拖动/fling (复刻 GestureDetector: onScroll/onFling/onSingleTapUp);
+            // 运行态单实例不换新, 手势协程一次绑定即可
+            .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     // 复刻原版 onDown 的 forceFinished: 触摸立即停掉进行中的 fling (spline 惯性时长 1~3s,
@@ -358,7 +365,7 @@ fun LrcViewShared(
             }
             // 滚轮 (复刻 onGenericMotionEvent: 滚动量 = AXIS_VSCROLL * lineMargin * 3;
             // Scroll 事件 delta>0 = 向下滚(看后面) = scrollY 增大, 与原版 VSCROLL>0=上滚(看前面)=减小 语义等价)
-            .pointerInput(lrc) {
+            .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent()
@@ -453,11 +460,10 @@ fun rememberLrcIndex(
     lrcData: Lrc?,
     isPlaying: Boolean = AudioPlayShared.status == Status.PLAY,
     playSpeed: Float = AudioPlayShared.playSpeed,
-    resetKey: Any? = null,
 ): Int {
     // 初值就地算出来 (不等 LaunchedEffect 的下一帧): 换歌那一帧 LrcViewShared 就能按正确的行定位,
     // 否则会先居中第一行, 下一帧再 snap 过去 —— 肉眼是闪一下
-    val key = resetKey ?: (lrcData to AudioPlayShared.durChapterIndex)
+    val key = lrcData to AudioPlayShared.durChapterIndex
     var index by remember(key) { mutableIntStateOf(lrcData.indexNow()) }
     LaunchedEffect(key, isPlaying, playSpeed) {
         if (lrcData == null || !lrcData.hasTimeline) return@LaunchedEffect
@@ -591,8 +597,8 @@ private fun DrawScope.drawLrcLine(
 
 /**
  * 歌词运行态 (复刻原版 LrcView 的可变字段): 滚动/高亮/动画。滚动与颜色进度只被绘制、手势与
- * 协程读写, 组合里不读 —— 所以每帧只失效绘制不重组。每份歌词数据一个实例, 数据变化即整体
- * 复位 (等价原版 setLrcData 的重置)。
+ * 协程读写, 组合里不读 —— 所以每帧只失效绘制不重组。单实例, 数据变化经 [reset] 整体复位
+ * (复刻原版 setLrcData 的重置), 不以换实例代替复位。
  */
 private class LrcRuntime {
     /** 测量结果; 只在组合期由 [layout] 整体替换, 所以绘制直接用它的返回值即可 */

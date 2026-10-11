@@ -134,7 +134,6 @@ fun SharedAudioPlayScreenContent(
         coverSlot = { url, modifier -> SharedAudioCoverSlot(url, modifier) },
         blurBgSlot = { url, modifier -> SharedAudioBlurBgSlot(url, modifier) },
         lrcSlot = { modifier ->
-            val lrcKey = state.title to state.lrc
             LrcViewShared(
                 lrcData = state.lrc,
                 // 当前行按自适应精准延时调度派生 (见 rememberLrcIndex)
@@ -142,13 +141,11 @@ fun SharedAudioPlayScreenContent(
                     lrcData = state.lrc,
                     isPlaying = state.isPlaying,
                     playSpeed = state.speed,
-                    resetKey = lrcKey,
                 ),
                 primaryColor = lrcColors?.first ?: Color(0xFFFFFFFF),
                 secondaryColor = lrcColors?.second ?: Color(0x80FFFFFF),
                 onLineClick = { onEvent(AudioPlayUiEvent.LrcClick(it)) },
                 modifier = modifier,
-                resetKey = lrcKey,
                 isPlaying = state.isPlaying,
                 playSpeed = state.speed,
             )
