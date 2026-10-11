@@ -11,7 +11,6 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.BookHelpProviders
@@ -25,7 +24,6 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.tts.IosReadAloudHost
 import io.legado.app.service.defaultTtsEngineConfig
 import io.legado.app.help.book.toShelfJsonMap
-import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.file.exportFile
@@ -35,6 +33,7 @@ import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
 import io.legado.app.help.openURL
 import io.legado.app.help.copyToClipboard as copyTextToClipboard
 import io.legado.app.help.readFromClipboard
+import io.legado.app.help.DirectLinkUploadNativePrimitives
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.topMostViewController
 import io.legado.app.help.upLoadToDirectLink
@@ -224,9 +223,10 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     override fun getClipboardText(): String? = readFromClipboard()
 
     /**
-     * 导出分发「上传 URL」: 走 nativeMain 下沉的 [upLoadToDirectLink] (对照 app 端
-     * `DirectLinkUpload.upLoad`)。失败路径也必须回调 (传 null) —— 导出对话框的防重复
-     * 点击标志靠这一次回调解开, 不回调就是整个对话框永久点不动。
+     * 导出分发「上传 URL」: 走 commonMain 下沉的 [upLoadToDirectLink] (压缩/上传/解析直链
+     * 四端同一份), 平台文件载荷与压缩由 [DirectLinkUploadNativePrimitives] 注入。失败路径也
+     * 必须回调 (传 null) —— 导出对话框的防重复点击标志靠这一次回调解开, 不回调就是整个对话框
+     * 永久点不动。
      */
     override fun upLoadFile(
         fileName: String,
@@ -234,7 +234,9 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
         contentType: String,
         onResult: (String?) -> Unit,
     ) {
-        Coroutine.async { upLoadToDirectLink(fileName, file, contentType) }
+        Coroutine.async {
+            upLoadToDirectLink(DirectLinkUploadNativePrimitives, fileName, file, contentType)
+        }
             .onSuccess { onResult(it) }
             .onError { error ->
                 AppLog.put("上传文件失败\n${error.message}", error)
@@ -1170,8 +1172,8 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 /**
  * iOS 端书源校验调度 (对照 desktop `DesktopCheckSource` / 鸿蒙 `OhosCheckSource`)。
  *
- * iOS 无 Android Service, 并发编排 (逐 id 取源 → 限流并发 → 进度回调 → 完成回调) 走
- * commonMain [CheckSourceRunner], 进度既发事件 (通知 UI) 也进通知栏 (对照 app 端
+ * iOS 无 Android Service, 并发编排 (逐 id 取源 → 限流并发 → 进度回调 → 完成回调) 与执行线程池
+ * 口径走 commonMain [CheckSourceRunner], 进度既发事件 (通知 UI) 也进通知栏 (对照 app 端
  * CheckSourceService: 通知 id / 标题 / 取消动作与 app 端同一套, 两处文案的取舍见 [upNotification])。
  */
 private object IosCheckSource {
@@ -1193,7 +1195,7 @@ private object IosCheckSource {
         checkJob = scope.launch {
             CheckSourceRunner.run(
                 ids = ids,
-                threadCount = AppConfigProviders.get().threadCount,
+                onStart = { total -> upNotification("", 0, total) },
                 onProgress = { name, finishCount, total ->
                     upNotification(name, finishCount, total)
                 },

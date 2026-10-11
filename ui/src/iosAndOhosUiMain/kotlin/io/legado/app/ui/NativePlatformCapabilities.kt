@@ -8,6 +8,7 @@ import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.help.AppWebDavShared
+import io.legado.app.help.DirectLinkUploadNativePrimitives
 import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
@@ -79,7 +80,11 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
         onError: (String) -> Unit,
     ) {
         capabilityScope.launch {
-            runCatching { upLoadToDirectLink("test.json", "{}", "application/json", rule) }
+            runCatching {
+                upLoadToDirectLink(
+                    DirectLinkUploadNativePrimitives, "test.json", "{}", "application/json", rule,
+                )
+            }
                 .onSuccess { result -> withContext(mainDispatcher) { onSuccess(result) } }
                 .onFailure { error ->
                     withContext(mainDispatcher) {

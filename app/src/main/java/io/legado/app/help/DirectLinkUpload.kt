@@ -1,32 +1,22 @@
 package io.legado.app.help
 
-import io.legado.app.App
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.DirectLinkUpload.getConfig
 import io.legado.app.help.DirectLinkUpload.putConfig
 import io.legado.app.help.DirectLinkUpload.upLoad
-import io.legado.app.model.analyzeRule.AnalyzeRule
-import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.ACache
-import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
-import io.legado.app.utils.compress.ZipUtils
-import io.legado.app.utils.createFileReplace
-import io.legado.app.utils.externalCache
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.toJson
-import io.legado.app.utils.toJsonElement
-import kotlinx.coroutines.currentCoroutineContext
-import java.io.File
 
 /**
  * 直链上传 Android 实现 (与 shared [DirectLinkUploadShared] 配套)。
  *
  * # 下沉说明
- * [DirectLinkUploadRule] data class / [ruleFileName] 常量 / 配置访问接口 已下沉
- * shared/commonMain (见 [DirectLinkUploadShared])。本 object 保留 Android 专属实现:
- * - [upLoad]: 依赖 java.io.File / ZipUtils / FileUtils / appCtx.externalCache / AnalyzeUrl(app 端子类)
+ * [DirectLinkUploadRule] data class / [ruleFileName] 常量 / 配置访问接口与 [upLoad] 编排
+ * 已下沉 shared (commonMain [upLoadToDirectLink])。本 object 保留 Android 专属实现:
+ * - [upLoad]: 薄壳注入 JVM 平台原语 ([DirectLinkUploadJvmPrimitives])
  * - [getConfig] / [putConfig]: 依赖 ACache (Android 文件缓存)
  * - [defaultRules]: 经 [DefaultDataResourceProviders] 读 composeResources files/defaultData/
  *
@@ -51,51 +41,10 @@ object DirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUploadDefault
         contentType: String,
         rule: DirectLinkUploadRule = getRule()
     ): String {
-        val url = rule.uploadUrl
-        if (url.isBlank()) {
-            throw NoStackTraceException("上传url未配置")
-        }
-        val downloadUrlRule = rule.downloadUrlRule
-        if (downloadUrlRule.isBlank()) {
-            throw NoStackTraceException("下载地址规则未配置")
-        }
-        var mFileName = fileName
-        var mFile = file
-        var mContentType = contentType
-        if (rule.compress && contentType != "application/zip") {
-            mFileName = "$fileName.zip"
-            mContentType = "application/zip"
-            mFile = when (file) {
-                is File -> {
-                    val zipFile =
-                        File(FileUtils.getPath(App.instance.externalCache, "upload", mFileName))
-                    zipFile.createFileReplace()
-                    ZipUtils.zipFile(file, zipFile)
-                    zipFile
-                }
-
-                is ByteArray -> ZipUtils.zipByteArray(file, fileName)
-                is String -> ZipUtils.zipByteArray(file.toByteArray(), fileName)
-                // GSON.toJson(file) 反射序列化 Any → toJsonElement().toString() 处理任意类型
-                else -> ZipUtils.zipByteArray(file.toJsonElement().toString().toByteArray(), fileName)
-            }
-        }
-        val analyzeUrl = AnalyzeUrl(url)
-        val res = analyzeUrl.upload(mFileName, mFile, mContentType)
-        if (mFile is File) {
-            mFile.delete()
-        }
-        val analyzeRule = AnalyzeRule().apply {
-            setContent(res.body, res.url)
-            coroutineContext = currentCoroutineContext()
-        }
-        return analyzeRule.use {
-            val downloadUrl = it.getString(downloadUrlRule)
-            if (downloadUrl.isBlank()) {
-                throw NoStackTraceException("上传失败,${res.body}")
-            }
-            downloadUrl
-        }
+        return upLoadToDirectLink(
+            DirectLinkUploadJvmPrimitives,
+            fileName, file, contentType, rule
+        )
     }
 
     // 命名为 defaultRulesCache 避免与 override fun getDefaultRules() 的 JVM 签名 (getDefaultRules()) 冲突

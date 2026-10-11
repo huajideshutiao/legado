@@ -1,28 +1,37 @@
 package io.legado.app.help
 
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.DirectLinkUploadStoreProviders.get
+import io.legado.app.help.i18n.AppStringKey
+import io.legado.app.help.i18n.appString
+import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.toJson
+import io.legado.app.utils.toJsonElement
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.serialization.Serializable
 import kotlin.concurrent.Volatile
 
 /**
- * 直链上传规则的 KMP 共享版 (与 [RestoreShared] / [BackupShared] 配套)。
+ * 直链上传的 KMP 共享版 (与 [RestoreShared] / [BackupShared] 配套): 规则数据类、配置
+ * Provider 接口与 [upLoadToDirectLink] 编排。
  *
  * # 背景
  * app 端 [io.legado.app.help.DirectLinkUpload] 单例依赖大量 Android-specific 类
  * (ACache 磁盘缓存 / appCtx.assets 读取默认规则 / ZipUtils+FileUtils 压缩 /
  * java.io.File 类型判断 / appCtx.externalCache 临时目录 / AnalyzeUrl app 端子类),
- * 不能直接下沉 shared/commonMain。本 KMP 版抽掉 Android 专属依赖, 仅保留:
+ * 不能整体下沉 shared/commonMain。本 KMP 版把这些平台面全部收敛成注入点:
  * - [DirectLinkUploadRule] 纯数据类 (GSON 序列化, 与 app 端字段完全一致)
  * - [ruleFileName] 常量 (BackupShared/RestoreShared 备份恢复时引用)
  * - 配置读写 + 默认规则的 Provider 接口 (宿主注入实现)
- * - [getRuleShared] / [getSummaryShared] 跨平台访问点
+ * - [DirectLinkUploadPrimitives]: 平台文件载荷读取 + 单条目 zip 压缩两个原语 (各端入口注入)
+ * - [upLoadToDirectLink] 编排 (四端同一份) / [getRuleShared] / [getSummaryShared] 访问点
  *
  * # 与 app 端 [io.legado.app.help.DirectLinkUpload] 的差异
- * - **不下沉 upLoad()**: 强依赖 java.io.File / ZipUtils / FileUtils / appCtx.externalCache
- *   / AnalyzeUrl(app 端 JsExtensions 子类), 保留 app 端原实现
+ * - **平台文件载荷与压缩**: java.io.File / ZipUtils / FileUtils 无法在 commonMain 表达,
+ *   通过 [DirectLinkUploadPrimitives] 注入 (Android/桌面用 ZipUtils, iOS/鸿蒙用 NativeZipCodec)
  * - **不下沉 defaultRules 直接读取**: 依赖 appCtx.assets (Android assets), 通过
  *   [DirectLinkUploadDefaultsProvider] 注入
  * - **不下沉 getConfig/putConfig 的 ACache 访问**: ACache 为 Android 文件缓存, 通过
@@ -147,6 +156,86 @@ object DirectLinkUploadDefaultsProviders {
 
     /** 获取已注册实现, 未注册返回 null。 */
     fun get(): DirectLinkUploadDefaultsProvider? = impl
+}
+
+/**
+ * 直链上传的平台载荷原语 (各端入口注入)。
+ *
+ * 平台差异只有两处, 都在本接口内:
+ * - 平台文件载荷 (Android/桌面 `java.io.File`; iOS/鸿蒙 `io.legado.app.utils.File`) 的字节读取
+ * - 单条目 zip 的压缩器 (Android/桌面 `ZipUtils`; iOS/鸿蒙 `NativeZipCodec`)
+ */
+interface DirectLinkUploadPrimitives {
+
+    /** 平台文件载荷的字节内容; [file] 不是本平台文件类型时返回 null (由编排按通用分支处理)。 */
+    fun readPlatformFileOrNull(file: Any): ByteArray?
+
+    /**
+     * 单条目 zip: 条目名 [entryName], 内容 [data]。
+     * 失败必须抛异常 (静默返回会导致把坏包当上传内容发出)。
+     */
+    fun zipBytes(data: ByteArray, entryName: String): ByteArray
+}
+
+/**
+ * 直链上传编排 (四端同一份): 校验规则 → 按需压缩打包 → 上传 → 按下载规则解析直链。
+ *
+ * 压缩判定与 app 端一致 (`rule.compress && contentType != "application/zip"`): 载荷压成单条目
+ * zip (条目名 = `fileName`), 上传文件名加 `.zip` 后缀, contentType 换成 `application/zip`;
+ * 平台文件载荷经 [DirectLinkUploadPrimitives.readPlatformFileOrNull] 读成字节后同路压缩,
+ * ByteArray/String/其他对象分别取原字节/UTF-8 字节/JSON 文本。不压缩时载荷原样上传。
+ *
+ * 上传走 [AnalyzeUrlFactories] (各端注册的平台子类: url 内 `,{json}` 选项与 js 表达式命中各端
+ * 注册的 JS 引擎), 直链解析走 [AnalyzeRuleFactories]; 解析结果为空时抛错并带上响应体。
+ *
+ * [rule] 默认取当前生效规则; 直链上传配置页的“测试”按钮传入表单里尚未保存的规则。
+ */
+suspend fun upLoadToDirectLink(
+    primitives: DirectLinkUploadPrimitives,
+    fileName: String,
+    file: Any,
+    contentType: String,
+    rule: DirectLinkUploadRule = getRuleShared(),
+): String {
+    val url = rule.uploadUrl
+    if (url.isBlank()) {
+        throw NoStackTraceException(appString(AppStringKey.upload_url_not_configured))
+    }
+    val downloadUrlRule = rule.downloadUrlRule
+    if (downloadUrlRule.isBlank()) {
+        throw NoStackTraceException(appString(AppStringKey.download_url_rule_not_configured))
+    }
+    var mFileName = fileName
+    var mFile = file
+    var mContentType = contentType
+    if (rule.compress && contentType != "application/zip") {
+        mFileName = "$fileName.zip"
+        mContentType = "application/zip"
+        val raw = primitives.readPlatformFileOrNull(file)
+            ?: when (file) {
+                is ByteArray -> file
+                is String -> file.encodeToByteArray()
+                // 任意对象按 JSON 文本压缩 (GSON 反射序列化)
+                else -> file.toJsonElement().toString().encodeToByteArray()
+            }
+        mFile = primitives.zipBytes(raw, fileName)
+    }
+    val analyzeUrl = AnalyzeUrlFactories.create(rawUrl = url)
+    val res = analyzeUrl.upload(mFileName, mFile, mContentType)
+    val analyzeRule = AnalyzeRuleFactories.create().apply {
+        setContent(res.body, res.url)
+        coroutineContext = currentCoroutineContext()
+    }
+    // commonMain 的 Closeable 是自定 expect 接口, 没有 kotlin.io 的 use 扩展, 手写 close
+    return try {
+        val downloadUrl = analyzeRule.getString(downloadUrlRule)
+        if (downloadUrl.isBlank()) {
+            throw NoStackTraceException(appString(AppStringKey.upload_failed_with_body, res.body))
+        }
+        downloadUrl
+    } finally {
+        analyzeRule.close()
+    }
 }
 
 /**

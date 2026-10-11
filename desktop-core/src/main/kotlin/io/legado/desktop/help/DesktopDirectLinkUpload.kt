@@ -4,36 +4,28 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.DefaultDataResourceProviders
 import io.legado.app.help.DirectLinkUploadDefaultsProvider
 import io.legado.app.help.DirectLinkUploadDefaultsProviders
+import io.legado.app.help.DirectLinkUploadJvmPrimitives
 import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.DirectLinkUploadStoreProvider
 import io.legado.app.help.DirectLinkUploadStoreProviders
 import io.legado.app.help.ruleFileName
-import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
-import io.legado.app.model.analyzeRule.AnalyzeUrlCore
-import io.legado.app.ui.compose.platform.syncGetString
+import io.legado.app.help.upLoadToDirectLink
 import io.legado.app.utils.GSON
-import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.toJson
-import io.legado.app.utils.toJsonElement
-import kotlinx.coroutines.currentCoroutineContext
-import java.io.File
 import java.util.prefs.Preferences
 
 /**
  * 直链上传 desktop 实现 (与 shared [DirectLinkUploadStoreProvider] / [DirectLinkUploadDefaultsProvider] 配套)。
  *
- * 对照 app 端 [io.legado.app.help.DirectLinkUpload] object, 桌面端裁剪 Android 专属依赖:
- * - [upLoad]: 不依赖 app 端 [io.legado.app.model.analyzeRule.AnalyzeUrl] (app 子类含 getGlideUrl/
- *   getMediaItem 等 android-only 方法), 改用 shared/commonMain 下沉的 [AnalyzeUrlCore] 基类,
- *   其 [AnalyzeUrlCore.upload] 已是纯 JVM 逻辑 (经 OkHttpProxyClientProviders 走 OkHttpClient)。
- *   解析下载链接的 [AnalyzeRuleCore] 同样用 shared 下沉版, 依赖已注册的桌面端 JS 引擎
- *   (registerDesktopJsEngines)。压缩逻辑复用 shared jvmAndAndroidMain 的 [ZipUtils]。
+ * 对照 app 端 [io.legado.app.help.DirectLinkUpload] object, 上传编排下沉
+ * [upLoadToDirectLink] (commonMain, 压缩/上传/解析直链四端同一份), 桌面端保留:
+ * - [upLoad]: 薄壳注入 JVM 平台原语 ([DirectLinkUploadJvmPrimitives])
  * - [getConfig] / [putConfig]: 不依赖 Android ACache, 改用 [java.util.prefs.Preferences]
  *   (参考 [io.legado.desktop.config.DesktopPreferenceProvider]), 配置落用户注册表 (Win) /
  *   ~/.java/.userPrefs (Linux/macOS), 重启仍可读。
- * - [defaultRulesCache]: 不依赖 appCtx.assets, 走 [DefaultDataResourceProviders] 读
+ * - [defaultRulesCache]: 不依赖 appCtx.assets, 走 [io.legado.app.help.DefaultDataResourceProviders] 读
  *   composeResources 单一数据源 (`commonMain/composeResources/files/defaultData/`)。
  *
  * 本 object 实现两个 provider 接口, 宿主启动早期通过 [registerDesktopDirectLinkUploadProviders]
@@ -42,10 +34,6 @@ import java.util.prefs.Preferences
  * # 类型映射 (与 app 端对齐)
  * - app 端 `DirectLinkUpload.Rule` → shared [DirectLinkUploadRule] (直接引用)
  * - app 端 `DirectLinkUpload.ruleFileName` → shared [ruleFileName] (top-level 常量)
- *
- * # 临时文件
- * app 端用 `appCtx.externalCache/upload/` 存压缩中间文件, 桌面端用
- * `System.getProperty("java.io.tmpdir")/legado/upload/` 等价替代, 上传后删除。
  */
 object DesktopDirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUploadDefaultsProvider {
 
@@ -54,13 +42,6 @@ object DesktopDirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUpload
     private val prefs: Preferences =
         Preferences.userNodeForPackage(DesktopDirectLinkUpload::class.java)
 
-    // 临时上传目录: 系统临时目录 + legado/upload (对照 app 端 appCtx.externalCache/upload)
-    private val uploadCacheDir: File by lazy {
-        File(System.getProperty("java.io.tmpdir"), "legado${File.separator}upload").apply {
-            mkdirs()
-        }
-    }
-
     @Throws(NoStackTraceException::class)
     suspend fun upLoad(
         fileName: String,
@@ -68,54 +49,10 @@ object DesktopDirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUpload
         contentType: String,
         rule: DirectLinkUploadRule = getRule()
     ): String {
-        val url = rule.uploadUrl
-        if (url.isBlank()) {
-            throw NoStackTraceException(syncGetString("upload_url_not_configured"))
-        }
-        val downloadUrlRule = rule.downloadUrlRule
-        if (downloadUrlRule.isBlank()) {
-            throw NoStackTraceException(syncGetString("download_url_rule_not_configured"))
-        }
-        var mFileName = fileName
-        var mFile = file
-        var mContentType = contentType
-        if (rule.compress && contentType != "application/zip") {
-            mFileName = "$fileName.zip"
-            mContentType = "application/zip"
-            mFile = when (file) {
-                is File -> {
-                    // 对照 app 端: externalCache/upload/mFileName + createFileReplace
-                    val zipFile = File(uploadCacheDir, mFileName)
-                    zipFile.parentFile?.mkdirs()
-                    if (zipFile.exists()) zipFile.delete()
-                    zipFile.createNewFile()
-                    ZipUtils.zipFile(file, zipFile)
-                    zipFile
-                }
-
-                is ByteArray -> ZipUtils.zipByteArray(file, fileName)
-                is String -> ZipUtils.zipByteArray(file.toByteArray(), fileName)
-                // 与 app 端一致: 任意类型用 toJsonElement().toString() 序列化后压缩
-                else -> ZipUtils.zipByteArray(file.toJsonElement().toString().toByteArray(), fileName)
-            }
-        }
-        // 用 shared 下沉的 AnalyzeUrlCore 基类 (app 端用 AnalyzeUrl 子类, 桌面端无 android-only 方法需求)
-        val analyzeUrl = AnalyzeUrlCore(url)
-        val res = analyzeUrl.upload(mFileName, mFile, mContentType)
-        if (mFile is File) {
-            mFile.delete()
-        }
-        val analyzeRule = AnalyzeRuleFactories.create().apply {
-            setContent(res.body, res.url)
-            coroutineContext = currentCoroutineContext()
-        }
-        return analyzeRule.use {
-            val downloadUrl = it.getString(downloadUrlRule)
-            if (downloadUrl.isBlank()) {
-                throw NoStackTraceException(syncGetString("upload_failed_with_body", res.body))
-            }
-            downloadUrl
-        }
+        return upLoadToDirectLink(
+            DirectLinkUploadJvmPrimitives,
+            fileName, file, contentType, rule
+        )
     }
 
     // 命名为 defaultRulesCache 避免与 override fun getDefaultRules() 的 JVM 签名冲突

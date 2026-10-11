@@ -32,6 +32,7 @@ import io.legado.app.help.notification.cancelOhosUpdateBookRefresh
 import io.legado.app.help.service.OhosCacheBookNotifications
 import io.legado.app.help.service.OhosWebServiceNotifications
 import io.legado.app.help.source.OhosCheckSource
+import io.legado.app.help.DirectLinkUploadNativePrimitives
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.tts.OhosReadAloudHost
 import io.legado.app.help.upLoadToDirectLink
@@ -195,9 +196,10 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     }
 
     /**
-     * 导出分发「上传 URL」: 走 nativeMain 下沉的 [upLoadToDirectLink] (对照 app 端
-     * `DirectLinkUpload.upLoad`)。失败路径也必须回调 (传 null) —— 导出对话框的防重复
-     * 点击标志靠这一次回调解开, 不回调就是整个对话框永久点不动。
+     * 导出分发「上传 URL」: 走 commonMain 下沉的 [upLoadToDirectLink] (压缩/上传/解析直链
+     * 四端同一份), 平台文件载荷与压缩由 [DirectLinkUploadNativePrimitives] 注入。失败路径也
+     * 必须回调 (传 null) —— 导出对话框的防重复点击标志靠这一次回调解开, 不回调就是整个对话框
+     * 永久点不动。
      */
     override fun upLoadFile(
         fileName: String,
@@ -205,7 +207,9 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
         contentType: String,
         onResult: (String?) -> Unit,
     ) {
-        Coroutine.async { upLoadToDirectLink(fileName, file, contentType) }
+        Coroutine.async {
+            upLoadToDirectLink(DirectLinkUploadNativePrimitives, fileName, file, contentType)
+        }
             .onSuccess { onResult(it) }
             .onError { error ->
                 AppLog.put("上传文件失败\n${error.message}", error)
