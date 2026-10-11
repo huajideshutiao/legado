@@ -1763,4 +1763,10 @@
     <string name="keyword_highlight_exclude_scope">Exclude range, optional book name or source URL</string>
     <string name="video_lock">Lock</string>
     <string name="video_unlock">Unlock</string>
+    <string name="close_to_tray_title">Minimize to tray when closing</string>
+    <string name="close_to_tray_summary">The window hides while background tasks keep running; reopen it from the tray icon</string>
+    <string name="close_window">Close window</string>
+    <string name="close_to_tray_prompt">Minimize to the tray? The app and its background tasks keep running, and you can reopen it from the tray icon.</string>
+    <string name="close_to_tray">Minimize to tray</string>
+    <string name="show_main_window">Show main window</string>
 </resources>

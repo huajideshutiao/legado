@@ -3,6 +3,8 @@
 package io.legado.app.help.crash
 
 import kotlinx.cinterop.ByteVar
+import kotlinx.cinterop.CFunction
+import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.memScoped
@@ -14,6 +16,8 @@ import platform.posix.SIGFPE
 import platform.posix.SIGHUP
 import platform.posix.SIGILL
 import platform.posix.SIGSEGV
+import platform.posix.SIGSTKFLT
+import platform.posix.SIGSYS
 import platform.posix.SIGTRAP
 import platform.posix.getcwd
 import platform.posix.signal
@@ -25,8 +29,8 @@ import platform.posix.signal
  * 没有 iOS 的 ObjC 未捕获异常钩子; Kotlin/Native 未捕获异常钩子由
  * [installNativeUnhandledHook] 承担 (与 iOS 同源)。
  *
- * 覆盖的信号与 iOS 端逐条一致 (SIGHUP/SIGILL/SIGTRAP/SIGABRT/SIGBUS/SIGFPE/SIGSEGV):
- * 渲染库与 native 桥的越界崩溃同样只走到这里。
+ * 覆盖的信号比 iOS 端多一个 SIGSTKFLT (该信号只存在于 Linux 内核, Darwin 上没有):
+ * 其余与 iOS 逐条一致。渲染库与 native 桥的越界崩溃同样只走到这里。
  */
 object OhosCrashHandler {
 
@@ -43,12 +47,40 @@ object OhosCrashHandler {
         }
     }
 
-    private val HANDLED_SIGNALS = listOf(SIGHUP, SIGILL, SIGTRAP, SIGABRT, SIGBUS, SIGFPE, SIGSEGV)
+    private val HANDLED_SIGNALS =
+        listOf(SIGHUP, SIGILL, SIGTRAP, SIGABRT, SIGBUS, SIGFPE, SIGSEGV, SIGSYS, SIGSTKFLT)
 }
+
+/** `SIG_DFL` 的 C 表示 (宏 `((__sighandler_t)0)`, cinterop 不为该宏生成常量)。 */
+private val SigDfl: CPointer<CFunction<(Int) -> Unit>>? = null
 
 /** 信号处理器: 顶层无捕获函数 (`staticCFunction` 禁止捕获环境, 写成成员会隐式捕获 this)。 */
 private fun onSignal(sig: Int) {
-    NativeCrashLogWriter.writeSignal(sig)
+    NativeCrashLogWriter.writeSignal(signalLabel(sig))
+    // 交还处置后返回: 返回时内核重新执行出错指令、再次触发同一信号, 这次走 SIG_DFL 终止进程。
+    // 不交还处置直接返回会再次进入本处理器 (处置未被重置, 与 sigaction+POSIX 语义一致),
+    // 形成"每次进入都追加一段日志"的死循环并吃满 CPU。
+    signal(sig, SigDfl)
+}
+
+/**
+ * 信号显示名 (定宽 9 字符)。
+ *
+ * 必须在各端按**自己的平台常量**映射: 信号编号在 iOS 与 Linux 内核上并不相同 (如 SIGSYS),
+ * 放到共用实现里用字面量会把名字映射错。表外信号不会进处理器 (未注册即走系统默认处置),
+ * 兜底也是定宽常量字符串 —— 本函数在崩溃处理器内调用, 不得做任何分配。
+ */
+private fun signalLabel(sig: Int): String = when (sig) {
+    SIGHUP -> "SIGHUP   "
+    SIGILL -> "SIGILL   "
+    SIGTRAP -> "SIGTRAP  "
+    SIGABRT -> "SIGABRT  "
+    SIGBUS -> "SIGBUS   "
+    SIGFPE -> "SIGFPE   "
+    SIGSEGV -> "SIGSEGV  "
+    SIGSYS -> "SIGSYS   "
+    SIGSTKFLT -> "SIGSTKFLT"
+    else -> "SIG?     "
 }
 
 /** 当前工作目录 (POSIX `getcwd`; 取不到回落 ".")。 */

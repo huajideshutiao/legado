@@ -5,6 +5,7 @@ import io.legado.app.help.file.desktopAppRootDir
 import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.desktop.offerAssociationArgs
+import io.legado.desktop.ui.DesktopWindowChrome
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -286,8 +287,12 @@ object SingleInstanceGuard {
     /**
      * 窗口前置 (EDT 上执行): 取消最小化 → 临时置顶抬到最前 → 请求焦点 → 还原置顶。
      * Windows 上单纯 toFront 常被前台窗口锁拒绝, 借一次 alwaysOnTop 翻转把窗口抬出来, 随后立刻还原。
+     *
+     * 窗口已被关闭到托盘时先经共享可见性状态恢复: 直接改 AWT 可见性会与 Window(visible=)
+     * 的入参脱钩 (见 [DesktopWindowChrome.restoreWindow])。
      */
     private fun activateWindow() {
+        DesktopWindowChrome.restoreWindow()
         val window = mainWindow ?: return
         SwingUtilities.invokeLater {
             runCatching {
@@ -296,6 +301,8 @@ object SingleInstanceGuard {
                         frame.extendedState = frame.extendedState and Frame.ICONIFIED.inv()
                     }
                 }
+                // 与共享状态同向立即置可见: 只靠 Window(visible=) 的异步应用时, 下面的
+                // toFront/requestFocus 可能排在它之前, 对仍隐藏的窗口无效
                 window.isVisible = true
                 val wasAlwaysOnTop = window.isAlwaysOnTop
                 if (!wasAlwaysOnTop && window.isAlwaysOnTopSupported) {

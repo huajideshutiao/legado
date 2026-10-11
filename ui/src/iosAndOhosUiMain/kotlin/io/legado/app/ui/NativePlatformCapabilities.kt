@@ -29,7 +29,6 @@ import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.SharedPlatformCapabilities
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okio.FileSystem
@@ -65,36 +64,6 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
                 keepOnPush = true,
             )
         )
-    }
-
-    /**
-     * 保存日志到备份目录 (对照原版 `AboutFragment.saveLog` 的三段式):
-     * 未设备份目录 → toast「未设置备份目录」并中止; 未开记录日志 → toast 提醒 (不中止);
-     * 打包 logs + crash 成 logs.zip 写进备份目录 → toast「已保存至备份目录」。
-     *
-     * 与 Android 的两处平台差异: 无 logcat (系统不提供), 目录取自 filesDir/cacheDir。
-     */
-    override fun saveLog() {
-        capabilityScope.launch {
-            val backupPath = backupPathOrNull()
-            if (backupPath == null) {
-                withContext(mainDispatcher) { Toasters.get().toast("未设置备份目录") }
-                return@launch
-            }
-            if (!AppLog.isRecordLogEnabled) {
-                withContext(mainDispatcher) {
-                    Toasters.get().toast("未开启日志记录，请去其他设置里打开记录日志")
-                }
-                delay(3000)
-            }
-            runCatching { NativeSaveLog.save(backupPath) }
-                .onSuccess {
-                    withContext(mainDispatcher) { Toasters.get().toast("已保存至备份目录") }
-                }
-                .onFailure {
-                    AppLog.put("保存日志出错\n${it.localizedMessage}", it)
-                }
-        }
     }
 
     /**

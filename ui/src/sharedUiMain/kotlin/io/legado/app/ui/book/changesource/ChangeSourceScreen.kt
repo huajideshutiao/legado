@@ -79,15 +79,16 @@ import legado.ui.generated.resources.ic_arrow_back
 import legado.ui.generated.resources.ic_arrow_down
 import legado.ui.generated.resources.ic_check
 import legado.ui.generated.resources.ic_praise
+import legado.ui.generated.resources.ic_search
 import legado.ui.generated.resources.like_source
 import legado.ui.generated.resources.load_info
 import legado.ui.generated.resources.load_toc
 import legado.ui.generated.resources.load_word_count
 import legado.ui.generated.resources.not_like_source
-import legado.ui.generated.resources.outline_filter_alt_24
 import legado.ui.generated.resources.refresh_list
 import legado.ui.generated.resources.respondTime
 import legado.ui.generated.resources.screen
+import legado.ui.generated.resources.search
 import legado.ui.generated.resources.success
 import legado.ui.generated.resources.to_bottom
 import legado.ui.generated.resources.to_top
@@ -171,8 +172,8 @@ fun ChangeSourceTitleBar(
             }
             IconButton(onClick = { onSearchModeChange(true) }) {
                 Icon(
-                    painter = painterResource(Res.drawable.outline_filter_alt_24),
-                    contentDescription = stringResource(Res.string.screen),
+                    painter = painterResource(Res.drawable.ic_search),
+                    contentDescription = stringResource(Res.string.search),
                     tint = colors.primaryText,
                 )
             }

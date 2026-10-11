@@ -755,15 +755,20 @@ private class AndroidCrashLogProvider(
     }
 
     override suspend fun clearCrashLogs() = withContext(Dispatchers.IO) {
-        // 删外部缓存目录 crash 子目录
-        activity.externalCacheDir?.getFile("crash")?.let { dir ->
-            FileUtils.delete(dir, false)
+        // 只删崩溃现场文件, 目录本身留着: 该目录还放着"上次异常退出"标记文件, 整目录删掉会把
+        // 标记一起清掉, 下次启动就不再提示 (而用户清空日志并不等于否认刚才崩过)
+        activity.externalCacheDir?.getFile("crash")?.listFiles { it.isFile }?.forEach { file ->
+            if (file.name.startsWith(CRASH_LOG_FILE_PREFIX)) {
+                FileUtils.delete(file, false)
+            }
         }
-        // 删备份路径下的 crash 目录
+        // 删备份路径下的 crash 目录里的崩溃现场 (SAF 侧只写崩溃日志, 无标记文件)
         val backupPath = AppConfig.backupPath
         if (!backupPath.isNullOrEmpty()) {
             val uri = backupPath.toUri()
-            FileDoc.fromUri(uri, true).find("crash")?.delete()
+            FileDoc.fromUri(uri, true).find("crash")?.list { !it.isDir }
+                ?.filter { it.name.startsWith(CRASH_LOG_FILE_PREFIX) }
+                ?.forEach { it.delete() }
         }
     }
 

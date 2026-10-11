@@ -1120,4 +1120,10 @@
     <string name="keyword_highlight_exclude_scope">排除範圍，選填書名或者書源 URL</string>
     <string name="video_lock">鎖定</string>
     <string name="video_unlock">解鎖</string>
+    <string name="close_to_tray_title">關閉視窗時縮小到托盤</string>
+    <string name="close_to_tray_summary">視窗隱藏後背景工作繼續執行，可從托盤圖示重新開啟</string>
+    <string name="close_window">關閉視窗</string>
+    <string name="close_to_tray_prompt">是否縮小到托盤？縮小後程式與背景工作繼續執行，可從托盤圖示重新開啟。</string>
+    <string name="close_to_tray">縮小到托盤</string>
+    <string name="show_main_window">顯示主介面</string>
 </resources>

@@ -12,7 +12,6 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.refTo
 import platform.posix.O_APPEND
 import platform.posix.O_CREAT
-import platform.posix.O_TRUNC
 import platform.posix.O_WRONLY
 import platform.posix.close
 import platform.posix.open
@@ -25,7 +24,7 @@ import platform.posix.write
  * 那个 store 走 `io.legado.app.utils.File` (okio), 在崩溃现场有两条硬伤: 进程已处于异常态,
  * okio 的分配/异常路径可能二次崩溃; 且信号处理器内只允许 async-signal-safe 调用。
  * 故落盘分两条路径 —— 异常钩子走 okio ([writeException]), 信号处理器走安装期预分配的
- * 字节缓冲 + POSIX `open/write/close` ([writeSignal])。
+ * 字节缓冲 + 安装期打开的 fd ([writeSignal])。
  *
  * # 目录
  * `{filesDir}/logs/crash/`。iOS 的 filesDir 就是沙盒 Documents (Info.plist 已开
@@ -46,14 +45,23 @@ object NativeCrashLogWriter {
     /** 信号处理器落盘缓冲 (64KB 足够放下参数头; 信号上下文内不做任何分配)。 */
     private const val SIGNAL_BUFFER_SIZE = 64 * 1024
 
-    /** 信号名在缓冲里的保留宽度; 表内所有名字都 ≤ 8 字符, 定宽覆写才不会挪动后续偏移。 */
-    private const val SIGNAL_NAME_WIDTH = 8
+    /** 信号名在缓冲里的保留宽度; 表内所有名字都 ≤ 9 字符, 定宽覆写才不会挪动后续偏移。 */
+    private const val SIGNAL_NAME_WIDTH = 9
 
     /** 文件创建权限 (0644), 与 okio 建文件的默认权限一致。 */
     private const val FILE_MODE = 0x1A4
 
     /** 异常退出标记文件名 (与崩溃日志同在 crash 目录)。 */
     const val MARKER_FILE_NAME = CrashMarkerFile.FILE_NAME
+
+    /**
+     * 信号路径的崩溃日志文件名 (固定名 + 追加写)。
+     *
+     * 不用时间戳拼名: 信号上下文内拼字符串要分配, 而预分配缓冲装不下可变长度的文件名;
+     * 固定名追加写让每次崩溃的现场都留在同一文件里 (每段以 `=== native crash ===` 开头),
+     * 具体崩溃时刻看文件修改时间。
+     */
+    private const val SIGNAL_FILE_NAME = "crash-signal.log"
 
     /** 标记文件内容 (固定 ASCII, 安装期分配一次)。 */
     private val MARKER_TEXT = "1\n".encodeToByteArray()
@@ -72,8 +80,19 @@ object NativeCrashLogWriter {
     /** provider 未就绪时的回退目录。 */
     private val fallbackDir: String = nativeCrashHomeDir() + "/logs/crash"
 
-    /** 单个崩溃日志绝对路径 (供分享用)。 */
-    fun crashPath(name: String): String = "$crashDir/$name"
+    /**
+     * 单个崩溃日志绝对路径 (供分享用)。
+     *
+     * 按候选目录顺序找第一个存在的: 崩溃可能发生在 provider 注册之前, 那次日志只落在回退
+     * 目录里, 只认真实沙盒目录会定位不到它。
+     */
+    fun crashPath(name: String): String {
+        for (dir in crashCandidateDirs()) {
+            val file = File(dir, name)
+            if (file.isFile) return file.absolutePath
+        }
+        return File(crashDir, name).absolutePath
+    }
 
     // region 异常钩子落盘
 
@@ -88,7 +107,7 @@ object NativeCrashLogWriter {
         runCatching { CrashMarkerProviders.get().mark() }
         val dir = File(crashDir)
         dir.mkdirs()
-        cleanupExpired(dir)
+        cleanupExpired()
         val name = fileName()
         File(dir, name).writeText(buildExceptionLog(kind, detail))
         name
@@ -98,27 +117,28 @@ object NativeCrashLogWriter {
     fun fileName(now: Long = systemCurrentTimeMillis()): String =
         "$FILE_PREFIX${AppConst.fileNameFormat.format(now)}-$now.log"
 
-    /**
-     * 读取并清除信号路径写的异常退出标记, 无标记返回 false。
-     *
-     * **两个候选目录都查**: 崩溃可能发生在 `AppFilesDirs` 注册之前, 那时标记落在回退目录,
-     * 而读取方总是注册之后才跑 —— 只查真实目录会漏掉这类早期崩溃。
-     */
-    fun consumePendingMarker(): Boolean =
-        currentCrashPaths().any { CrashMarkerFile.consume(it) }
-
     // endregion
 
     // region 崩溃日志读取 (供两端 CrashLogProvider 用)
 
-    /** 列出崩溃日志文件名 (按修改时间倒序); 目录不存在返回空表。 */
+    /**
+     * 列出崩溃日志文件名 (按修改时间倒序); 目录不存在返回空表。
+     *
+     * 与写入侧同一组候选目录 (真实 filesDir 优先, 回退兜底): 崩溃可能发生在 provider 注册
+     * 之前, 那时只能写进回退目录 —— 只读真实目录会让那些日志在列表里看不到。
+     */
     fun listCrashLogs(): List<String> {
-        val dir = File(crashDir)
-        if (!dir.isDirectory) return emptyList()
-        return dir.listFiles { it.isFile && it.name.startsWith(FILE_PREFIX) }
-            ?.sortedByDescending { it.lastModified() }
-            ?.map { it.name }
-            ?: emptyList()
+        // 长度为 0 的条目过滤掉: 信号日志文件在应用启动时就由安装期 fd 创建 (见 [openSignalTargets]),
+        // 尚未崩溃时它只是个空文件
+        return crashCandidateDirs()
+            .flatMap { dir ->
+                File(dir).listFiles { it.isFile && it.name.startsWith(FILE_PREFIX) && it.length() > 0 }
+                    ?.toList()
+                    .orEmpty()
+            }
+            .sortedByDescending { it.lastModified() }
+            .distinctBy { it.name }
+            .map { it.name }
     }
 
     /** 读取单个崩溃日志内容; 不存在或读取失败返回 null。 */
@@ -127,20 +147,26 @@ object NativeCrashLogWriter {
         return if (file.isFile) runCatching { file.readText() }.getOrNull() else null
     }
 
-    /** 清空全部崩溃日志。 */
+    /** 清空全部崩溃日志 (覆盖全部候选目录)。 */
     fun clearCrashLogs() {
-        val dir = File(crashDir)
-        if (!dir.isDirectory) return
-        dir.listFiles { it.isFile && it.name.startsWith(FILE_PREFIX) }
-            ?.forEach { it.delete() }
+        crashCandidateDirs().forEach { dir ->
+            File(dir).listFiles { it.isFile && it.name.startsWith(FILE_PREFIX) }
+                ?.forEach { it.delete() }
+        }
+        // 删完重开: 否则信号崩溃会写进已删除的 inode (界面上看不到的"幽灵文件")
+        openSignalTargets()
     }
 
-    /** 删除 7 天前的崩溃日志 (对齐 app 端 exceedMillis 清理)。 */
-    private fun cleanupExpired(dir: File) {
+    /** 删除 7 天前的崩溃日志 (对齐 app 端 exceedMillis 清理); 覆盖全部候选目录。 */
+    private fun cleanupExpired() {
         runCatching {
             val exceed = systemCurrentTimeMillis() - KEEP_DAYS * DAY_MILLIS
-            dir.listFiles { it.isFile && it.name.startsWith(FILE_PREFIX) }
-                ?.forEach { if (it.lastModified() < exceed) it.delete() }
+            crashCandidateDirs().forEach { path ->
+                File(path).listFiles { it.isFile && it.name.startsWith(FILE_PREFIX) }
+                    ?.forEach { if (it.lastModified() < exceed) it.delete() }
+            }
+            // 过期清理可能删掉信号日志文件: 重开 fd, 避免之后写进已删除的 inode
+            openSignalTargets()
         }
     }
 
@@ -168,19 +194,36 @@ object NativeCrashLogWriter {
     /** 各候选路径的 `\nlog=<path>\n` 片段在缓冲里的起止偏移。 */
     private var signalTailRanges: List<IntRange> = emptyList()
 
-    /** 候选落盘路径 (安装期快照, 处理器内逐个试 open)。 */
+    /** 候选崩溃日志**文件**路径 (安装期快照, 处理器内逐个试 open)。 */
     private var signalPaths: List<String> = emptyList()
 
     /**
-     * 异常退出标记文件 (信号路径落盘用)。
+     * 各候选目录下的异常退出标记文件路径 (与 [signalPaths] 同序)。
      *
-     * 信号处理器内不能走偏好存储 (需分配/加锁), 只能碰文件: 启动期提示读它并删除。
-     * 路径在安装期快照, 与 [signalPaths] 同源。
+     * 同序是必需的: 日志在哪个候选目录写成功, 标记就必须写同一目录 —— 启动期读取端按目录
+     * 逐个查, 落错目录就读不到。
      */
-    private var markerPath: String = ""
+    private var markerPaths: List<String> = emptyList()
 
     /** 上一次建缓冲时用的路径集合 (用于判断是否需要重建)。 */
     private var builtPaths: List<String> = emptyList()
+
+    /**
+     * 安装期打开的日志 fd (与 [signalPaths] 同序; -1 = 该候选打不开)。
+     *
+     * 不在处理器内 open: `open(path: String)` 在 K/N 上要经 `cstr` 把路径转成 UTF-8 字节数组
+     * (Kotlin 堆分配 + native 堆拷贝), 而信号处理器里做 Kotlin 堆分配可能撞上被信号打断的
+     * 分配器/GC 状态而死锁。安装期打开并持有, 处理器内只 write。
+     */
+    private var logFds: IntArray = IntArray(0)
+
+    /**
+     * 安装期打开的标记文件 fd (与 [markerPaths] 同序; -1 = 打不开)。
+     *
+     * 不用 `O_TRUNC` 打开: 那会在安装期就把"上次异常退出"这一位抹掉。内容只需"存在",
+     * 多次崩溃只会让偏移前进, 不影响读取侧判存在。
+     */
+    private var markerFds: IntArray = IntArray(0)
 
     /**
      * 建/重建信号缓冲: 建目录、分配缓冲、写好整段正文与各候选路径的 `log=` 尾巴。
@@ -209,8 +252,11 @@ object NativeCrashLogWriter {
         at = put(buffer, at, paramsText())
         signalBodyLength = at
 
-        val ranges = ArrayList<IntRange>(paths.size)
-        for (path in paths) {
+        // 候选是**文件**路径: open 必须落在文件上。此前逐候选 open 的是目录路径,
+        // 而 O_WRONLY 对目录恒 EISDIR —— 信号崩溃因此从未落过盘 (既有缺陷, 本次修掉)
+        val logPaths = paths.map { it.trimEnd('/', '\\') + "/" + SIGNAL_FILE_NAME }
+        val ranges = ArrayList<IntRange>(logPaths.size)
+        for (path in logPaths) {
             val from = at
             at = put(buffer, at, "\nlog=")
             at = put(buffer, at, path)
@@ -219,12 +265,51 @@ object NativeCrashLogWriter {
         }
 
         signalTailRanges = ranges
-        signalPaths = paths
-        // 标记文件与崩溃日志同目录 (paths 首项即真实沙盒目录优先, 与日志落盘同一处)
-        markerPath = paths.first().trimEnd('/', '\\') + "/" + MARKER_FILE_NAME
+        signalPaths = logPaths
+        markerPaths = paths.map { it.trimEnd('/', '\\') + "/" + MARKER_FILE_NAME }
         builtPaths = paths
         signalBuffer = buffer
+        openSignalTargets()
     }
+
+    /**
+     * 安装期打开日志与标记文件并持有 fd, 并关掉上一轮的 fd。
+     *
+     * 日志文件在应用启动时就会被创建 (空文件), 读取侧用长度过滤掉它。
+     */
+    private fun openSignalTargets() {
+        closeSignalTargets()
+        val logs = IntArray(signalPaths.size) { -1 }
+        for (i in signalPaths.indices) {
+            logs[i] = open(signalPaths[i], O_WRONLY or O_CREAT or O_APPEND, FILE_MODE)
+        }
+        val markers = IntArray(markerPaths.size) { -1 }
+        for (i in markerPaths.indices) {
+            markers[i] = open(markerPaths[i], O_WRONLY or O_CREAT, FILE_MODE)
+        }
+        logFds = logs
+        markerFds = markers
+    }
+
+    /**
+     * 关掉并释放安装期打开的 fd。
+     *
+     * 日志/标记文件被删除后必须重开 —— 否则 fd 指向已删除的 inode, 信号崩溃会写进一个
+     * 界面上看不到、也占着磁盘空间的"幽灵文件"。
+     */
+    private fun closeSignalTargets() {
+        logFds.forEach { if (it >= 0) close(it) }
+        markerFds.forEach { if (it >= 0) close(it) }
+        logFds = IntArray(0)
+        markerFds = IntArray(0)
+    }
+
+    /**
+     * 候选崩溃目录 (真实 filesDir 优先, 回退目录兜底; 去重保持稳定顺序)。
+     *
+     * 供"异常退出"标记读取侧复用: 标记与崩溃日志同目录, 读取必须查同一组候选。
+     */
+    fun crashCandidateDirs(): List<String> = currentCrashPaths()
 
     /** 当前候选落盘路径 (真实 filesDir 优先, 回退目录兜底; 去重保持稳定顺序)。 */
     private fun currentCrashPaths(): List<String> =
@@ -232,39 +317,35 @@ object NativeCrashLogWriter {
             .getOrDefault(listOf(fallbackDir))
 
     /**
-     * 信号处理器落盘: 覆写定宽信号名, 逐候选路径 `open(O_WRONLY|O_CREAT|O_APPEND)` 直到成功。
+     * 信号处理器落盘: 覆写定宽信号名, 往安装期打开的 fd 里写 (逐候选直到成功)。
      *
-     * 只调用 async-signal-safe 函数 (`open`/`write`/`close`), 不加锁、不分配、不抛异常。
+     * 处理器内只调 async-signal-safe 的 `write` —— 不做任何 Kotlin 分配、不拼字符串、不取锁。
+     * 路径的 String→C 字符串转换已在安装期完成 (见 [openSignalTargets])。
      * 失败静默 —— 崩溃路径上不能二次崩溃。
      */
-    internal fun writeSignal(sig: Int) {
+    internal fun writeSignal(label: String) {
         val buffer = signalBuffer ?: return
-        val name = signalName(sig)
+        // label 由各端在**安装期**按自己的平台常量备好: 信号编号在 iOS 与 Linux 内核上并不
+        // 相同 (如 SIGSYS), 共用实现里用字面量会把名字映射错。这里只做定宽覆写, 不分配
         var i = 0
         while (i < SIGNAL_NAME_WIDTH) {
-            buffer[signalNameOffset + i] = name[i].code.toByte()
+            buffer[signalNameOffset + i] = label[i].code.toByte()
             i++
         }
-        // 先置异常退出标记 (启动期提示读它; 偏好存储信号上下文内不可用, 只能碰文件),
-        // 再写日志正文 —— 标记失败不影响日志落盘
-        runCatching {
-            val fd = open(markerPath, O_WRONLY or O_CREAT or O_TRUNC, FILE_MODE)
-            if (fd >= 0) {
-                writeAll(fd, MARKER_TEXT, 0, MARKER_TEXT.size)
-                close(fd)
-            }
-        }
         var index = 0
-        while (index < signalPaths.size) {
+        while (index < logFds.size) {
             val range = signalTailRanges.getOrNull(index)
-            if (range != null) {
-                val fd = open(signalPaths[index], O_WRONLY or O_CREAT or O_APPEND, FILE_MODE)
-                if (fd >= 0) {
-                    writeAll(fd, buffer, 0, signalBodyLength)
-                    writeAll(fd, buffer, range.first, range.last - range.first + 1)
-                    close(fd)
-                    return
+            val fd = logFds[index]
+            if (range != null && fd >= 0) {
+                // 日志写成功后, 在**同一目录**置异常退出标记 (启动期提示读它;
+                // 偏好存储在信号上下文内不可用, 只能碰文件)
+                val markerFd = markerFds.getOrNull(index) ?: -1
+                if (markerFd >= 0) {
+                    writeAll(markerFd, MARKER_TEXT, 0, MARKER_TEXT.size)
                 }
+                writeAll(fd, buffer, 0, signalBodyLength)
+                writeAll(fd, buffer, range.first, range.last - range.first + 1)
+                return
             }
             index++
         }
@@ -299,21 +380,11 @@ object NativeCrashLogWriter {
     }
 
     /**
-     * 信号名 (定宽 [SIGNAL_NAME_WIDTH], 不足补空格)。
+     * 信号名 (定宽 9 字符, 不足补空格)。
      *
-     * 表覆盖两端注册处理器的全部信号; 表外信号不会进处理器 (未注册即走系统默认处置),
-     * 这里仍给出定宽兜底以免越界覆写。
+     * 已由各端在安装期按自己的平台常量备好并传给 [writeSignal]: 信号编号在 iOS 与 Linux
+     * 内核上并不相同 (如 SIGSYS), 共用实现里用字面量会把名字映射错。此处不再自行映射。
      */
-    private fun signalName(sig: Int): String = when (sig) {
-        1 -> "SIGHUP  "
-        4 -> "SIGILL  "
-        5 -> "SIGTRAP "
-        6 -> "SIGABRT "
-        7 -> "SIGBUS  "
-        8 -> "SIGFPE  "
-        11 -> "SIGSEGV "
-        else -> "SIG($sig)".padEnd(SIGNAL_NAME_WIDTH)
-    }
 
     // endregion
 

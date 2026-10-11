@@ -132,24 +132,38 @@ object BackupShared {
     /**
      * 自动备份 (距上次备份超过一天时触发, 云端已有当日备份则只更新时间戳)。
      * 跨平台统一调度 (对照原版 Backup.autoBack)。
+     *
+     * 发起即返回 (启动路径用); 需要等它落完盘的收尾路径用 [autoBackAwait]。
      */
     fun autoBack(
         destinationPath: String? = PreferenceProviders.get().getStringOrNull(PreferKey.backupPath),
     ) {
-        if (!shouldAutoBackup()) return
         Coroutine.async {
-            autoBackMutex.withLock {
-                if (!shouldAutoBackup()) return@async
-                val backupZipFileName = nowZipFileName()
-                val hasRemote = runCatching { AppWebDavShared.hasBackUp(backupZipFileName) }.getOrDefault(false)
-                if (!hasRemote) {
-                    backupLocked(destinationPath)
-                } else {
-                    BackupRestoreHooks.get().setLastBackup(systemCurrentTimeMillis())
-                }
-            }
+            autoBackAwait(destinationPath)
         }.onError {
             AppLog.put("自动备份失败\n${it.message}", it, tag = TAG)
+        }
+    }
+
+    /**
+     * 自动备份的可等待入口 (退出前收尾用)。
+     *
+     * 收尾路径必须等它跑完: [autoBack] 发起即返回, 调用方进程紧接着结束会把写到一半的
+     * 备份截断 (文件名带时间戳, 不覆盖旧备份, 但会留下一个不可用的半成品)。
+     */
+    suspend fun autoBackAwait(
+        destinationPath: String? = PreferenceProviders.get().getStringOrNull(PreferKey.backupPath),
+    ) {
+        if (!shouldAutoBackup()) return
+        autoBackMutex.withLock {
+            if (!shouldAutoBackup()) return
+            val backupZipFileName = nowZipFileName()
+            val hasRemote = runCatching { AppWebDavShared.hasBackUp(backupZipFileName) }.getOrDefault(false)
+            if (!hasRemote) {
+                backupLocked(destinationPath)
+            } else {
+                BackupRestoreHooks.get().setLastBackup(systemCurrentTimeMillis())
+            }
         }
     }
 

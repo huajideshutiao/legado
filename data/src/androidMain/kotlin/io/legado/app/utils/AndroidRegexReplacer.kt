@@ -138,6 +138,8 @@ object AndroidRegexReplacer : RegexReplacer {
         cacheRef.value[key]?.let { return it }
         val regex = if (multiline) Regex(pattern, RegexOption.MULTILINE) else Regex(pattern)
         cacheRef.casUpdate { cur ->
+            // 淘汰按插入序取最早的键 (先进先出): 已有键被覆盖不改变其位置,
+            // 故 keys.first() 就是最早插入且未再被写过的那个
             if (!cur.containsKey(key) && cur.size >= CACHE_LIMIT) {
                 val oldest = cur.keys.firstOrNull()
                 (if (oldest == null) cur else cur - oldest) + (key to regex)

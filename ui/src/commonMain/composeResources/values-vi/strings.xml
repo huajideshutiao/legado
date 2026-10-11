@@ -992,4 +992,10 @@
     <string name="keyword_highlight_exclude_scope">Pham vi loai tru, tuy chon ten sach hoac URL nguon</string>
     <string name="video_lock">Khóa</string>
     <string name="video_unlock">Mở khóa</string>
+    <string name="close_to_tray_title">Thu nhỏ vào khay khi đóng</string>
+    <string name="close_to_tray_summary">Cửa sổ ẩn đi nhưng tác vụ nền vẫn chạy; mở lại từ biểu tượng khay</string>
+    <string name="close_window">Đóng cửa sổ</string>
+    <string name="close_to_tray_prompt">Thu nhỏ vào khay? Ứng dụng và các tác vụ nền vẫn tiếp tục chạy, bạn có thể mở lại từ biểu tượng khay.</string>
+    <string name="close_to_tray">Thu nhỏ vào khay</string>
+    <string name="show_main_window">Hiện cửa sổ chính</string>
 </resources>

@@ -3,7 +3,7 @@ import type AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import type Want from '@ohos.app.ability.Want';
 import type { Configuration } from '@ohos.app.ability.Configuration';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
-import { bundleManager } from '@kit.AbilityKit';
+import { bundleManager, common } from '@kit.AbilityKit';
 import type window from '@ohos.window';
 import display from '@ohos.display';
 import notificationManager from '@ohos.notificationManager';
@@ -342,26 +342,45 @@ function registerSafely(register: () => void, successLog: string, failLogPrefix:
  *
  * 只在 onCreate 调一次 (官方要求仅主线程使用); 注册失败不阻断启动, 仅打日志。
  */
-function installHostErrorObserver(): void {
+/** 宿主异常观测器序号 (errorManager.on 的返回值, 供 onDestroy 配对注销)。 */
+let hostErrorObserverId: number = -1;
+
+function installHostErrorObserver(abilityContext: common.UIAbilityContext): void {
   try {
     const observer: errorManager.ErrorObserver = {
       onUnhandledException(errMsg: string): void {
         reportHostException('arkts-unhandled', errMsg);
+        exitAfterHostCrash(abilityContext);
       },
       onException(errObj: Error): void {
-        const detail = 'ArkTS exception
-name=' + errObj.name +
-          '
-message=' + errObj.message +
-          '
-stack=' + (typeof errObj.stack === 'string' ? errObj.stack : '(no stack)');
+        const detail = 'ArkTS exception' +
+          '\nname=' + errObj.name +
+          '\nmessage=' + errObj.message +
+          '\nstack=' + (typeof errObj.stack === 'string' ? errObj.stack : '(no stack)');
         reportHostException('arkts-exception', detail);
+        exitAfterHostCrash(abilityContext);
       }
     };
-    errorManager.on('error', observer);
+    // 返回值是观测器序号, 保存下来供注销 (SDK 要求 on/off 配对调用)
+    hostErrorObserverId = errorManager.on('error', observer);
     console.info('[Legado] host error observer installed');
   } catch (e) {
     console.error('[Legado] installHostErrorObserver failed: ' + JSON.stringify(e));
+  }
+}
+
+/**
+ * 崩溃现场落盘后的同步退出。
+ *
+ * 官方接口说明逐字: "观测器捕获到该异常时应用不退出, 建议在回调函数执行完后, 增加同步退出
+ * 操作"。不退出的话, 进程带着已损坏的状态继续跑, 而"崩溃后重启提示"要等用户手动退出再启动
+ * 才会出现 —— 与"崩溃了"这个事实不符。退出失败只打日志。
+ */
+function exitAfterHostCrash(abilityContext: common.UIAbilityContext): void {
+  try {
+    abilityContext.terminateSelf();
+  } catch (e) {
+    console.error('[Legado] terminateSelf after host crash failed: ' + JSON.stringify(e));
   }
 }
 
@@ -380,7 +399,7 @@ export default class EntryAbility extends UIAbility {
     console.info('[Legado] EntryAbility.onCreate');
 
     // 宿主层异常观测器最先装: 本方法内后续任何一步抛异常都只能靠它留下现场
-    installHostErrorObserver();
+    installHostErrorObserver(this.context);
 
     // KP7+: 注入鸿蒙应用沙盒 filesDir / cacheDir 真实路径 (供 shared AppFilesDir / DatabaseDriver 使用)。
     // 必须在 registerOhosProviders 之前调用, 使 OhosDatabaseDriver.defaultDbPath 读到真实沙盒路径
@@ -1043,6 +1062,15 @@ export default class EntryAbility extends UIAbility {
    */
   onDestroy(): void {
     console.info('[Legado] EntryAbility.onDestroy');
+    // 宿主异常观测器按 SDK 要求配对注销 (on 在 onCreate 注册); 注销失败只打日志
+    if (hostErrorObserverId >= 0) {
+      try {
+        errorManager.off('error', hostErrorObserverId);
+        hostErrorObserverId = -1;
+      } catch (e) {
+        console.error('[Legado] errorManager.off failed: ' + JSON.stringify(e));
+      }
+    }
     notifyAbilityDestroyed();
   }
 

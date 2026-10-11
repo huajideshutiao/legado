@@ -191,8 +191,8 @@ object OhosPlatformServices : PlatformServices {
         override fun handleLaunchRequest(request: LaunchRequest): Boolean = false
     }
 
-    // 崩溃日志: 崩溃现场 (logs/crash/crash-*.log, 未捕获异常钩子 + 信号处理器落盘)
-    // 与运行日志 (logs/appLog-*.txt, recordLog 开启时落盘), 由 NativeCrashLogs 汇总
+    // 崩溃日志: 只列崩溃现场 (logs/crash/ 下的 crash-*.log, 未捕获异常钩子 + 信号处理器落盘);
+    // 运行日志 (logs/appLog-*.txt, recordLog 开启时落盘) 不再混入
     override val crashLogs: CrashLogProvider = object : CrashLogProvider {
         override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> =
             NativeCrashLogs.listLogs().map { CrashLogProvider.CrashLogEntry(it) }
@@ -387,14 +387,19 @@ private object OhosFilePickerService : FilePickerService {
      */
     override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? {
         val ext = imageExtension(bytes, suggestedName).removePrefix(".")
-        return runCatching { saveImageToAlbum(ext, bytes) }
-            .onFailure { AppLog.put("保存图片到相册失败\n$suggestedName\n${it.message}", it) }
-            .getOrElse { savedToAlbum ->
-                if (!savedToAlbum) {
-                    AppLog.put("保存图片到相册失败, 未授予相册权限或被图库拒绝\n$suggestedName")
-                }
-                savedToAlbum
-            }
+        // Result.getOrElse 的入参是 Throwable (失败原因), 不是成功值 —— 取成功值要用 getOrDefault。
+        // 两类失败分开如实记录: 抛异常走原因, 正常返回 false 则是未授权/被图库拒绝
+        val result = runCatching { saveImageToAlbum(ext, bytes) }
+        val failure = result.exceptionOrNull()
+        if (failure != null) {
+            AppLog.put("保存图片到相册失败\n$suggestedName\n${failure.message}", failure)
+            return false
+        }
+        val saved = result.getOrDefault(false)
+        if (!saved) {
+            AppLog.put("保存图片到相册失败, 未授予相册权限或被图库拒绝\n$suggestedName")
+        }
+        return saved
     }
 
     /**

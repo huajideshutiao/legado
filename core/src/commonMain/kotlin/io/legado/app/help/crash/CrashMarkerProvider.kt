@@ -75,6 +75,36 @@ object CrashMarkerProviders {
 }
 
 /**
+ * "偏好存储 + 标记文件" 双通道实现 (有信号路径的 Android / iOS / 鸿蒙共用)。
+ *
+ * 两条通道各自覆盖一类崩溃路径, 读取时取或:
+ * - 偏好存储: JVM/K-N 未捕获异常路径可以正常写偏好, 与各端 `mark()` 同一处
+ * - 标记文件: 信号处理器内不能分配/加锁, 只能落文件 ([CrashMarkerFile]); 由
+ *   [markerDirs] 给出候选目录 (与崩溃日志同目录, 顺序即优先级)
+ *
+ * 读取时两处都查、都清: 同一次崩溃只走其中一条通道, 但两次崩溃可能一条写文件一条写偏好。
+ */
+class LocalConfigCrashMarkerProvider(
+    private val markerDirs: () -> List<String>,
+) : CrashMarkerProvider {
+
+    override fun mark() {
+        runCatching {
+            LocalConfigProviders.get().putBoolean(LocalConfigKeys.appCrash, true)
+        }
+    }
+
+    override fun consumePending(): Boolean = runCatching {
+        val fromFile = markerDirs().any { CrashMarkerFile.consume(it) }
+        val store = LocalConfigProviders.get()
+        val fromPrefs = store.getBoolean(LocalConfigKeys.appCrash, false)
+        if (fromPrefs) store.putBoolean(LocalConfigKeys.appCrash, false)
+        fromFile || fromPrefs
+    }.getOrDefault(false)
+}
+
+
+/**
  * 默认实现: [LocalConfigProviders] 的 `appCrash` 键。
  *
  * 与原版 `LocalConfig.appCrash` 同键同存储 —— Android 端照旧写它, 桌面端与 native

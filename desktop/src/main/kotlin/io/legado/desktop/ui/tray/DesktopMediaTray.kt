@@ -17,6 +17,7 @@ import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.utils.FlowBus
+import io.legado.desktop.ui.DesktopWindowChrome
 import io.legado.desktop.ui.tray.DesktopMediaTray.syncVisibility
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -237,6 +238,9 @@ object DesktopMediaTray {
     @Volatile
     private var exitAction: (() -> Unit)? = null
 
+    /** 主窗口已关闭到托盘 (窗口只隐藏, 界面状态与后台任务继续)。 */
+    private val windowHidden: Boolean get() = DesktopWindowChrome.hiddenToTray
+
     /**
      * 注册托盘宿主 (窗口恢复 / 退出回调) 并启动后台任务状态监听。
      *
@@ -330,6 +334,52 @@ object DesktopMediaTray {
         exitAction = null
     }
 
+    // ==================== 窗口隐藏到托盘 ====================
+
+    /**
+     * 本机是否支持系统托盘 (不问图标当前是否已上屏, 无副作用)。
+     *
+     * 关闭窗口询问框据此决定是否提供"缩小到托盘"选项: 不支持的机器藏起来就再也叫不回来。
+     */
+    fun traySupported(): Boolean =
+        !GraphicsEnvironment.isHeadless() && SystemTray.isSupported()
+
+    /**
+     * 托盘图标能上屏才允许隐藏窗口 (图标上不来时隐藏会让界面既不在屏幕上也无恢复入口)。
+     *
+     * 空闲期图标本不驻留, 这里会先把图标上屏 —— 隐藏期间必须有一个恢复入口。
+     */
+    private fun canHideWindow(): Boolean {
+        if (monitorScope == null) return false
+        if (SwingUtilities.isEventDispatchThread()) {
+            showTrayIcon()
+        } else {
+            SwingUtilities.invokeAndWait { showTrayIcon() }
+        }
+        return trayIcon != null
+    }
+
+    /**
+     * 收起主窗口: 界面隐藏, 界面状态与后台任务保留, 托盘图标转为常驻 (含空闲期)。
+     *
+     * 窗口显隐统一改共享状态而不直接改 AWT 可见性 —— 直接改会让 Window(visible=) 的入参
+     * 与实际可见性脱钩, 之后点关闭按钮不再产生变化, 窗口就关不掉了 (见 [DesktopWindowChrome.hideToTray])。
+     *
+     * @return false = 托盘图标上不了屏, 本次未隐藏 (调用方必须改走退出, 否则界面不可达)。
+     */
+    fun hideWindow(): Boolean {
+        if (!canHideWindow()) return false
+        DesktopWindowChrome.hideToTray()
+        syncVisibility()
+        return true
+    }
+
+    /** 恢复主窗口 (托盘左键单击 / 菜单"显示主界面")。 */
+    fun showWindow() {
+        activateWindow()
+        syncVisibility()
+    }
+
     // ==================== 显隐 (后台任务驱动) ====================
 
     /**
@@ -360,7 +410,8 @@ object DesktopMediaTray {
     private fun syncVisibility() {
         SwingUtilities.invokeLater {
             if (monitorScope == null) return@invokeLater
-            if (anyBackgroundActive()) showTrayIcon() else hideTrayIcon()
+            // 窗口隐藏期间图标必须常驻: 它是把界面叫回来的唯一入口 (空闲期也不例外)
+            if (anyBackgroundActive() || windowHidden) showTrayIcon() else hideTrayIcon()
             refresh()
             updateTaskbar()
         }
@@ -705,9 +756,18 @@ object DesktopMediaTray {
         if (audioActive || aloudActive || exportTask != null || cacheBookTask != null || checkSourceTask != null) {
             entries += MenuEntry() // 分隔线
         }
-        // 无"显示"项: 恢复窗口 + 跳转对应页面 (原版通知点击行为) 由托盘左键单击承载
+        // 窗口收起或最小化后菜单里必须有显式恢复入口: 只剩"退出"时用户很容易误点
+        // (左键单击也能恢复, 但可发现性差)
+        if (windowHidden || windowMinimized()) {
+            entries += MenuEntry(str("show_main_window", "显示主界面")) { showWindow() }
+        }
         entries += MenuEntry(str("exit", "退出")) { exitAction?.invoke() }
         return entries
+    }
+
+    private fun windowMinimized(): Boolean {
+        val frame = windowProvider?.invoke() as? Frame ?: return false
+        return frame.extendedState and Frame.ICONIFIED != 0
     }
 
     private fun buildMenu(): JPopupMenu {
@@ -790,6 +850,9 @@ object DesktopMediaTray {
 
     /** 取消最小化 → 临时置顶抬到最前 → 请求焦点 (同 SingleInstanceGuard.activateWindow)。 */
     private fun activateWindow() {
+        // 先清隐藏态再取窗口: 取不到窗口 (未注入/已销毁) 时若不清, 托盘图标会一直常驻且
+        // 菜单一直显示"显示主界面", 而界面其实已经可见
+        DesktopWindowChrome.restoreWindow()
         val window = windowProvider?.invoke() ?: return
         SwingUtilities.invokeLater {
             runCatching {
@@ -798,6 +861,8 @@ object DesktopMediaTray {
                         frame.extendedState = frame.extendedState and Frame.ICONIFIED.inv()
                     }
                 }
+                // 与共享状态同向立即置可见: 只靠 Window(visible=) 的异步应用时, 下面的
+                // toFront/requestFocus 可能排在它之前, 对仍隐藏的窗口无效
                 window.isVisible = true
                 val wasAlwaysOnTop = window.isAlwaysOnTop
                 if (!wasAlwaysOnTop && window.isAlwaysOnTopSupported) {
@@ -872,7 +937,11 @@ object DesktopMediaTray {
 
     private fun appName(): String = str("app_name", "阅读")
 
-    /** shared composeResources 缺 key 时 syncGetString 原样返回 key, 用中文兜底。 */
-    private fun str(key: String, fallback: String): String =
+    /**
+     * shared composeResources 缺 key 时 syncGetString 原样返回 key, 用中文兜底。
+     *
+     * 供同模块需要同一兜底口径的调用方 (窗口关闭询问框) 复用, 免两处各写一套。
+     */
+    internal fun str(key: String, fallback: String): String =
         syncGetString(key).takeIf { it != key } ?: fallback
 }

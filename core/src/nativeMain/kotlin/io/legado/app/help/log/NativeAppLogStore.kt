@@ -18,8 +18,8 @@ object NativeAppLogStore {
 
     private val lock = SynchronizedObject()
 
-    /** 运行日志目录 (filesDir 计算 getter, 晚注入也自愈)。 */
-    internal val logDir: String get() = AppFilesDirs.get().filesDir + "/logs"
+    /** 运行日志目录 (filesDir 计算 getter, 晚注入也自愈; 供应端打包日志取源)。 */
+    val logDir: String get() = AppFilesDirs.get().filesDir + "/logs"
 
     /** 当日日志缓冲 (native File 无 appendText, 覆盖写整文件; recordLog 门控下有界)。 */
     private val buffer = StringBuilder()

@@ -21,6 +21,8 @@ import legado.ui.generated.resources.clear_cache
 import legado.ui.generated.resources.clear_cache_summary
 import legado.ui.generated.resources.clear_webview_data
 import legado.ui.generated.resources.clear_webview_data_summary
+import legado.ui.generated.resources.close_to_tray_summary
+import legado.ui.generated.resources.close_to_tray_title
 import legado.ui.generated.resources.click_book_open_read
 import legado.ui.generated.resources.click_book_open_read_summary
 import legado.ui.generated.resources.custom_page_key
@@ -116,6 +118,8 @@ fun OtherConfigScreen(
     onProcessTextChange: (Boolean) -> Unit = {},
     /** 记录堆转储开关是否显示 (仅 Android CrashHandler 消费) */
     showHeapDumpRecord: Boolean = false,
+    /** 关闭主窗口行为开关是否显示 (仅桌面端有系统托盘) */
+    showCloseToTray: Boolean = false,
     /** 语言变更后的平台收尾 (对照原版 appCtx.restart()) */
     onLanguageChange: () -> Unit = {},
 ) {
@@ -169,6 +173,8 @@ fun OtherConfigScreen(
     val summaryClearWebView = stringResource(Res.string.clear_webview_data_summary)
     val titleShrinkDatabase = stringResource(Res.string.shrink_database)
     val summaryShrinkDatabase = stringResource(Res.string.shrink_database_summary)
+    val titleCloseToTray = stringResource(Res.string.close_to_tray_title)
+    val summaryCloseToTray = stringResource(Res.string.close_to_tray_summary)
     val titleThreadCount = stringResource(Res.string.threads_num_title)
     val titleProcessText = stringResource(Res.string.add_to_text_context_menu_t)
     val summaryProcessText = stringResource(Res.string.add_to_text_context_menu_s)
@@ -385,6 +391,16 @@ fun OtherConfigScreen(
                     prefKey = PreferKey.recordHeapDump,
                     title = titleRecordHeapDump,
                     summary = summaryRecordHeapDump,
+                    defaultValue = false,
+                )
+            }
+            // 关闭主窗口时缩小到托盘: 只有桌面端有系统托盘 (其余端无窗口关闭语义)。
+            // 键不存在 = 用户未选择过 (开关显示为关), 首次关闭时弹询问框; 拨过开关即定案
+            if (showCloseToTray) {
+                switchPreference(
+                    prefKey = PreferKey.closeToTray,
+                    title = titleCloseToTray,
+                    summary = summaryCloseToTray,
                     defaultValue = false,
                 )
             }

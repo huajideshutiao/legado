@@ -38,6 +38,7 @@ import io.legado.app.help.readFromClipboard
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.topMostViewController
 import io.legado.app.help.upLoadToDirectLink
+import io.legado.app.help.storage.NativeSaveLog
 import io.legado.app.model.CheckSourceShared
 import io.legado.app.model.Debug
 import io.legado.app.model.ExportBookUtils
@@ -148,6 +149,17 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     private var notificationContentText = syncGetString("service_starting")
 
     override val capabilityScope: CoroutineScope get() = scope
+
+    /**
+     * 保存日志到备份目录 (对照原版 `AboutFragment.saveLog` 的三段式: 未设备份目录则提示中止、
+     * 未开记录日志只提醒、写成功后提示"已保存至备份目录")。
+     *
+     * 打包与落盘见 nativeMain 的 [NativeSaveLog] —— 它要用备份目录的授权通道
+     * (`copyBackupIntoUserDir`), 那个声明在 nativeMain, 本源集可见。
+     */
+    override fun saveLog() {
+        NativeSaveLog.run(capabilityScope, AppLog.isRecordLogEnabled)
+    }
 
     override fun onHttpTtsEdited(engine: HttpTTS) {
         if (IosReadAloudHost.isRun && defaultTtsEngineConfig() == engine.id.toString()) {

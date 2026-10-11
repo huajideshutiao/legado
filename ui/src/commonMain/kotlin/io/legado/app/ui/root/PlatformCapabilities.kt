@@ -472,6 +472,13 @@ interface PlatformCapabilities {
     val heapDumpRecordSupported: Boolean get() = false
 
     /**
+     * 关闭主窗口是否能缩小到系统托盘 (其他设置里"关闭窗口时缩小到托盘"开关 gate)。
+     *
+     * 仅桌面端有系统托盘概念; 其余端无窗口关闭语义, 该开关无法生效。
+     */
+    val closeToTraySupported: Boolean get() = false
+
+    /**
      * 是否平板设备（决定"平板/横屏双页" auto 分支是否启用双页，对照 app 端
      * `Context.isPad`；桌面默认 false，宽屏下由宽>高分支兜底）。
      */

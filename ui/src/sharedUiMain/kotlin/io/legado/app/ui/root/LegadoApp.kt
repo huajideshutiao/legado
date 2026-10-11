@@ -152,6 +152,12 @@ fun LegadoApp(
         // Lazy 回收、转场期间移出渲染列表而变化, 与"页面是否可见/存活"不是同一件事。
         val foreground by AppForegroundState.isForeground.collectAsState()
         val routeLifecycles = remember { RouteLifecycleStore() }
+        // 前后台翻转直接入账: 该翻转可能发生在界面不再重组时 (桌面窗口隐入托盘后不再出帧,
+        // 但 effects 仍能在 EDT 上跑), 故只启动一次常驻收集, 不靠重组重启 ——
+        // 用 collectAsState 的当前值驱动的话, 隐藏后没人重组, 变更永远送不到页面
+        LaunchedEffect(routeLifecycles) {
+            AppForegroundState.isForeground.collect { routeLifecycles.setForeground(it) }
+        }
         // 栈事实或前后台变化时在渲染子节点前对齐状态:
         // 必须在子组件组合前同步, 否则子组件首帧读到 INITIALIZED 导致副作用推迟一帧启动并引发额外重组
         val stackTopId = entries.lastOrNull()?.id

@@ -1,5 +1,8 @@
 package com.github.jershell.rjpath
 
+// K/N 目标没有 JVM 默认导入的 kotlin.jvm.Volatile, commonMain 一律用 kotlin.concurrent.Volatile
+import kotlin.concurrent.Volatile
+
 /**
  * JSONPath 的 `match(值, 模式)` 匹配模式。
  *

@@ -34,7 +34,7 @@ import kotlinx.atomicfu.atomic
  *
  * # 默认实现
  *
- * [DefaultRuleRegex] 即 `kotlin.text.Regex` 的直接调用, 未注册平台的宿主行为与本类引入前逐字一致。
+ * [DefaultRuleRegex] 即 `kotlin.text.Regex` 的直接调用, 不提供时间上限与栈保护。
  *
  * 模式参考 [RegexReplacers] / [RegexErrorHandlers]。
  */
@@ -48,7 +48,8 @@ interface RuleRegex {
      * @param multiline   多行语义 (对应 `Pattern.MULTILINE`)
      * @param replacement 替换串 (`$1`/`${name}` 组引用由实现解析)
      * @param replaceFirst 只替换首个匹配 (对应 `####替换###` 形式)
-     * @param timeout     单次替换的时间上限 (毫秒); <=0 表示不限时
+     * @param timeout     单次替换的时间上限 (毫秒); <=0 表示不限时。
+     *                    只有自带超时能力的实现会用到它, 其余实现忽略该参数。
      */
     fun replace(
         source: CharSequence,
@@ -137,7 +138,7 @@ class RuleMatchSpans(
 /**
  * [RuleRegex] provider 容器。宿主启动早期注册一次 (任何规则解析之前)。
  *
- * 未注册时 [get] 返回 [DefaultRuleRegex], 即 `kotlin.text.Regex` 直通 —— 与引入本能力前行为一致。
+ * 未注册时 [get] 返回 [DefaultRuleRegex] (安卓/桌面/鸿蒙三端均如此), 即 `kotlin.text.Regex` 直通。
  */
 object RuleRegexes {
 
@@ -153,7 +154,7 @@ object RuleRegexes {
 }
 
 /**
- * 默认实现: 直接用 `kotlin.text.Regex`, 不做超时与栈保护 (与各端引入本能力前的行为一致)。
+ * 默认实现: 直接用 `kotlin.text.Regex`, **不提供时间上限与栈保护**。
  *
  * 安卓与鸿蒙注册本实现, 桌面注册 [io.legado.app.utils.JvmRuleRegex] (该实现多补一个字符类
  * 标志), 未注册时也回退到这里。
@@ -243,6 +244,8 @@ object DefaultRuleRegex : RuleRegex {
         cacheRef.value[key]?.let { return it }
         val regex = if (multiline) Regex(pattern, RegexOption.MULTILINE) else Regex(pattern)
         cacheRef.casUpdate { cur ->
+            // 淘汰按插入序取最早的键 (先进先出): 已有键被覆盖不改变其位置,
+            // 故 keys.first() 就是最早插入且未再被写过的那个
             if (!cur.containsKey(key) && cur.size >= CACHE_LIMIT) {
                 val oldest = cur.keys.firstOrNull()
                 (if (oldest == null) cur else cur - oldest) + (key to regex)

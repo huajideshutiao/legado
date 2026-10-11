@@ -2,6 +2,8 @@
 
 package io.legado.app.help.crash
 
+import kotlinx.cinterop.CFunction
+import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.staticCFunction
 import platform.Foundation.NSBundle
@@ -17,6 +19,7 @@ import platform.posix.SIGFPE
 import platform.posix.SIGHUP
 import platform.posix.SIGILL
 import platform.posix.SIGSEGV
+import platform.posix.SIGSYS
 import platform.posix.SIGTRAP
 import platform.posix.signal
 
@@ -35,9 +38,12 @@ import platform.posix.signal
  * "有钩子但一条日志都没有"的结果 —— 与不装无异。
  *
  * # 与系统 `.ips` 的关系
- * 处理器内写完日志直接 return, 不恢复 `SIG_DFL`、不重发信号: 内核按原信号语义继续处置,
- * 系统 ReportCrash 照常生成 `.ips`。本机制是**在沙盒里多留一份证据**, 不是替代系统报告 ——
- * 用户不必连电脑导日志, 直接经"文件" App 取 `Documents/logs/crash/` 即可。
+ * 处理器写完自有日志后把该信号的处置交还 `SIG_DFL` 再返回: 处理器返回时内核重新执行出错指令、
+ * 再次触发同一信号, 这次走默认处置终止进程 —— 系统 ReportCrash 照常生成 `.ips`。
+ * 不交还处置直接返回会**再次进入本处理器** (处置未被重置, 与 `sigaction`+POSIX 语义一致),
+ * 形成"每次进入都追加一段日志"的死循环并吃满 CPU, 直到被系统看门狗杀掉。
+ * 本机制是**在沙盒里多留一份证据**, 不是替代系统报告 —— 用户不必连电脑导日志,
+ * 直接经"文件" App 取 `Documents/logs/crash/` 即可。
  */
 object IosCrashHandler {
 
@@ -60,7 +66,8 @@ object IosCrashHandler {
         }
     }
 
-    private val HANDLED_SIGNALS = listOf(SIGHUP, SIGILL, SIGTRAP, SIGABRT, SIGBUS, SIGFPE, SIGSEGV)
+    private val HANDLED_SIGNALS =
+        listOf(SIGHUP, SIGILL, SIGTRAP, SIGABRT, SIGBUS, SIGFPE, SIGSEGV, SIGSYS)
 }
 
 /**
@@ -85,9 +92,33 @@ private fun onUncaughtNsException(exception: NSException?) {
     NativeCrashLogWriter.writeException("objc-uncaught", detail)
 }
 
+/** `SIG_DFL` 的 C 表示 (宏 `((__sighandler_t)0)`, cinterop 不为该宏生成常量)。 */
+private val SigDfl: CPointer<CFunction<(Int) -> Unit>>? = null
+
 /** 信号处理器 (同为顶层无捕获函数, 原因见 [onUncaughtNsException])。 */
 private fun onSignal(sig: Int) {
-    NativeCrashLogWriter.writeSignal(sig)
+    NativeCrashLogWriter.writeSignal(signalLabel(sig))
+    // 交还处置后返回: 返回时内核重新执行出错指令、再次触发同一信号, 这次走 SIG_DFL 终止进程。
+    signal(sig, SigDfl)
+}
+
+/**
+ * 信号显示名 (定宽 9 字符)。
+ *
+ * 必须在各端按**自己的平台常量**映射: 信号编号在 iOS 与 Linux 内核上并不相同 (如 SIGSYS),
+ * 放到共用实现里用字面量会把名字映射错。表外信号不会进处理器 (未注册即走系统默认处置),
+ * 兜底也是定宽常量字符串 —— 本函数在崩溃处理器内调用, 不得做任何分配。
+ */
+private fun signalLabel(sig: Int): String = when (sig) {
+    SIGHUP -> "SIGHUP   "
+    SIGILL -> "SIGILL   "
+    SIGTRAP -> "SIGTRAP  "
+    SIGABRT -> "SIGABRT  "
+    SIGBUS -> "SIGBUS   "
+    SIGFPE -> "SIGFPE   "
+    SIGSEGV -> "SIGSEGV  "
+    SIGSYS -> "SIGSYS   "
+    else -> "SIG?     "
 }
 
 private fun currentThreadName(): String =

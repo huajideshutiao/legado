@@ -331,20 +331,27 @@ object AudioPlayShared {
     }
 
     fun saveRead() {
+        Coroutine.async { saveReadAwait() }
+    }
+
+    /**
+     * [saveRead] 的可等待形式: 落库完成才返回。
+     *
+     * 供退出流程在结束进程前确保当前位置已写回库 (异步版会在进程结束前被截断)。
+     */
+    suspend fun saveReadAwait() {
         val book = book ?: return
-        Coroutine.async {
-            // 落库 + 回写内存 book 实体 + 通知书架重查 (实现已收敛至 [ChapterProgressStore], 四模式共用)。
-            // 章名以当前 durChapter 为准: next/prev/skipTo 已预同步 book.durChapterIndex,
-            // 若按 "book.durChapterIndex != durChapterIndex" 判断章节是否变化则恒为 false,
-            // durChapterTitle 会永远停在旧章标题 (回归 2026-08)。
-            ChapterProgressStore.save(
-                book = book,
-                durChapterIndex = durChapterIndex,
-                durChapterPos = durChapterPos,
-                chapter = durChapter,
-            )
-            postEvent(EventBus.UP_BOOKSHELF, book.bookUrl)
-        }
+        // 落库 + 回写内存 book 实体 + 通知书架重查 (实现已收敛至 [ChapterProgressStore], 四模式共用)。
+        // 章名以当前 durChapter 为准: next/prev/skipTo 已预同步 book.durChapterIndex,
+        // 若按 "book.durChapterIndex != durChapterIndex" 判断章节是否变化则恒为 false,
+        // durChapterTitle 会永远停在旧章标题 (回归 2026-08)。
+        ChapterProgressStore.save(
+            book = book,
+            durChapterIndex = durChapterIndex,
+            durChapterPos = durChapterPos,
+            chapter = durChapter,
+        )
+        postEvent(EventBus.UP_BOOKSHELF, book.bookUrl)
     }
 
     /**

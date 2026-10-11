@@ -6,6 +6,7 @@ import io.legado.app.exception.RegexTimeoutException
 import io.legado.app.help.UserAgentProviders
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.utils.NetworkUtils
+import io.legado.app.utils.RuleRegexes
 import io.legado.desktop.help.webview.DesktopWebViewEngineBase.Companion.COOKIE_TIMEOUT_MS
 import io.legado.desktop.help.webview.DesktopWebViewEngineBase.Companion.DEFAULT_JS
 import io.legado.desktop.help.webview.DesktopWebViewEngineBase.Companion.JS_RETRY_INTERVAL_MS

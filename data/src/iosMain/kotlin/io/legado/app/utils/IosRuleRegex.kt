@@ -1,4 +1,4 @@
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
 
 package io.legado.app.utils
 
@@ -66,6 +66,9 @@ import platform.Foundation.replacementStringForResult
  *
  * `\w`/`\s` 两端都为 ICU 语义 (`\w` 含中文, `\s` 含 U+3000), 换引擎后与 Android 一致;
  * 差异只剩 ICU 数据表版本不同导致的个别码点归属不同。
+ * 与 JDK/鸿蒙两端则多一处: ICU 要求 lookbehind 的匹配长度有界 (官方文档原文 "The length of
+ * possible strings matched by the look-behind pattern must not be unbounded (no * or + operators.)"),
+ * 无界 lookbehind 在本端与安卓端都编译失败, 而 JDK 接受 —— 即"可编译的模式串集合"不同。
  *
  * # 注册
  *
@@ -228,6 +231,8 @@ object IosRuleRegex : RuleRegex {
             error.ptr
         ) ?: throw IllegalArgumentException(error.value?.localizedDescription ?: "正则表达式无效")
         cacheRef.casUpdate { cur ->
+            // 淘汰按插入序取最早的键 (先进先出): 已有键被覆盖不改变其位置,
+            // 故 keys.first() 就是最早插入且未再被写过的那个
             if (!cur.containsKey(key) && cur.size >= CACHE_LIMIT) {
                 val oldest = cur.keys.firstOrNull()
                 (if (oldest == null) cur else cur - oldest) + (key to ns)

@@ -205,6 +205,8 @@ fun OtherConfigRoute(
                 processTextEnabled = platform.isProcessTextEnabled()
             },
             showHeapDumpRecord = platform.heapDumpRecordSupported,
+            // 关闭主窗口时缩小到托盘: 只有桌面端有系统托盘
+            showCloseToTray = platform.closeToTraySupported,
         )
     }
 

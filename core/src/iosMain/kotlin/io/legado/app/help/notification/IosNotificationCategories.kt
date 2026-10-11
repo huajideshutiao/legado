@@ -93,7 +93,7 @@ object IosNotificationCategories {
                 options = UNNotificationActionOptionNone,
             ),
         ),
-        intentIdentifiers = emptyList(),
+        intentIdentifiers = emptyList<String>(),
         options = options,
     )
 }

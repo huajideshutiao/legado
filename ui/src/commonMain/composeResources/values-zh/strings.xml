@@ -1830,4 +1830,10 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="keyword_highlight_exclude_scope">排除范围，选填书名或者书源 URL</string>
     <string name="video_lock">锁定</string>
     <string name="video_unlock">解锁</string>
+    <string name="close_to_tray_title">关闭窗口时缩小到托盘</string>
+    <string name="close_to_tray_summary">窗口隐藏后后台任务继续运行，可从托盘图标重新打开</string>
+    <string name="close_window">关闭窗口</string>
+    <string name="close_to_tray_prompt">是否缩小到托盘？缩小后程序与后台任务继续运行，可从托盘图标重新打开。</string>
+    <string name="close_to_tray">缩小到托盘</string>
+    <string name="show_main_window">显示主界面</string>
 </resources>

@@ -907,4 +907,10 @@
     <string name="keyword_highlight_exclude_scope">除外範囲（任意、書名または書源 URL）</string>
     <string name="video_lock">ロック</string>
     <string name="video_unlock">ロック解除</string>
+    <string name="close_to_tray_title">閉じるときにトレイへ最小化</string>
+    <string name="close_to_tray_summary">ウィンドウは非表示になりバックグラウンド処理は継続します。トレイアイコンから再度開けます</string>
+    <string name="close_window">ウィンドウを閉じる</string>
+    <string name="close_to_tray_prompt">トレイに最小化しますか？アプリとバックグラウンド処理は実行を継続し、トレイアイコンから再度開けます。</string>
+    <string name="close_to_tray">トレイに最小化</string>
+    <string name="show_main_window">メインウィンドウを表示</string>
 </resources>

@@ -22,6 +22,7 @@ import io.legado.app.help.config.rememberBookExportDir
 import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.file.desktopStoredLocalRef
+import io.legado.app.help.service.ServiceLaunchers
 import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.Toasters
@@ -82,6 +83,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
@@ -130,10 +132,9 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     internal val bookSourceViewModel by lazy { BookSourceViewModelShared(scope) }
 
     override fun exitApplication() {
-        // 主界面返回双击退出等 shared 调用: 关闭主窗口 (等价标题栏关闭按钮),
-        // 触发 Window.onCloseRequest → compose exitApplication (含单实例守卫清理)
-        (PlatformServiceProviders.get() as? DesktopPlatformServices)
-            ?.windowHandle?.window?.dispose()
+        // shared 的"再按一次退出程序"在桌面端 = 退到后台: 对齐原版 Android 双击返回 finish
+        // 主界面、服务与通知继续 (真退出入口只有托盘菜单"退出")
+        DesktopWindowChrome.interfaceExitRequest?.invoke()
     }
 
     // ===== 全局转场动画平台 spec (方案 A: 动画单一注入点参数化) =====
@@ -171,6 +172,9 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     // 语言: CMP 资源按 Locale.current 选 values-xx 目录, 进程内改默认 locale 不会重取
     // 已组合的字符串, 所以与安卓一样靠重启生效 (对照原版 appCtx.restart())
     override val languageSwitchSupported: Boolean get() = true
+
+    /** 关闭主窗口可缩小到系统托盘 (仅托盘图标能上屏的桌面环境)。 */
+    override val closeToTraySupported: Boolean get() = DesktopMediaTray.traySupported()
 
     override fun applyAppLanguage() {
         applyDesktopLanguagePref()
@@ -483,10 +487,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
             File(cacheDir, "logs"),
             DesktopCrashLogDirs.cacheCrashDir,
             File(cacheDir, "heapDump"),
-        ).filter { it.exists() }.toMutableList()
-        // JVM 致命错误现场 (hs_err_pid*.log) 不在任何目录内 (散落在工作目录/临时目录/用户主目录),
-        // 收集时逐个作为单文件源加入 zip, 否则用户导出的 logs.zip 里恰恰缺了最致命的那份现场
-        DesktopCrashLogDirs.findJvmFatalErrorLogs().forEach { sources.add(it) }
+        ).filter { it.exists() }
         if (sources.isEmpty()) throw NoStackTraceException("没有可保存的日志文件")
         val outDir = File(DataStorageProviders.get().userExportDir).apply { mkdirs() }
         val zipFile = File(outDir, "logs.zip")
@@ -1039,6 +1040,29 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     override fun cancelCheckSource() {
         DesktopCheckSource.stop()
         Debug.finishChecking()
+    }
+
+    /**
+     * 退出前收尾: 停掉正在跑的后台任务 (缓存下载 / 书源校验 / 导出), 并等导出协程收手。
+     *
+     * 缓存下载与书源校验的停止口是同步的 (调完即已停); 导出跑在协程上, 取消后不等它结束,
+     * 进程会在写文件的中途被结束 —— 文件流没走完收尾, 留下的半成品比"取消当时已写完的部分"
+     * 更不完整。故等待其 job 真正完成; 半成品本身保留不删 (与托盘取消导出同一路径)。
+     *
+     * 等导出有上限: 卡在不可中断的网络/磁盘调用时无限等下去, 会让退出永远完不成 ——
+     * 退不掉比丢失半本导出更严重 (进程已不再响应任何退出操作)。
+     */
+    internal suspend fun stopBackgroundTasksAwait() {
+        runCatching { ServiceLaunchers.get().stopCacheBookService() }
+        runCatching { cancelCheckSource() }
+        val exportJob = exportBooksJob ?: return
+        exportJob.cancel()
+        withTimeoutOrNull(EXIT_EXPORT_GRACE_MS) { exportJob.join() }
+    }
+
+    private companion object {
+        /** 退出时等导出收尾的上限 (超时就不再等, 由调用方继续结束进程)。 */
+        const val EXIT_EXPORT_GRACE_MS = 5_000L
     }
 
     // ===== 其它设置 =====

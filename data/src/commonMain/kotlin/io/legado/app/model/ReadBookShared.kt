@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 
@@ -372,27 +373,37 @@ open class ReadBookShared : CoroutineScope {
     }
 
     fun saveRead() {
-        runOnBackground {
-            val book = bookValue ?: return@runOnBackground
-            book.durChapterIndex = durChapterIndexValue
-            book.durChapterPos = durChapterPosValue *
-                (if (curChapter?.isLastIndex(durPageIndexValue) == true) -1 else 1)
-            // 每翻一页都会走这里: 章名先取内存目录, 内存没有才兜底查库
-            // (原来无条件 runBlockingInScope 查库 = 热路径上的阻塞 IO)
-            (chapterListValue?.getOrNull(durChapterIndexValue)
-                ?: runBlockingInScope(EmptyCoroutineContext) {
-                    AppDbProviders.get().bookChapterDao.getChapter(
-                        book.bookUrl,
-                        durChapterIndexValue
-                    )
-                })?.let {
-                book.durChapterTitle = it.getDisplayTitle(
-                    ContentProcessorProviders.get().getTitleReplaceRules(book),
-                    book.getUseReplaceRule()
+        runOnBackground { saveReadNow() }
+    }
+
+    /**
+     * [saveRead] 的可等待形式: 落库完成才返回。
+     *
+     * 供退出流程在结束进程前确保当前位置已写回库 (异步版会在进程结束前被截断)。
+     */
+    suspend fun saveReadAwait() = withContext(IoDispatcher) { saveReadNow() }
+
+    /** 阅读进度落库本体 (阻塞式 DB 写入, 由调用方选调度器)。 */
+    private fun saveReadNow() {
+        val book = bookValue ?: return
+        book.durChapterIndex = durChapterIndexValue
+        book.durChapterPos = durChapterPosValue *
+            (if (curChapter?.isLastIndex(durPageIndexValue) == true) -1 else 1)
+        // 每翻一页都会走这里: 章名先取内存目录, 内存没有才兜底查库
+        // (原来无条件 runBlockingInScope 查库 = 热路径上的阻塞 IO)
+        (chapterListValue?.getOrNull(durChapterIndexValue)
+            ?: runBlockingInScope(EmptyCoroutineContext) {
+                AppDbProviders.get().bookChapterDao.getChapter(
+                    book.bookUrl,
+                    durChapterIndexValue
                 )
-            }
-            saveReadProgress(book)
+            })?.let {
+            book.durChapterTitle = it.getDisplayTitle(
+                ContentProcessorProviders.get().getTitleReplaceRules(book),
+                book.getUseReplaceRule()
+            )
         }
+        saveReadProgress(book)
     }
 
     /**

@@ -54,11 +54,9 @@ data class ReplaceRule(
     // 不覆写 equals/hashCode: 只比 id 会让规则列表/编辑表单把"同一条改了内容"判为相同而吞掉更新;
     // 字段是 var 且多处原地改, 结构 hashCode 会漂移, 故本类实例禁止作 HashSet 元素 / HashMap key
 
-    /**
-     * 替换规则统一经 [RuleRegexes] 执行, 不再暴露已编译 [Regex]:
-     * 调用方持有 [Regex] 意味着由调用方完成编译, 而 native 端 `kotlin.text.Regex` 的编译是
-     * 递归下降且无栈保护 —— 畸形模式串会在编译这一步就把线程栈写穿闪退。
-     */
+    // 替换规则不再暴露已编译正则: 调用方持正则意味着由调用方完成编译, 而 native 端
+    // `kotlin.text.Regex` 的编译是递归下降且无栈保护 —— 畸形模式串会在编译这一步
+    // 就把线程栈写穿闪退。编译与匹配一律交给 [RuleRegexes] 的平台实现。
 
     fun getDisplayNameGroup(): String {
         return if (group.isNullOrBlank()) {

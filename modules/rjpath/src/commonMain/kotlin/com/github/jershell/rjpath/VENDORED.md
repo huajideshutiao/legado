@@ -56,8 +56,9 @@ string-literal = %x22 *double-quoted %x22 /   ; "string"
 在 Kotlin/Native 上 `kotlin.text.Regex` 的编译与匹配都会递归（编译无栈保护、匹配按迭代次数递归），
 病态规则可把线程栈写穿直接闪退且无法中止。
 
-改为 `RegexMatcher` 函数式接口 + `RegexMatchers` 容器（默认 `DefaultRegexMatcher` 即原行为），
+改为 `RegexMatcher` 接口 + `RegexMatchers` 容器（默认 `DefaultRegexMatcher` 即原行为），
 由宿主（`:foundation` 的 `registerRuleRegexForJsonPath`）注册带时间上限的实现。
+两种匹配模式（全量 / 包含）语义不同、各需一个抽象方法，故为普通接口而非函数式接口。
 本模块仍不依赖本项目其它模块（仍只依赖 kotlinx-serialization）。
 
 ## 上游复活时如何合并

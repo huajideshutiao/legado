@@ -4,12 +4,14 @@ import io.legado.app.api.controller.ImageControllerProviders
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.help.coroutine.registerJvmDebugState
+import io.legado.app.help.crash.CrashMarkerProviders
 import io.legado.app.help.ui.OpenUrlProvider
 import io.legado.app.help.ui.OpenUrlProviders
 import io.legado.app.utils.browseUrl
 import io.legado.app.utils.toBrowseUri
 import io.legado.app.web.WebServerManager
 import io.legado.desktop.DesktopCore
+import io.legado.desktop.help.DesktopCrashLogDirs
 import io.legado.desktop.help.DesktopCrashHandler
 import io.legado.desktop.model.fileBook.registerDesktopFileBookAccessor
 import io.legado.desktop.model.webBook.DesktopImageControllerProvider
@@ -67,6 +69,13 @@ fun main(args: Array<String>) {
     // 3. 全局崩溃日志 (与桌面同款): 必须紧跟 initRuntimeEnvironment —— 落盘目录依赖
     //    它设的 legado.portable.root
     DesktopCrashHandler.install()
+    // JVM 致命错误现场: 无头进程同样认领属于本应用的 hs_err 文件搬进崩溃目录, 这样用户
+    // 取日志目录时能看到上次的致命错误。本进程无 UI 不弹提示, 但要把"异常退出"标记置上 ——
+    // 认领会把原文件搬走并删除, 下一次桌面端启动已经找不到文件、不会自己置标记
+    if (DesktopCrashLogDirs.collectJvmFatalErrorLogs()) {
+        runCatching { CrashMarkerProviders.get().mark() }
+        println("headless: 已收集上次运行的 JVM 致命错误现场")
+    }
     // 单实例守卫: 留 :desktop (见顶部取舍注释), 本期跳过
     // 重启支持: 覆写主类为 headless 入口 (默认 io.legado.desktop.MainKt 会拉起桌面 UI),
     // 并保存启动参数 (DesktopAppRestart 的 ProcessBuilder 复用)

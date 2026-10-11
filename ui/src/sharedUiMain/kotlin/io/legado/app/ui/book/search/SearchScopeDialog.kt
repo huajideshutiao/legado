@@ -54,9 +54,10 @@ import legado.ui.generated.resources.book_source
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.group
 import legado.ui.generated.resources.ic_arrow_back
+import legado.ui.generated.resources.ic_search
 import legado.ui.generated.resources.ok
-import legado.ui.generated.resources.outline_filter_alt_24
 import legado.ui.generated.resources.screen
+import legado.ui.generated.resources.search
 import legado.ui.generated.resources.search_scope
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
@@ -298,8 +299,8 @@ private fun ScopeTitleBar(
             if (!groupMode) {
                 IconButton(onClick = { onShowScreenChange(true) }) {
                     Icon(
-                        painter = painterResource(Res.drawable.outline_filter_alt_24),
-                        contentDescription = stringResource(Res.string.screen),
+                        painter = painterResource(Res.drawable.ic_search),
+                        contentDescription = stringResource(Res.string.search),
                         tint = colors.primaryText,
                     )
                 }

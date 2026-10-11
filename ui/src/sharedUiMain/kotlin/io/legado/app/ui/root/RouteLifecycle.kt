@@ -3,11 +3,11 @@ package io.legado.app.ui.root
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -61,13 +61,34 @@ internal fun OnRouteLifecycle(
     onLeave: () -> Unit,
 ) {
     val owner = LocalRouteLifecycleOwner.current ?: return
-    val state by owner.lifecycle.currentStateFlow.collectAsState()
     // 回调用最新引用: 离开时执行的是本次组合的 onLeave, 不因闭包捕获旧值而漏掉新参数
+    val currentOnEnter by rememberUpdatedState(onEnter)
     val currentOnLeave by rememberUpdatedState(onLeave)
-    if (enabled && state.isAtLeast(minState)) {
-        DisposableEffect(owner, minState) {
-            onEnter()
-            onDispose { currentOnLeave() }
+    val currentEnabled by rememberUpdatedState(enabled)
+    // 副作用挂在 Lifecycle 观察者上而不是组合上: 状态翻转可能发生在界面不再重绘期间
+    // (桌面窗口隐藏后不再出帧, 不重组), 挂组合会让该停的停不下来
+    DisposableEffect(owner, minState, enabled) {
+        var active = false
+        fun apply() {
+            val should = currentEnabled && owner.lifecycle.currentState.isAtLeast(minState)
+            if (should && !active) {
+                active = true
+                currentOnEnter()
+            } else if (!should && active) {
+                active = false
+                currentOnLeave()
+            }
+        }
+
+        val observer = LifecycleEventObserver { _, _ -> apply() }
+        owner.lifecycle.addObserver(observer)
+        apply()
+        onDispose {
+            owner.lifecycle.removeObserver(observer)
+            if (active) {
+                active = false
+                currentOnLeave()
+            }
         }
     }
 }
@@ -99,6 +120,11 @@ internal fun ProvideRouteLifecycle(
 internal class RouteLifecycleStore {
     private val owners = mutableMapOf<RouteEntryId, RouteLifecycleOwner>()
 
+    /** 最近一次对齐的渲染页与栈顶 (前台翻转时据此重算, 不依赖下一次重组)。 */
+    private var lastComposed: List<RouteEntry> = emptyList()
+    private var lastStackTopId: RouteEntryId? = null
+    private var lastForeground = true
+
     /**
      * 取本页的载体。
      *
@@ -121,6 +147,29 @@ internal class RouteLifecycleStore {
      * @param stackTopId 当前页面栈的栈顶 (null = 空栈)
      */
     fun sync(
+        composed: List<RouteEntry>,
+        stackTopId: RouteEntryId?,
+        foreground: Boolean,
+    ) {
+        lastComposed = composed
+        lastStackTopId = stackTopId
+        lastForeground = foreground
+        apply(composed, stackTopId, foreground)
+    }
+
+    /**
+     * 前后台翻转单独入账: 该翻转可能发生在界面不再重组时 (桌面窗口隐藏后不再出帧), 只靠组合期
+     * 对齐会把"已退到后台"永远送不到页面 (阅读页停在 RESUMED 继续自动翻页与计时)。
+     *
+     * 落在已登记的渲染页上重算, 不依赖下一次重组。
+     */
+    fun setForeground(foreground: Boolean) {
+        if (foreground == lastForeground) return
+        lastForeground = foreground
+        apply(lastComposed, lastStackTopId, foreground)
+    }
+
+    private fun apply(
         composed: List<RouteEntry>,
         stackTopId: RouteEntryId?,
         foreground: Boolean,

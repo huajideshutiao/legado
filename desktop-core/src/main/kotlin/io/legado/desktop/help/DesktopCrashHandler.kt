@@ -37,31 +37,79 @@ object DesktopCrashLogDirs {
     fun readDirs(): List<File> = writeDirs()
 
     /**
-     * JVM 致命错误现场文件 (HotSpot 在进程崩溃时写的 `hs_err_pid<pid>.log`)。
+     * 启动时把**属于本应用**的 JVM 致命错误现场收进崩溃日志目录, 返回是否收到。
      *
-     * 落点由 JVM 自身决定 (启动参数 `-XX:ErrorFile` 不可用: jpackage 生成的 cfg 只展开
-     * `$APPDIR/$BINDIR/$ROOTDIR`, 环境变量展开是 JDK 25 才有的 JDK-8351447), 按 HotSpot
-     * 顺序为"当前工作目录 → 系统临时目录 → 用户主目录"。三个候选都查, 只取真正的
-     * `hs_err_pid<数字>.log` —— 其他 `.log` 不是本类现场。
+     * # 为什么是"收进来"而不是"读时跨目录扫"
+     * HotSpot 在进程崩溃时写 `hs_err_pid<pid>.log`, 落点由 JVM 自身决定 (启动参数 `-XX:ErrorFile`
+     * 用不了: 落点要打包期定死, 而数据目录是运行期按便携/系统两种形态解析的), 顺序为
+     * "当前工作目录 → 系统临时目录 → 用户主目录"。这三个位置是**多进程共享**的 ——
+     * 直接把里面的 `hs_err_pid*.log` 当本应用的崩溃日志列出、清空时删掉, 会误删用户机器上
+     * 其它 JVM 的现场。故改为启动时只认领**内容属于本应用**的那几份, 搬进崩溃目录, 之后
+     * 列表/读取/清空都只在这个目录里操作, 与其它进程的文件再无交集。
+     *
+     * # 收到即代表"上次运行发生了致命错误"
+     * 搬进来的文件必然产自上一次运行 (本次运行若也崩了, 进程已不在, 不会再走到这里),
+     * 故调用方据此置"异常退出"标记, 让启动期提示能弹出来 —— 这条路径上 JVM 直接终止,
+     * 各异常处理器都不会被调用, 只有这里能留下崩溃证据。
      */
-    fun findJvmFatalErrorLogs(): List<File> {
+    fun collectJvmFatalErrorLogs(): Boolean {
         val candidates = listOfNotNull(
             // 当前工作目录 (HotSpot 的首选落点)
             File("").absoluteFile,
             System.getProperty("java.io.tmpdir")?.let(::File),
             System.getProperty("user.home")?.let(::File),
         )
-        return candidates.distinct().flatMap { dir ->
-            runCatching {
+        val target = cacheCrashDir.apply { mkdirs() }
+        var collected = false
+        for (dir in candidates.distinct()) {
+            val found = runCatching {
                 dir.listFiles { f -> f.isFile && JVM_FATAL_ERROR_NAME.matches(f.name) }
                     ?.toList()
                     .orEmpty()
             }.getOrDefault(emptyList())
+            for (file in found) {
+                if (file.absolutePath == File(target, file.name).absolutePath) continue
+                if (!belongsToThisApp(file)) continue
+                val ok = runCatching {
+                    file.copyTo(File(target, file.name), overwrite = true)
+                }.isSuccess
+                if (!ok) continue
+                file.delete()
+                collected = true
+            }
         }
+        return collected
     }
+
+    /**
+     * 归属判定: 文件头部 `Command Line` 段出现本应用入口类才算本应用的现场。
+     *
+     * 只读头部有限字节 —— `Command Line` 在 SUMMARY 段 (文件前几十行), 不读全文
+     * (hs_err 可达数 MB)。
+     */
+    private fun belongsToThisApp(file: File): Boolean = runCatching {
+        val head = ByteArray(JVM_FATAL_ERROR_HEAD_BYTES)
+        val read = file.inputStream().use { it.read(head) }
+        if (read <= 0) false
+        else {
+            val text = String(head, 0, read, Charsets.ISO_8859_1)
+            JVM_FATAL_ERROR_OWNER_MARKERS.any { text.contains(it) }
+        }
+    }.getOrDefault(false)
+
 
     /** HotSpot 致命错误日志文件名 (固定前缀 + pid)。 */
     private val JVM_FATAL_ERROR_NAME = Regex("hs_err_pid\\d+\\.log")
+
+    /** 归属判定读取的头部字节数 (Command Line 在摘要段, 前几十行足够)。 */
+    private const val JVM_FATAL_ERROR_HEAD_BYTES = 16 * 1024
+
+    /** 本应用入口类 (桌面便携/安装版与无头分发版各一个)。 */
+    private val JVM_FATAL_ERROR_OWNER_MARKERS = listOf(
+        "io.legado.desktop.MainKt",
+        "io.legado.headless.MainKt",
+    )
+
 }
 
 /**

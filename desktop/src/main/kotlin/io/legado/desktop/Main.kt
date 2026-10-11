@@ -46,6 +46,9 @@ import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.toast.DesktopTrayNotifier
 import io.legado.app.help.tvbox.TvBoxSniffPlatforms
 import io.legado.app.help.tts.TtsEngineProvider
+import io.legado.app.model.ActiveReadBookRegistry
+import io.legado.app.model.AudioPlayCommanders
+import io.legado.app.model.AudioPlayShared
 import io.legado.app.model.fileBook.BitmapProviders
 import io.legado.app.ui.FileAssociationDispatch
 import io.legado.app.ui.association.DeepLinkImportHost
@@ -61,6 +64,8 @@ import io.legado.app.ui.book.read.page.provider.registerSkiaTextMeasurer
 import io.legado.app.ui.book.source.SourceUiEventBridgeHost
 import io.legado.app.ui.book.video.VideoPlayPlatformProviders
 import io.legado.app.ui.browser.LocalWebViewSlot
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.LocalDialogAnchorSize
 import io.legado.app.ui.compose.platform.AppKeyRouter
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
@@ -79,7 +84,6 @@ import io.legado.app.ui.about.preferenceUpVersionStore
 import io.legado.app.ui.about.notifyAppCrash
 import io.legado.app.ui.about.upVersion
 import io.legado.app.ui.root.AppFontScaleScope
-import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.LegadoApp
@@ -91,7 +95,10 @@ import io.legado.desktop.audio.registerDesktopAudioPlayProviders
 import io.legado.desktop.audio.registerDesktopSystemMediaControl
 import io.legado.desktop.config.probeSystemNightMode
 import io.legado.desktop.config.registerDesktopSystemNightModeDetector
+import io.legado.app.help.crash.CrashMarkerProviders
+import io.legado.desktop.help.DesktopCrashLogDirs
 import io.legado.desktop.help.DesktopCrashHandler
+import io.legado.desktop.help.DesktopKeepAwake
 import io.legado.desktop.help.DesktopUrlProtocol
 import io.legado.desktop.help.SingleInstanceGuard
 import io.legado.desktop.help.archive.DesktopArchiveCodec
@@ -460,12 +467,95 @@ private fun runDesktopApp() = application {
             windowHandle
         )
     )
+    // 偏好读取提前到此处: 关闭窗口行为与窗口尺寸恢复共用同一份实例
+    val prefProvider = PreferenceProviders.get()
     // 朗读引擎 (Windows SAPI / Linux espeak / macOS say): DesktopSystemTtsEngine 依赖 JNA
     // (WindowsSapiTtsBackend) 留在 :desktop 注册; HttpTTS 播放器工厂 (DesktopHttpTtsPlayer,
     // 纯 JVM) 已随上方 DesktopCore.registerCoreProviders 注册, headless 亦具备该能力
-    val performExit = {
-        BackupShared.autoBack()
-        exitApplication()
+    //
+    // 退出程序 (托盘菜单"退出" / 用户已选择关闭即退出): 先结束后台任务并等当前位置写回库,
+    // 再结束进程。音频会话结束才把引擎当前位置落库 (与托盘菜单"停止"同一动作), 不等落库
+    // 直接结束进程会丢掉当前收听位置。
+    //
+    // 重入保护: Windows 上隐藏/销毁窗口会被 AWT 合成一次关闭请求回调回来
+    // (WWindowPeer.hide 主动调 windowClosing), 进程结束过程中的窗口销毁会再次走到这里。
+    val exitRequested = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    val exitProgram: () -> Unit = {
+        if (exitRequested.compareAndSet(false, true)) {
+            Coroutine.async {
+                // 结束应用必定走到: 重入闸门已置位, 这里任一步抛错都会让进程再也退不掉
+                // (之后关闭按钮与托盘"退出"全成空操作, 只能靠任务管理器杀), 故用 finally 兜底
+                try {
+                    runCatching { DesktopReadAloudHost.stop() }
+                    // 只在会话真在跑时才停: 未注册实现时 get() 会直接报错, 不能靠异常当分支
+                    if (AudioPlayCommanders.getOrNull()?.isServiceRunning == true) {
+                        AudioPlayShared.stop()
+                        // 会话结束只把引擎位置写回内存, 落库仍是异步的: 不等写完就结束进程会丢当前收听位置
+                        AudioPlayShared.saveReadAwait()
+                    }
+                    runCatching { ActiveReadBookRegistry.current?.saveReadAwait() }
+                    // 缓存下载 / 书源校验 / 导出先停再退: 进程在导出写到一半时结束会留下半截文件
+                    runCatching { DesktopPlatformCapabilities.stopBackgroundTasksAwait() }
+                    // 屏幕常亮由常驻子进程压住系统息屏 (macOS caffeinate / Linux systemd-inhibit):
+                    // 进程退出不会带走它, 必须在这里显式撤下
+                    runCatching { DesktopKeepAwake.setWindowVisible(false) }
+                    // 备份要等它落完盘: 发起即返回会被退出截断成半成品
+                    runCatching { BackupShared.autoBackAwait() }
+                } finally {
+                    // 结束应用改到 EDT: 原先这个动作可能在托盘菜单的协程线程上跑
+                    SwingUtilities.invokeLater { exitApplication() }
+                }
+            }
+        }
+    }
+    // 关闭主窗口的行为 (用户拍板 2026-10-11): 首次关闭弹一次询问, 选择被记住;
+    // 选"缩小到托盘"则窗口隐藏、界面状态与后台任务继续 (对齐原版 Android 退出主界面但
+    // 服务与通知继续); 选"退出程序"则与托盘菜单"退出"同路。
+    var closePromptVisible by remember { mutableStateOf(false) }
+    // 隐藏到托盘: 先落盘窗口位置尺寸 (隐藏期间不再有窗口组合销毁时机, onDispose 只在进程
+    // 退出时跑, 期间被任务管理器结束进程就会丢尺寸); 托盘图标上不了屏则改走退出
+    val hideToTray: () -> Boolean = {
+        persistWindowBounds(windowHandle.window as? java.awt.Frame)
+        DesktopMediaTray.hideWindow()
+    }
+    val closeWindow: () -> Unit = {
+        // 退出过程中的窗口销毁会被 AWT 合成一次关闭请求回调回来 (WWindowPeer.hide 主动调
+        // windowClosing), 此时不能再做隐藏/询问动作; 隐藏窗口同样会重入本回调, 但读同一份
+        // 偏好得出同样的处置, 幂等无副作用
+        if (!exitRequested.get()) {
+            when {
+                // 键不存在 = 未选择过: 先问。托盘不可用时没有恢复入口, 不询问也不隐藏
+                // (设置页开关拨过即已选择, 与询问框共用同一个键)
+                !prefProvider.contains(PreferKey.closeToTray) ->
+                    if (DesktopMediaTray.traySupported()) closePromptVisible = true else exitProgram()
+
+                prefProvider.getBoolean(PreferKey.closeToTray, false) ->
+                    if (!hideToTray()) exitProgram()
+
+                else -> exitProgram()
+            }
+        }
+    }
+    // 共享层的"再按一次退出程序"(主界面双击返回): 对照原版 Android 双击返回的分流 ——
+    // 有正在播放的内容时退到后台 (界面藏起来但不打断, 原版 moveTaskToBack), 否则关闭界面
+    // (原版 finish; 桌面端等价物 = 与关闭按钮同路, 走用户的关闭窗口策略)。
+    //
+    // 判据比原版多一项音频: 原版 finish() 只销毁界面、后台服务照旧, 音乐不会被打断;
+    // 桌面端的"关闭界面"在策略为退出时会走完整退出链 (含停音频), 只判朗读会把在放的
+    // 音乐一并停掉 —— 故音频会话在跑也算作内容在播。
+    DisposableEffect(Unit) {
+        DesktopWindowChrome.interfaceExitRequest = {
+            val playing = !DesktopReadAloudHost.isPause ||
+                AudioPlayCommanders.getOrNull()?.isServiceRunning == true
+            if (playing && DesktopMediaTray.traySupported() && hideToTray()) {
+                Unit
+            } else if (playing) {
+                exitProgram()
+            } else {
+                closeWindow()
+            }
+        }
+        onDispose { DesktopWindowChrome.interfaceExitRequest = null }
     }
     val desktopTtsEngine = remember { DesktopSystemTtsEngine() }
     TtsEngineProvider.register(desktopTtsEngine)
@@ -473,7 +563,7 @@ private fun runDesktopApp() = application {
     DisposableEffect(Unit) {
         DesktopMediaTray.install(
             windowProvider = { windowHandle.window },
-            exitAction = performExit,
+            exitAction = exitProgram,
         )
         // 朗读控制器绑定: 托盘按 controller.state 增删朗读菜单项, 空闲时自动隐藏
         DesktopMediaTray.readAloud = ReadAloudTrayBinding(
@@ -520,34 +610,41 @@ private fun runDesktopApp() = application {
     // - 上次最大化 → 完全不读 W/H/XY, 以 CMP 默认 800x600 创建再最大化, 于是"向下还原"
     //   回到默认小窗口, 而不是回到一个看起来满屏的坐标;
     // - 否则有记录按记录恢复, 无记录用 CMP 默认。
-    val prefProvider = PreferenceProviders.get()
     val savedMaximized = prefProvider.getBoolean(PreferKey.windowMaximized, false)
     val restoreBounds = !savedMaximized && prefProvider.contains(PreferKey.windowWidth)
     // 尺寸/位置恢复无跳变: CMP 的 update 块在窗口显示前就 setSizeSafely/setPositionSafely
     // (pack + setSize/setLocation), isVisible=true 由 AwtWindow 另一个效果排到后续 EDT 任务,
     // 所以窗口第一次出现即目标尺寸位置。AWT 坐标在 Windows 缩放下是逻辑单位, 与 dp 同尺
     // (CMP 自己也是 width.dp 直转), 两侧都不乘 density。
-    val windowState = if (restoreBounds) {
-        val savedW = prefProvider.getInt(PreferKey.windowWidth, 800)
-        val savedH = prefProvider.getInt(PreferKey.windowHeight, 600)
-        // 屏幕边界修正: 显示器分辨率/布局变化后旧坐标可能越界, 保证窗口至少有部分留在屏幕内
-        // 便于拖回 (不强制完整可见, 多屏场景留有余地)
-        val screenSize = java.awt.Toolkit.getDefaultToolkit().screenSize
-        val minVisible = 80
-        val savedX = prefProvider.getInt(PreferKey.windowX, 0)
-            .coerceIn(-savedW + minVisible, screenSize.width - minVisible)
-        val savedY = prefProvider.getInt(PreferKey.windowY, 0)
-            .coerceIn(-savedH + minVisible, screenSize.height - minVisible)
-        rememberWindowState(
-            position = WindowPosition.Absolute(savedX.dp, savedY.dp),
-            size = DpSize(savedW.dp, savedH.dp),
-        )
-    } else {
-        rememberWindowState()
+    //
+    // 初值只在首次组合读一次 (remember 而非每次重组重算): 关闭窗口会把最大化标志与
+    // 位置尺寸写进这批偏好, 每次重组重读会让上面的判断在"用记忆尺寸"与"用默认尺寸"
+    // 两条分支间翻转 —— 两条分支各占一个 remember 槽, 切换即重建窗口状态, 表现为
+    // "最大化后关闭再恢复, 窗口不再最大化且位置回默认" (首次一次, 此后分支已稳定不再重现)。
+    val savedWindowSize = remember {
+        if (restoreBounds) {
+            val savedW = prefProvider.getInt(PreferKey.windowWidth, 800)
+            val savedH = prefProvider.getInt(PreferKey.windowHeight, 600)
+            // 屏幕边界修正: 显示器分辨率/布局变化后旧坐标可能越界, 保证窗口至少有部分留在屏幕内
+            // 便于拖回 (不强制完整可见, 多屏场景留有余地)
+            val screenSize = java.awt.Toolkit.getDefaultToolkit().screenSize
+            val minVisible = 80
+            val savedX = prefProvider.getInt(PreferKey.windowX, 0)
+                .coerceIn(-savedW + minVisible, screenSize.width - minVisible)
+            val savedY = prefProvider.getInt(PreferKey.windowY, 0)
+                .coerceIn(-savedH + minVisible, screenSize.height - minVisible)
+            WindowPosition.Absolute(savedX.dp, savedY.dp) to DpSize(savedW.dp, savedH.dp)
+        } else {
+            WindowPosition.PlatformDefault to DpSize(800.dp, 600.dp)
+        }
     }
+    val windowState = rememberWindowState(
+        position = savedWindowSize.first,
+        size = savedWindowSize.second,
+    )
     // 窗口可见性: 先以 visible=false 创建, 尺寸/最大化都在显示前应用完再置 true,
     // 窗口第一次出现即最终状态 (见下方 DisposableEffect)
-    var windowVisible by remember { mutableStateOf(false) }
+    val windowVisible = DesktopWindowChrome.windowVisible
     // classpath 资源加载: 手动 Skia 解码 + BitmapPainter
     val iconPainter = remember {
         runCatching {
@@ -571,7 +668,7 @@ private fun runDesktopApp() = application {
         }
     ) {
     Window(
-        onCloseRequest = performExit,
+        onCloseRequest = closeWindow,
         visible = windowVisible,
         // 按键由 shared AppKeyRouter 统一分发 (全屏 Esc 退全屏 → 统一返回链 → F5 刷新 →
         // 快捷键栈捕获/冒泡两阶段), desktop Window 不再做任何业务判断。
@@ -649,7 +746,7 @@ private fun runDesktopApp() = application {
             }
             val reveal: () -> Unit = {
                 if (splashDuration > 0) splashScreen.close()
-                windowVisible = true
+                DesktopWindowChrome.restoreWindow()
             }
             if (revealDelay > 0L) {
                 Coroutine.async {
@@ -664,15 +761,15 @@ private fun runDesktopApp() = application {
             windowHandle.window = window
             SingleInstanceGuard.bindWindow(window)
             DesktopTaskbarMedia.attach(window)
-            // app 前后台唯一置位点: 主窗口失活=其他应用在前台 (对应原版 Activity.onPause 语义;
-            // 进程内对话框/菜单同属本 ComposeWindow, 不触发失活)。阅读/漫画/视频页经
+            // 最小化 = 窗口离开屏幕, 前后台随之翻转 (收进托盘那条在 [DesktopWindowChrome] 里同步;
+            // 焦点得失不改变前后台, 见 [DesktopWindowChrome.onIconifiedChanged])。阅读/漫画/视频页经
             // 本页 Lifecycle 消费, 各页不再自挂 AWTEventListener
             val foregroundListener = object : java.awt.event.WindowAdapter() {
-                override fun windowActivated(e: java.awt.event.WindowEvent) =
-                    AppForegroundState.set(true)
+                override fun windowIconified(e: java.awt.event.WindowEvent) =
+                    DesktopWindowChrome.onIconifiedChanged(true)
 
-                override fun windowDeactivated(e: java.awt.event.WindowEvent) =
-                    AppForegroundState.set(false)
+                override fun windowDeiconified(e: java.awt.event.WindowEvent) =
+                    DesktopWindowChrome.onIconifiedChanged(false)
             }
             window.addWindowListener(foregroundListener)
             // Windows 原生控制条 (legado_wndchrome) 的挂载在 DesktopNativeChromeHost 里做 ——
@@ -690,17 +787,8 @@ private fun runDesktopApp() = application {
             }
             onDispose {
                 // 窗口状态记忆落盘: 最大化标志直读 AWT 真值 (Frame.state 是普通字段, dispose
-                // 不会改; 不依赖 CMP placement 回写, 后者经 wndchrome 最大化时可能漏报);
-                // 尺寸/位置只在普通状态下写, 最大化/真全屏关闭时保留上次记录不覆盖
-                val p = PreferenceProviders.get()
-                val maximized = (window.extendedState and javax.swing.JFrame.MAXIMIZED_BOTH) != 0
-                p.putBoolean(PreferKey.windowMaximized, maximized)
-                if (!maximized && !DesktopWindowChrome.fullscreen) {
-                    p.putInt(PreferKey.windowWidth, window.width)
-                    p.putInt(PreferKey.windowHeight, window.height)
-                    p.putInt(PreferKey.windowX, window.x)
-                    p.putInt(PreferKey.windowY, window.y)
-                }
+                // 不会改; 不依赖 CMP placement 回写, 后者经 wndchrome 最大化时可能漏报)
+                persistWindowBounds(window)
                 DesktopWindowChromeNative.detach()
                 window.removeWindowListener(foregroundListener)
                 windowHandle.window = null
@@ -726,6 +814,11 @@ private fun runDesktopApp() = application {
                 System.getProperty("legado.debug")?.toBoolean() == true,
                 preferenceUpVersionStore(),
             )
+            // JVM 致命错误现场 (进程直接终止, 各异常处理器都跑不到): 认领属于本应用的
+            // hs_err 文件搬进崩溃目录, 收到即说明上次是崩着退出的, 据此置"异常退出"标记
+            if (DesktopCrashLogDirs.collectJvmFatalErrorLogs()) {
+                CrashMarkerProviders.get().mark()
+            }
             // 崩溃后重启提示 (对照原版 MainActivity.notifyAppCrash): 排在版本更新之后,
             // 与 app 端同一位置; 标记由 DesktopCrashHandler 落盘时置位
             notifyAppCrash(System.getProperty("legado.debug")?.toBoolean() == true)
@@ -797,6 +890,35 @@ private fun runDesktopApp() = application {
                         SourceUiEventBridgeHost()
                         // 桌面端命令式对话框宿主: PlatformCapabilities 的同步方法经 DesktopDialogs 推请求
                         DesktopDialogHost()
+                        // 首次关闭窗口的询问: 选择即记住 (写入 closeToTray), 之后不再询问
+                        if (closePromptVisible) {
+                            AppAlertDialog(
+                                onDismissRequest = { closePromptVisible = false },
+                                title = DesktopMediaTray.str("close_window", "关闭窗口"),
+                                message = DesktopMediaTray.str(
+                                    "close_to_tray_prompt",
+                                    "是否缩小到托盘？缩小后程序与后台任务继续运行，可从托盘图标重新打开。",
+                                ),
+                                // 取消靠 neutral 槽 (AppAlertDialog 的 neutral 在最左)
+                                neutralButton = AlertButton(DesktopMediaTray.str("cancel", "取消")) {
+                                    closePromptVisible = false
+                                },
+                                cancelButton = AlertButton(DesktopMediaTray.str("exit", "退出程序")) {
+                                    closePromptVisible = false
+                                    // 定案为“退出程序”: 选过就不再询问
+                                    prefProvider.putBoolean(PreferKey.closeToTray, false)
+                                    exitProgram()
+                                },
+                                okButton = AlertButton(DesktopMediaTray.str("close_to_tray", "缩小到托盘")) {
+                                    closePromptVisible = false
+                                    // 先定案再隐藏: 隐藏会让 Windows 合成一次"关闭请求"重入本回调
+                                    // (WWindowPeer.hide 主动回调 windowClosing), 那时读到未选择会再次弹框
+                                    prefProvider.putBoolean(PreferKey.closeToTray, true)
+                                    // 图标真正上屏才隐藏: 否则界面既不在屏幕上也没有恢复入口
+                                    if (!hideToTray()) exitProgram()
+                                },
+                            )
+                        }
                         // legado:// deep link 导入对话框宿主: 消费 main(args)/OpenURIHandler 经
                         // LegadoDeepLinkHandler 记录的待导入请求 (对照 app 端 AssociationActivity 分发)
                         DeepLinkImportHost()
@@ -843,7 +965,7 @@ private fun runDesktopApp() = application {
                                             windowState = windowState,
                                             themeStore = themeStoreProvider,
                                             navigator = navigator,
-                                            onCloseRequest = performExit,
+                                            onCloseRequest = closeWindow,
                                         )
                                     }
                                 }
@@ -872,6 +994,24 @@ private fun runDesktopApp() = application {
             }
         }
     }
+    }
+}
+
+/**
+ * 落盘窗口位置尺寸 (最大化/真全屏时保留上次记录不覆盖)。
+ *
+ * 退出与关闭到托盘两个路径都要: 隐藏期间窗口不销毁, 进程被强杀时靠这份记录回到原位。
+ */
+private fun persistWindowBounds(window: java.awt.Frame?) {
+    if (window == null) return
+    val p = PreferenceProviders.get()
+    val maximized = (window.extendedState and javax.swing.JFrame.MAXIMIZED_BOTH) != 0
+    p.putBoolean(PreferKey.windowMaximized, maximized)
+    if (!maximized && !DesktopWindowChrome.fullscreen) {
+        p.putInt(PreferKey.windowWidth, window.width)
+        p.putInt(PreferKey.windowHeight, window.height)
+        p.putInt(PreferKey.windowX, window.x)
+        p.putInt(PreferKey.windowY, window.y)
     }
 }
 

@@ -995,4 +995,10 @@
     <string name="keyword_highlight_exclude_scope">Rango excluido, nombre del libro o URL de la fuente opcional</string>
     <string name="video_lock">Bloquear</string>
     <string name="video_unlock">Desbloquear</string>
+    <string name="close_to_tray_title">Minimizar a la bandeja al cerrar</string>
+    <string name="close_to_tray_summary">La ventana se oculta y las tareas en segundo plano siguen; vuelve a abrirla desde el icono de la bandeja</string>
+    <string name="close_window">Cerrar ventana</string>
+    <string name="close_to_tray_prompt">¿Minimizar a la bandeja? La aplicación y sus tareas en segundo plano siguen en ejecución, y puedes volver a abrirla desde el icono de la bandeja.</string>
+    <string name="close_to_tray">Minimizar a la bandeja</string>
+    <string name="show_main_window">Mostrar ventana principal</string>
 </resources>

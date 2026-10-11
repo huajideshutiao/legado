@@ -43,6 +43,7 @@ import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.MainTab
@@ -78,13 +79,76 @@ import javax.swing.JFrame
  * 通用 Unicode 符号 (−/□/▣/✕/⋯), 不引入新依赖。
  */
 
-/** 桌面端窗口级共享状态 (控制栏菜单 / F11 / 置顶开关的单一状态源, 防两处不同步)。 */
+/** 桌面端窗口级共享状态 (控制栏菜单 / F11 / 置顶开关 / 窗口显隐的单一状态源, 防两处不同步)。 */
 object DesktopWindowChrome {
     /** 窗口置顶 (Window(alwaysOnTop=) 消费; 会话内状态, 不持久化)。 */
     var alwaysOnTop by mutableStateOf(false)
 
     /** 真全屏 (DesktopWindowController.setFullscreen 同步; 全屏时控制栏隐藏)。 */
     var fullscreen by mutableStateOf(false)
+
+    /**
+     * 窗口是否对用户可见 (Window(visible=) 消费)。
+     *
+     * 关闭到托盘后窗口只隐藏不销毁 (Compose 的 visible=false 保留界面内部状态与原生资源),
+     * 恢复入口有托盘左键单击与二次启动前置两条, 都必须经 [hideToTray]/[restoreWindow] 改本状态
+     * —— 只直改 AWT 可见性会让 Window(visible=) 的入参与实际可见性脱钩: 状态仍是 false
+     * 时再点关闭按钮不产生变化, 窗口就关不掉了。
+     *
+     * 两条恢复入口在本状态已置 true 之后会额外立即置一次 AWT 可见性: Compose 应用
+     * visible 排在后续 EDT 任务, 不先落实的话紧跟着的 toFront/requestFocus 对仍隐藏的窗口
+     * 无效 (同向重复应用, 不与本状态分叉)。
+     */
+    var windowVisible by mutableStateOf(false)
+
+    /**
+     * 窗口是否被用户收进托盘 (托盘图标常驻与菜单恢复项的判据)。
+     *
+     * 与 [windowVisible] 同源同改: 单看可见性无法区分"启动前尚未显示"与"用户主动收起",
+     * 前者不应让托盘图标常驻。
+     */
+    var hiddenToTray by mutableStateOf(false)
+
+    /** 收起主窗口: 界面隐藏, 界面状态与后台任务继续 (托盘图标转为常驻)。 */
+    fun hideToTray() {
+        hiddenToTray = true
+        windowVisible = false
+        // 程序化隐藏不产生窗口事件 (AWT 在 Java 层只发 COMPONENT_HIDDEN), 前后台必须在这里同步
+        applyForeground(false)
+    }
+
+    /** 恢复主窗口 (托盘左键/菜单项、二次启动前置共用)。 */
+    fun restoreWindow() {
+        hiddenToTray = false
+        windowVisible = true
+        applyForeground(true)
+    }
+
+    /** 最小化 / 还原 (窗口离开或回到屏幕): 与收进托盘同属窗口不可见, 前后台随之翻转。 */
+    fun onIconifiedChanged(iconified: Boolean) {
+        applyForeground(!iconified)
+    }
+
+    /**
+     * 同步 app 前后台: 判据是"窗口是否可见"。
+     *
+     * 收进托盘与最小化都是窗口离开屏幕 = 退到后台; 只是丢焦点 (别的应用抢走焦点而本窗口仍在
+     * 屏幕上) 不改变前后台 —— 桌面窗口能与其他应用同屏并存, 拿失活当后台会让阅读/朗读/视频
+     * 在用户只是切去浏览器时被挂起。
+     */
+    private fun applyForeground(foreground: Boolean) {
+        AppForegroundState.set(foreground)
+    }
+
+    /**
+     * 主界面退出请求 (由 Main 组装时注入)。
+     *
+     * 供共享层的"再按一次退出程序"使用: 桌面端该手势的语义是退到后台 (对齐原版 Android
+     * 双击返回 finish 主界面、服务与通知继续), 而不是结束进程 —— 真退出入口只有托盘菜单
+     * 的"退出"。未注入时调用方不做任何动作。
+     */
+    @Volatile
+    var interfaceExitRequest: (() -> Unit)? = null
 }
 
 @Composable

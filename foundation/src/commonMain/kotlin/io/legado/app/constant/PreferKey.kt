@@ -186,4 +186,12 @@ object PreferKey {
     const val windowWidth = "desktopWindowWidth"
     const val windowHeight = "desktopWindowHeight"
     const val windowMaximized = "desktopWindowMaximized"
+
+    /**
+     * 关闭主窗口时是否缩小到托盘 (false = 退出程序)。
+     *
+     * 键不存在 = 用户尚未选择过, 首次关闭时弹询问框; 设置页开关与询问框读写同一个键,
+     * 任一处选定过就不再询问。
+     */
+    const val closeToTray = "desktopCloseToTray"
 }

@@ -33,8 +33,9 @@ import java.util.regex.Pattern
  * # 字符类语义
  *
  * 编译时补 `UNICODE_CHARACTER_CLASS` 以对齐 Android (ICU) 的 `\w` 语义, 详见 [replace] 内注释。
- * iOS/鸿蒙的 Kotlin/Native stdlib `\w` 为 ASCII-only 且无法等价补齐, 该差异保留,
- * 见 [io.legado.app.utils.NativeRegexReplacer] 的“已知字符类差异”节。
+ * 鸿蒙的 Kotlin/Native stdlib `\w` 为 ASCII-only 且无法等价补齐, 该差异保留 (iOS 已换成系统
+ * 引擎, 见 [io.legado.app.utils.IosRuleRegex]), 见 [io.legado.app.utils.NativeRegexReplacer]
+ * 的“已知字符类差异”节。
  */
 object JvmRegexReplacer : RegexReplacer {
 
@@ -123,6 +124,8 @@ private fun compileCached(pattern: String, multiline: Boolean): Pattern {
         (if (multiline) Pattern.MULTILINE else 0) or Pattern.UNICODE_CHARACTER_CLASS
     )
     cacheRef.casUpdate { cur ->
+        // 淘汰按插入序取最早的键 (先进先出): 已有键被覆盖不改变其位置,
+        // 故 keys.first() 就是最早插入且未再被写过的那个
         if (!cur.containsKey(key) && cur.size >= CACHE_LIMIT) {
             val oldest = cur.keys.firstOrNull()
             (if (oldest == null) cur else cur - oldest) + (key to compiled)

@@ -4,19 +4,26 @@
 // Kotlin 的未捕获异常处理器只覆盖 JVM 异常。NDK/JNI 侧的越界、野指针、栈溢出等
 // 直接以 POSIX 信号终止进程, 一条 Java 日志都不会留下 —— 与"没接崩溃捕获"无区别。
 //
-// # 与 ART / debuggerd 的关系 (实测依据)
+// # 与 ART / debuggerd 的关系 (依据 AOSP art/sigchainlib/sigchain.cc)
 // Android 上 SIGSEGV 是 ART 隐式空指针检查与 debuggerd 都在用的信号, 但**不会冲突**:
-// ART 的 sigchain (art/sigchainlib/sigchain.cc) 拦截 sigaction/signal 调用, 把用户注册的
-// handler 记进 user_handlers 链, 真正的信号入口恒是 SignalChain::Handler。它的处理顺序是:
-//   1. special_handlers (ART fault handler / native bridge / 未捕获异常处理器)
-//   2. android_handle_signal —— 交给 debuggerd 处理并生成系统 tombstone
-//   3. 链到用户 handler
-// 且 sigchain 明确声明 "libsigchain provides an interception layer for signal handlers,
-// to allow ART and others to give their signal handlers the first stab at handling signals
-// before passing them on to user code."
-// ⇒ 本 handler 跑在 ART/debuggerd 之后; 处理完**不返回而是退出进程** (见 crashSignalHandler
-// 末尾注释): 从同步信号处理器返回会重新执行出错指令并再次触发同一信号, 形成"每次进入都写
-// 一份日志"的死循环并写满磁盘。系统 tombstone 由更前面的 debuggerd 生成, 不受本退出影响。
+// ART 的 sigchain 拦截 sigaction/signal 调用 —— 信号已被 claimed 时, 应用注册的 handler 只
+// 被记进链上的用户槽位 (逐字: "chains[signal].SetAction(new_action);"), 不下发内核; 真正的
+// 内核入口恒是 SignalChain::Handler。它的顺序是 (逐字):
+//   if (!GetHandlingSignal(signo)) { for (special_handlers_) … }
+//   if (android_handle_signal != nullptr && android_handle_signal(…)) { return; }
+//   chains[signo].action_.sa_sigaction(signo, siginfo, ucontext_raw);
+// 即: ART fault handler 等 special handler 先试; android_handle_signal 只对 GWP-ASan 可恢复
+// 崩溃等返回 true (直接 return, 根本不进用户槽位), 普通崩溃返回 false; 最后才轮到用户槽位。
+//
+// 用户槽位是**每信号唯一一个** (chains[signal].action_): bionic 的 sigaction 在信号已被认领时
+// 直接 SetAction(新动作) 覆盖旧动作, 旧动作只回填给调用方 (AOSP art/sigchainlib/sigchain.cc)。
+// 系统崩溃处理器 (debuggerd_signal_handler) 正是以普通 sigaction 装在这个槽位上的, 因此本
+// handler 一旦装上就顶替了它 —— 只要本 handler 自己 _exit, 系统 tombstone 与内核默认处置
+// **同时不可达**。
+// ⇒ 故本 handler 不自行终止: 安装期用 sigaction 的 old_action 出参保存被顶替的处置, 处理器内
+// 写完自有日志后把它交还回去再返回。返回时内核重新执行出错指令、再次触发同一信号, 这次由
+// 交还后的系统处理器接管 —— 系统崩溃现场照常产生, 进程也以原信号退出。
+// 直接 _exit 会让系统现场不再产生; 直接 return (不交还) 则反复进入本处理器、反复写盘。
 //
 // # 为什么用 SA_SIGINFO + SA_ONSTACK + SA_RESTART
 // - SA_SIGINFO: 需要 siginfo (si_addr 崩溃地址) 与 ucontext (寄存器/栈指针)
@@ -36,7 +43,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <ucontext.h>
-#include <unwind.h>
 #include <time.h>
 #include <sys/stat.h>
 
@@ -55,13 +61,13 @@ constexpr const char *kCrashFileNamePrefix = "crash-";
 constexpr const char *kMarkerFileName = "pending-crash";
 constexpr size_t kPathMax = 4096;
 constexpr size_t kBufferSize = 16 * 1024;
-constexpr size_t kMaxFrames = 64;
 // 备用栈 (SA_ONSTACK 用): 栈溢出场景下必须切走, 否则 handler 内压栈即二次崩溃
 constexpr size_t kAltStackSize = 64 * 1024;
 
-// 信号落盘缓冲 (安装期填好路径与参数头, 处理器内只追加栈帧文本)
-char g_buffer[kBufferSize];
-// 参数头长度 (处理器内从该偏移开始追加)
+// 安装期预写的日志头 (参数头等): 崩溃时 memcpy 进**本线程的栈缓冲**。
+// 不用全局缓冲: 多个线程同时崩溃时两份现场会交叉写坏彼此。
+char g_header[kBufferSize];
+// 日志头长度 (处理器内从该偏移开始追加)
 size_t g_bodyLength = 0;
 // 崩溃目录 (安装期快照, 末尾无 '/')
 char g_crashDir[kPathMax];
@@ -71,9 +77,34 @@ char g_markerPath[kPathMax];
 char g_altStack[kAltStackSize];
 bool g_installed = false;
 
-// 重入守卫: 写完日志即 _exit, 正常不会二次进入; 一旦进入说明落盘动作本身又崩了
-// (例如回溯过程再次触发同信号), 此时只退出、不再写盘, 否则会无限循环写满磁盘。
-volatile sig_atomic_t g_inHandler = 0;
+// 本 handler 接管的信号 (安装与查找共用一张表)
+//
+// 覆盖面与系统崩溃处理器 (debuggerd 的注册集合) 对齐: 除通用致命信号外还含 SIGSYS
+// (seccomp 拦截, 应用沙箱下会发生) 与 SIGSTKFLT。
+const int kHandledSignals[] = {SIGHUP, SIGILL, SIGTRAP, SIGABRT, SIGBUS, SIGFPE, SIGSEGV, SIGSYS,
+                               SIGSTKFLT};
+constexpr size_t kHandledSignalCount = sizeof(kHandledSignals) / sizeof(kHandledSignals[0]);
+
+// 被本 handler 顶替的处置 (安装期保存): 写日志后交还, 系统崩溃现场才会产生
+struct sigaction g_previousActions[kHandledSignalCount];
+
+// 本地时间相对 UTC 的偏移秒数 (安装期算好)。
+// 处理器内不得调 localtime_r: 它的实现会取时区锁 (bionic libc/tzcode/localtime.c 的
+// localtime_tzset -> lock), 崩溃发生在同线程持锁期间即自死锁。
+long g_tzOffsetSeconds = 0;
+
+/** 信号在注册表中的下标; 未注册返回 -1。只用整数比较。 */
+int signalIndexOf(int sig) {
+    for (size_t i = 0; i < kHandledSignalCount; i++) {
+        if (kHandledSignals[i] == sig) return static_cast<int>(i);
+    }
+    return -1;
+}
+
+// 重入守卫 (线程局部): 写完日志即交还处置, 同线程再次进入说明交还失败、或落盘动作自身又崩,
+// 此时只退出、不再写盘 (否则会无限循环写满磁盘)。用线程局部而非进程级 —— 进程级会让
+// "另一个线程同时崩溃"直接退出、连一份现场都留不下, 而各线程本来各写各的栈缓冲。
+__thread volatile sig_atomic_t g_inHandler = 0;
 
 // ===== async-signal-safe 小工具 (只用 write/整数运算) =====
 
@@ -115,6 +146,37 @@ void appendHex(char *dst, size_t capacity, size_t &at, unsigned long long value)
 }
 
 /**
+ * 历法换算: epoch 秒 -> 年月日时分秒 (Howard Hinnant 的 civil_from_days, 纯整数运算)。
+ *
+ * 处理器内不能调 gmtime_r/localtime_r 这类带全局状态与时区锁的函数, 故自算。
+ */
+void civilFromSeconds(long long seconds, int &year, int &month, int &day, int &hour, int &minute,
+                      int &second) {
+    long long days = seconds / 86400;
+    long long rem = seconds % 86400;
+    if (rem < 0) {
+        rem += 86400;
+        days -= 1;
+    }
+    hour = static_cast<int>(rem / 3600);
+    minute = static_cast<int>((rem % 3600) / 60);
+    second = static_cast<int>(rem % 60);
+    const long long z = days + 719468;
+    const long long era = (z >= 0 ? z : z - 146096) / 146097;
+    const unsigned long long doe = static_cast<unsigned long long>(z - era * 146097);
+    const unsigned long long yoe =
+        (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    const long long y = static_cast<long long>(yoe) + era * 400;
+    const unsigned long long doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    const unsigned long long mp = (5 * doy + 2) / 153;
+    const unsigned long long d = doy - (153 * mp + 2) / 5 + 1;
+    const unsigned long long m = mp < 10 ? mp + 3 : mp - 9;
+    year = static_cast<int>(y + (m <= 2));
+    month = static_cast<int>(m);
+    day = static_cast<int>(d);
+}
+
+/**
  * 写一个文件 (O_WRONLY|O_CREAT|O_TRUNC), 全部失败静默。
  *
  * 只用 open/write/close 三个 async-signal-safe 调用。
@@ -131,27 +193,30 @@ void writeFileAll(const char *path, const char *data, size_t length) {
     close(fd);
 }
 
-/** 时间戳 (yy-MM-dd-HH-mm-ss), 与 Kotlin 侧文件名口径一致 (本地时间)。 */
+/** 时间戳 (yy-MM-dd-HH-mm-ss), 与 Kotlin 侧文件名口径一致 (本地时间)。
+ *
+ * 全程整数运算: time() 属 async-signal-safe, 时区偏移在安装期算好。
+ */
 void appendTimestamp(char *dst, size_t capacity, size_t &at) {
-    time_t now = time(nullptr);
-    struct tm tmValue;
-    if (localtime_r(&now, &tmValue) == nullptr) return;
+    int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+    civilFromSeconds(static_cast<long long>(time(nullptr)) + g_tzOffsetSeconds, year, month, day,
+                     hour, minute, second);
     // 两位数补零
     auto append2 = [&](int value) {
         if (at < capacity) dst[at++] = static_cast<char>('0' + (value / 10) % 10);
         if (at < capacity) dst[at++] = static_cast<char>('0' + value % 10);
     };
-    append2(tmValue.tm_year % 100);
+    append2(year % 100);
     if (at < capacity) dst[at++] = '-';
-    append2(tmValue.tm_mon + 1);
+    append2(month);
     if (at < capacity) dst[at++] = '-';
-    append2(tmValue.tm_mday);
+    append2(day);
     if (at < capacity) dst[at++] = '-';
-    append2(tmValue.tm_hour);
+    append2(hour);
     if (at < capacity) dst[at++] = '-';
-    append2(tmValue.tm_min);
+    append2(minute);
     if (at < capacity) dst[at++] = '-';
-    append2(tmValue.tm_sec);
+    append2(second);
 }
 
 /** 毫秒时间戳 (文件名后缀, 与 Kotlin 侧同口径)。 */
@@ -172,32 +237,19 @@ const char *signalName(int sig) {
         case SIGBUS: return "SIGBUS";
         case SIGFPE: return "SIGFPE";
         case SIGSEGV: return "SIGSEGV";
+        case SIGSYS: return "SIGSYS";
+        case SIGSTKFLT: return "SIGSTKFLT";
         default: return "SIG(unknown)";
     }
 }
 
-// ===== 栈回溯 =====
+// ===== 崩溃现场 =====
 //
-// 用 NDK 自带的 libunwind (_Unwind_Backtrace, 随 NDK 的 libc++ 提供), 不引第三方崩溃库。
-// 信号处理器内回溯的是**当前**栈 —— SA_ONSTACK 已把执行切到备用栈, 故回溯到的是 handler
-// 自身的调用链, 真实崩溃现场从 ucontext 的 pc/lr 取 (见下)。
-// 这是已知限制: 完整回溯需要 unwindstack 级别的寄存器级展开, 而本实现的目标是"拿到崩溃
-// 地址与上层调用链的粗粒度现场", 足够定位是哪个 so 崩的。
-
-struct BacktraceState {
-    void **frames;
-    size_t count;
-    size_t max;
-};
-
-_Unwind_Reason_Code unwindCallback(struct _Unwind_Context *context, void *arg) {
-    auto *state = static_cast<BacktraceState *>(arg);
-    uintptr_t pc = _Unwind_GetIP(context);
-    if (pc != 0 && state->count < state->max) {
-        state->frames[state->count++] = reinterpret_cast<void *>(pc);
-    }
-    return state->count >= state->max ? _URC_END_OF_STACK : _URC_NO_REASON;
-}
+// 本 handler **不做栈回溯**: 可用的展开器 (_Unwind_Backtrace / backtrace / libunwind) 全都不在
+// POSIX async-signal-safe 清单内, AOSP 自身也不在崩溃进程内展开 (debuggerd 改为 fork crash_dump
+// 后由它 ptrace 读内存; 其回退展开器还要先切到 linker 专用分配器)。
+// 记录的是从 ucontext 取到的**出错现场** pc/lr/sp —— 足够定位是哪个 so 崩的; 完整线程列表、
+// 内存映射、模块与符号由系统崩溃现场提供 (本 handler 已把处置交还, 系统现场照常产生)。
 
 /**
  * 信号处理器: 记录现场 (崩溃地址 + 寄存器 + 栈回溯), 然后退出进程。
@@ -208,66 +260,56 @@ _Unwind_Reason_Code unwindCallback(struct _Unwind_Context *context, void *arg) {
  */
 void crashSignalHandler(int sig, siginfo_t *info, void *ucontextRaw) {
     if (g_inHandler) {
-        // 已在处理中又崩一次: 只退出, 绝不再写盘
-        _exit(139);
+        // 已在处理中又崩一次 (处置交还失败或落盘动作自身又崩): 只退出, 绝不再写盘。
+        // 退出码按实际信号取 128+signo, 与 shell 对信号的常规约定一致。
+        _exit(128 + (sig & 0x7f));
     }
     g_inHandler = 1;
+    // 本线程自己的缓冲: 备用栈 (SA_ONSTACK) 装得下, 多线程同时崩溃时各写各的、不交叉写坏
+    char buffer[kBufferSize];
+    memcpy(buffer, g_header, g_bodyLength);
     size_t at = g_bodyLength;
-    appendStr(g_buffer, kBufferSize, at, "\nsignal=");
-    appendStr(g_buffer, kBufferSize, at, signalName(sig));
-    appendUnsigned(g_buffer, kBufferSize, at, static_cast<unsigned long long>(sig));
-    appendStr(g_buffer, kBufferSize, at, "\nsource=native-signal\n");
+    appendStr(buffer, kBufferSize, at, "\nsignal=");
+    appendStr(buffer, kBufferSize, at, signalName(sig));
+    appendUnsigned(buffer, kBufferSize, at, static_cast<unsigned long long>(sig));
+    appendStr(buffer, kBufferSize, at, "\nsource=native-signal\n");
 
     if (info != nullptr) {
-        appendStr(g_buffer, kBufferSize, at, "si_code=");
-        appendUnsigned(g_buffer, kBufferSize, at,
+        appendStr(buffer, kBufferSize, at, "si_code=");
+        appendUnsigned(buffer, kBufferSize, at,
                        static_cast<unsigned long long>(info->si_code));
-        appendStr(g_buffer, kBufferSize, at, "\nfault_addr=");
-        appendHex(g_buffer, kBufferSize, at,
+        appendStr(buffer, kBufferSize, at, "\nfault_addr=");
+        appendHex(buffer, kBufferSize, at,
                   reinterpret_cast<unsigned long long>(info->si_addr));
-        appendStr(g_buffer, kBufferSize, at, "\n");
+        appendStr(buffer, kBufferSize, at, "\n");
     }
 
     // 崩溃现场的指令指针 (从 ucontext 取, 不是 handler 自己的)
     if (ucontextRaw != nullptr) {
         auto *uc = static_cast<ucontext_t *>(ucontextRaw);
 #if defined(__aarch64__)
-        appendStr(g_buffer, kBufferSize, at, "pc=");
-        appendHex(g_buffer, kBufferSize, at,
+        appendStr(buffer, kBufferSize, at, "pc=");
+        appendHex(buffer, kBufferSize, at,
                   static_cast<unsigned long long>(uc->uc_mcontext.pc));
-        appendStr(g_buffer, kBufferSize, at, "\nlr=");
-        appendHex(g_buffer, kBufferSize, at,
+        appendStr(buffer, kBufferSize, at, "\nlr=");
+        appendHex(buffer, kBufferSize, at,
                   static_cast<unsigned long long>(uc->uc_mcontext.regs[30]));
-        appendStr(g_buffer, kBufferSize, at, "\nsp=");
-        appendHex(g_buffer, kBufferSize, at,
+        appendStr(buffer, kBufferSize, at, "\nsp=");
+        appendHex(buffer, kBufferSize, at,
                   static_cast<unsigned long long>(uc->uc_mcontext.sp));
-        appendStr(g_buffer, kBufferSize, at, "\n");
+        appendStr(buffer, kBufferSize, at, "\n");
 #elif defined(__arm__)
-        appendStr(g_buffer, kBufferSize, at, "pc=");
-        appendHex(g_buffer, kBufferSize, at,
+        appendStr(buffer, kBufferSize, at, "pc=");
+        appendHex(buffer, kBufferSize, at,
                   static_cast<unsigned long long>(uc->uc_mcontext.arm_pc));
-        appendStr(g_buffer, kBufferSize, at, "\nlr=");
-        appendHex(g_buffer, kBufferSize, at,
+        appendStr(buffer, kBufferSize, at, "\nlr=");
+        appendHex(buffer, kBufferSize, at,
                   static_cast<unsigned long long>(uc->uc_mcontext.arm_lr));
-        appendStr(g_buffer, kBufferSize, at, "\nsp=");
-        appendHex(g_buffer, kBufferSize, at,
+        appendStr(buffer, kBufferSize, at, "\nsp=");
+        appendHex(buffer, kBufferSize, at,
                   static_cast<unsigned long long>(uc->uc_mcontext.arm_sp));
-        appendStr(g_buffer, kBufferSize, at, "\n");
+        appendStr(buffer, kBufferSize, at, "\n");
 #endif
-    }
-
-    // handler 自身栈上的调用链 (粗粒度, 见上方限制说明)
-    void *frames[kMaxFrames];
-    BacktraceState state{frames, 0, kMaxFrames};
-    _Unwind_Backtrace(unwindCallback, &state);
-    appendStr(g_buffer, kBufferSize, at, "frames:\n");
-    for (size_t i = 0; i < state.count && at < kBufferSize; i++) {
-        appendStr(g_buffer, kBufferSize, at, "  #");
-        appendUnsigned(g_buffer, kBufferSize, at, static_cast<unsigned long long>(i));
-        appendStr(g_buffer, kBufferSize, at, " ");
-        appendHex(g_buffer, kBufferSize, at,
-                  reinterpret_cast<unsigned long long>(frames[i]));
-        appendStr(g_buffer, kBufferSize, at, "\n");
     }
 
     // 落盘: 崩溃日志 + 异常退出标记 (同一次崩溃, 标记供启动期提示)
@@ -282,23 +324,38 @@ void crashSignalHandler(int sig, siginfo_t *info, void *ucontextRaw) {
     appendStr(path, kPathMax, p, ".log");
     if (p < kPathMax) path[p] = '\0';
     else path[kPathMax - 1] = '\0';
-    writeFileAll(path, g_buffer, at);
+    writeFileAll(path, buffer, at);
 
     static const char marker[] = "1\n";
     writeFileAll(g_markerPath, marker, sizeof(marker) - 1);
 
-    // **写完不返回**: 从同步信号处理器返回会重新执行出错指令、再次触发同一信号, 于是再次
-    // 进入本处理器 —— 每次进入写一份日志, 形成死循环并写满磁盘。故写完直接退出进程。
-    _exit(139);
+    // 交还被顶替的处置后返回 (见文件头): 返回时内核重新执行出错指令、再次触发同一信号, 这次
+    // 走交还回来的系统处理器 —— 系统崩溃现场照常产生、进程以原信号退出。
+    // 若交还失败 (sigaction 返回 -1), 再次进入本处理器时由 g_inHandler 直接退出, 不写盘。
+    const int index = signalIndexOf(sig);
+    if (index >= 0) {
+        sigaction(sig, &g_previousActions[index], nullptr);
+    }
+}
+
+/** 安装期算本地时间相对 UTC 的偏移秒数 (处理器内只用整数加法)。 */
+void initTimezoneOffset() {
+    const time_t now = time(nullptr);
+    struct tm localTm{};
+    struct tm utcTm{};
+    if (localtime_r(&now, &localTm) == nullptr || gmtime_r(&now, &utcTm) == nullptr) return;
+    const time_t localAsUtc = timegm(&localTm);
+    if (localAsUtc == static_cast<time_t>(-1)) return;
+    g_tzOffsetSeconds = static_cast<long>(localAsUtc - now);
 }
 
 /** 安装期把参数头 (与 Kotlin 侧 NativeCrashLogWriter 同项) 写进缓冲。 */
 void buildParamsHeader() {
     size_t at = 0;
-    appendStr(g_buffer, kBufferSize, at, "crashKind=native-signal\n");
-    appendStr(g_buffer, kBufferSize, at, "TIME=");
-    appendTimestamp(g_buffer, kBufferSize, at);
-    appendStr(g_buffer, kBufferSize, at, "\n");
+    appendStr(g_header, kBufferSize, at, "crashKind=native-signal\n");
+    appendStr(g_header, kBufferSize, at, "TIME=");
+    appendTimestamp(g_header, kBufferSize, at);
+    appendStr(g_header, kBufferSize, at, "\n");
     g_bodyLength = at;
 }
 
@@ -336,6 +393,9 @@ Java_com_script_quickjs_QuickJsNative_nativeInstallCrashHandler(JNIEnv *env, job
 
     buildParamsHeader();
 
+    // 时区偏移 (处理器内不能调时区函数, 在此一次算好)
+    initTimezoneOffset();
+
     // 备用栈 (SA_ONSTACK)
     stack_t altStack{};
     altStack.ss_sp = g_altStack;
@@ -349,9 +409,9 @@ Java_com_script_quickjs_QuickJsNative_nativeInstallCrashHandler(JNIEnv *env, job
     action.sa_flags = SA_SIGINFO | SA_ONSTACK | SA_RESTART;
     sigemptyset(&action.sa_mask);
 
-    const int signals[] = {SIGHUP, SIGILL, SIGTRAP, SIGABRT, SIGBUS, SIGFPE, SIGSEGV};
-    for (int sig : signals) {
-        sigaction(sig, &action, nullptr);
+    // 保存被顶替的处置 (旧动作只经 old_action 出参回填, 见文件头): 处理器写完后交还
+    for (size_t i = 0; i < kHandledSignalCount; i++) {
+        sigaction(kHandledSignals[i], &action, &g_previousActions[i]);
     }
 
     g_installed = true;

@@ -125,7 +125,7 @@ class ScreenModelStore {
  * 消费方不要自己再挂平台生命周期监听, 用 sharedUiMain 的 RouteLifecycle (页面级 Lifecycle)。
  *
  * 置位点: Android MainActivity 生命周期、iOS UIApplication 前后台通知、
- * 鸿蒙 OhosAppLifecycle.dispatch、桌面主窗口 WINDOW_ACTIVATED/DEACTIVATED。
+ * 鸿蒙 OhosAppLifecycle.dispatch、桌面主窗口可见性 (收进托盘 / 最小化)。
  */
 object AppForegroundState {
 
