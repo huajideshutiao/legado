@@ -18,12 +18,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
@@ -44,6 +42,7 @@ import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -97,7 +96,10 @@ import org.jetbrains.compose.resources.stringResource
  * # 样式 (Arco Design 规范)
  *
  * - 主色 arcoblue-6 (#165DFF): RadioButton 选中色 (走 AppRadioButton 默认 accent)
- * - 圆角 arco_radius_lg = 16dp: Dialog Surface 圆角
+ * - 公共对话框基类 (2026-10-11 用户拍板, 偏离原版 isFullHeight=true 固定 0.8 屏高):
+ *   0.9 宽 (上限 800dp) + dialogShape (arco_radius_lg = 16dp) 圆角 + fillet 底色,
+ *   高度内容自适应 (FastScrollLazyColumn wrapContentHeight, 项少随内容收缩,
+ *   超出父容器约束封顶 0.8 锚点高滚动, 同导入对话框)
  * - 无阴影 (Surface 默认无阴影)
  *
  * @param engines HTTP TTS 引擎列表 (调用方负责从 appDb.httpTTSDao.flowAll() 加载)
@@ -129,15 +131,9 @@ fun SpeakEngineDialog(
         Surface(
             shape = DesignTokens.dialogShape,
             color = colors.fillet,
-            // 原版 isFullHeight = true, 高度固定 0.7 屏高
-            modifier = Modifier.appDialogSize(fullHeight = true).padding(
-                start = DesignTokens.spacingDefault,
-                top = DesignTokens.spacingLg,
-                end = DesignTokens.spacingDefault,
-                bottom = DesignTokens.spacingDefault,
-            ),
+            modifier = Modifier.appDialogSize(),
         ) {
-            Column(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(
                     title = stringResource(Res.string.speak_engine),
                     onBack = onDismiss,
@@ -154,11 +150,11 @@ fun SpeakEngineDialog(
                     },
                 )
 
-                // 引擎列表 (与原版 LazyColumn + sysDefault item + items 对齐; 全高对话框下撑满剩余高度)
-                LazyColumn(
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
+                // 引擎列表 (与原版 LazyColumn + sysDefault item + items 对齐;
+                // 内容自适应: 项少随内容收缩, 超出封顶 0.8 锚点高后内部滚动)
+                FastScrollLazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    wrapContentHeight = true,
                 ) {
                     // 系统默认行 (与原版 sysDefault item 对齐)
                     // 桌面端无系统 TTS 引擎列表, 仅保留"系统默认"占位行
