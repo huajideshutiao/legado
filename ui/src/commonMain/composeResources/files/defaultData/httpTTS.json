@@ -1,28 +1,20 @@
 [
   {
     "id": -100,
-    "name": "1.百度",
-    "url": "http://tts.baidu.com/text2audio,{\n    \"method\": \"POST\",\n    \"body\": \"tex={{java.encodeURI(java.encodeURI(speakText))}}&spd={{(speakSpeed + 5) / 10 + 4}}&per=3&cuid=baidu_speech_demo&idx=1&cod=2&lan=zh&ctp=1&pdt=160&vol=5&aue=6&pit=5&_res_tag_=audio\"\n}",
-    "contentType": "audio/wav"
+    "name": "1.谷歌",
+    "url": "https://www.google.com/speech-api/v1/synthesize?enc=mpeg&lang=zh-CN&speed={{Math.min(1, Math.max(0.15, 0.5 + Math.log((speakSpeed + 5) / 10) / 2.7309))}}&text={{java.encodeURI(speakText.substring(0, 900))}}",
+    "contentType": "audio/mpeg"
   },
   {
     "id": -29,
-    "name": "2.微软大声朗读",
-    "url": "https://{{source.getLoginInfoMap().get('Host')}}/api/synthesis?text={{encodeURIComponent(speakText)}}&voiceName={{source.getLoginInfoMap().get('Voice') || 'zh-CN-XiaoxiaoNeural'}}&rate={{Math.min(2, Math.max(0.5, (speakSpeed + 5) / 10))}}&token={{source.getLoginInfoMap().get('Token') || ''}}",
-    "contentType": "audio/mpeg",
-    "loginUi": [
-      {
-        "name": "Host",
-        "type": "text"
-      },
-      {
-        "name": "Voice",
-        "type": "text"
-      },
-      {
-        "name": "Token",
-        "type": "text"
-      }
-    ]
+    "name": "2.百度翻译",
+    "url": "https://fanyi.baidu.com/gettts?lan=zh&text={{java.encodeURI(speakText.substring(0, 300))}}&spd={{Math.min(7, Math.max(1, Math.round(speakSpeed / 5 + 5)))}}&per=1&source=web",
+    "contentType": "audio/mpeg"
+  },
+  {
+    "id": -30,
+    "name": "3.谷歌备用",
+    "url": "https://translate.google.com/translate_tts?ie=UTF-8&tl=zh-CN&client=tw-ob&q={{java.encodeURI(speakText.substring(0, 200))}}",
+    "contentType": "audio/mpeg"
   }
 ]
