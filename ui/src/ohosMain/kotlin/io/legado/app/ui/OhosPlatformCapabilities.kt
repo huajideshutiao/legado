@@ -828,7 +828,7 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
         sort: BookSourceSort
     ) {
         scope.launch {
-            val json = selectedSourcesJson(selection) ?: return@launch
+            val json = selectedSourcesJson(selection, allCount, sortAscending, sort) ?: return@launch
             saveJson("bookSource.json", json)
         }
     }

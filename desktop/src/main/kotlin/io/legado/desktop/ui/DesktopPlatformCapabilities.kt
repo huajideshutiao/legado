@@ -34,6 +34,7 @@ import io.legado.app.ui.book.info.WebFileImportShared
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
+import io.legado.app.ui.book.source.manage.getExportBookSources
 import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.config.MODE_EDIT_CONFIG
 import io.legado.app.ui.config.MODE_EDIT_PREFS
@@ -51,7 +52,6 @@ import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteTransitionSpec
 import io.legado.app.ui.root.ensureBookSaveDirSelected
 import io.legado.app.ui.root.pushExportDispatch
-import io.legado.app.utils.cnCompare
 import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.GSON
@@ -996,7 +996,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     ) {
         if (selection.isEmpty()) return
         scope.launch {
-            val json = selectedSourcesJson(selection, sortAscending, sort) ?: return@launch
+            val json = selectedSourcesJson(selection, allCount, sortAscending, sort) ?: return@launch
             withContext(Dispatchers.Main) {
                 pushExportDispatch("bookSource.json", json, "application/json")
             }
@@ -1012,7 +1012,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         sort: BookSourceSort
     ) {
         scope.launch {
-            val json = selectedSourcesJson(selection, sortAscending, sort) ?: return@launch
+            val json = selectedSourcesJson(selection, allCount, sortAscending, sort) ?: return@launch
             val dir = File(DataStorageProviders.get().userExportDir).apply { mkdirs() }
             val file = File(dir, "shareBookSource.json")
             runCatching { file.writeText(json, Charsets.UTF_8) }
@@ -1241,36 +1241,19 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         File(bookUrl)
     }
 
-    /** 选中书源转 JSON, 按当前界面排序规则对齐 (对照 app 端 saveToFile + getBookSources)。 */
+    /** 选中书源转 JSON, 取数+排序+比例分流+危险 API 清理走 commonMain 编排。 */
     private suspend fun selectedSourcesJson(
         selection: List<BookSourcePart>,
-        sortAscending: Boolean = true,
-        sort: BookSourceSort = BookSourceSort.Default
+        allCount: Int,
+        sortAscending: Boolean,
+        sort: BookSourceSort
     ): String? {
-        val urls = selection.map { it.bookSourceUrl }
-        val rawSources = runCatching { appDb.bookSourceDao.getBookSourcesFix(urls) }.getOrElse {
+        val sources = runCatching {
+            getExportBookSources(selection, allCount, sortAscending, sort)
+        }.getOrElse {
             Toasters.get().toast("导出书源失败\n${it.message}")
             return null
         }
-        val sorted = when (sort) {
-            BookSourceSort.Weight -> rawSources.sortedBy { it.weight }
-            BookSourceSort.Name -> rawSources.sortedWith { o1, o2 ->
-                o1.bookSourceName.cnCompare(o2.bookSourceName)
-            }
-            BookSourceSort.Url -> rawSources.sortedBy { it.bookSourceUrl }
-            BookSourceSort.Update -> rawSources.sortedByDescending { it.lastUpdateTime }
-            BookSourceSort.Respond -> rawSources.sortedBy { it.respondTime }
-            BookSourceSort.Enable -> rawSources.sortedWith { o1, o2 ->
-                var sortNum = -o1.enabled.compareTo(o2.enabled)
-                if (sortNum == 0) sortNum = o1.weight.compareTo(o2.weight)
-                if (sortNum == 0) sortNum = o1.bookSourceName.cnCompare(o2.bookSourceName)
-                sortNum
-            }
-            else -> rawSources
-        }
-        val sources = if (sortAscending) sorted else sorted.reversed()
-        // 对照 app 端: 导出前强制关闭危险 API 开关
-        sources.forEach { if (it.enableDangerousApi == true) it.enableDangerousApi = false }
         return GSON.toJson(sources)
     }
 

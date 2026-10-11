@@ -3,19 +3,15 @@ package io.legado.app.ui.book.source.manage
 import android.app.Application
 import androidx.lifecycle.viewModelScope
 import io.legado.app.base.BaseViewModel
-import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
-import io.legado.app.data.entities.toBookSource
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
-import io.legado.app.utils.cnCompare
 import io.legado.app.utils.outputStream
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.writeToOutputStream
-import kotlinx.coroutines.runBlocking
 import java.io.File
 
 /**
@@ -29,11 +25,10 @@ import java.io.File
  *   addGroup/upGroup/delGroup) 全部转发到 [shared], 由 shared 内部走
  *   `Coroutine.async(scope) { AppDbProviders.get().bookSourceDao.xxx }` 完成实际 DAO 操作
  *   (替代原 `execute { appDb.bookSourceDao.xxx }`, 行为等价);
- * - **saveToFile (2 个重载) / getBookSources**: 依赖 `context.filesDir` +
- *   `FileUtils.createFileWithReplace` + `GSON.writeToOutputStream` + 文件流 +
- *   `List<BookSourcePart>.toBookSource()` app 端扩展 (该扩展内部 runBlocking 调
- *   appDb.bookSourceDao.getBookSourcesFix), 不能下沉 commonMain, 留本类实现
- *   (`String.cnCompare` 已另行下沉 shared commonMain);
+ * - **saveToFile (2 个重载)**: List<BookSource> 重载依赖 `context.filesDir` +
+ *   `FileUtils.createFileWithReplace` + `GSON.writeToOutputStream` + 文件流, 留本端;
+ *   List<BookSourcePart> 重载的取数+排序+比例分流+危险 API 清理已下沉 commonMain
+ *   [getExportBookSources], 本端只负责写文件 (`String.cnCompare` 已下沉 shared commonMain);
  * - **scope 注入**: `viewModelScope` (BaseViewModel 来自 AndroidViewModel) 传入 [shared]。
  *
  * # 行为等价性
@@ -155,10 +150,10 @@ class BookSourceViewModel(application: Application) : BaseViewModel(application)
     }
 
     /**
-     * 导出书源到文件 (List<BookSourcePart> 重载), 留 app 端。
+     * 导出书源到文件 (List<BookSourcePart> 重载)。
      *
-     * 根据选中比例选择数据源 (全量 / 仅选中 / 过滤选中), 关闭 enableDangerousApi 后
-     * 调 [saveToFile] (List<BookSource> 重载) 写文件。
+     * 取数 + 排序 + 选中比例分流 + 危险 API 清理走 [getExportBookSources] (commonMain),
+     * 本端只负责写文件。
      *
      * @param selection 选中的书源 (BookSourcePart)
      * @param allCount 全部书源总数 (用于计算选中比例)
@@ -174,58 +169,8 @@ class BookSourceViewModel(application: Application) : BaseViewModel(application)
         success: (file: File) -> Unit
     ) {
         execute {
-            val selectedRate = selection.size.toFloat() / allCount.toFloat()
-            val sources = if (selectedRate == 1f) {
-                getBookSources(selection, sortAscending, sort)
-            } else if (selectedRate < 0.3) {
-                selection.toBookSource()
-            } else {
-                val keys = selection.map { it.bookSourceUrl }.toHashSet()
-                val bookSources = getBookSources(selection, sortAscending, sort)
-                bookSources.filter {
-                    keys.contains(it.bookSourceUrl)
-                }
-            }
-            sources.forEach { if (it.enableDangerousApi == true) it.enableDangerousApi = false }
+            val sources = getExportBookSources(selection, allCount, sortAscending, sort)
             saveToFile(sources, success)
-        }
-    }
-
-    /**
-     * 取排序后的书源列表, 留 app 端。
-     *
-     * 依赖 `appDb.bookSourceDao.getBookSourcesFix` (runBlocking), 不能下沉 commonMain
-     * (`String.cnCompare` 已另行下沉 shared commonMain)。
-     *
-     * @param selection 选中的书源 (BookSourcePart, 仅取 bookSourceUrl 用于查询)
-     * @param sortAscending 是否升序
-     * @param sort 排序方式
-     */
-    private fun getBookSources(
-        selection: List<BookSourcePart>,
-        sortAscending: Boolean,
-        sort: BookSourceSort
-    ): List<BookSource> {
-        return runBlocking { appDb.bookSourceDao.getBookSourcesFix(selection.map { it.bookSourceUrl }) }
-        .let { data ->
-            val tmp = when (sort) {
-                BookSourceSort.Weight -> data.sortedBy { it.weight }
-                BookSourceSort.Name -> data.sortedWith { o1, o2 ->
-                    o1.bookSourceName.cnCompare(o2.bookSourceName)
-                }
-                BookSourceSort.Url -> data.sortedBy { it.bookSourceUrl }
-                BookSourceSort.Update -> data.sortedByDescending { it.lastUpdateTime }
-                BookSourceSort.Respond -> data.sortedBy { it.respondTime }
-                BookSourceSort.Enable -> data.sortedWith { o1, o2 ->
-                    var sortNum = -o1.enabled.compareTo(o2.enabled)
-                    if (sortNum == 0) {
-                        sortNum = o1.bookSourceName.cnCompare(o2.bookSourceName)
-                    }
-                    sortNum
-                }
-                else -> data
-            }
-            if (!sortAscending) tmp.reversed() else tmp
         }
     }
 

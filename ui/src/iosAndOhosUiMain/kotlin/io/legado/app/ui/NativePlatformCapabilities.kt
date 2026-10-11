@@ -3,7 +3,6 @@ package io.legado.app.ui
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.DirUsage
 import io.legado.app.constant.PreferKey
-import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.HttpTTS
@@ -18,6 +17,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.help.upLoadToDirectLink
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.source.BookSourceSort
+import io.legado.app.ui.book.source.manage.getExportBookSources
 import io.legado.app.ui.config.MODE_EDIT_CONFIG
 import io.legado.app.ui.config.MODE_EDIT_PREFS
 import io.legado.app.ui.config.MODE_NEW_CONFIG
@@ -166,7 +166,7 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
         sort: BookSourceSort
     ) {
         capabilityScope.launch {
-            val json = selectedSourcesJson(selection) ?: return@launch
+            val json = selectedSourcesJson(selection, allCount, sortAscending, sort) ?: return@launch
             // 分享面板是界面动作, 回主线程; 能力作用域是 IO。
             withContext(mainDispatcher) { shareText(json) }
         }
@@ -199,18 +199,22 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
 }
 
 /**
- * 选中书源转 JSON: 导出/分享前强制关掉危险 API 开关。
+ * 选中书源转 JSON: 取数+排序+比例分流+危险 API 开关清理走 commonMain 编排。
  *
  * `internal` 而非文件私有: iOS/鸿蒙各自的 `exportBookSourceSelection` (落盘方式不同, 未合并)
  * 也要用它。
  */
-internal suspend fun selectedSourcesJson(selection: List<BookSourcePart>): String? {
-    val urls = selection.map { it.bookSourceUrl }
-    val sources = runCatching { AppDbProviders.get().bookSourceDao.getBookSourcesFix(urls) }
-        .getOrElse {
-            Toasters.get().toast("导出书源失败\n${it.message}")
-            return null
-        }
-    sources.forEach { if (it.enableDangerousApi == true) it.enableDangerousApi = false }
+internal suspend fun selectedSourcesJson(
+    selection: List<BookSourcePart>,
+    allCount: Int,
+    sortAscending: Boolean,
+    sort: BookSourceSort
+): String? {
+    val sources = runCatching {
+        getExportBookSources(selection, allCount, sortAscending, sort)
+    }.getOrElse {
+        Toasters.get().toast("导出书源失败\n${it.message}")
+        return null
+    }
     return GSON.toJson(sources)
 }
