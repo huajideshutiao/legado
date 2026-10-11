@@ -3,6 +3,7 @@
 package io.legado.app.service
 
 import android.annotation.SuppressLint
+import android.app.Service
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
@@ -199,6 +200,11 @@ class AudioPlayService : BaseService(), AudioPlaySessionHost {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // 系统杀进程后重启服务 (无启动意图) 时无播放书目: 直接退出, 不挂假"音频播放"通知
+        if (intent == null && AudioPlay.book == null) {
+            stopSelf()
+            return Service.START_NOT_STICKY
+        }
         intent?.action?.let { action ->
             when (action) {
                 IntentAction.play -> session.play()

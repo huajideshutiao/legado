@@ -4,6 +4,7 @@ package io.legado.app.service
 
 import android.annotation.SuppressLint
 import android.app.PendingIntent
+import android.app.Service
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
@@ -68,14 +69,13 @@ abstract class BaseReadAloudService : BaseService() {
 
     companion object {
         @JvmStatic
-        var isRun = false
-            private set
+        val isRun: Boolean get() = _isRunFlow.value
 
         @JvmStatic
         var pause = true
             private set
 
-        /** 朗读服务运行态状态流: 与 [isRun] 同点维护, 重放当前值, 豁免清理的收尾等待源 */
+        /** 朗读服务运行态状态流: [isRun] 的唯一来源, 重放当前值, 等待朗读结束的收尾源 */
         private val _isRunFlow = MutableStateFlow(false)
 
         @JvmStatic
@@ -159,6 +159,8 @@ abstract class BaseReadAloudService : BaseService() {
     private var chapterWatchJob: Job? = null
     private var cover: Bitmap = BookCover.notificationDefaultCover
 
+    /** 通知标题用书名; 阅读实例摘除后实时取不到, 随每次通知刷新续缓存 */
+
     /** 上一次发出的通知快照,用于跳过无变化的 rebuild。 */
     private data class NotificationSnapshot(
         val pause: Boolean,
@@ -220,9 +222,20 @@ abstract class BaseReadAloudService : BaseService() {
     @CallSuper
     override fun onCreate() {
         super.onCreate()
-        isRun = true
+        // 系统杀进程后重启服务 (无启动意图) 时没有任何可朗读实例: 直接退出, 不挂假"正在朗读"通知
+        if (readBook == null) {
+            stopSelf()
+            return
+        }
         _isRunFlow.value = true
         pause = false
+        // 控制器读完末章只置终态, 段末推进不经过本服务: 跟随终态收服务, 通知与运行态一起收束
+        // (对照原版 nextChapter 里"没有下一章就 stopSelf")
+        lifecycleScope.launch {
+            readAloudController.state.collectLatest { state ->
+                if (state == ReadAloudControllerShared.ReadAloudState.COMPLETED) stopSelf()
+            }
+        }
         sleepTimer = SleepTimer(
             scope = lifecycleScope,
             postMinute = { ActiveReadAloudHostPorts.positionPublisher.publishTimer(it) },
@@ -260,7 +273,6 @@ abstract class BaseReadAloudService : BaseService() {
     override fun onDestroy() {
         super.onDestroy()
         playbackLock.release()
-        isRun = false
         _isRunFlow.value = false
         pause = true
         ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.READ_ALOUD)
@@ -283,6 +295,10 @@ abstract class BaseReadAloudService : BaseService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent == null && readBook == null) {
+            stopSelf()
+            return Service.START_NOT_STICKY
+        }
         when (intent?.action) {
             IntentAction.play -> startReadAloud(
                 intent.getBooleanExtra("play", true),
@@ -347,7 +363,7 @@ abstract class BaseReadAloudService : BaseService() {
 
     open fun play() {
         playbackLock.acquire()
-        isRun = true
+        _isRunFlow.value = true
         pause = false
         upReadAloudNotification()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
@@ -485,7 +501,7 @@ abstract class BaseReadAloudService : BaseService() {
             pause -> androidAppString("read_aloud_pause")
             current > 0 -> androidAppString("read_aloud_timer", current)
             else -> androidAppString("read_aloud_t")
-        } + ": ${readBook?.bookValue?.name}"
+        } + ": ${readBook?.bookValue?.name.orEmpty()}"
         val subtitle = readBook?.curTextChapter?.value?.title?.takeUnless { it.isBlank() }
             ?: androidAppString("read_aloud_s")
         val playPause = if (pause) {
@@ -550,6 +566,12 @@ abstract class BaseReadAloudService : BaseService() {
     }
 
     override fun startForegroundNotification() {
+        // 挂前台通知的决策点: 没有朗读实例就没有可播内容, 不挂"正在朗读"假通知
+        // (进程重启后权限授予回调也会走到这里, 不能只在 onCreate/onStartCommand 把关)
+        if (readBook == null) {
+            stopSelf()
+            return
+        }
         execute {
             try {
                 val notification = createNotification()
