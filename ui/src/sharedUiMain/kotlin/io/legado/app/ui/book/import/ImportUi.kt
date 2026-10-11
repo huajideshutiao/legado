@@ -145,8 +145,9 @@ fun ImportRefreshBar(loading: Boolean, modifier: Modifier = Modifier) {
 }
 
 /**
- * 文件/目录行，对照 item_import_book：60dp 高，左侧 52dp 槽(目录图标/已上架图标/复选框)，
+ * 文件/目录行，对照 item_import_book：左侧 52dp 槽(目录图标/已上架图标/复选框)，
  * 右侧书名 + 文件简介(类型标签/大小/日期)。复选框不可点，整行点击切换。
+ * 行高不固定且无上下留白：常态由 52dp 槽决定，内容更高(大字体)时随内容撑开。
  */
 @Composable
 fun ImportFileRow(
@@ -166,9 +167,7 @@ fun ImportFileRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .height(60.dp)
-            .combinedClickable(onLongClick = onLongClick, onClick = onClick)
-            .padding(vertical = DesignTokens.spacingXs),
+            .combinedClickable(onLongClick = onLongClick, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(52.dp)) {

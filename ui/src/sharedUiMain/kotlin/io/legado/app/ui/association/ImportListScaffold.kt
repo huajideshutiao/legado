@@ -141,8 +141,9 @@ private fun ImportListItem(
         Modifier
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
-            // 对齐 item_source_import.xml 根容器 android:padding=8dp(四周)
-            .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault),
+            // 垂直 padding 去掉: 行高由 Checkbox 48dp 交互区决定, 不叠留白
+            // (书源列表/分组选择行同款密度, 原版该布局为 40dp 触摸区 + 8×2 padding ≈ 56dp)
+            .padding(horizontal = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AppCheckbox(checked = checked, onCheckedChange = onCheckedChange)
