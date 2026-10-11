@@ -9,7 +9,7 @@ import io.legado.app.utils.ScreenInfoProviders
  *
  * screenWidthPx / screenHeightPx 原直接读 `appCtx.resources.displayMetrics`,
  * 现下沉为 [ScreenInfoProviders] 跨平台 provider; 本 object 保留原 API 兼容
- * (PdfFile 等调用方继续用 SystemUtils.screenWidthPx), 首次访问经 provider 间接读取并缓存,
+ * (PDF 书渲染等调用方继续用 SystemUtils.screenWidthPx), 首次访问经 provider 间接读取并缓存,
  * 行为与原直接读取一致。
  */
 object SystemUtils {

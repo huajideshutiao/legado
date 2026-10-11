@@ -70,7 +70,7 @@ class NativeFileBookAccessor : FileBookAccessor {
 
     override fun getHandler(book: Book): BaseFileBook {
         // 逐字对齐 app 端 FileBookAccessorImpl.getHandler (即 archive 原版 Book.getHandler):
-        // isPdf -> PdfFile / isEpub -> EpubFile /
+        // isPdf -> UnsupportedFileBook (PDF 解析器未下沉) / isEpub -> EpubFile /
         // isLocal && (originName 以 .cbz 结尾 || (originName 以 .zip 结尾 && isImage)) -> CbzFile /
         // else -> TextFile。
         // 注意 .cbz 分支不要求 isImage —— 导入时已由 importLocalFile 按后缀置为 image 类型,

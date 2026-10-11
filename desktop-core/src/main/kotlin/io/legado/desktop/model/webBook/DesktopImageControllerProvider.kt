@@ -84,7 +84,7 @@ class DesktopImageControllerProvider : ImageControllerProvider {
 
 /**
  * 图片缓存占位章节: 路径仅由 book+url 派生, chapter 只参与签名, 占位即可。
- * webBook 图片缓存与 PDF 页渲染缓存 (model/fileBook/DesktopPdfFile) 共用。
+ * webBook 图片缓存与 PDF 页渲染缓存 (PDF 渲染后端 DesktopPdfRenderPort) 共用。
  */
 fun placeholderImageChapter(url: String, bookUrl: String): BookChapter =
     BookChapter(url = url, bookUrl = bookUrl)

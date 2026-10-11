@@ -114,7 +114,9 @@ import io.legado.desktop.help.tvbox.DesktopTvBoxSniffer
 import io.legado.desktop.help.tts.DesktopReadAloudHost
 import io.legado.desktop.help.ui.registerDesktopOpenUrlProvider
 import io.legado.desktop.extension.DesktopMangaExtensionHost
-import io.legado.desktop.model.fileBook.DesktopPdfFile
+import io.legado.desktop.model.fileBook.DesktopPdfRenderPort
+import io.legado.app.model.fileBook.PdfFileShared
+import io.legado.app.model.fileBook.PdfRenderProviders
 import io.legado.desktop.model.fileBook.registerDesktopFileBookAccessor
 import io.legado.desktop.model.webBook.DesktopImageControllerProvider
 import io.legado.desktop.tts.DesktopSystemTtsEngine
@@ -1039,8 +1041,10 @@ private suspend fun registerSecondaryProviders() {
         registerDesktopBackstageWebView()
         // 原 5. CbzFile 位图 provider (skia; ZipFileWrapperFactory 已在核心子集注册)
         BitmapProviders.register(DesktopBitmapProvider)
-        // 原 6. EpubFile 相关 (压缩/PDF 能力注入: DesktopArchiveCodec + DesktopPdfFile 均留 :desktop)
-        registerDesktopFileBookAccessor(DesktopArchiveCodec, DesktopPdfFile)
+        // 原 6. EpubFile 相关 (压缩/PDF 渲染后端注入: DesktopArchiveCodec + DesktopPdfRenderPort 均留 :desktop,
+        //    PDF 编排骨架走共享 PdfFileShared)
+        PdfRenderProviders.register(DesktopPdfRenderPort)
+        registerDesktopFileBookAccessor(DesktopArchiveCodec, PdfFileShared)
         // 原 11. Web 服务封面/插图 provider: 字节流实现在 desktop-core;
         //    未注册时 BookController.getCover/getImg 抛 IllegalStateException
         ImageControllerProviders.register(DesktopImageControllerProvider())

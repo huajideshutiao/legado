@@ -140,7 +140,7 @@ object FileBookAccessorImpl : FileBookAccessor {
     override fun getHandler(book: Book): BaseFileBook {
         val originName = book.originName.lowercase(Locale.getDefault())
         return when {
-            book.isPdf -> PdfFile
+            book.isPdf -> PdfFileShared
             book.isEpub -> EpubFile
             book.isLocal && (originName.endsWith(".cbz") || originName.endsWith(".zip") && book.isImage) -> CbzFile
             else -> TextFile

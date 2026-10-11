@@ -77,8 +77,8 @@ interface DesktopArchiveSupport {
  * - 压缩包: 无 native libarchive, 走 [DesktopArchiveSupport] 注入实现 (:desktop 为
  *   DesktopArchiveCodec, commons-compress + junrar); 7z 的 BCJ2 编码不支持
  *   (commons-compress 限制), 其余格式对齐。headless 不注入 → 压缩包导入/解压显式报错
- * - PDF: 注入 [BaseFileBook] 处理器 (:desktop 为 DesktopPdfFile companion, PDFBox) 替代
- *   app 端 `PdfFile` (android PdfRenderer)。headless 不注入 → PDF 书读取显式报错
+ * - PDF: 注入 [BaseFileBook] 处理器 (:desktop 传共享 PdfFileShared 骨架, 渲染后端
+ *   DesktopPdfRenderPort 经 PdfRenderProviders 注册) 替代。headless 不注入 → PDF 书读取显式报错
  * - 文件保存: 落用户在"书籍保存位置"选定的目录 (与 Android 端 `defaultBookTreeUri` 同语义;
  *   未设置时由调用链既有的"去设置目录"出口拉起目录选择器); 落库引用走
  *   [desktopStoredLocalRef] (外部目录存 `file:` URI, 数据根下的文件存相对引用)
@@ -88,7 +88,7 @@ interface DesktopArchiveSupport {
 class DesktopFileBookAccessor(
     /** 压缩包解压能力; null = 不支持 (headless, commons-compress/junrar 重依赖留 :desktop) */
     private val archiveSupport: DesktopArchiveSupport? = null,
-    /** PDF 书处理器 ([BaseFileBook], :desktop 为 DesktopPdfFile companion); null = 不支持 */
+    /** PDF 书处理器 ([BaseFileBook], :desktop 传共享 PdfFileShared); null = 不支持 */
     private val pdfHandler: BaseFileBook? = null,
 ) : FileBookAccessor {
 
@@ -114,7 +114,7 @@ class DesktopFileBookAccessor(
         "$OLD_COVERS_REF_SEGMENT/${MD5Utils.md5Encode16(bookUrl)}.jpg"
 
     override fun getHandler(book: Book): BaseFileBook {
-        // 分派逻辑对齐 app 端 FileBookAccessorImpl.getHandler (PdfFile → PDFBox 版 DesktopPdfFile)
+        // 分派逻辑对齐 app 端 FileBookAccessorImpl.getHandler (PDF 书 → 共享 PdfFileShared 骨架)
         val originName = book.originName.lowercase(Locale.getDefault())
         return when {
             book.isPdf -> pdfHandler

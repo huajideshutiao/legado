@@ -52,7 +52,7 @@ import kotlin.coroutines.EmptyCoroutineContext
  * ContentProcessor.get(book) → [ContentProcessorProviders.get].getTitleReplaceRules(book);
  * appDb → [AppDbProviders.get] (仅 importBook 内部用, 已委托 accessor)。
  *
- * TextFile/EpubFile/CbzFile/PdfFile 由其他子代理下沉到同包, 引用路径不变。
+ * TextFile/EpubFile/CbzFile/PdfFileShared 下沉到同包, 引用路径不变。
  */
 object FileBook : BaseFileBook {
 

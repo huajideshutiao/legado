@@ -53,7 +53,7 @@ interface FileBookAccessor {
      * 获取书籍对应的文件解析器 (对应 `Book.getHandler()`)。
      *
      * 内部依据 [io.legado.app.data.entities.Book.isPdf] / isEpub / isLocal / isImage
-     * (Book 扩展, app 端 BookExtensions.kt, 未下沉) 分派到 PdfFile / EpubFile / CbzFile / TextFile。
+     * (Book 扩展, app 端 BookExtensions.kt, 未下沉) 分派到 PdfFileShared / EpubFile / CbzFile / TextFile。
      */
     fun getHandler(book: Book): BaseFileBook
 

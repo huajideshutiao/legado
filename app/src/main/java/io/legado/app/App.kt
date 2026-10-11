@@ -38,6 +38,8 @@ import io.legado.app.help.book.AndroidLocalBookLocator
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.LocalBookLocators
+import io.legado.app.model.fileBook.AndroidPdfRenderPort
+import io.legado.app.model.fileBook.PdfRenderProviders
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
@@ -167,7 +169,7 @@ class App : Application() {
         registerComposeStringProviders()
         registerAndroidAppLogHost()
         // 注册 ScreenInfoProvider (供 SystemUtils.screenWidthPx/screenHeightPx 委托读取),
-        // 须在任何 SystemUtils 屏幕尺寸访问之前 (PdfFile 渲染等)
+        // 须在任何 SystemUtils 屏幕尺寸访问之前 (PDF 书渲染等)
         registerAndroidScreenInfoProvider()
         // 注册 UI Provider (Toast/OpenUrl/UserAgent, 供 JsExtensionsCommon.toast/longToast/
         // getWebViewUA/openUrl 回调, 须在任何 JS 业务调用之前)
@@ -189,6 +191,8 @@ class App : Application() {
         BookStorageProviders.register(AndroidBookStorage)
         BookImageStorageProviders.register(AndroidBookImageStorage)
         LocalBookLocators.register(AndroidLocalBookLocator())
+        // 注册 PDF 渲染后端 (PdfFileShared 编排骨架经 PdfRenderProviders 调本实现, PdfRenderer)
+        PdfRenderProviders.register(AndroidPdfRenderPort)
         // 注册插件源图片获取 (commonMain MangaImageBytesLoader 的插件源分支经
         // MangaPluginImageFetcherProviders 委托扩展自身 client 下载图片, 扩展拦截器
         // — 禁漫图片分割重排等 — 才能生效); 须在 MangaExtensionManager 源注册表
