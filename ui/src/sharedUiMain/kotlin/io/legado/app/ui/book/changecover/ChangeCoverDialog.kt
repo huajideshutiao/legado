@@ -48,7 +48,7 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 换封面搜索对话框 (KMP 共享, app + desktop 复用)。
  *
- * 对应 app 端 `io.legado.app.ui.book.changecover.ChangeCoverDialog` (继承 BaseComposeDialogFragment),
+ * 对应 app 端 `io.legado.app.ui.book.changecover.ChangeCoverDialog` (继承 原命令式对话框基类(已删除)),
  * 但去掉对 Android Fragment / ViewModel / LifecycleObserver / AndroidView / CoverImageView 的依赖,
  * 改为纯 @Composable + 回调形式:
  *
@@ -65,7 +65,7 @@ import org.jetbrains.compose.resources.stringResource
  *
  * # 与 app 端原实现的差异 (KMP 限制)
  *
- * - **Fragment 移除**: 原版继承 `BaseComposeDialogFragment`, 用 `dismissAllowingStateLoss()` 关闭;
+ * - **Fragment 移除**: 原版继承 `原命令式对话框基类(已删除)`, 用 `dismissAllowingStateLoss()` 关闭;
  *   下沉版用 [Dialog] + [onDismiss] 回调, 由调用方控制显示/隐藏。
  * - **ViewModel 移除**: 原版用 `by viewModels()` 取 `ChangeCoverViewModel`;
  *   下沉版由调用方传入 [ChangeCoverViewModelShared] 实例 (KMP 共享核心)。
@@ -74,7 +74,7 @@ import org.jetbrains.compose.resources.stringResource
  * - **AndroidView → coverSlot**: 原版 `CoverItem` 内嵌 `AndroidView { CoverImageView }`;
  *   下沉版改为 [coverSlot] 注入, 解耦平台专属封面渲染。
  * - **资源访问**: 走 compose-resources (`Res.string` / `Res.drawable`)。
- * - **窗口尺寸**: 对齐原 `BaseComposeDialogFragment` 的全高模式：0.9 窗口宽、最大 800dp、
+ * - **窗口尺寸**: 对齐原 `原命令式对话框基类(已删除)` 的全高模式：0.9 窗口宽、最大 800dp、
  *   0.8 窗口高；不是铺满整个窗口。
  *
  * # 样式 (Arco Design 规范)
@@ -118,7 +118,7 @@ fun ChangeCoverDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
-        // 全高型: 高度锁定 0.7 屏高
+        // 全高型: 高度锁定 0.8 屏高
         AppDialogSurface(
             modifier = Modifier.appDialogSize(fullHeight = true),
         ) {

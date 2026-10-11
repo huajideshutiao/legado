@@ -50,7 +50,7 @@ import org.jetbrains.compose.resources.stringResource
  * 主题列表对话框 (KMP 共享, app + desktop 复用)。
  *
  * 对照 app 端 `io.legado.app.ui.config.ThemeListDialog` 的 Content,
- * 去掉对 BaseComposeDialogFragment / FragmentResult / getClipText / alert DSL 的依赖,
+ * 去掉对 原命令式对话框基类(已删除) / FragmentResult / getClipText / alert DSL 的依赖,
  * 改为纯 @Composable + 回调形式:
  * - 标题栏: 返回 + "主题列表" + 新建/剪贴板导入按钮
  * - 列表: LazyColumn, 行=主题名, 点击应用, 长按编辑, 非内置项有分享/删除按钮
@@ -112,7 +112,7 @@ private fun ThemeListDialogContent(
     val items = builtins + customs
     val builtinCount = builtins.size
 
-    // 圆角/底色对齐 BaseComposeDialogFragment.filletBackground + alert DSL AppAlertDialogContent
+    // 圆角/底色对齐 原命令式对话框基类(已删除).filletBackground + alert DSL AppAlertDialogContent
     // (AppDialog 窗口本身无背景, 不包 Surface 会整窗透明, 如实测主题列表背景丢失)
     AppDialogSurface(
         modifier = Modifier.appDialogSize(fullHeight = true),

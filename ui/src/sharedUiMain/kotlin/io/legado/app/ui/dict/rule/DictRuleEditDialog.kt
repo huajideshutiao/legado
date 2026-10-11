@@ -49,7 +49,7 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 字典规则编辑对话框 (KMP 共享, app + desktop 复用)。
  *
- * 对应 app 端 `io.legado.app.ui.dict.rule.DictRuleEditDialog` (BaseComposeDialogFragment),
+ * 对应 app 端 `io.legado.app.ui.dict.rule.DictRuleEditDialog` (原命令式对话框基类(已删除)),
  * 但去掉对 Android Fragment / Bundle / viewModelScope / getClipText / sendToClip 的依赖,
  * 改为纯 @Composable + 回调形式:
  * - 调用方传入 [rule] (null=新增), [onConfirm] / [onDismiss] 回调;

@@ -63,7 +63,7 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 章节正文编辑对话框 (KMP 共享, app + desktop 复用)。
  *
- * 对应 app 端 `io.legado.app.ui.book.read.ContentEditDialog` (BaseComposeDialogFragment),
+ * 对应 app 端 `io.legado.app.ui.book.read.ContentEditDialog` (原命令式对话框基类(已删除)),
  * 但去掉对 Android Fragment / Bundle / ContentEditViewModel / ReadBook 模型 / BookHelp /
  * appDb / AndroidView + AppCompatEditText / alert DSL 的依赖, 改为纯 @Composable + 回调形式:
  * - 调用方传入 [chapterName] + [content], [onSubmit] / [onDismiss] 回调;
@@ -216,7 +216,7 @@ fun ContentEditDialog(
         onDismiss()
     }
 
-    // 原版 ContentEditDialog: BaseDialogFragment + isFullHeight=true (窗口 0.9 宽 × 0.7 屏高居中,
+    // 原版 ContentEditDialog: BaseDialogFragment + isFullHeight=true (窗口 0.9 宽 × 0.8 屏高居中,
     // filletBackground 8dp 圆角, 带 dim); dialog_content_edit.xml 根 match_parent 全高, 标题栏 + 正文 weight 撑满;
     // 无底部按钮栏, 外部取消/返回仅关闭不保存 (2026-08 变更: 顶部保存按钮负责落库)
     AppDialog(
@@ -317,7 +317,7 @@ fun ContentEditDialog(
             properties = AppDialogSizes.properties(),
         ) {
             AppDialogSurface(
-                modifier = Modifier.fillMaxWidth().padding(DesignTokens.spacingDefault),
+                modifier = Modifier.appDialogSize().padding(DesignTokens.spacingDefault),
             ) {
                 Column(Modifier.fillMaxWidth()) {
                     DialogTitleBar(title = editText, onBack = { showTitleEdit = false })

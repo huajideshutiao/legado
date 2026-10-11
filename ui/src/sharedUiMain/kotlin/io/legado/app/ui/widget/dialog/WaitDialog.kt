@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogSizing
 import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -86,6 +87,7 @@ fun WaitDialog(
             dismissOnBackPress = true,
             dismissOnClickOutside = false,
         ),
+        sizing = AppDialogSizing.Unconstrained,
     ) {
         val colors = AppTheme.colors
         AppDialogSurface {

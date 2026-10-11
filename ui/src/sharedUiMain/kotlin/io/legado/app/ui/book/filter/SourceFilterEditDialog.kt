@@ -72,7 +72,7 @@ private val fieldLabels = listOf(
 /**
  * 书源屏蔽规则编辑对话框 (KMP 共享, app + desktop 复用)。
  *
- * 对应 app 端 `io.legado.app.ui.book.filter.SourceFilterEditDialog` (BaseComposeDialogFragment),
+ * 对应 app 端 `io.legado.app.ui.book.filter.SourceFilterEditDialog` (原命令式对话框基类(已删除)),
  * 去掉 Fragment / Bundle / appDb / toastOnUi 依赖, 改为纯 @Composable + 回调:
  * - 调用方传入 [rule] (null=新增, 对应 app 端到达端按 id 重查的结果), [onConfirm] / [onDismiss];
  * - 作用范围仍复用 [SearchScopeDialog] (已下沉), 与 app 端 showDialogFragment<SearchScopeDialog>() 等价。

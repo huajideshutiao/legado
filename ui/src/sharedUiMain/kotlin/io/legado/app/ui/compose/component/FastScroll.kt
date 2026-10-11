@@ -102,7 +102,7 @@ private data class FastScrollMetrics(
  * 迁移前的界面普遍使用 FastScrollRecyclerView；这个共享实现把同等的拖动跳转能力
  * 补回 Compose/KMP，并在内容无需滚动 (不超视口) 时自动隐藏滚动条。
  *
- * @param wrapContentHeight true 时 LazyColumn 不自适应内容高度 (不加 fillMaxSize), 供内容自适应
+ * @param wrapContentHeight true 时 LazyColumn 自适应内容高度 (不加 fillMaxSize), 供内容自适应
  * 对话框 (如分组选择) 使用: 项少时列表随内容收缩, 超出父容器约束时封顶并可滚动;
  * false (默认) 时保持 fillMaxSize 撑满, 行为与既有调用方完全一致。
  */

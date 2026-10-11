@@ -368,7 +368,7 @@ fun ThemeCustomizeDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
-        // 圆角/底色对齐 BaseComposeDialogFragment.filletBackground (AppDialog 窗口本身无背景,
+        // 圆角/底色对齐 原命令式对话框基类(已删除).filletBackground (AppDialog 窗口本身无背景,
         // 不包 Surface 会整窗透明, 内容直接压在页面上 —— 同 ThemeListDialog 记过的坑)。
         // 高度随内容 (上限 appDialogSize), 对齐 app 端 Column(fillMaxWidth) 的包裹语义
         AppDialogSurface(

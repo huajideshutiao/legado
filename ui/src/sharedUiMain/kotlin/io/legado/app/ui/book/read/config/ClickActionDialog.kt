@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogSizing
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.theme.AppTheme
@@ -175,6 +176,8 @@ fun ClickActionDialog(
     AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
+        // 对照原版 dialog_click_action_config.xml: 窗口 MATCH_PARENT, 故不套对话框尺寸
+        sizing = AppDialogSizing.Unconstrained,
     ) {
         // 对照原版 dialog_click_action_config.xml: FrameLayout match_parent (translucent 背景)
         // 内叠两个子组件 —— GridLayout 铺满全屏 (3x3 九宫格覆盖整个点击区),

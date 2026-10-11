@@ -142,7 +142,7 @@ fun ColorPickerDialog(
     }
 }
 
-/** 取色盘正文（不含窗口），供命令式宿主 base/ComposeDialog 复用 */
+/** 取色盘正文（不含窗口），供主题自定义对话框等命令式调用方复用 */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ColorPickerDialogContent(

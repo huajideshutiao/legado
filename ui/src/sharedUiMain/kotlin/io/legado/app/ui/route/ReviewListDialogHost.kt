@@ -56,7 +56,7 @@ import org.jetbrains.compose.resources.stringResource
  * showReviewListDialog) 更是静默无反应。本宿主把 BottomSheet 形态补到四端:
  *
  * - 外壳: [AppBottomSheetDialog] 贴底滑入 (对照原版 BaseBottomDialogFragment gravity=Bottom),
- *   高度走 [AppDialogSizes.fullHeight] (全局统一 0.7 锚点高), 顶部圆角由
+ *   高度走 [AppDialogSizes.fullHeight] (全局统一 0.8 锚点高), 顶部圆角由
  *   [ReviewListDialog] 内容自带
  * - 业务: [ReviewViewModelShared] (与 app 端同款, 分页/点赞/点踩/回复/删除/规则执行全下沉)
  * - 交互: 点击单条 → [ReviewPostDialogHost] 回复输入面板 (F39 已修: 底部弹窗 + 键盘跟随);
@@ -272,7 +272,7 @@ fun ReviewListDialogHost(
     parentReview: Review? = null,
     onDismiss: () -> Unit,
 ) {
-    // 全局统一 0.7 锚点高 (走 AppDialogSizes.fullHeight, 别再自行乘系数); 桌面端锚点 = 主窗口
+    // 全局统一 0.8 锚点高 (走 AppDialogSizes.fullHeight, 别再自行乘系数); 桌面端锚点 = 主窗口
     val sheetHeight = AppDialogSizes.fullHeight()
 
     AppBottomSheetDialog(
@@ -283,7 +283,7 @@ fun ReviewListDialogHost(
         AppTheme {
             Surface(
                 color = AppTheme.colors.background,
-                // fillMaxSize 跟随外层: 默认被 maxHeight 钳在 0.7 锚点高, 上拉拖拽展开时
+                // fillMaxSize 跟随外层: 默认被 maxHeight 钳在 0.8 锚点高, 上拉拖拽展开时
                 // 跟着变高到视觉全屏 (AppBottomSheetDialog 自带的双向拖拽语义);
                 // 之前写死 .height(sheetHeight) 会把展开高度钉死, 上拉只放大外层空壳
                 modifier = Modifier

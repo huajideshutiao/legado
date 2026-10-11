@@ -71,7 +71,7 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 分组编辑对话框 (KMP 共享, app + desktop 复用)。
  *
- * 对应 app 端 `io.legado.app.ui.book.group.GroupEditDialog` (基于 BaseComposeDialogFragment),
+ * 对应 app 端 `io.legado.app.ui.book.group.GroupEditDialog` (基于 原命令式对话框基类(已删除)),
  * 但去掉对 Android Fragment / registerHandleFile / appDb / ViewModel 的依赖, 改为纯
  * @Composable + 回调形式:
  * - 调用方传入 [group] (null=新增) 与 [onConfirm] / [onDismiss] / [onDelete] 回调

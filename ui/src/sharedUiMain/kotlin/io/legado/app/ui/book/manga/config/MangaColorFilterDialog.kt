@@ -33,7 +33,7 @@ import org.jetbrains.compose.resources.stringResource
  * 漫画颜色滤镜对话框 (KMP 共享, app + desktop 复用)。
  *
  * 对应 app 端 `io.legado.app.ui.book.manga.config.MangaColorFilterDialog`, 但去掉对
- * BaseComposeDialogFragment / WindowManager / AppConfig 的依赖, 改为纯 @Composable + 回调:
+ * 原命令式对话框基类(已删除) / WindowManager / AppConfig 的依赖, 改为纯 @Composable + 回调:
  * - 4 个 SeekBar (对比度/R/G/B) 拖动中实时回调 [onColorFilterChange]
  * - 灰度开关切换时回调 [onGrayChange]
  * - 关闭即销毁状态, 持久化由调用方在回调内完成 (对照 app 端 onDismiss 写 AppConfig)

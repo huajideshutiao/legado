@@ -44,7 +44,7 @@ import org.jetbrains.compose.resources.stringResource
  * 书签编辑对话框 (KMP 共享, app + desktop 复用)。
  *
  * 对应 app 端 `io.legado.app.ui.book.bookmark.BookmarkDialog`, 但去掉对
- * BaseComposeDialogFragment / Bundle / GSON / appDb 的依赖, 改为纯 @Composable + 回调形式:
+ * 原命令式对话框基类(已删除) / Bundle / GSON / appDb 的依赖, 改为纯 @Composable + 回调形式:
  * - 展示章节名 (只读), 编辑书签原文 (bookText) 和备注内容 (content)
  * - 编辑态 (showDelete=true) 露出删除按钮, 调用 [onDelete]
  * - 确认时把修改后的 bookmark (新实例) 通过 [onConfirm] 回传, 调用方负责入库

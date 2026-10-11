@@ -56,7 +56,7 @@ import org.jetbrains.compose.resources.stringResource
  */
 
 /**
- * 编辑类对话框的浮层容器。三个 Edit 对话框原是 BaseComposeDialogFragment 的 Content,
+ * 编辑类对话框的浮层容器。三个 Edit 对话框原是 原命令式对话框基类(已删除) 的 Content,
  * 只画 Surface 不含窗口, 走 Overlay 渲染时需要在此补 [Dialog] 外壳。
  */
 @Composable

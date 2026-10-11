@@ -263,7 +263,7 @@ fun HomeSectionEditDialog(
         properties = AppDialogSizes.properties(),
     ) {
         // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
-        // 自适应高度, 上限 0.7 屏高
+        // 自适应高度, 上限 0.8 屏高
         AppDialogSurface(
             modifier = Modifier.appDialogSize(),
         ) {

@@ -1,6 +1,6 @@
 package io.legado.app.ui.about
 
-// 更新对话框 (四端唯一实现, 原 app 端 UpdateDialog BaseComposeDialogFragment 下沉)。
+// 更新对话框 (四端唯一实现, 原 app 端 UpdateDialog 原命令式对话框基类(已删除) 下沉)。
 // 经 AppOverlay key="updateDialog" 渲染，payload=IntentData key 携带 UpdateCheckInfo。
 // 对照原版 UpdateDialog: 标题=新版本号, 操作区=下载按钮 (原版唯一的 menu_download),
 // 正文 MarkdownContentSelectable (multiplatformMarkdown, 与 MdDocDialog 同一渲染路径)。

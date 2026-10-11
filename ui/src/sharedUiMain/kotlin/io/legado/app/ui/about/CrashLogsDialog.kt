@@ -41,7 +41,7 @@ data class CrashLogItem(val name: String)
 /**
  * 崩溃日志列表内容 (KMP 共享, app + desktop 复用)。
  *
- * 对应 app 端 `io.legado.app.ui.about.CrashLogsDialog` 的 Content，去掉对 BaseComposeDialogFragment /
+ * 对应 app 端 `io.legado.app.ui.about.CrashLogsDialog` 的 Content，去掉对 原命令式对话框基类(已删除) /
  * FileDoc / requireContext().share 的依赖，改为纯 @Composable + 回调形式:
  * - 标题栏: 返回 + "崩溃日志" + 清空按钮
  * - 列表: LazyColumn，行=文件名，点击读内容弹内容查看对话框，长按分享
@@ -129,7 +129,7 @@ fun CrashLogsDialog(
 ) {
     val colors = AppTheme.colors
     AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
-        // 圆角/底色对齐 BaseComposeDialogFragment.filletBackground + alert DSL AppAlertDialogContent
+        // 圆角/底色对齐 原命令式对话框基类(已删除).filletBackground + alert DSL AppAlertDialogContent
         AppDialogSurface(
             modifier = Modifier.appDialogSize(),
         ) {

@@ -43,7 +43,7 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 服务器配置编辑对话框 (KMP 共享, app/desktop/iOS 复用)。
  *
- * 对照 app 端 [io.legado.app.ui.book.import.remote.ServerConfigDialog] (BaseComposeDialogFragment):
+ * 对照 app 端 [io.legado.app.ui.book.import.remote.ServerConfigDialog] (原命令式对话框基类(已删除)):
  * - 原版依赖 Fragment + viewModels + Bundle + savedInstanceState + GSON.toJson(HashMap),
  *   含 Android 专属 API (Fragment / Bundle / Context)。
  * - 桌面/iOS 端无 Fragment 体系, 改为纯 @Composable + [Dialog], 由调用方注入数据与回调。

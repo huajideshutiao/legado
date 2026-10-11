@@ -13,6 +13,7 @@ import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.Theme
 import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.file.HandleFileHost
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.videoDirectTarget
 import io.legado.app.ui.root.AppRoute

@@ -62,7 +62,7 @@ fun AppAlertDialog(
             okButton = okButton,
             cancelButton = cancelButton,
             neutralButton = neutralButton,
-            // 窗口尺寸统一收口: 宽 0.9 上限 800dp, 高自适应但不超 0.7 屏高 (app 端宿主已同步 0.7, 两侧一致)
+            // 窗口尺寸统一收口: 宽 0.9 上限 800dp, 高自适应、封顶 0.8 锚点高
             modifier = Modifier.appDialogSize(widthFraction = widthFraction),
             content = content,
         )
@@ -71,7 +71,7 @@ fun AppAlertDialog(
 
 /**
  * alert 对话框正文（Surface + Column，不含窗口）。原生 [AppAlertDialog] 与命令式宿主
- * (base/ComposeDialog) 共用此正文，保证两条路径视觉一致。
+ * (app 端 alert DSL 的声明式宿主) 共用此正文，保证两条路径视觉一致。
  */
 @Composable
 fun AppAlertDialogContent(
@@ -83,7 +83,8 @@ fun AppAlertDialogContent(
     neutralButton: AlertButton? = null,
     // 对话框宽度占窗口宽度的比例 (默认 1f 占满, 桌面端备份相关对话框传 0.8f)
     widthFraction: Float = 1f,
-    // 窗口尺寸由调用方决定: [AppAlertDialog] 传 appDialogSize, 命令式宿主沿用窗口自身尺寸
+    // 正文只负责填满宿主给的尺寸; 窗口尺寸由宿主 [AppDialog] 统一施加 (平台默认宽度已关闭,
+    // 不依赖正文自己声明, 避免漏写时退化成"整窗宽 + 无高度上限")
     modifier: Modifier = Modifier.fillMaxWidth(widthFraction),
     content: (@Composable () -> Unit)? = null,
 ) {

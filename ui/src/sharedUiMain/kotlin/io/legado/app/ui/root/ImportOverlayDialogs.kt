@@ -18,7 +18,7 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 6 个 Import 对话框 + 按文件名导入编辑框的 Overlay 渲染实现。
  *
- * 对照 app 端原 BaseComposeDialogFragment 子类 (ImportBookSourceDialog 等):
+ * 对照 app 端原 原命令式对话框基类(已删除) 子类 (ImportBookSourceDialog 等):
  * - source 文本经 [IntentData] 侧信道传递 (可能为大段 JSON, 不直接走 payload 字符串);
  * - VM 创建/下载/解析/勾选渲染统一走 [DeepLinkImportTarget] + [ImportTargetDialog]
  *   (与 deep link 宿主、规则订阅同一条链, 不再各自内联构造 VM 与 collect success/error)。

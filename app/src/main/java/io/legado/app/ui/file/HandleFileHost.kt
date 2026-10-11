@@ -22,6 +22,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -78,22 +80,22 @@ import java.io.File
  */
 object HandleFileRequests {
 
-    var pending by mutableStateOf<HandleFileRequest?>(null)
-        private set
+    /** 在队请求: 每条请求各占一窗 (对照原机制每请求一个对话框 Fragment)。 */
+    internal val pending = mutableStateListOf<HandleFileRequest>()
 
     fun request(
         param: HandleFileContract.HandleFileParam,
         lifecycleOwner: LifecycleOwner,
         callback: (HandleFileContract.Result) -> Unit,
     ) {
-        pending = HandleFileRequest(param, lifecycleOwner, callback)
+        pending.add(HandleFileRequest(param, lifecycleOwner, callback))
     }
 
-    fun deliver(result: HandleFileContract.Result) {
-        val request = pending ?: return
-        pending = null
+    /** 按请求身份出队并投递结果 (并发请求不会串结果)。 */
+    fun deliver(request: HandleFileRequest, result: HandleFileContract.Result) {
+        if (!pending.remove(request)) return
         // 发起方已销毁则结果无人接收 (对齐原 Fragment 结果监听随生命周期注销的语义)
-        if (!request.lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.DESTROYED)) {
+        if (request.lifecycleOwner.lifecycle.currentState != Lifecycle.State.DESTROYED) {
             request.callback(result)
         }
     }
@@ -108,7 +110,7 @@ class HandleFileRequest(
 /** 挂在各 Activity Content 尾部; 请求发起方所在 Activity 前台时渲染。 */
 @Composable
 fun HandleFileHost() {
-    val request = HandleFileRequests.pending ?: return
+    if (HandleFileRequests.pending.isEmpty()) return
     val lifecycleOwner = LocalLifecycleOwner.current
     var resumed by remember { mutableStateOf(false) }
     DisposableEffect(lifecycleOwner) {
@@ -120,7 +122,10 @@ fun HandleFileHost() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     if (!resumed) return
-    HandleFileDialogContent(request)
+    // 每条请求各占一窗 (对照原机制每请求一个对话框 Fragment)
+    HandleFileRequests.pending.forEach { request ->
+        key(request) { HandleFileDialogContent(request) }
+    }
 }
 
 @Composable
@@ -141,7 +146,8 @@ private fun HandleFileDialogContent(request: HandleFileRequest) {
 
     fun deliverResult(uri: Uri?) {
         HandleFileRequests.deliver(
-            HandleFileContract.Result(uri, param.requestCode, param.value)
+            request,
+            HandleFileContract.Result(uri, param.requestCode, param.value),
         )
     }
 
@@ -523,7 +529,7 @@ fun FilePickerHost(
         properties = AppDialogSizes.properties(),
     ) {
         AppDialogSurface(
-            modifier = Modifier.appDialogSize(fullHeight = true),
+            modifier = Modifier.appDialogSize(),
         ) {
             Column {
                 DialogTitleBar(
@@ -558,6 +564,8 @@ fun FilePickerHost(
                     FastScrollLazyColumn(
                         state = rememberLazyListState(),
                         modifier = Modifier.fillMaxWidth(),
+                        // 目录/文件少时列表随内容收缩 (对照原版对话框的自适应高度)
+                        wrapContentHeight = true,
                     ) {
                         items(items, key = { it.file.toString() }) { item ->
                             fun onItemClick(item: ImportBook) {

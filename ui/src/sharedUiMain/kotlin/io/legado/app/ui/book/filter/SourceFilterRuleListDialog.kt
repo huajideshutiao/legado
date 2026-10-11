@@ -98,7 +98,7 @@ fun SourceFilterRuleListDialog(
     ) {
         // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
         AppDialogSurface(
-            // 原版 isFullHeight = true, 高度固定 0.7 屏高
+            // 原版 isFullHeight = true, 高度固定 0.8 屏高
             modifier = Modifier.appDialogSize(fullHeight = true),
         ) {
             RuleManageScaffold(
@@ -155,7 +155,7 @@ fun SourceFilterRuleListDialog(
     }
 
     if (addingNew || editing != null) {
-        // SourceFilterEditDialog 只画 Surface (原 BaseComposeDialogFragment 的 Content), 需补窗口外壳
+        // SourceFilterEditDialog 只画 Surface (原 原命令式对话框基类(已删除) 的 Content), 需补窗口外壳
         AppDialog(
             onDismissRequest = {
                 addingNew = false

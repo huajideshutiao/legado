@@ -33,13 +33,13 @@ import io.legado.app.ui.compose.toHtmlAnnotatedString
  *
  * # 背景
  *
- * 对照 app 端原 [io.legado.app.ui.dict.DictDialog] (继承 BaseComposeDialogFragment),
+ * 对照 app 端原 [io.legado.app.ui.dict.DictDialog] (继承 原命令式对话框基类(已删除)),
  * 把 UI Composable 下沉到 shared 供多端复用。业务核心已下沉 [DictViewModelShared] (commonMain),
  * 本 Composable 仅负责渲染: 规则 Tab + 查询结果 HTML。
  *
  * # 平台差异 (由调用方处理)
  *
- * - **Dialog 外壳**: app 端用 BaseComposeDialogFragment (Fragment 提供 Dialog 窗口);
+ * - **Dialog 外壳**: app 端用 原命令式对话框基类(已删除) (Fragment 提供 Dialog 窗口);
  *   iOS 端用 androidx.compose.ui.window.Dialog + Surface (调用方包装);
  *   本 Composable 只渲染 Column 内容, 由调用方在外层包外壳。
  * - **ViewModel**: 调用方构造 [DictViewModelShared] (Android=viewModelScope /

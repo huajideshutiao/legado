@@ -101,7 +101,9 @@ import io.legado.app.ui.book.video.VideoPlayPlatformProviders
 import io.legado.app.ui.browser.AndroidWebView
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.dialogs.ComposeAlertDialogHost
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.HandleFileHost
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.reader.ReaderDictWord
 import io.legado.app.ui.reader.ReaderImageActionMenu
@@ -630,6 +632,8 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
             ReaderDictWord.Host()
             // 文件选择/导出对话框宿主 (原 HandleFileDialog/FilePickerDialog Fragment 的声明式形态)
             HandleFileHost()
+            // alert/selector DSL 请求宿主 (原 ComposeDialog 窗口的声明式形态)
+            ComposeAlertDialogHost()
         }
     }
 

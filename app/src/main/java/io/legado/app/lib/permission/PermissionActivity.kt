@@ -8,11 +8,13 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.addCallback
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.base.ComposeDialog
+import io.legado.app.ui.compose.dialogs.AlertDialogHandle
+import io.legado.app.ui.compose.dialogs.ComposeAlertDialogHost
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.i18n.androidAppString
@@ -23,7 +25,7 @@ import kotlinx.coroutines.launch
 
 class PermissionActivity : AppCompatActivity() {
 
-    private var rationaleDialog: ComposeDialog? = null
+    private var rationaleDialog: AlertDialogHandle? = null
 
     private val settingActivityResult =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -42,6 +44,8 @@ class PermissionActivity : AppCompatActivity() {
         val rationale = intent.getStringExtra(KEY_RATIONALE)
         intent.getIntExtra(KEY_INPUT_PERMISSIONS_CODE, 1000)
         val permissions = intent.getStringArrayExtra(KEY_INPUT_PERMISSIONS)!!
+        // alert DSL 请求的渲染宿主 (本 Activity 自身弹的权限说明框)
+        setContent { ComposeAlertDialogHost() }
         when (intent.getIntExtra(KEY_INPUT_REQUEST_TYPE, Request.TYPE_REQUEST_PERMISSION)) {
             //权限请求
             Request.TYPE_REQUEST_PERMISSION -> showSettingDialog(permissions, rationale) {

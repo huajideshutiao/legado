@@ -54,7 +54,7 @@ private const val INFO_BAR_ALIGN_CENTER = 1
 /**
  * 漫画页脚信息条配置对话框 (KMP 共享, app + desktop 复用)。
  *
- * 对应 app 端 `MangaFooterSettingDialog`, 去掉 BaseComposeDialogFragment / AppConfig 依赖,
+ * 对应 app 端 `MangaFooterSettingDialog`, 去掉 原命令式对话框基类(已删除) / AppConfig 依赖,
  * 改为纯 @Composable + 回调: 配置变更实时回调 [onConfigChange], 持久化由调用方完成。
  *
  * @param config 当前页脚配置 (作为初始值, 内部状态由 remember 持有)

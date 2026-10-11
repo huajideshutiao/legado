@@ -68,9 +68,7 @@ object AppTheme {
         val shapeMd: RoundedCornerShape = RoundedCornerShape(radiusMd)
         val shapeLg: RoundedCornerShape = RoundedCornerShape(radiusLg)
 
-        // 语义别名: 半屏目录 16dp / 卡片弹层 8dp / 按钮 8dp / 贴底弹层顶角 16dp
-        val dialogShape: RoundedCornerShape = shapeLg
-        val cardShape: RoundedCornerShape = shapeDefault
+        // 语义别名: 按钮 8dp / 贴底弹层顶角 16dp (半屏弹层面板统一用 sheetShape)
         val buttonShape: RoundedCornerShape = shapeDefault
         val sheetShape: RoundedCornerShape = RoundedCornerShape(topStart = radiusLg, topEnd = radiusLg)
 

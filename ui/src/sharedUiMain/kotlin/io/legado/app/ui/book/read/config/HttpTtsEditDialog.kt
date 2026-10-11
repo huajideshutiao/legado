@@ -8,7 +8,7 @@ package io.legado.app.ui.book.read.config
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.DropdownMenuItem
@@ -25,7 +25,6 @@ import io.legado.app.ui.compose.component.FormEditFields
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.widget.text.EditEntity
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.action_save
@@ -43,7 +42,7 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * HttpTTS 编辑对话框内容 (KMP 共享, app + desktop 复用)。
  *
- * 对应 app 端 `io.legado.app.ui.book.read.config.HttpTtsEditDialog` (BaseComposeDialogFragment)
+ * 对应 app 端 `io.legado.app.ui.book.read.config.HttpTtsEditDialog` (原命令式对话框基类(已删除))
  * 的 `Content()`, 去掉对 Android Fragment / ViewModel / toastOnUi / alert / sendToClip /
  * showDialogFragment / showHelp 的依赖, 改为纯 @Composable + 回调形式:
  * - 调用方传入 [editEntities] (表单字段列表, 由调用方从 HttpTTS 构建并负责收集回 HttpTTS);
@@ -168,12 +167,7 @@ fun HttpTtsEditDialog(
         properties = AppDialogSizes.properties(),
     ) {
         AppDialogSurface(
-            modifier = Modifier.appDialogSize(fullHeight = true).padding(
-                start = DesignTokens.spacingDefault,
-                top = DesignTokens.spacingLg,
-                end = DesignTokens.spacingDefault,
-                bottom = DesignTokens.spacingDefault,
-            ),
+            modifier = Modifier.appDialogSize(),
         ) {
             HttpTtsEditDialogContent(
                 editEntities = editEntities,

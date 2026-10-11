@@ -159,6 +159,12 @@ fun AppDialog(
     dim: Boolean = true,
     /** false = 跳过对话框进入/退出动画 (供满屏自管内容做窗口承载, 如无配对端点的大图查看器) */
     animate: Boolean = true,
+    /**
+     * 尺寸语义, 由宿主施加 (正文无需再各自钳制): 缺省 [AppDialogSizing.Adaptive] = 宽 0.9 锚点
+     * (上限 800dp) + 高随内容收缩、封顶 0.8 锚点。
+     * 满屏自管内容的窗口承载 (animate=false) 与显式传 [AppDialogSizing.Unconstrained] 者不受钳制。
+     */
+    sizing: AppDialogSizing = AppDialogSizing.Adaptive,
     content: @Composable () -> Unit,
 ) {
     // 顶层覆盖物返回拦截: 对话框打开期间返回键 (桌面端 ESC / 统一链) 优先关闭对话框,
@@ -174,7 +180,12 @@ fun AppDialog(
             properties = properties,
             content = {
                 WithWindowTextMenu {
-                    Box(Modifier.directionKeyFocusNavigation(LocalFocusManager.current)) { content() }
+                    Box(
+                        Modifier
+                            .appDialogSize(sizing)
+                            .directionKeyFocusNavigation(LocalFocusManager.current),
+                        contentAlignment = Alignment.Center,
+                    ) { content() }
                 }
             },
         )
@@ -245,8 +256,10 @@ fun AppDialog(
             // native 控制条的物理覆盖区, 本就点不到; 移动端 inset=0 零影响
             Box(
                 Modifier
+                    .appDialogSize(sizing)
                     .directionKeyFocusNavigation(LocalFocusManager.current)
                     .then(if (topInset > 0.dp) Modifier.padding(top = topInset) else Modifier),
+                contentAlignment = Alignment.Center,
             ) {
                 Box(
                     Modifier.graphicsLayer {
@@ -383,7 +396,7 @@ fun AppBottomSheetDialog(
             // (面板整体下移, translationY 相加; 触发关闭时退出动画从当前位置继续下滑,
             // 无跳变); 松手后吸附默认锚点/视觉全屏或弹簧回弹复位
             var dragOffset by remember { mutableStateOf(0f) }
-            // 默认锚点高 (px): 面板未展开时的实测高度 (内容 wrap 封顶 0.7 锚点高的自然高),
+            // 默认锚点高 (px): 面板未展开时的实测高度 (内容 wrap 封顶 0.8 锚点高的自然高),
             // 由 onSizeChanged 在 dragOffset == 0 时同步; 展开拖拽期间保持初值作"缩回目标",
             // 回弹到默认锚点后恢复跟随 (桌面窗口 resize 时默认锚点自动更新)
             var defaultAnchorPx by remember { mutableStateOf(0) }
@@ -581,7 +594,7 @@ fun AppBottomSheetDialog(
             }
             val p = progress.value
             val dragOffsetPx = dragOffset
-            // 滑入/滑出位移取"0.7 锚点高与面板实测高的较大值": 常规弹层实测高 ≤ 0.7 锚点高,
+            // 滑入/滑出位移取"0.8 锚点高与面板实测高的较大值": 常规弹层实测高 ≤ 0.8 锚点高,
             // 取值不变; 全屏态面板更高, 靠实测高才能整块滑出窗口而不残留顶部一截
             val anchorSlidePx = with(LocalDensity.current) { AppDialogSizes.fullHeight().toPx() }
             val slideHeightPx = maxOf(sheetHeightPx.toFloat(), anchorSlidePx)
@@ -682,9 +695,9 @@ fun AppBottomSheetDialog(
  * 需作为 Dialog 内容的根, 内容 fillMaxSize 让弹层覆盖整个容器。
  *
  * [fullScreen] 时 sheet 撑满窗口 (仍贴底对齐, 只是高度到顶), 不再受 [maxHeight] /
- * 0.7 锚点高约束。
+ * 0.8 锚点高约束。
  *
- * 全屏时补 [platformStatusBarPadding]: 常规弹层高度只有 0.7 锚点高、顶部到不了状态栏;
+ * 全屏时补 [platformStatusBarPadding]: 常规弹层高度只有 0.8 锚点高、顶部到不了状态栏;
  * 全屏后顶部会真的贴到窗口顶, 这层 padding 把前提补回来。它只消费"尚未被窗口消费"的 inset ——
  * decorFitsSystemWindows=true 的窗口已自行避让时为 0, 不会双重避让; 只有 Android 15+
  * 强制 edge-to-edge 的全屏窗口才真正生效。

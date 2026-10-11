@@ -1,6 +1,6 @@
 ﻿package io.legado.app.ui.widget.keyboard
 
-// 下沉说明：辅助按键配置 UI（原 app 端 KeyboardAssistsConfig BaseComposeDialogFragment 下沉）。
+// 下沉说明：辅助按键配置 UI（原 app 端 KeyboardAssistsConfig 原命令式对话框基类(已删除) 下沉）。
 // 数据实体 KeyboardAssist/DAO 在 commonMain (AppDbProviders.keyboardAssistsDao), 本文件只画 UI:
 // RuleManageScaffold 列表 (拖拽排序落库) + 新增/编辑弹窗 (key/value 输入)。
 // 经 AppOverlay key="keyboardAssistsConfig" 渲染。
