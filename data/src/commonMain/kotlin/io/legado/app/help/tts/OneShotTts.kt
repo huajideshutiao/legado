@@ -130,26 +130,24 @@ class OneShotTts(
 
     /** 停在线播放器; true = 确有在线轮被停。 */
     private fun stopHttp(): Boolean {
-        val stopped: Boolean
-        synchronized(httpLock) {
+        return synchronized(httpLock) {
             httpGeneration++
-            stopped = httpPlayer != null
-            httpPlayer?.let { p ->
-                httpPlayer = null
+            val current = httpPlayer
+            httpPlayer = null
+            if (current != null) {
                 runCatching {
-                    p.stop()
-                    p.release()
+                    current.stop()
+                    current.release()
                 }
             }
+            current != null
         }
-        return stopped
     }
 
     /** 在线通道: 一次性播放器播完/出错即释放；状态回调与系统通道同语义 (起播 true/结束 false)。 */
     private fun startHttp(channel: HttpTtsChannel, text: String) {
         val player = channel.player
-        val runGeneration: Long
-        synchronized(httpLock) {
+        val runGeneration = synchronized(httpLock) {
             httpPlayer?.let { old ->
                 httpPlayer = null
                 runCatching {
@@ -157,8 +155,9 @@ class OneShotTts(
                     old.release()
                 }
             }
-            runGeneration = ++httpGeneration
+            val current = ++httpGeneration
             httpPlayer = player
+            current
         }
         player.listener = object : HttpTtsPlayerListener {
             override fun onReady() {
