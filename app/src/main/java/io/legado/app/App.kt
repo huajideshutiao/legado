@@ -69,6 +69,7 @@ import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.storage.registerAndroidBackupRestoreHook
 import io.legado.app.help.storage.registerAndroidPasswordProvider
 import io.legado.app.help.toast.registerAndroidToaster
+import io.legado.app.help.tts.registerAndroidHttpTtsPlayer
 import io.legado.app.help.tts.registerAndroidSystemTtsEngine
 import io.legado.app.help.ui.registerAndroidOpenUrlProvider
 import io.legado.app.help.config.PreferenceProviders
@@ -273,6 +274,8 @@ class App : Application() {
         registerAndroidReadBookPlatform()
         // 注册系统 TTS 引擎 (共享 OneShotTts 的一次性朗读: 选中文字朗读 / RSS 朗读)
         registerAndroidSystemTtsEngine()
+        // 注册朗读试听用一次性 HttpTTS 播放器 (正式朗读不经此工厂)
+        registerAndroidHttpTtsPlayer()
         // 注册 CacheBookCallback 桥接活动阅读页 (CacheBookShared 调度核心下沉到 commonMain 后,
         // app 端通过 callback 把下载完成事件回放到活动阅读实例)
         CacheBook.registerCallback()

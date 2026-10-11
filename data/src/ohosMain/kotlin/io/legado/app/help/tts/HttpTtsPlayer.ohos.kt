@@ -20,6 +20,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import io.legado.app.utils.File
+import io.legado.app.utils.ensureParentDirectory
 
 /**
  * [HttpTtsPlayer] 的鸿蒙 (OHOS) 真实实现 (KP8+)。
@@ -298,8 +299,8 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
      */
     private suspend fun obtainCacheFile(url: String, headers: Map<String, String>): File {
         val cacheDir = File("${DataStorageProviders.get().chapterCacheDir}/$TTS_CACHE_DIR")
-        if (!cacheDir.exists()) cacheDir.mkdirs()
         val target = File(cacheDir, MD5Utils.md5Encode16(url) + ".mp3")
+        check(target.ensureParentDirectory()) { "无法创建 TTS 缓存目录" }
         if (target.exists() && target.length() > 0L) {
             downloadErrorBreaker.reset()
             return target

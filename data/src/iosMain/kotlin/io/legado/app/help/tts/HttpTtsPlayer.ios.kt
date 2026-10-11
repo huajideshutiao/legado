@@ -8,6 +8,7 @@ import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.http.header
 import io.legado.app.help.media.AvPlayerItemStatusObserver
 import io.legado.app.utils.File
+import io.legado.app.utils.ensureParentDirectory
 import kotlin.concurrent.Volatile
 import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
@@ -193,7 +194,7 @@ class IosHttpTtsPlayer : HttpTtsPlayer {
                         request.config, request.text, request.speechRate, currentCoroutineContext(),
                     )
                     try {
-                        check(file.parentFile?.mkdirs() == true) { "无法创建 TTS 缓存目录" }
+                        check(file.ensureParentDirectory()) { "无法创建 TTS 缓存目录" }
                         val input = response.body.byteStream()
                         try {
                             FileSystem.SYSTEM.sink(file.path.toPath()).buffer().use { output ->

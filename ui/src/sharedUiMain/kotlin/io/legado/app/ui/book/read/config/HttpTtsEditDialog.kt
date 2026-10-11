@@ -1,8 +1,7 @@
 package io.legado.app.ui.book.read.config
 
 // I18N KEYS (均已注册于 ui/src/commonMain/composeResources/values/strings.xml):
-//   action_save, login, show_login_header, del_login_header, copy_source,
-//   paste_source, log, help
+//   action_save, login, test, copy_source, paste_source, help
 // PAINTER KEYS:
 //   ic_save (已存在 shared drawable)
 
@@ -29,13 +28,11 @@ import io.legado.app.ui.widget.text.EditEntity
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.action_save
 import legado.ui.generated.resources.copy_source
-import legado.ui.generated.resources.del_login_header
 import legado.ui.generated.resources.help
 import legado.ui.generated.resources.ic_save
-import legado.ui.generated.resources.log
 import legado.ui.generated.resources.login
 import legado.ui.generated.resources.paste_source
-import legado.ui.generated.resources.show_login_header
+import legado.ui.generated.resources.test
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -49,11 +46,13 @@ import org.jetbrains.compose.resources.stringResource
  * - 各菜单 / 按钮动作通过 lambda 回调由调用方实现 (app 端 Fragment 委托 ViewModel + 平台工具,
  *   desktop 端可自行实现等价逻辑)。
  *
- * # 原业务逻辑保留 (1:1 复刻 app 端 Content)
+ * # 菜单形态 (2026-10-12 用户拍板, 对齐书源编辑界面)
  *
  * - 标题栏: 空标题 + 返回 (dismiss) + 保存按钮 (ic_save) + OverflowMenu;
- * - OverflowMenu 7 项: 登录 / 查看登录头 / 删除登录头 / 拷贝源 / 粘贴源 / 日志 / 帮助;
- * - 表单区: Column(weight 1f, fill=false) + verticalScroll + FormEditFields。
+ * - 溢出菜单: 登录 (仅当 [hasLogin] 为 true, 对齐书源编辑界面登录项显隐) /
+ *   测试 (试听当前表单内容) / 拷贝源 / 粘贴源 / 帮助;
+ * - 原版的 查看登录头/删除登录头/日志 三项不保留 (登录头查看/删除只在登录表单对话框提供,
+ *   与原版一致); 表单区: Column(weight 1f, fill=false) + verticalScroll + FormEditFields。
  *
  * # 与原版的差异 (KMP 限制)
  *
@@ -65,38 +64,34 @@ import org.jetbrains.compose.resources.stringResource
  *   (shared 端在 @Composable 主体内预解析文案, 避免在 onClick 中误用 @Composable)。
  *
  * @param editEntities 表单字段列表 (调用方负责从 HttpTTS 构建 + 从字段收集回 HttpTTS)
+ * @param hasLogin 当前表单是否有登录入口 (每次菜单展开时求值, 对齐书源编辑 onMenuOpened 语义)
  * @param onBack 返回按钮 (app: dismissAllowingStateLoss)
  * @param onSave 保存按钮 (app: viewModel.save(dataFromView()) { toastOnUi("保存成功") })
- * @param onLogin 登录菜单 (app: login() — hasLogin 校验 + save + showLoginDialog)
- * @param onShowLoginHeader 查看登录头菜单 (app: alert { setTitle; setMessage(loginHeader) })
- * @param onDeleteLoginHeader 删除登录头菜单 (app: dataFromView().removeLoginHeader())
+ * @param onLogin 登录菜单 (调用方先保存再弹登录)
+ * @param onTestSpeak 测试菜单 (试听当前表单内容, 不落库)
  * @param onCopySource 拷贝源菜单 (app: context?.sendToClip(GSON.toJson(dataFromView())))
  * @param onPasteSource 粘贴源菜单 (app: viewModel.importFromClip { initView(it) })
- * @param onShowLog 日志菜单 (app: showDialogFragment<AppLogDialog>())
  * @param onShowHelp 帮助菜单 (app: showHelp("httpTTSHelp"))
  */
 @Composable
 fun HttpTtsEditDialogContent(
     editEntities: List<EditEntity>,
+    hasLogin: () -> Boolean,
     onBack: () -> Unit,
     onSave: () -> Unit,
     onLogin: () -> Unit,
-    onShowLoginHeader: () -> Unit,
-    onDeleteLoginHeader: () -> Unit,
+    onTestSpeak: () -> Unit,
     onCopySource: () -> Unit,
     onPasteSource: () -> Unit,
-    onShowLog: () -> Unit,
     onShowHelp: () -> Unit,
 ) {
     val colors = AppTheme.colors
     // 预解析菜单 / 按钮文案, 避免 onClick 中误用 @Composable (对齐 TxtTocRuleEditDialog 风格)
     val saveDescText = stringResource(Res.string.action_save)
     val loginText = stringResource(Res.string.login)
-    val showLoginHeaderText = stringResource(Res.string.show_login_header)
-    val delLoginHeaderText = stringResource(Res.string.del_login_header)
+    val testText = stringResource(Res.string.test)
     val copySourceText = stringResource(Res.string.copy_source)
     val pasteSourceText = stringResource(Res.string.paste_source)
-    val logText = stringResource(Res.string.log)
     val helpText = stringResource(Res.string.help)
 
     Column(Modifier.fillMaxWidth()) {
@@ -119,12 +114,14 @@ fun HttpTtsEditDialogContent(
                             onClick = { dismissMenu(); onClick() },
                         ) { Text(text, color = colors.primaryText) }
                     }
-                    item(loginText) { onLogin() }
-                    item(showLoginHeaderText) { onShowLoginHeader() }
-                    item(delLoginHeaderText) { onDeleteLoginHeader() }
+                    // 登录项显隐对齐书源编辑界面: 无登录入口不显示
+                    // (DropdownMenu content 在展开时新组合, 每次展开重新求值 hasLogin)
+                    if (hasLogin()) {
+                        item(loginText) { onLogin() }
+                    }
+                    item(testText) { onTestSpeak() }
                     item(copySourceText) { onCopySource() }
                     item(pasteSourceText) { onPasteSource() }
-                    item(logText) { onShowLog() }
                     item(helpText) { onShowHelp() }
                 }
             },
@@ -150,18 +147,16 @@ fun HttpTtsEditDialogContent(
 @Composable
 fun HttpTtsEditDialog(
     editEntities: List<EditEntity>,
+    hasLogin: () -> Boolean,
     onBack: () -> Unit,
     onSave: () -> Unit,
     onLogin: () -> Unit,
-    onShowLoginHeader: () -> Unit,
-    onDeleteLoginHeader: () -> Unit,
+    onTestSpeak: () -> Unit,
     onCopySource: () -> Unit,
     onPasteSource: () -> Unit,
-    onShowLog: () -> Unit,
     onShowHelp: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val colors = AppTheme.colors
     AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
@@ -171,14 +166,13 @@ fun HttpTtsEditDialog(
         ) {
             HttpTtsEditDialogContent(
                 editEntities = editEntities,
+                hasLogin = hasLogin,
                 onBack = onBack,
                 onSave = onSave,
                 onLogin = onLogin,
-                onShowLoginHeader = onShowLoginHeader,
-                onDeleteLoginHeader = onDeleteLoginHeader,
+                onTestSpeak = onTestSpeak,
                 onCopySource = onCopySource,
                 onPasteSource = onPasteSource,
-                onShowLog = onShowLog,
                 onShowHelp = onShowHelp,
             )
         }

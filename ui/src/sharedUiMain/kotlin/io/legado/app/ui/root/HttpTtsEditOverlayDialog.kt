@@ -11,10 +11,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.toast.Toasters
+import io.legado.app.help.tts.SpeakTest
 import io.legado.app.ui.book.read.config.HttpTtsEditDialog
 import io.legado.app.ui.book.read.config.HttpTtsEditViewModelShared
 import io.legado.app.ui.compose.platform.syncGetString
-import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.widget.text.EditEntity
 import io.legado.app.ui.widget.text.EditEntity.CodePattern
 import io.legado.app.ui.widget.text.EditEntity.ViewType
@@ -36,13 +36,17 @@ private fun HttpTtsEditOverlayForm(overlay: AppOverlay.Dialog, navigator: AppNav
     var suspended by remember { mutableStateOf(false) }
     var source by remember { mutableStateOf<HttpTTS?>(null) }
     var fields by remember { mutableStateOf<List<EditEntity>>(emptyList()) }
-    var loginHeader by remember { mutableStateOf<String?>(null) }
     val vm = remember {
         HttpTtsEditViewModelShared(
             scope = scope,
             clipTextProvider = { capabilities.getClipboardText() },
             onTtsChanged = {},
         )
+    }
+    // 朗读试听器 (测当前表单未保存内容; 对话框关闭时停声)
+    val speakTest = remember { SpeakTest() }
+    DisposableEffect(Unit) {
+        onDispose { speakTest.stop() }
     }
     fun initForm(value: HttpTTS) {
         source = value.copy()
@@ -91,31 +95,20 @@ private fun HttpTtsEditOverlayForm(overlay: AppOverlay.Dialog, navigator: AppNav
     val dismiss: () -> Unit = { navigator.dismissOverlay(overlay.key) }
     HttpTtsEditDialog(
         editEntities = fields,
+        // 登录菜单项显隐对齐书源编辑界面: 无登录入口不显示 (每次菜单展开求值表单现状)
+        hasLogin = { formData().hasLogin() },
         onBack = dismiss,
         onSave = { save(formData()) { Toasters.get().toast("保存成功") } },
         onLogin = {
             val value = formData()
-            if (value.hasLogin()) {
-                save(value) { value.showLoginDialog() }
-            } else {
-                Toasters.get().toast("没有登陆界面")
-            }
+            save(value) { value.showLoginDialog() }
         },
-        onShowLoginHeader = { loginHeader = formData().getLoginHeader().orEmpty() },
-        onDeleteLoginHeader = { formData().removeLoginHeader() },
+        onTestSpeak = { speakTest.speak(formData(), SpeakTest.TEST_TEXT) },
         onCopySource = { capabilities.copyToClipboard(KS_JSON.encodeToString(HttpTTS.serializer(), formData())) },
         onPasteSource = { vm.importFromClip(::initForm) },
-        onShowLog = { navigator.showOverlay(AppOverlay.Dialog("app_log")) },
         onShowHelp = { navigator.showOverlay(AppOverlay.Dialog("help", payload = "httpTTSHelp")) },
         onDismiss = dismiss,
     )
-    loginHeader?.let { header ->
-        TextDialog(
-            title = syncGetString("login_header"),
-            content = header,
-            onDismiss = { loginHeader = null },
-        )
-    }
 }
 
 /** 字段与 Android 编辑器一致；没有表单入口的扩展字段由源对象副本保留。 */

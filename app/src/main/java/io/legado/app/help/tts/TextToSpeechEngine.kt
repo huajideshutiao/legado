@@ -131,6 +131,14 @@ fun registerAndroidSystemTtsEngine() {
 }
 
 /**
+ * 注册 app 端 [HttpTtsPlayer] 工厂 (朗读试听经 [TtsEngineProvider] 取用)。
+ * 正式朗读不经此工厂 (HttpReadAloudService 下载调度 + 缓存播放)。
+ */
+fun registerAndroidHttpTtsPlayer() {
+    TtsEngineProvider.registerHttpTtsPlayerFactory { AndroidHttpTtsPlayer() }
+}
+
+/**
  * [TextToSpeechEngine] 的 [SystemTtsEngine] 适配: 章节朗读走 `TTSReadAloudService` 自己的实例,
  * 本实例只服务共享的一次性朗读 (commonMain `OneShotTts`)。
  *

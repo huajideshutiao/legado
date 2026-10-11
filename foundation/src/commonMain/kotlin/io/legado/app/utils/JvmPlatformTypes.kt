@@ -67,11 +67,11 @@ fun InputStream.readAllAndClose(): ByteArray {
     }
 }
 
-// java.io.File 桥接: commonMain 仅作类型签名占位 (如 BitmapProvider.decodeStreamAndCompressToJpeg
-// 的 outFile 参数), 不在 commonMain 构造或调用 File 方法。显式声明 (path: String) 构造器以匹配
-// java.io.File(String) (java.io.File 无无参构造器, 隐式 no-arg expect 会与 typealias 冲突)。
-// jvmAndAndroidMain actual typealias 到 java.io.File (带出全部构造器); iOS/鸿蒙 actual 仅持有
-// path 字段 (NativeBitmapProvider 经 path 转 kotlin.io.File 做真实文件写入, 此类型不需文件操作)。
+// java.io.File 桥接: commonMain 只声明构造器, 不在 commonMain 构造或调用 File 方法 (如
+// BitmapProvider.decodeStreamAndCompressToJpeg 的 outFile 参数)。显式声明 (path: String)
+// 构造器以匹配 java.io.File(String) (java.io.File 无无参构造器, 隐式 no-arg expect 会与 typealias 冲突)。
+// jvmAndAndroidMain actual typealias 到 java.io.File (带出全部构造器与成员); iOS/鸿蒙 actual 见
+// JvmPlatformTypes.native.kt (okio FileSystem 实现, 成员签名与 java.io.File 对齐, 供 native 文件操作)。
 expect class File(path: String)
 
 expect interface Closeable {
