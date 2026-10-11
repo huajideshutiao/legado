@@ -39,9 +39,11 @@ import io.legado.app.napi.quickjs.JS_GetLength
 import io.legado.app.napi.quickjs.JS_GetPropertyUint32
 import io.legado.app.napi.quickjs.JS_IsArray
 import io.legado.app.napi.quickjs.JS_NewArray
+import io.legado.app.napi.quickjs.JS_NewError
 import io.legado.app.napi.quickjs.JS_NewObject
 import io.legado.app.napi.quickjs.JS_SetPropertyStr
 import io.legado.app.napi.quickjs.JS_SetPropertyUint32
+import io.legado.app.napi.quickjs.JS_Throw
 import io.legado.app.napi.quickjs.qjs_IsBool
 import io.legado.app.napi.quickjs.qjs_IsNull
 import io.legado.app.napi.quickjs.qjs_IsNumber
@@ -267,8 +269,10 @@ object NativeJsExtensionsBridge {
             val obj = getObject(handle) ?: return jsUndefined()
             return dispatch(ctxNotNull, obj, methodId, argsArray)
         } catch (t: Throwable) {
-            // 桥接异常返回 undefined, 避免 JS 引擎崩溃 (与 Android 端 exotic trap 行为一致)
-            return jsUndefined()
+            // 异常不能穿过 staticCFunction 边界 (K/N 未定义行为), 必须在此拦下; 但要交给 JS 侧
+            // —— 静默返回 undefined 会让"规则莫名取不到值", 与"让调用方看到真实原因"相反,
+            // 也与安卓侧 (参数转换失败抛异常) 口径不一致。
+            return jsThrowError(ctxNotNull, t.message ?: "桥接调用失败")
         }
     }
 
@@ -1074,8 +1078,13 @@ function __createJsUrlObj(handle) {
         NativeDispatchResult.NONE -> jsUndefined()
     }
 
-    /** JS Array → Kotlin List<Any?> (递归取元素) */
-    private fun jsArrayToList(ctx: CPointer<JSContext>, arr: CValue<JSValue>): List<Any?> {
+    /** JS Array → Kotlin List<Any?> (递归取元素, 带深度上限) */
+    private fun jsArrayToList(
+        ctx: CPointer<JSContext>,
+        arr: CValue<JSValue>,
+        depth: Int = 0
+    ): List<Any?> {
+        if (depth > MAX_JS_DEPTH) throw NativeScriptException(JS_DEPTH_ERROR_MESSAGE)
         val result = mutableListOf<Any?>()
         memScoped {
             val pLen = alloc<LongVar>()
@@ -1084,7 +1093,7 @@ function __createJsUrlObj(handle) {
             for (i in 0 until count) {
                 val elem = JS_GetPropertyUint32(ctx, arr, i.toUInt())
                 try {
-                    result.add(fromJsValue(ctx, elem))
+                    result.add(fromJsValue(ctx, elem, depth + 1))
                 } finally {
                     JS_FreeValue(ctx, elem)
                 }
@@ -1125,8 +1134,14 @@ function __createJsUrlObj(handle) {
         }
     }
 
-    /** JSValue → Kotlin 值 (基本类型 + Array + String; null/undefined → null, boolean → Boolean) */
-    private fun fromJsValue(ctx: CPointer<JSContext>, v: CValue<JSValue>): Any? {
+    /**
+     * JSValue → Kotlin 值 (基本类型 + Array + String; null/undefined → null, boolean → Boolean)。
+     *
+     * 带深度上限: 本转换与 [jsArrayToList] 互相递归, 而 JS 数组可自引用
+     * (`var a=[]; a[0]=a`), 无上限会无限递归直至写穿线程栈闪退。
+     */
+    private fun fromJsValue(ctx: CPointer<JSContext>, v: CValue<JSValue>, depth: Int = 0): Any? {
+        if (depth > MAX_JS_DEPTH) throw NativeScriptException(JS_DEPTH_ERROR_MESSAGE)
         if (qjs_IsNull(v) != 0 || qjs_IsUndefined(v) != 0) {
             return null
         }
@@ -1140,7 +1155,7 @@ function __createJsUrlObj(handle) {
             return jsValueToString(ctx, v)
         }
         if (JS_IsArray(v)) {
-            return jsArrayToList(ctx, v)
+            return jsArrayToList(ctx, v, depth)
         }
         // 其他类型 fallback 到字符串
         return jsValueToString(ctx, v)
@@ -1149,6 +1164,17 @@ function __createJsUrlObj(handle) {
     /** 构造 JS undefined JSValue */
     private fun jsUndefined(): CValue<JSValue> = cValue {
         tag = JS_TAG_UNDEFINED.toLong()
+    }
+
+    /**
+     * 抛出 JS Error 并把异常值返回给引擎 (供 staticCFunction 边界把 Kotlin 异常交给 JS 侧)。
+     *
+     * `JS_SetPropertyStr` 转移 value 所有权, 无需额外 JS_FreeValue。
+     */
+    private fun jsThrowError(ctx: CPointer<JSContext>, message: String): CValue<JSValue> {
+        val err = JS_NewError(ctx)
+        JS_SetPropertyStr(ctx, err, "message", qjs_NewString(ctx, message))
+        return JS_Throw(ctx, err)
     }
 
     /** 构造 JS null JSValue */

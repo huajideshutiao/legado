@@ -85,6 +85,17 @@ public:
      * @return malloc 分配的错误消息 C 字符串; 使用后 free()
      */
     static char *buildExceptionMessage(JSContext *ctx, JSValue exc);
+
+private:
+    /**
+     * 带嵌套深度上限的 [toJavaObject]。
+     *
+     * 本转换是递归的 (数组元素/对象属性/Error 属性), 而 JS 对象可自引用或环形引用
+     * (`var a={}; a.self=a`), 无上限会无限递归写穿 C 栈, 整个进程崩溃。
+     * 超过 kMaxJsDepth 层抛 JsNativeException (与 JS 异常同路, 调用方按既有契约处理),
+     * 不静默截断 —— 静默会变成"规则莫名取不到值"。
+     */
+    static jobject toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value, int depth);
 };
 
 // 导出 Long 类缓存供其他模块复用 (避免重复 FindClass)

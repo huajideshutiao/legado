@@ -124,8 +124,45 @@ namespace {
 // JNI_OnLoad 提前一次性完成初始化。
 void initJniValueConvertCache(JNIEnv *env) { doInitClassCache(env); }
 
+/** JS 值转 Java 对象时的嵌套深度上限 (与 native 端 NativeJsEngine.MAX_JS_DEPTH 同值同口径)。 */
+constexpr int kMaxJsDepth = 64;
+
+/**
+ * 抛 JsNativeException: 供"转换器自身拒绝"的场景 (如嵌套超深) 用 —— 这类失败没有 JS 侧异常
+ * 对象, 只有一条说明。与 JS 异常同路, 调用方按既有契约处理 (env->ExceptionCheck 后立即退出)。
+ */
+static void throwJsNativeExceptionMessage(JNIEnv *env, const char *message) {
+    jclass excCls = env->FindClass("com/script/quickjs/JsNativeException");
+    if (!excCls) return;
+    jmethodID ctor = env->GetMethodID(excCls, "<init>",
+                                      "(Ljava/lang/String;Ljava/lang/String;II)V");
+    if (ctor) {
+        jstring msgJstr = env->NewStringUTF(message);
+        jobject excObj = env->NewObject(excCls, ctor, msgJstr, nullptr, -1, -1);
+        if (msgJstr) env->DeleteLocalRef(msgJstr);
+        if (excObj) {
+            env->Throw((jthrowable) excObj);
+            env->DeleteLocalRef(excObj);
+        }
+    } else {
+        env->ThrowNew(excCls, message);
+    }
+    env->DeleteLocalRef(excCls);
+}
+
 jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value) {
+    return toJavaObject(ctx, env, value, 0);
+}
+
+jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value, int depth) {
     ensureClassCache(env);
+
+    // 嵌套深度上限: 环状/自引用结构 (`var a={}; a.self=a`) 会让本函数无限递归写穿 C 栈,
+    // 整个进程崩溃。如实报错, 不静默截断 —— 静默会变成"规则莫名取不到值"。
+    if (depth > kMaxJsDepth) {
+        throwJsNativeExceptionMessage(env, "JS 值嵌套超过 64 层 (可能存在循环引用)");
+        return nullptr;
+    }
 
     // 异常: 抛出 JsNativeException,返回 null
     if (JS_IsException(value)) {
@@ -201,7 +238,7 @@ jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value
         jmethodID addMethod = env->GetMethodID(arrayListCls, "add", "(Ljava/lang/Object;)Z");
         for (int64_t i = 0; i < len64; i++) {
             JSValue elem = JS_GetPropertyUint32(ctx, value, (uint32_t) i);
-            jobject elemObj = toJavaObject(ctx, env, elem);
+            jobject elemObj = toJavaObject(ctx, env, elem, depth + 1);
             JS_FreeValue(ctx, elem);
             // 递归 toJavaObject 抛 JsNativeException 后必须立刻退出, 否则后续
             // CallBooleanMethod / DeleteLocalRef 都属于 "pending exception 下的 JNI 调用",
@@ -257,7 +294,7 @@ jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value
         static const char *const kErrKeys[] = {"message", "name", "stack"};
         for (auto kErrKey: kErrKeys) {
             JSValue val = JS_GetPropertyStr(ctx, value, kErrKey);
-            jobject valObj = toJavaObject(ctx, env, val);
+            jobject valObj = toJavaObject(ctx, env, val, depth + 1);
             JS_FreeValue(ctx, val);
             // 递归 toJavaObject 抛 JsNativeException 时必须立刻退出, 避免 pending
             // exception 下的后续 JNI 调用污染 JNI 状态 (同上方 array 分支的处理)
@@ -296,7 +333,7 @@ jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value
             for (uint32_t i = 0; i < plen; i++) {
                 const char *key = JS_AtomToCString(ctx, ptab[i].atom);
                 JSValue val = JS_GetProperty(ctx, value, ptab[i].atom);
-                jobject valObj = toJavaObject(ctx, env, val);
+                jobject valObj = toJavaObject(ctx, env, val, depth + 1);
                 JS_FreeValue(ctx, val);
                 // 递归 toJavaObject 可能抛 JsNativeException (val 是 JS_EXCEPTION 时)。
                 // JNI 契约: 有 pending exception 时除 ExceptionClear 等少数函数外都是 UB,

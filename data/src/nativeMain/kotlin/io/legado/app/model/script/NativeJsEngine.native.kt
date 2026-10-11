@@ -116,6 +116,24 @@ import kotlin.coroutines.coroutineContext
 import platform.posix.memcpy
 
 /**
+ * JS 值转 Kotlin 对象的嵌套深度上限 (native 两端共用: [NativeJsEngine] 的返回值转换与
+ * [io.legado.app.model.script.NativeJsExtensionsBridge] 的桥接参数转换)。
+ *
+ * 两边都是递归下降转换, 而 JS 对象可自引用或环形引用 (`var a={}; a.self=a`),
+ * 无上限会无限递归直至写穿线程栈闪退。取 64: 真实书源返回的 JSON/对象层级远小于此值
+ * (一般 <10), 而栈余量足够安全。
+ */
+internal const val MAX_JS_DEPTH = 64
+
+/**
+ * 深度超限的报错文案。
+ *
+ * 两处共用同一句: 不区分"返回值"与"参数" —— 同一个守卫在两条路径上都会跑到。
+ */
+internal val JS_DEPTH_ERROR_MESSAGE =
+    "JS 值嵌套超过 $MAX_JS_DEPTH 层 (可能存在循环引用)"
+
+/**
  * JS_Eval 的 UTF-8 安全封装 (compile / evalInternal / bridge 工厂 eval 共用)。
  *
  * input_len 必须是 UTF-8 字节数: cinterop 把 Kotlin String 按 UTF-8 编码传给
@@ -779,7 +797,21 @@ object NativeJsEngine : JsEngine {
      * 注意: 调用方负责 JS_FreeValue(input), 本函数不释放 input;
      * 但本函数内部创建的临时 JSValue (如 array 元素、object 属性值) 会即时 JS_FreeValue。
      */
-    private fun fromJsValue(ctx: CPointer<JSContext>, v: CValue<JSValue>): Any? {
+    private fun fromJsValue(ctx: CPointer<JSContext>, v: CValue<JSValue>): Any? =
+        fromJsValue(ctx, v, 0)
+
+    /**
+     * 带深度上限的 [fromJsValue]。
+     *
+     * 本转换是**递归**的: JS 返回自引用对象 (如 `var a={}; a.self=a` 或循环引用图) 时
+     * 原实现会无限递归直至写穿线程栈闪退 (崩溃报告的 `fromJsValue/fromJsObject` 帧即此处)。
+     * 超过 [MAX_JS_DEPTH] 层按"对象过深"报错, 不静默截断为 null —— 静默会变成"规则莫名取不到值",
+     * 报错才能让书源作者看到真实原因。
+     */
+    private fun fromJsValue(ctx: CPointer<JSContext>, v: CValue<JSValue>, depth: Int): Any? {
+        if (depth > MAX_JS_DEPTH) {
+            throw NativeScriptException(JS_DEPTH_ERROR_MESSAGE)
+        }
         if (qjs_IsUndefined(v) != 0 || qjs_IsNull(v) != 0) return null
         if (qjs_IsBool(v) != 0) return qjs_ValueGetBool(v) != 0
         if (qjs_IsNumber(v) != 0) {
@@ -806,9 +838,9 @@ object NativeJsEngine : JsEngine {
             tryGetUint8ArrayBytes(ctx, v)?.let { return it }
             // 判断 array 还是 plain object
             if (JS_IsArray(v)) {
-                return fromJsArray(ctx, v)
+                return fromJsArray(ctx, v, depth)
             }
-            return fromJsObject(ctx, v)
+            return fromJsObject(ctx, v, depth)
         }
         // 其他类型 (symbol/bigint/function 等) fallback 到字符串
         val cstr = qjs_ToCString(ctx, v) ?: return null
@@ -819,8 +851,8 @@ object NativeJsEngine : JsEngine {
         }
     }
 
-    /** 把 JS array 转为 Kotlin List (递归)。 */
-    private fun fromJsArray(ctx: CPointer<JSContext>, arr: CValue<JSValue>): List<Any?> {
+    /** 把 JS array 转为 Kotlin List (递归, 带深度上限)。 */
+    private fun fromJsArray(ctx: CPointer<JSContext>, arr: CValue<JSValue>, depth: Int): List<Any?> {
         return memScoped {
             val pLen = alloc<LongVar>()
             if (JS_GetLength(ctx, arr, pLen.ptr) != 0) return@memScoped emptyList<Any?>()
@@ -830,7 +862,7 @@ object NativeJsEngine : JsEngine {
             for (i in 0 until count) {
                 val elem = JS_GetPropertyUint32(ctx, arr, i.toUInt())
                 try {
-                    result.add(fromJsValue(ctx, elem))
+                    result.add(fromJsValue(ctx, elem, depth + 1))
                 } finally {
                     JS_FreeValue(ctx, elem)
                 }
@@ -839,8 +871,8 @@ object NativeJsEngine : JsEngine {
         }
     }
 
-    /** 把 JS plain object 转为 [NativeNativeObject] (递归)。 */
-    private fun fromJsObject(ctx: CPointer<JSContext>, obj: CValue<JSValue>): NativeNativeObject {
+    /** 把 JS plain object 转为 [NativeNativeObject] (递归, 带深度上限)。 */
+    private fun fromJsObject(ctx: CPointer<JSContext>, obj: CValue<JSValue>, depth: Int): NativeNativeObject {
         val result = NativeNativeObject()
         memScoped {
             val pTab = alloc<CPointerVar<JSPropertyEnum>>()
@@ -861,7 +893,7 @@ object NativeJsEngine : JsEngine {
                             // 用 atom 取属性值 (避免再次通过 C 字符串解析)
                             val value = JS_GetProperty(ctx, obj, atom)
                             try {
-                                result[key] = fromJsValue(ctx, value)
+                                result[key] = fromJsValue(ctx, value, depth + 1)
                             } finally {
                                 JS_FreeValue(ctx, value)
                             }

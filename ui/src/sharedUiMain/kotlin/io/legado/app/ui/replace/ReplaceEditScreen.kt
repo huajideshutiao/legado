@@ -437,7 +437,7 @@ private fun ScopeCheckRow(
     }
 }
 
-/** 从表单字段组装 ReplaceRule (copy 保留 id/order, 同时丢弃实例上缓存的旧 regex) */
+/** 从表单字段组装 ReplaceRule (copy 保留 id/order) */
 private fun buildReplaceRule(
     base: ReplaceRule?,
     name: FieldState,
