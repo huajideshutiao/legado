@@ -15,6 +15,7 @@ import io.legado.app.service.ReadAloudChapterDataPort
 import io.legado.app.service.ReadAloudChapterPlan
 import io.legado.app.service.ReadAloudControllerShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
+import io.legado.app.service.ReadAloudPlanBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -39,21 +40,8 @@ abstract class ReadAloudHostShared(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    /** 当前朗读章节的完整段落表 (未按 startPos 裁剪)。 */
-    private var paragraphs: List<String> = emptyList()
-
-    /** 各段在章内的起始字符位置。 */
-    private var paragraphOffsets: IntArray = IntArray(0)
-
-    /** 控制器段下标 0 对应的真实段下标 (startPos 裁剪产生的偏移)。 */
-    private var paragraphBase: Int = 0
-
-    /** 首段被 startPos 裁掉的段内字符数。 */
-    private var firstParagraphSkip: Int = 0
-
-    /** 下一次 [ReadAloudControllerShared.start] 的章内起始字符位置。 */
-    @Volatile
-    private var pendingStartPos: Int = 0
+    /** 段落计划构建器 (与 Android 朗读服务共用同一算法, 状态由它持有)。 */
+    private val planBuilder = ReadAloudPlanBuilder()
 
     /** 本宿主最近一次写入的 durChapterPos, 用于把自身写入与用户翻页区分开。 */
     @Volatile
@@ -334,9 +322,9 @@ abstract class ReadAloudHostShared(
     /** 当前朗读段在章内占据的字符区间。 */
     private fun currentParagraphRange(): IntRange {
         val index = controllerRef?.paragraphIndex?.value ?: return IntRange.EMPTY
-        val real = paragraphBase + index.coerceAtLeast(0)
-        val start = paragraphOffsets.getOrNull(real) ?: return IntRange.EMPTY
-        val length = paragraphs.getOrNull(real)?.length ?: return IntRange.EMPTY
+        val real = planBuilder.paragraphBase + index.coerceAtLeast(0)
+        val start = planBuilder.paragraphOffsets.getOrNull(real) ?: return IntRange.EMPTY
+        val length = planBuilder.paragraphs.getOrNull(real)?.length ?: return IntRange.EMPTY
         return start until (start + length + 1)
     }
 
@@ -349,9 +337,9 @@ abstract class ReadAloudHostShared(
         val controller = controllerRef ?: return
         val position = ports.currentPosition ?: return
         if (position.chapterIndex != controller.chapterIndex.value) return
-        val real = paragraphBase + index
-        var pos = paragraphOffsets.getOrNull(real) ?: return
-        if (index == 0) pos += firstParagraphSkip
+        val real = planBuilder.paragraphBase + index
+        var pos = planBuilder.paragraphOffsets.getOrNull(real) ?: return
+        if (index == 0) pos += planBuilder.firstParagraphSkip
         lastSyncedPos = pos
         ports.advanceReadAloudPage(controller.chapterIndex.value, pos)
         ports.positionPublisher.publishPosition(pos)
@@ -393,42 +381,7 @@ abstract class ReadAloudHostShared(
     private fun chapterText(chapterIndex: Int): String? =
         ports.chapterData.chapterText(chapterIndex)
 
-    /**
-     * 建段落表并按 [pendingStartPos] 裁掉已读部分。
-     *
-     * 对照原版 `newReadAloud` 的 `getParagraphNum` + `paragraphStartPos`: 从包含起始位置的
-     * 那一段开始朗读, 该段内已读的字符直接截掉。
-     */
-    private fun buildParagraphs(chapterIndex: Int): List<String> {
-        val text = chapterText(chapterIndex) ?: return emptyList()
-        val all = ReadAloudQueue.splitParagraphs(text)
-        if (all.isEmpty()) return emptyList()
-        val offsets = IntArray(all.size)
-        var acc = 0
-        for (i in all.indices) {
-            offsets[i] = acc
-            acc += all[i].length + 1
-        }
-        paragraphs = all
-        paragraphOffsets = offsets
-
-        val startPos = pendingStartPos.coerceAtLeast(0)
-        pendingStartPos = 0
-        var base = 0
-        while (base + 1 < all.size && offsets[base + 1] <= startPos) base++
-        var skip = (startPos - offsets[base]).coerceIn(0, all[base].length)
-        if (skip >= all[base].length && base + 1 < all.size) {
-            base++
-            skip = 0
-        }
-        paragraphBase = base
-        firstParagraphSkip = skip
-        val sub = all.subList(base, all.size).toMutableList()
-        if (skip > 0) sub[0] = sub[0].substring(skip)
-        return sub
-    }
-
-    /** 将宿主章节数据端口适配为控制器的播放计划。 */
+    /** 将宿主章节数据端口适配为控制器的播放计划 (段落算法在 [planBuilder])。 */
     private val chapterData = object : ReadAloudChapterDataPort {
         override val chapterCount: Int get() = ports.chapterData.chapterCount
 
@@ -437,23 +390,8 @@ abstract class ReadAloudHostShared(
             chapterPosition: Int,
             fromLastSpeakable: Boolean,
         ): ReadAloudChapterPlan? {
-            pendingStartPos = chapterPosition
-            val plan = buildParagraphs(chapterIndex)
-                .takeIf { it.isNotEmpty() }
-                ?.let { ReadAloudChapterPlan(it, chapterPosition = chapterPosition) }
-                ?: return null
-            if (!fromLastSpeakable) return plan
-            val index = plan.paragraphs.indexOfLast {
-                !it.matches(io.legado.app.constant.AppPattern.notReadAloudRegex)
-            }
-            if (index < 0) return null
-            val chapterPos = paragraphOffsets.getOrNull(paragraphBase + index)
-                ?: plan.paragraphs.take(index).sumOf { it.length + 1 }
-            return plan.copy(
-                paragraphIndex = index,
-                paragraphOffset = 0,
-                chapterPosition = chapterPos,
-            )
+            val text = chapterText(chapterIndex) ?: return null
+            return planBuilder.buildPlan(text, chapterPosition, fromLastSpeakable)
         }
     }
     // endregion

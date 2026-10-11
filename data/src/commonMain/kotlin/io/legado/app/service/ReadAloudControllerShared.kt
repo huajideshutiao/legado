@@ -32,15 +32,18 @@ import kotlin.concurrent.Volatile
  * 对照 app 端 `TTSReadAloudService` 编排 (Service/Notification/MediaSession 强依赖 Android,
  * 无法下沉), 行为对齐 `TTSUtteranceListener.nextParagraph()` + `BaseReadAloudService.nextChapter()`。
  *
- * - [ReadAloudChapterNavigator] 注入章节内容获取 + 切换 (调用方桥接 ReadBookViewModelShared)
+ * - [ReadAloudChapterDataPort] 注入章节规模与可播放段落计划, [ReadAloudChapterNavigationPort]
+ *   注入切章 (调用方桥接 ReadBookViewModelShared)
  * - 不修改/不替换既有 [ReadAloudController], 二者并存 (后者留给细粒度段级控制场景);
  *   复用 [ReadAloudQueue] 纯状态机
  * - 线程: 本类方法在调用方线程执行; 引擎 onDone 在工作线程回调, 用 @Volatile + synchronized
- *   保护段级推进 (stop 时 onDone 仍触发); navigator 实现方自行处理跨线程
- * - 简化项: pause 实际等于 stop (桌面 TTS 限制, resume 从头读当前段); 不支持 HttpTTS
- *   (走 [ReadAloudController]); 不实现睡眠定时/通知/媒体会话/音频焦点 (app 端 Service 职责)
+ *   保护段级推进 (stop 时 onDone 仍触发); 端口实现方自行处理跨线程
+ * - 简化项: 引擎无真暂停能力时 pause 退化为 stop (resume 从当前段起点重读);
+ *   不实现通知/媒体会话/音频焦点 (由各端朗读宿主负责)
  *
- * @param navigator 章节导航器, 由调用方桥接到 ViewModel
+ * @param chapterData 章节数据端口 (规模 + 段落计划), 由调用方桥接到阅读页
+ * @param chapterNavigation 章节导航端口, 由调用方桥接到 ViewModel
+ * @param playbackPort 平台播放器端口; 非空时由它承担播放外壳 (Android Service)
  * @param engineProvider TTS 引擎提供者, 默认查 [TtsEngineProvider]; 测试时可注入 mock
  * @param httpTtsPlayerFactory HttpTTS 播放器工厂, 默认查 [TtsEngineProvider.getHttpTtsPlayer]
  * @param ttsEngineConfigProvider TTS 引擎配置, 默认 [defaultTtsEngineConfig]
@@ -765,37 +768,15 @@ class ReadAloudControllerShared(
 }
 
 /**
- * 章节导航器接口 (调用方实现, 桥接到 ViewModel)。
+ * 章节朗读计划 (由 [ReadAloudChapterDataPort.loadChapterPlan] 产出)。
  *
- * 抽象出 [ReadAloudControllerShared] 需要的章节能力, 避免 commonMain 直接依赖
- * [io.legado.app.ui.book.read.ReadBookViewModelShared] (UI 层)。
+ * 段落表已被请求起点裁剪过: paragraphs[0] 就是从起点那段 (段内已读字符已截掉)。
  *
- * 桌面端 actual 实现示例 (放在 desktop 模块):
- * ```
- * class DesktopReadAloudNavigator(
- *     private val viewModel: ReadBookViewModelShared,
- * ) : ReadAloudChapterNavigator {
- *     override val chapterCount: Int
- *         get() = viewModel.readBook.chapterSize
- *
- *     override fun loadChapterParagraphs(chapterIndex: Int): List<String> {
- *         // 桥接到 BookStorageProviders.get().getContent + WebBook
- *         // 简化: 用 ReadBookShared.curTextChapter 已加载的正文切段
- *         val chapter = viewModel.readBook.chapterList.value.getOrNull(chapterIndex) ?: return emptyList()
- *         val book = viewModel.readBook.book.value ?: return emptyList()
- *         val content = BookStorageProviders.get().getContent(book, chapter) ?: return emptyList()
- *         return ReadAloudQueue.splitParagraphs(content)
- *     }
- *
- *     override fun moveToChapter(chapterIndex: Int) {
- *         // 调 viewModel.loadChapter (会触发联网拉取与排版)
- *         viewModel.loadChapter(chapterIndex)
- *     }
- *
- *     override fun moveToNextChapter() = viewModel.moveToNextChapter()
- *     override fun moveToPrevChapter() = viewModel.moveToPrevChapter()
- * }
- * ```
+ * @param paragraphs 待朗读段落表 (已按起点裁剪)
+ * @param paragraphIndex 先读的段下标 (fromLastSpeakable 时指向最后一个可读段, 否则 0)
+ * @param paragraphOffset 先读段内的起始偏移 (承 paragraphs 已裁剪, 建队后为 0)
+ * @param chapterPosition 朗读起点在章内的真实字符位置 (段起点 + 段内偏移, 与
+ *   [ReadAloudQueue.readAloudNumber] 同一累加空间)
  */
 data class ReadAloudChapterPlan(
     val paragraphs: List<String>,
@@ -804,7 +785,16 @@ data class ReadAloudChapterPlan(
     val chapterPosition: Int = 0,
 )
 
-/** 章节数据访问端口：只负责提供章节规模与可播放计划。 */
+/**
+ * 章节数据访问端口：只负责提供章节规模与可播放计划。
+ *
+ * 抽象出 [ReadAloudControllerShared] 需要的章节能力, 避免 commonMain 直接依赖
+ * [io.legado.app.ui.book.read.ReadBookViewModelShared] (UI 层); 调用方接阅读页的已排版
+ * 章节 (Android: BaseReadAloudService 的 androidChapterData; 其余端: ReadAloudHostShared)。
+ *
+ * 章节未就绪时返回 null, 控制器置 WAITING, 就绪后由
+ * [ReadAloudControllerShared.retryWaiting] 重试。
+ */
 interface ReadAloudChapterDataPort {
     val chapterCount: Int
     fun loadChapterPlan(
@@ -826,20 +816,6 @@ interface ReadAloudPlaybackPort {
     fun onPause()
     fun onResume(): Boolean
     fun onSpeechRateChanged(rate: Float) = Unit
-}
-
-/** 兼容旧调用方的组合端口，新代码应分别注入数据与导航端口。 */
-@Deprecated("Inject ReadAloudChapterDataPort and ReadAloudChapterNavigationPort separately")
-interface ReadAloudChapterNavigator : ReadAloudChapterDataPort, ReadAloudChapterNavigationPort {
-    fun loadChapterParagraphs(chapterIndex: Int): List<String>
-    override fun loadChapterPlan(
-        chapterIndex: Int,
-        chapterPosition: Int,
-        fromLastSpeakable: Boolean,
-    ): ReadAloudChapterPlan? = ReadAloudChapterPlan(loadChapterParagraphs(chapterIndex))
-
-    fun moveToNextChapter() = Unit
-    fun moveToPrevChapter() = Unit
 }
 
 /**

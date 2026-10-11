@@ -37,7 +37,6 @@ import io.legado.app.help.media.MediaPlaybackNotification
 import io.legado.app.help.media.PhoneCallPauseHandler
 import io.legado.app.help.media.PhoneCallState
 import io.legado.app.help.media.SleepTimer
-import io.legado.app.help.tts.ReadAloudQueue
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.model.ActiveReadAloudHostPorts
@@ -177,6 +176,8 @@ abstract class BaseReadAloudService : BaseService() {
 
     private var requestedChapterPosition = 0
 
+    private val planBuilder = ReadAloudPlanBuilder()
+
     private val androidChapterData = object : ReadAloudChapterDataPort {
         override val chapterCount: Int get() = readBook?.simulatedChapterSize ?: 0
 
@@ -190,30 +191,11 @@ abstract class BaseReadAloudService : BaseService() {
                 ?: return null
             textChapter = chapter
             readAloudByPage = AppConfig.readAloudByPage
-            val paragraphs =
-                ReadAloudQueue.splitParagraphs(chapter.getNeedReadAloud(0, readAloudByPage, 0))
-            if (paragraphs.isEmpty()) return null
-            val target = chapterPosition.coerceAtLeast(0)
-            var offset = 0
-            var index = 0
-            if (fromLastSpeakable) {
-                index =
-                    paragraphs.indexOfLast { !it.matches(io.legado.app.constant.AppPattern.notReadAloudRegex) }
-                if (index < 0) return null
-                offset = paragraphs.take(index).sumOf { it.length + 1 }
-            } else {
-                while (index + 1 < paragraphs.size && offset + paragraphs[index].length + 1 <= target) {
-                    offset += paragraphs[index].length + 1
-                    index++
-                }
-            }
-            return ReadAloudChapterPlan(
-                paragraphs = paragraphs,
-                paragraphIndex = index,
-                paragraphOffset = if (fromLastSpeakable) 0 else
-                    (target - offset).coerceIn(0, paragraphs[index].length),
-                // Android 计划的位置必须是请求目标；段起点另由 paragraphOffset 描述。
-                chapterPosition = if (fromLastSpeakable) offset else target,
+            // 段落计划与 shared 朗读宿主共用同一构建器 (安卓获得段界 skip 钳制)
+            return planBuilder.buildPlan(
+                chapter.getNeedReadAloud(0, readAloudByPage, 0),
+                chapterPosition,
+                fromLastSpeakable,
             )
         }
     }
