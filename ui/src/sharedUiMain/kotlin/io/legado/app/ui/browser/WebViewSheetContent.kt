@@ -42,7 +42,7 @@ internal fun WebViewSheetContent(
         onToggleFullScreen = onToggleFullScreen,
         backHandler = { onScreenBack -> BackLayerHandler(enabled = true) { onScreenBack() } },
         contentModifier = Modifier
-            .background(AppTheme.colors.background)
+            .background(AppTheme.colors.bottomBackground)
             .sheetDragExclusion(),
     )
 }

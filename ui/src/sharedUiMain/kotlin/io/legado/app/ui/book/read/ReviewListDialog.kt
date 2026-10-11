@@ -174,8 +174,6 @@ fun ReviewListDialog(
     Column(
         modifier
             .fillMaxSize()
-            .clip(DesignTokens.sheetShape)
-            .background(rememberColor("background"))
     ) {
         // 顶栏三段: 左关闭槽 + 居中标题 + 右排序槽。标题居中于整条顶栏 (对照原版
         // tv_title layout_gravity=center), 可用宽度对称扣除两侧槽宽, 长标题不压住排序入口

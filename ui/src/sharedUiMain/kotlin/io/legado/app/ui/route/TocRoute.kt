@@ -1,7 +1,6 @@
 package io.legado.app.ui.route
 
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -27,9 +26,9 @@ import io.legado.app.ui.book.toc.TocUiActions
 import io.legado.app.ui.book.toc.TocUiEvent
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
@@ -84,7 +83,7 @@ fun TocRoute(
 }
 
 /**
- * 目录弹窗形态 (对照原版 TocListDialog / TocDialog: 全高底部弹窗)。
+ * 目录弹窗形态 (重写版自创: 原版目录入口为全屏 TocActivity, 无半屏弹窗基准)。
  * 由阅读页"目录"按钮弹起, 选章节经 [onOpenChapter] 回传并关闭。
  */
 @Composable
@@ -100,9 +99,7 @@ fun TocDialogHost(
         properties = AppDialogSizes.properties(),
     ) {
         AppTheme {
-            Surface(
-                shape = DesignTokens.dialogShape,
-                color = AppTheme.colors.background,
+            AppSheetSurface(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 TocContent(

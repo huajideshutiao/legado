@@ -277,9 +277,9 @@ fun AppDialog(
 }
 
 /**
- * 对话框正文统一容器：8dp 圆角 (shapeDefault) + fillet 底色收口于此, 与命令式宿主
- * filletBackground 同规格; 对话框正文一律用它, 不再各自声明 shape。
- * 需要其他底色/形状的 (贴底弹层等) 经 color/shape 覆盖。
+ * 居中对话框正文统一容器：8dp 圆角 (shapeDefault) + fillet 底色收口于此, 与命令式宿主
+ * filletBackground 同规格; 居中对话框正文一律用它, 不再各自声明 shape。
+ * 贴底弹层面板用 [AppSheetSurface]。
  */
 @Composable
 fun AppDialogSurface(
@@ -291,6 +291,25 @@ fun AppDialogSurface(
     Surface(
         modifier = modifier,
         shape = shape,
+        color = color,
+        content = content,
+    )
+}
+
+/**
+ * 半屏贴底弹层统一面板容器：仅上两角 16dp (sheetShape) + 底栏色 (bottomBackground)
+ * 收口于此; [AppBottomSheetDialog] 面板一律用它, 不再各自声明 shape/底色。
+ * 全屏态需要去掉圆角的面板 (如半屏 WebView) 仍用 Surface 自行裁剪。
+ */
+@Composable
+fun AppSheetSurface(
+    modifier: Modifier = Modifier,
+    color: Color = AppTheme.colors.bottomBackground,
+    content: @Composable () -> Unit,
+) {
+    Surface(
+        modifier = modifier,
+        shape = AppTheme.DesignTokens.sheetShape,
         color = color,
         content = content,
     )

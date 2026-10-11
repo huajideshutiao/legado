@@ -54,7 +54,7 @@ import legado.ui.generated.resources.system_tts
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 朗读设置对话框形态 (公共对话框基类: 0.9 宽居中 + fillet 底色 + dialogShape 圆角 +
+ * 朗读设置对话框形态 (公共对话框基类: 0.9 宽居中 + fillet 底色 + shapeDefault 8dp 圆角 +
  * DialogTitleBar 标题栏; 2026-10-11 用户拍板偏离原版 BasePrefDialogFragment 的
  * 无圆角/无标题形态, 对齐其他对话框)。由朗读控制面板"设置"按钮弹起。
  *

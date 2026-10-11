@@ -1291,12 +1291,12 @@ private fun SheetOverlayContent(overlay: AppOverlay.Sheet, navigator: AppNavigat
     ) {
         AppTheme {
             Surface(
-                color = AppTheme.colors.background,
+                color = AppTheme.colors.bottomBackground,
                 modifier = Modifier
                     .fillMaxWidth()
-                    // 顶部圆角 20dp (对照原版 JsActivity BottomSheetDialog 的 GradientDrawable
-                    // 20dp 顶部圆角); 外层同色背景矩形会填掉内层 Column 裁剪掉的顶角, 这里同样裁圆角。
-                    // 全屏态贴齐窗口四边, 圆角去掉 (对齐全屏路由页的观感)
+                    // 顶部圆角收口于 sheetShape (对照原版 JsActivity BottomSheetDialog 的
+                    // GradientDrawable 顶部圆角); 外层同色背景矩形会填掉内层 Column 裁剪掉的顶角,
+                    // 这里同样裁圆角。全屏态贴齐窗口四边, 圆角去掉 (对齐全屏路由页的观感)
                     .then(
                         if (fullScreen) Modifier
                         else Modifier.clip(DesignTokens.sheetShape)

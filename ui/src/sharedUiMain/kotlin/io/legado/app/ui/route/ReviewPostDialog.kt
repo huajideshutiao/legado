@@ -2,7 +2,6 @@ package io.legado.app.ui.route
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -20,12 +19,12 @@ import io.legado.app.ui.book.read.review.ReviewPostScreenModel
 import io.legado.app.ui.book.read.review.ReviewPostUiActions
 import io.legado.app.ui.book.read.review.ReviewPostUiEvent
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
+import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.LocalSheetDismissRequest
 import io.legado.app.ui.compose.platform.bottomSheetBottomInsets
 import io.legado.app.ui.compose.platform.rememberImeVisible
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.reply_review_to
 import legado.ui.generated.resources.review_post_hint
@@ -135,11 +134,9 @@ fun ReviewPostDialogHost(
                 }
             }
 
-            Surface(
-                // bg_review_dialog: 顶部左右 20dp 圆角, 底部直角 (贴屏底)
-                shape = DesignTokens.sheetShape,
-                color = AppTheme.colors.background,
-                // 原版 sheet 是 match_parent 宽 + 贴底, 不做对话框式收窄/外边距
+            // 对照原版 bg_review_dialog: 顶角圆角、底部直角贴屏底 (顶角统一由 sheetShape 收口);
+            // 原版 sheet 是 match_parent 宽 + 贴底, 不做对话框式收窄/外边距
+            AppSheetSurface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(bottomSheetBottomInsets()),

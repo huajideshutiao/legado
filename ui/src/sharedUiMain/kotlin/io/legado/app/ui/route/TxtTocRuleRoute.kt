@@ -44,7 +44,7 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
+import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTitleBar
@@ -210,8 +210,7 @@ fun TxtTocRuleDialogHost(
         properties = AppDialogSizes.properties(),
     ) {
         AppTheme {
-            AppDialogSurface(
-                color = AppTheme.colors.background,
+            AppSheetSurface(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 TxtTocRuleDialogContent(

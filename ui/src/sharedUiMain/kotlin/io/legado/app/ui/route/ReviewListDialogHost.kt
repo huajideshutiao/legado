@@ -3,7 +3,6 @@ package io.legado.app.ui.route
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -13,7 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -27,8 +26,8 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
@@ -81,6 +80,8 @@ fun ReviewListContent(
     paragraphIndex: Int,
     parentReview: Review? = null,
     onDismiss: () -> Unit,
+    /** 面板底色: 弹窗形态由宿主传底栏色, 宽屏侧栏面板维持背景色 */
+    containerColor: Color = AppTheme.colors.background,
     /** 回复详情嵌套承载: true=再开一层弹窗 (Host 弹窗形态, 原版两层 Dialog 语义); false=同容器替换 (宽屏面板形态) */
     wrapRepliesInSheet: Boolean = false,
 ) {
@@ -150,7 +151,7 @@ fun ReviewListContent(
         })
     }
 
-    Box(Modifier.fillMaxSize().background(AppTheme.colors.background)) {
+    Box(Modifier.fillMaxSize().background(containerColor)) {
                     ReviewListDialog(
                         title = title,
                         parentReview = parentReview,
@@ -281,14 +282,11 @@ fun ReviewListDialogHost(
         maxHeight = sheetHeight,
     ) {
         AppTheme {
-            Surface(
-                color = AppTheme.colors.background,
-                // fillMaxSize 跟随外层: 默认被 maxHeight 钳在 0.8 锚点高, 上拉拖拽展开时
-                // 跟着变高到视觉全屏 (AppBottomSheetDialog 自带的双向拖拽语义);
-                // 之前写死 .height(sheetHeight) 会把展开高度钉死, 上拉只放大外层空壳
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(DesignTokens.sheetShape),
+            // fillMaxSize 跟随外层: 默认被 maxHeight 钳在 0.8 锚点高, 上拉拖拽展开时
+            // 跟着变高到视觉全屏 (AppBottomSheetDialog 自带的双向拖拽语义);
+            // 写死 .height(sheetHeight) 会把展开高度钉死, 上拉只放大外层空壳
+            AppSheetSurface(
+                modifier = Modifier.fillMaxSize(),
             ) {
                 ReviewListContent(
                     book = book,
@@ -296,6 +294,7 @@ fun ReviewListDialogHost(
                     paragraphIndex = paragraphIndex,
                     parentReview = parentReview,
                     onDismiss = onDismiss,
+                    containerColor = AppTheme.colors.bottomBackground,
                     wrapRepliesInSheet = true,
                 )
             }

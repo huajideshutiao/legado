@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
+import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.component.LocalSheetDismissRequest
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -54,9 +54,9 @@ fun AutoReadPanelDialogHost(
         properties = AppDialogSizes.properties(),
         dismissed = dismissed,
     ) {
-        // 原版 AutoReadDialog: BaseBottomDialogFragment 全宽贴底 + filletBackground 8dp 圆角;
+        // 原版 AutoReadDialog: BaseBottomDialogFragment 全宽贴底;
         // 内容 8dp 间距由 AutoReadPanel 内部 padding 提供
-        AppDialogSurface(
+        AppSheetSurface(
             modifier = Modifier.fillMaxWidth(),
         ) {
             AutoReadPanel(controller = controller, actions = actions)

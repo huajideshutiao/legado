@@ -78,7 +78,7 @@ import org.jetbrains.compose.resources.stringResource
  *
  * # 样式 (Arco Design 规范)
  *
- * - 公共对话框基类: 0.9 宽 (上限 800dp) + dialogShape 圆角 + fillet 底色,
+ * - 公共对话框基类: 0.9 宽 (上限 800dp) + shapeDefault 8dp 圆角 + fillet 底色,
  *   高度内容自适应 (FastScrollLazyColumn wrapContentHeight, 超出封顶 0.8 锚点高滚动)
  * - 无阴影 (Surface 默认无阴影)
  *

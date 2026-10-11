@@ -61,7 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
+import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.LocalSheetDismissRequest
@@ -157,14 +157,14 @@ fun ReadAloudDialog(
     // 内容侧带动画收起 (对照原版 dismissAllowingStateLoss 的动画语义; 不在弹层内时兜底直关)
     val requestDismiss = LocalSheetDismissRequest.current ?: onDismiss
 
-    // 底部弹层 (对照原版 BaseBottomDialogFragment: 窗口 MATCH_PARENT 全宽贴底 +
-    // filletBackground 8dp 圆角; 内容 8dp 间距由下方 Column padding 提供)
+    // 底部弹层 (对照原版 BaseBottomDialogFragment: 窗口 MATCH_PARENT 全宽贴底;
+    // 内容 8dp 间距由下方 Column padding 提供)
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
         dismissed = dismissed,
     ) {
-        AppDialogSurface(
+        AppSheetSurface(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(

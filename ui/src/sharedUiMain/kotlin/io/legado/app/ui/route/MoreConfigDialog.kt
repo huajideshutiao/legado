@@ -2,7 +2,6 @@ package io.legado.app.ui.route
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,7 +21,7 @@ import io.legado.app.ui.book.read.config.MoreConfigScreen
 import io.legado.app.ui.book.read.page.detectClickArea
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
+import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -49,9 +48,8 @@ fun MoreConfigDialogHost(
     ) {
         AppTheme {
             // 原版 setupAsBottomDialog: MATCH_PARENT 全宽 + 高 480dp (BasePrefDialogFragment);
-            // 圆角按对话框统一规格收口为 shapeDefault, 背景 bottomBackground (createPrefContainer)
-            AppDialogSurface(
-                color = AppTheme.colors.bottomBackground,
+            // 圆角/底色收口于半屏弹层统一规格 (AppSheetSurface: 仅上两角 16dp + bottomBackground)
+            AppSheetSurface(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
             ) {
                 MoreConfigBody(
