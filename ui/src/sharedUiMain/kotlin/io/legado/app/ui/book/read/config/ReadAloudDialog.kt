@@ -64,6 +64,7 @@ import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSwitch
+import io.legado.app.ui.compose.component.LocalSheetDismissRequest
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
@@ -127,6 +128,7 @@ fun ReadAloudDialog(
     initialTimer: Int = 0,
     initialSpeechRate: Int = 5,
     initialFollowSys: Boolean = false,
+    dismissed: Boolean = false,
     onPlayPause: () -> Unit,
     onStop: () -> Unit,
     onPrev: () -> Unit,
@@ -152,12 +154,15 @@ fun ReadAloudDialog(
     var timerMenuExpanded by remember { mutableStateOf(false) }
     // 拖动中的语速预览值 (与原版 AppSlider 拖动语义对齐: 拖动中仅刷新显示, 抬手回调)
     var draggingSpeed by remember { mutableFloatStateOf(-1f) }
+    // 内容侧带动画收起 (对照原版 dismissAllowingStateLoss 的动画语义; 不在弹层内时兜底直关)
+    val requestDismiss = LocalSheetDismissRequest.current ?: onDismiss
 
     // 底部弹层 (对照原版 BaseBottomDialogFragment: 窗口 MATCH_PARENT 全宽贴底 +
     // filletBackground 8dp 圆角; 内容 8dp 间距由下方 Column padding 提供)
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
+        dismissed = dismissed,
     ) {
         AppDialogSurface(
             modifier = Modifier.fillMaxWidth(),
@@ -199,7 +204,7 @@ fun ReadAloudDialog(
                         tint = colors.primaryText,
                         onClick = {
                             onStop()
-                            onDismiss()
+                            requestDismiss()
                         },
                     )
                     AloudIcon(
@@ -377,7 +382,7 @@ fun ReadAloudDialog(
                         label = stringResource(Res.string.main_menu),
                         onClick = {
                             onShowMenuBar()
-                            onDismiss()
+                            requestDismiss()
                         },
                     )
                     Spacer(Modifier.weight(2f))

@@ -25,6 +25,7 @@ import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppSlider
+import io.legado.app.ui.compose.component.LocalSheetDismissRequest
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -45,11 +46,13 @@ import org.jetbrains.compose.resources.stringResource
 fun AutoReadPanelDialogHost(
     controller: AutoReadController,
     actions: AutoReadActions,
+    dismissed: Boolean = false,
     onDismiss: () -> Unit,
 ) {
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
+        dismissed = dismissed,
     ) {
         // 原版 AutoReadDialog: BaseBottomDialogFragment 全宽贴底 + filletBackground 8dp 圆角;
         // 内容 8dp 间距由 AutoReadPanel 内部 padding 提供
@@ -128,6 +131,9 @@ fun AutoReadPanel(
     var speed by remember {
         mutableIntStateOf(controller.autoReadSpeed.coerceAtLeast(1))
     }
+    // 内容侧带动画收起 (主菜单按钮: 菜单滑入与面板滑出并行, 对照原版 showMenuBar + dismiss;
+    // 非 BottomSheet 宿主为 null, 收起由宿主自己的关闭路径负责)
+    val requestDismiss = LocalSheetDismissRequest.current
     Column(
         Modifier.fillMaxWidth().padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault)
     ) {
@@ -171,6 +177,7 @@ fun AutoReadPanel(
                 colors.primaryText
             ) {
                 actions.showMenuBar()
+                requestDismiss?.invoke()
             }
             Spacer(Modifier.weight(1f))
             ReadMenuIconButton(

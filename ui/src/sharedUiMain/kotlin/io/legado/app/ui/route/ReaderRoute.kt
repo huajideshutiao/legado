@@ -1,5 +1,10 @@
 package io.legado.app.ui.route
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -60,6 +65,7 @@ import io.legado.app.ui.book.manage.ShelfDeleteRequest
 import io.legado.app.ui.book.manage.confirmShelfDelete
 import io.legado.app.ui.book.manage.startShelfDelete
 import io.legado.app.ui.book.read.ReaderDialogEvent
+import io.legado.app.ui.book.read.ReaderPlatformProvider
 import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.read.ReaderScreen
 import io.legado.app.ui.book.read.ReaderScreenModel
@@ -173,7 +179,7 @@ fun ReaderRoute(
         minState = Lifecycle.State.STARTED,
         onEnter = {
             provider.onEnter(screenModel)
-            // 注册为当前阅读屏 (鸿蒙 napi 回调/非 Compose 宿主取 dialogEvent/menuState 用)
+            // 注册为当前阅读屏 (鸿蒙 napi 回调/非 Compose 宿主取 screenModel 用)
             ReaderScreenModelRegistry.attach(screenModel)
         },
         onLeave = {
@@ -737,8 +743,26 @@ fun ReaderRoute(
     // endregion
 
     // region 对话框渲染 (书签/正文编辑/日志, 由 AndroidReaderMenuState 触发)
-    val dialogEvent by screenModel.dialogEvent.collectAsState()
-    when (val event = dialogEvent) {
+    val dialogSlot by screenModel.dialogSlot.collectAsState()
+    // 谁进谁出: 面板切走时新对话框立即组合, 旧面板保持组合一个出场时长 (期间面板按
+    // dismissed 播滑出, 到点自动移除), 对照原版对话框 dismiss 滑出 + 新旧并行的观感。
+    // 父层变换对独立窗口无视觉, 进出淡入淡出仅作组合驻留计时, 时长与面板滑出同源。
+    // 槽值带本轮打开代次: 离场判定与关闭都按它比对, 与关闭赛跑的那一轮不会互伤。
+    val dialogExitMillis = remember {
+        PlatformCapabilityProviders.get().dialogTransitionSpec.exitDurationMillis
+    }
+    AnimatedContent(
+        targetState = dialogSlot,
+        transitionSpec = {
+            fadeIn(tween(dialogExitMillis)) togetherWith fadeOut(tween(dialogExitMillis))
+        },
+        label = "readerDialogEvent",
+    ) { panel ->
+        // null = 无对话框, 仅作旧面板的退场目标
+        if (panel == null) return@AnimatedContent
+        // 关闭本面板: 只清本轮代次, 退出动画期间槽里换成别轮打开时不误清
+        val closeDialog = { screenModel.clearDialogEvent(panel.token) }
+        when (val event = panel.event) {
         is ReaderDialogEvent.RestoreProcessConfirm -> {
             // 返回键恢复跳转前进度确认 (对照原版 restoreLastBookProcess 的 alert：
             // 是=恢复跳转前进度并以后总是恢复；否/点外部关闭=放弃快照并以后不再询问)
@@ -746,19 +770,19 @@ fun ReaderRoute(
                 onDismissRequest = {
                     screenModel.clearLastBookProgress()
                     screenModel.confirmRestoreProcess = false
-                    screenModel.clearDialogEvent()
+                    closeDialog()
                 },
                 title = stringResource(Res.string.draw),
                 message = stringResource(Res.string.restore_last_book_process),
                 okButton = AlertButton(stringResource(Res.string.yes)) {
                     screenModel.confirmRestoreProcess = true
                     screenModel.restoreLastBookProgress()
-                    screenModel.clearDialogEvent()
+                    closeDialog()
                 },
                 cancelButton = AlertButton(stringResource(Res.string.no)) {
                     screenModel.clearLastBookProgress()
                     screenModel.confirmRestoreProcess = false
-                    screenModel.clearDialogEvent()
+                    closeDialog()
                 },
             )
         }
@@ -768,14 +792,14 @@ fun ReaderRoute(
             val book = screenModel.currentBook
             val chapter = screenModel.currentChapter
             if (book == null || chapter == null) {
-                screenModel.clearDialogEvent()
+                closeDialog()
             } else {
                 AppAlertDialog(
-                    onDismissRequest = { screenModel.clearDialogEvent() },
+                    onDismissRequest = { closeDialog() },
                     title = stringResource(Res.string.chapter_pay),
                     message = chapter.title,
                     okButton = AlertButton(stringResource(Res.string.ok)) {
-                        screenModel.clearDialogEvent()
+                        closeDialog()
                         screenModel.payChapter { url ->
                             // 2026-08-06: 打开方式与 onChapterViewClick 一致, 走平台 openWebView
                             // (桌面端=独立窗口, 移动端=原 WebViewRoute 路由)
@@ -785,7 +809,7 @@ fun ReaderRoute(
                         }
                     },
                     cancelButton = AlertButton(stringResource(Res.string.cancel)) {
-                        screenModel.clearDialogEvent()
+                        closeDialog()
                     },
                 )
             }
@@ -796,21 +820,21 @@ fun ReaderRoute(
             // 确定=入架后不退出留在阅读界面；取消=删除后退出；点外部关闭留在阅读页)
             val book = screenModel.currentBook
             if (book == null) {
-                screenModel.clearDialogEvent()
+                closeDialog()
             } else {
                 AppAlertDialog(
-                    onDismissRequest = { screenModel.clearDialogEvent() },
+                    onDismissRequest = { closeDialog() },
                     title = stringResource(Res.string.add_to_bookshelf),
                     message = stringResource(Res.string.check_add_bookshelf, book.name),
                     okButton = AlertButton(stringResource(Res.string.ok)) {
                         // 入架成功后才关弹框：toggleBookshelfCore 原地清掉 book.type 的 notShelf 位，
                         // 关弹框触发重组使 AppBackHandler.enabled 重求值为 false，下次返回直接退出不再弹框
                         screenModel.viewModel.addToBookshelf {
-                            screenModel.clearDialogEvent()
+                            closeDialog()
                         }
                     },
                     cancelButton = AlertButton(stringResource(Res.string.cancel)) {
-                        screenModel.clearDialogEvent()
+                        closeDialog()
                         removeFromShelfAndExit(book)
                     },
                 )
@@ -827,9 +851,9 @@ fun ReaderRoute(
                             AppDbProviders.get().bookmarkDao.insert(updated)
                         }
                     }
-                    screenModel.clearDialogEvent()
+                    closeDialog()
                 },
-                onDismiss = { screenModel.clearDialogEvent() },
+                onDismiss = { closeDialog() },
             )
         }
 
@@ -861,9 +885,9 @@ fun ReaderRoute(
                             )
                         }
                     }
-                    screenModel.clearDialogEvent()
+                    closeDialog()
                 },
-                onDismiss = { screenModel.clearDialogEvent() },
+                onDismiss = { closeDialog() },
                 // 重置: 正文重拉完成后刷新阅读器 (对照原版 menu_reset 回调里 ReadBook.loadContent:
                 // 此时新缓存已就绪, loadChapter 从缓存装载, 不重复下载; keepScrollOffset 保留滚动偏移)
                 onReset = {
@@ -881,20 +905,20 @@ fun ReaderRoute(
         }
 
         is ReaderDialogEvent.Log -> {
-            AppLogDialog(onDismiss = { screenModel.clearDialogEvent() })
+            AppLogDialog(onDismiss = { closeDialog() })
         }
 
         // 更多设置 (对照原版 设置按钮 → MoreConfigDialog 底部弹窗)
         is ReaderDialogEvent.MoreConfig -> {
             MoreConfigDialogHost(
-                onDismiss = { screenModel.clearDialogEvent() },
+                onDismiss = { closeDialog() },
             )
         }
 
         // 界面/样式设置 (对照原版 界面按钮 → ReadStyleDialog 底部弹窗; 子配置在弹窗内叠层)
         is ReaderDialogEvent.ReadStyle -> {
             ReadStyleDialogHost(
-                onDismiss = { screenModel.clearDialogEvent() },
+                onDismiss = { closeDialog() },
             )
         }
 
@@ -924,7 +948,7 @@ fun ReaderRoute(
                             AppRoute.ReplaceEdit(),
                             resultKey = RouteResults.REPLACE_EDIT
                         )
-                        screenModel.clearDialogEvent()
+                        closeDialog()
                     },
                     onItemClick = { rule ->
                         if (rule === replacesModel.chineseConvert) {
@@ -934,7 +958,7 @@ fun ReaderRoute(
                                 AppRoute.ReplaceEdit(rule.id),
                                 resultKey = RouteResults.REPLACE_EDIT
                             )
-                            screenModel.clearDialogEvent()
+                            closeDialog()
                         }
                     },
                     onManageAll = {
@@ -942,9 +966,9 @@ fun ReaderRoute(
                             AppRoute.ReplaceRule,
                             resultKey = RouteResults.REPLACE_EDIT
                         )
-                        screenModel.clearDialogEvent()
+                        closeDialog()
                     },
-                    onDismiss = { screenModel.clearDialogEvent() },
+                    onDismiss = { closeDialog() },
                 )
             }
             // 繁简转换选择器 (对照 EffectiveReplacesDialog)
@@ -962,68 +986,30 @@ fun ReaderRoute(
         // 朗读设置 (对照原版 朗读面板设置按钮 → ReadAloudConfigDialog)
         is ReaderDialogEvent.ReadAloudConfig -> {
             ReadAloudConfigDialogHost(
-                onDismiss = { screenModel.clearDialogEvent() },
+                onDismiss = { closeDialog() },
             )
         }
 
-        // 朗读控制面板 (对照原版 ReadMenu 朗读按钮长按 → ReadAloudDialog)
+        // 朗读控制面板 (对照原版 ReadMenu 朗读按钮长按 → ReadAloudDialog);
+        // 退出中的面板 (代次已不是当前轮次) 读到 dismissed 即播滑出
         is ReaderDialogEvent.ReadAloud -> {
-            val controls = remember(provider, navigator, screenModel) {
-                provider.readAloudControls(navigator, screenModel)
-            }
-            if (controls == null) {
-                // 该端无朗读实现: 直接销事件, 避免卡住后续对话框
-                LaunchedEffect(screenModel) { screenModel.clearDialogEvent() }
-            } else {
-                // 朗读态/定时走事件流重组 (对照 app 端 ReadAloudDialog 的 aloudState/readAloudDs 订阅)
-                var playing by remember { mutableStateOf(controls.isPlaying) }
-                var timer by remember { mutableIntStateOf(controls.timerMinute) }
-                LaunchedEffect(controls) {
-                    ReadBookEvents.aloudState.collect { playing = controls.isPlaying }
-                }
-                LaunchedEffect(controls) {
-                    ReadBookEvents.readAloudDs.collect { timer = it }
-                }
-                ReadAloudDialog(
-                    isPlaying = playing,
-                    initialTimer = timer,
-                    initialSpeechRate = controls.speechRate,
-                    initialFollowSys = controls.followSys,
-                    onPlayPause = { controls.playPause() },
-                    onStop = { controls.stop() },
-                    onPrev = { controls.prevChapter() },
-                    onNext = { controls.nextChapter() },
-                    onPrevParagraph = { controls.prevParagraph() },
-                    onNextParagraph = { controls.nextParagraph() },
-                    onSetTimer = { controls.setTimer(it) },
-                    // 面板回调是展示倍率, 还原成原版 ttsSpeechRate 口径 (rate*10-5)
-                    onAdjustSpeed = { controls.setSpeechRate((it * 10f).toInt() - 5) },
-                    onFollowSysChange = { controls.setFollowSys(it) },
-                    onOpenChapterList = {
-                        screenModel.clearDialogEvent()
-                        controls.openChapterList()
-                    },
-                    onShowMenuBar = { screenModel.showMenu() },
-                    onBackstage = {
-                        screenModel.clearDialogEvent()
-                        controls.toBackstage()
-                    },
-                    onOpenSettings = {
-                        screenModel.clearDialogEvent()
-                        controls.openSettings()
-                    },
-                    onDismiss = { screenModel.clearDialogEvent() },
-                )
-            }
+            AloudPanelContent(
+                provider = provider,
+                navigator = navigator,
+                screenModel = screenModel,
+                onDismiss = closeDialog,
+                dismissed = panel.token != dialogSlot?.token,
+            )
         }
 
-        // 自动翻页控制面板 (对照原版 自动翻页运行时点屏幕 → AutoReadDialog: 速度滑条 + 目录/主菜单/停止/设置)
+        // 自动翻页控制面板 (对照原版 自动翻页运行时点屏幕 → AutoReadDialog: 速度滑条 + 目录/主菜单/停止/设置);
+        // dismissed 同上由 AnimatedContent 驱动
         is ReaderDialogEvent.AutoRead -> {
             // 自动翻页自行结束 (如翻到全书末尾, app 端 pager.onEnd → stopAutoPage) 时收起面板
             // (对照原版 autoPageStop → dismissDialogFragment(AutoReadDialog))
             val autoPageActive = screenModel.menuState.autoPage
             LaunchedEffect(autoPageActive) {
-                if (!autoPageActive) screenModel.clearDialogEvent()
+                if (!autoPageActive) closeDialog()
             }
             AutoReadPanelDialogHost(
                 controller = object : AutoReadController {
@@ -1035,28 +1021,26 @@ fun ReaderRoute(
                         }
                 },
                 actions = object : AutoReadActions {
-                    // 目录按钮 → TocDialog (对照原版 callBack.openChapterList)
+                    // 目录按钮 → TocDialog (对照原版 callBack.openChapterList); 面板由驻留层自动离场
                     override fun openChapterList() {
-                        screenModel.clearDialogEvent()
                         screenModel.postDialogEvent(ReaderDialogEvent.Toc)
                     }
 
-                    // 主菜单按钮 → 强制弹常规菜单 (对照原版 callBack.showMenuBar, 不走 autoPage 重定向)
+                    // 主菜单按钮 → 强制弹常规菜单 (对照原版 callBack.showMenuBar, 不走 autoPage 重定向;
+                    // 面板收起由内容侧带动画 requestDismiss 驱动, 完成后经 onDismiss 清事件)
                     override fun showMenuBar() {
-                        screenModel.clearDialogEvent()
                         screenModel.menuController.showMenu()
                     }
 
-                    // 停止自动翻页 (对照原版 callBack.autoPageStop)
+                    // 停止自动翻页 (对照原版 callBack.autoPageStop); 面板由上方 autoPageActive
+                    // 联动清事件后走离场动画
                     override fun autoPageStop() {
-                        screenModel.clearDialogEvent()
                         provider.autoPageStop(screenModel)
                     }
 
-                    // 设置按钮 → 界面设置 (原版这里开 showPageAnimConfig 选择器, 但该选择器
-                    // 回调忽略索引、不写动画值，选完无效; 翻页动画的实际入口就是界面设置)
+                    // 设置按钮 → 界面设置; 面板由驻留层自动离场 (原版这里开 showPageAnimConfig
+                    // 选择器, 但该选择器回调忽略索引、不写动画值，选完无效; 翻页动画的实际入口就是界面设置)
                     override fun showReadStyle() {
-                        screenModel.clearDialogEvent()
                         screenModel.postDialogEvent(ReaderDialogEvent.ReadStyle)
                     }
 
@@ -1065,7 +1049,8 @@ fun ReaderRoute(
                         provider.upTtsSpeechRate(screenModel)
                     }
                 },
-                onDismiss = { screenModel.clearDialogEvent() },
+                dismissed = panel.token != dialogSlot?.token,
+                onDismiss = closeDialog,
             )
         }
 
@@ -1077,7 +1062,7 @@ fun ReaderRoute(
                     book = book,
                     navigator = navigator,
                     onOpenChapter = { index, pos ->
-                        screenModel.clearDialogEvent()
+                        closeDialog()
                         screenModel.openChapter(index, pos)
                     },
                     onTocRegexChanged = { tocBook, _ ->
@@ -1085,10 +1070,10 @@ fun ReaderRoute(
                         // 阅读页按新规则重载目录 (本地 txt 重新解析)
                         screenModel.viewModel.loadChapterList(tocBook)
                     },
-                    onDismiss = { screenModel.clearDialogEvent() },
+                    onDismiss = { closeDialog() },
                 )
             } else {
-                LaunchedEffect(screenModel) { screenModel.clearDialogEvent() }
+                LaunchedEffect(screenModel) { closeDialog() }
             }
         }
 
@@ -1099,7 +1084,7 @@ fun ReaderRoute(
                 ChangeSourceDialogHost(
                     book = book,
                     onSourceChanged = { source, newBook, toc ->
-                        screenModel.clearDialogEvent()
+                        closeDialog()
                         screenModel.changeTo(source, newBook, toc)
                     },
                     onEditSource = { origin ->
@@ -1109,10 +1094,10 @@ fun ReaderRoute(
                         )
                     },
                     onBookSourceManage = { navigator.push(AppRoute.BookSourceManage) },
-                    onDismiss = { screenModel.clearDialogEvent() },
+                    onDismiss = { closeDialog() },
                 )
             } else {
-                LaunchedEffect(screenModel) { screenModel.clearDialogEvent() }
+                LaunchedEffect(screenModel) { closeDialog() }
             }
         }
 
@@ -1126,7 +1111,7 @@ fun ReaderRoute(
                     chapterIndex = chapter.index,
                     chapterTitle = chapter.title,
                     onChapterChanged = { content ->
-                        screenModel.clearDialogEvent()
+                        closeDialog()
                         // 对照 RouteResults.CHANGE_CHAPTER_SOURCE: 落库 + 刷新当前章
                         scope.launch {
                             runCatching {
@@ -1136,7 +1121,7 @@ fun ReaderRoute(
                         }
                     },
                     onSourceChanged = { source, newBook, toc ->
-                        screenModel.clearDialogEvent()
+                        closeDialog()
                         screenModel.changeTo(source, newBook, toc)
                     },
                     onEditSource = { origin ->
@@ -1146,10 +1131,10 @@ fun ReaderRoute(
                         )
                     },
                     onBookSourceManage = { navigator.push(AppRoute.BookSourceManage) },
-                    onDismiss = { screenModel.clearDialogEvent() },
+                    onDismiss = { closeDialog() },
                 )
             } else {
-                LaunchedEffect(screenModel) { screenModel.clearDialogEvent() }
+                LaunchedEffect(screenModel) { closeDialog() }
             }
         }
 
@@ -1160,17 +1145,17 @@ fun ReaderRoute(
                 SimulatedReadingDialog(
                     book = book,
                     onApply = {
-                        screenModel.clearDialogEvent()
+                        closeDialog()
                         scope.launch {
                             runCatching { AppDbProviders.get().bookDao.update(book) }
                             // 对照 app 端 book.save() + viewModel.initData: 落库后重装使模拟章节总数生效
                             screenModel.initBook(book, book.durChapterIndex)
                         }
                     },
-                    onDismiss = { screenModel.clearDialogEvent() },
+                    onDismiss = { closeDialog() },
                 )
             } else {
-                LaunchedEffect(screenModel) { screenModel.clearDialogEvent() }
+                LaunchedEffect(screenModel) { closeDialog() }
             }
         }
 
@@ -1181,7 +1166,7 @@ fun ReaderRoute(
                 ImageStyleDialog(
                     book = book,
                     onApply = { imageStyle ->
-                        screenModel.clearDialogEvent()
+                        closeDialog()
                         book.config.imageStyle = imageStyle
                         scope.launch {
                             runCatching { AppDbProviders.get().bookDao.update(book) }
@@ -1196,10 +1181,10 @@ fun ReaderRoute(
                             )
                         }
                     },
-                    onDismiss = { screenModel.clearDialogEvent() },
+                    onDismiss = { closeDialog() },
                 )
             } else {
-                LaunchedEffect(screenModel) { screenModel.clearDialogEvent() }
+                LaunchedEffect(screenModel) { closeDialog() }
             }
         }
 
@@ -1210,16 +1195,16 @@ fun ReaderRoute(
                 DownloadDialog(
                     book = book,
                     onApply = { start, end ->
-                        screenModel.clearDialogEvent()
+                        closeDialog()
                         // 对话框给出的是章节号, 下标从 0 起 (start-1/end-1); 结束章节的 clamp
                         // 由缓存服务负责 (CacheBookService.addDownloadData / 各端启动器)
                         ServiceLaunchers.get()
                             .startCacheBookService(book.bookUrl, start - 1, end - 1)
                     },
-                    onDismiss = { screenModel.clearDialogEvent() },
+                    onDismiss = { closeDialog() },
                 )
             } else {
-                LaunchedEffect(screenModel) { screenModel.clearDialogEvent() }
+                LaunchedEffect(screenModel) { closeDialog() }
             }
         }
 
@@ -1230,13 +1215,13 @@ fun ReaderRoute(
                 CharsetDialog(
                     book = book,
                     onApply = { charset ->
-                        screenModel.clearDialogEvent()
+                        closeDialog()
                         screenModel.viewModel.setCharset(charset)
                     },
-                    onDismiss = { screenModel.clearDialogEvent() },
+                    onDismiss = { closeDialog() },
                 )
             } else {
-                LaunchedEffect(screenModel) { screenModel.clearDialogEvent() }
+                LaunchedEffect(screenModel) { closeDialog() }
             }
         }
 
@@ -1245,22 +1230,22 @@ fun ReaderRoute(
         is ReaderDialogEvent.ChapterJumpConfirm -> {
             AppAlertDialog(
                 onDismissRequest = {
-                    screenModel.clearDialogEvent()
+                    closeDialog()
                     screenModel.menuState.upSeekBar()
                 },
                 title = stringResource(Res.string.chapter_jump_confirm),
                 message = stringResource(Res.string.chapter_jump_confirm_msg),
                 okButton = AlertButton(stringResource(Res.string.yes)) {
-                    screenModel.confirmChapterJump(event.progress)
+                    screenModel.confirmChapterJump(event.progress, panel.token)
                 },
                 cancelButton = AlertButton(stringResource(Res.string.no)) {
-                    screenModel.clearDialogEvent()
+                    closeDialog()
                     screenModel.menuState.upSeekBar()
                 },
             )
         }
 
-        null -> Unit
+        }
     }
     // endregion
 
@@ -1273,6 +1258,64 @@ fun ReaderRoute(
             confirmShelfDelete(target, deleteOriginal) { navigator.pop() }
         },
         onDismiss = { shelfDeleteRequest = null },
+    )
+}
+
+/**
+ * 朗读控制面板渲染。
+ *
+ * @param onDismiss 关闭本轮面板 (代次由调用方绑定)
+ * @param dismissed true = 本实例已不是当前轮次 (AnimatedContent 退出中), 面板据此播滑出动画,
+ *   到点随转场结束自动卸载
+ */
+@Composable
+private fun AloudPanelContent(
+    provider: ReaderPlatformProvider,
+    navigator: AppNavigator,
+    screenModel: ReaderScreenModel,
+    onDismiss: () -> Unit,
+    dismissed: Boolean,
+) {
+    val controls = remember(provider, navigator, screenModel) {
+        provider.readAloudControls(navigator, screenModel)
+    }
+    if (controls == null) {
+        // 该端无朗读实现: 直接销事件, 避免卡住后续对话框
+        LaunchedEffect(screenModel) { onDismiss() }
+        return
+    }
+    // 朗读态/定时走事件流重组 (对照 app 端 ReadAloudDialog 的 aloudState/readAloudDs 订阅)
+    var playing by remember { mutableStateOf(controls.isPlaying) }
+    var timer by remember { mutableIntStateOf(controls.timerMinute) }
+    LaunchedEffect(controls) {
+        ReadBookEvents.aloudState.collect { playing = controls.isPlaying }
+    }
+    LaunchedEffect(controls) {
+        ReadBookEvents.readAloudDs.collect { timer = it }
+    }
+    ReadAloudDialog(
+        isPlaying = playing,
+        initialTimer = timer,
+        initialSpeechRate = controls.speechRate,
+        initialFollowSys = controls.followSys,
+        onPlayPause = { controls.playPause() },
+        onStop = { controls.stop() },
+        onPrev = { controls.prevChapter() },
+        onNext = { controls.nextChapter() },
+        onPrevParagraph = { controls.prevParagraph() },
+        onNextParagraph = { controls.nextParagraph() },
+        onSetTimer = { controls.setTimer(it) },
+        // 面板回调是展示倍率, 还原成原版 ttsSpeechRate 口径 (rate*10-5)
+        onAdjustSpeed = { controls.setSpeechRate((it * 10f).toInt() - 5) },
+        onFollowSysChange = { controls.setFollowSys(it) },
+        onOpenChapterList = { controls.openChapterList() },
+        // 主菜单 → 强制弹常规菜单 (对照原版 callBack.showMenuBar, 不走朗读重定向);
+        // 面板收起由内容侧带动画 requestDismiss 驱动, 完成后经 onDismiss 清事件
+        onShowMenuBar = { screenModel.menuController.showMenu() },
+        onBackstage = { controls.toBackstage() },
+        onOpenSettings = { controls.openSettings() },
+        dismissed = dismissed,
+        onDismiss = onDismiss,
     )
 }
 

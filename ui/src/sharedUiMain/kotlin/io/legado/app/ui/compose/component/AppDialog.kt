@@ -347,6 +347,8 @@ fun AppBottomSheetDialog(
     properties: DialogProperties = AppDialogSizes.properties(),
     maxHeight: Dp? = null,
     fullScreen: Boolean = false,
+    /** 外部请求收起: 置 true 走退出动画 (E-Ink 直接关闭), 完成后回调 onDismissRequest */
+    dismissed: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     // 顶层覆盖物返回拦截 (同 [AppDialog]): 底部弹层打开期间返回键优先收起弹层
@@ -367,6 +369,9 @@ fun AppBottomSheetDialog(
     // 内容区拖拽禁区 (平台 WebView 等 interop 视图自行消化竖直手势, 见 [SheetDragExclusion])
     val dragExclusion = remember { SheetDragExclusion() }
     if (AppConfigProviders.get().isEInkMode) {
+        LaunchedEffect(dismissed) {
+            if (dismissed) onDismissRequest()
+        }
         Dialog(onDismissRequest = onDismissRequest, properties = properties) {
             WithWindowTextMenu {
                 CompositionLocalProvider(
@@ -570,6 +575,10 @@ fun AppBottomSheetDialog(
                         easing = dialogSpec.enterEasing.toComposeEasing(),
                     )
                 )
+            }
+            // 外部收起请求与内部路径 (返回键/点外部/拖拽) 同走退出动画
+            LaunchedEffect(dismissed) {
+                if (dismissed) dismissing = true
             }
             // 退出: 下滑淡出播完再关闭
             LaunchedEffect(dismissing) {

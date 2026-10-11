@@ -56,6 +56,7 @@ import io.legado.app.utils.isTrue
 import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -893,15 +894,29 @@ class ReaderScreenModel(
     }
 
     // region 对话框事件 (书签/正文编辑/日志, 由 AndroidReaderMenuState 触发, ReaderRoute 渲染)
-    private val _dialogEvent = MutableStateFlow<ReaderDialogEvent?>(null)
-    val dialogEvent: StateFlow<ReaderDialogEvent?> = _dialogEvent.asStateFlow()
+    /**
+     * 对话框槽位值: [event] 待渲染的对话框, [token] 本轮打开的代次。
+     *
+     * 面板关闭回调 (退出动画结束、异步落库完成) 与下一轮打开存在竞态: 到达时槽里可能已是
+     * 别的面板, 同类面板重开时事件值又完全相同, 分得清两轮的标识只有打开时的 [token]。
+     */
+    data class DialogSlot(val event: ReaderDialogEvent, val token: Long)
 
+    /** 打开代次来源 (原子自增: post 可能来自平台回调线程) */
+    private val dialogTokenSeq = atomic(0L)
+    private val _dialogSlot = MutableStateFlow<DialogSlot?>(null)
+    /** 当前待渲染的对话框 (null = 无) */
+    val dialogSlot: StateFlow<DialogSlot?> = _dialogSlot.asStateFlow()
+
+    /** 打开对话框; 该对话框已在显示时不重开 (代次只在真正打开时递增) */
     fun postDialogEvent(event: ReaderDialogEvent) {
-        _dialogEvent.value = event
+        if (_dialogSlot.value?.event == event) return
+        _dialogSlot.value = DialogSlot(event, dialogTokenSeq.incrementAndGet())
     }
 
-    fun clearDialogEvent() {
-        _dialogEvent.value = null
+    /** 关闭 [token] 那一轮打开的对话框; 槽里已是别的轮次时本次调用不改动槽位 */
+    fun clearDialogEvent(token: Long) {
+        if (_dialogSlot.value?.token == token) _dialogSlot.value = null
     }
     // endregion
 
@@ -1235,9 +1250,9 @@ class ReaderScreenModel(
         }
     }
 
-    /** 确认跳章 (ChapterJumpConfirm 确认回调): 记住选择 + 存跳转前快照 + 跳章 */
-    fun confirmChapterJump(progress: Int) {
-        clearDialogEvent()
+    /** 确认跳章 (ChapterJumpConfirm 确认回调): 关本轮对话框 + 记住选择 + 存跳转前快照 + 跳章 */
+    fun confirmChapterJump(progress: Int, token: Long) {
+        clearDialogEvent(token)
         confirmSkipToChapter = true
         saveCurrentBookProgress()
         viewModel.loadChapter(progress, null, false)

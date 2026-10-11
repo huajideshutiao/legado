@@ -1186,8 +1186,16 @@ private fun ReadMenuBottom(state: ReadMenuState) {
                 }
                 BottomMenuItem(
                     "ic_read_aloud", "read_aloud", text, Modifier.weight(1f),
-                    onLongClick = { state.longClickReadAloud() },
-                ) { state.clickReadAloud() }
+                    // 先收菜单再动作, 与目录/界面/设置按钮的 hide() 语义一致
+                    // (对照原版 llReadAloud 短/长按均包 runMenuOut)
+                    onLongClick = {
+                        state.onBgClick()
+                        state.longClickReadAloud()
+                    },
+                ) {
+                    state.onBgClick()
+                    state.clickReadAloud()
+                }
                 BottomMenuItem(
                     "ic_interface_setting",
                     "interface_setting",
