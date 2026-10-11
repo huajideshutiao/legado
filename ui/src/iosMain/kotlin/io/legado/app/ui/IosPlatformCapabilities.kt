@@ -39,7 +39,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.help.topMostViewController
 import io.legado.app.help.upLoadToDirectLink
 import io.legado.app.help.storage.NativeSaveLog
-import io.legado.app.model.CheckSourceShared
+import io.legado.app.model.CheckSourceRunner
 import io.legado.app.model.Debug
 import io.legado.app.model.ExportBookUtils
 import io.legado.app.model.fileBook.FileBook
@@ -61,7 +61,6 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.IosSecurityScopeLease
 import io.legado.app.utils.IosSecurityScopedStorage
-import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toJson
 import io.legado.app.utils.textCharsetCodec
@@ -78,9 +77,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.onCompletion
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okio.FileSystem
@@ -1174,9 +1170,9 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 /**
  * iOS 端书源校验调度 (对照 desktop `DesktopCheckSource` / 鸿蒙 `OhosCheckSource`)。
  *
- * iOS 无 Android Service, 用协程 + [onEachParallel] 限流并发跑 [CheckSourceShared.checkSource]
- * (业务全流程已下沉), 进度既发事件 (通知 UI) 也进通知栏 (对照 app 端 CheckSourceService:
- * 通知 id / 标题 / 取消动作与 app 端同一套, 两处文案的取舍见 [upNotification])。
+ * iOS 无 Android Service, 并发编排 (逐 id 取源 → 限流并发 → 进度回调 → 完成回调) 走
+ * commonMain [CheckSourceRunner], 进度既发事件 (通知 UI) 也进通知栏 (对照 app 端
+ * CheckSourceService: 通知 id / 标题 / 取消动作与 app 端同一套, 两处文案的取舍见 [upNotification])。
  */
 private object IosCheckSource {
 
@@ -1194,28 +1190,21 @@ private object IosCheckSource {
         }
         val ids = selection.map { it.bookSourceUrl }
         if (ids.isEmpty()) return
-        val appDb = AppDbProviders.get()
-        var finishCount = 0
         checkJob = scope.launch {
-            // 初始帧 (对照 app 端 CheckSourceService.check 的 onStart 分支: 尚无书源名)
-            upNotification("", 0, ids.size)
-            flow<BookSource> {
-                for (origin in ids) {
-                    appDb.bookSourceDao.getBookSource(origin)?.let { emit(it) }
+            CheckSourceRunner.run(
+                ids = ids,
+                threadCount = AppConfigProviders.get().threadCount,
+                onProgress = { name, finishCount, total ->
+                    upNotification(name, finishCount, total)
+                },
+                onComplete = {
+                    // 对照 CheckSourceService.onDestroy
+                    lastProgress = null
+                    Debug.finishChecking()
+                    postEvent(EventBus.CHECK_SOURCE_DONE, 0)
+                    IosNotificationService.cancelNotification(NotificationId.CheckSourceService)
                 }
-            }.onEachParallel(AppConfigProviders.get().threadCount) {
-                CheckSourceShared.checkSource(it)
-            }.onEach { source ->
-                finishCount++
-                upNotification(source.bookSourceName, finishCount, ids.size)
-                appDb.bookSourceDao.update(source)
-            }.onCompletion {
-                // 对照 CheckSourceService.onDestroy
-                lastProgress = null
-                Debug.finishChecking()
-                postEvent(EventBus.CHECK_SOURCE_DONE, 0)
-                IosNotificationService.cancelNotification(NotificationId.CheckSourceService)
-            }.collect { }
+            )
         }
         checkJob?.invokeOnCompletion { error ->
             if (error != null) AppLog.put("校验书源出错\n${error.message}", error)

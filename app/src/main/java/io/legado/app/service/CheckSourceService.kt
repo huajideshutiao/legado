@@ -9,45 +9,32 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
-import io.legado.app.data.appDb
 import io.legado.app.help.IntentData
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.setLiveProgress
-import io.legado.app.model.CheckSourceShared
+import io.legado.app.model.CheckSourceRunner
 import io.legado.app.model.Debug
 import io.legado.app.notificationManager
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.activityPendingIntent
-import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.asCoroutineDispatcher
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.onCompletion
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
-import java.util.concurrent.Executors
-import kotlin.math.min
 
 /**
  * 校验书源
  *
  * 业务流程 (checkSource/doCheckSource/checkBook) 已下沉到
- * [io.legado.app.model.CheckSourceShared] (shared commonMain)。
+ * [io.legado.app.model.CheckSourceShared] (shared commonMain), 并发编排
+ * (逐 id 取源 → 限流并发 → 进度回调 → 完成回调) 与执行用的固定线程池口径已下沉到
+ * [io.legado.app.model.CheckSourceRunner]。
  * 本 Service 仅保留:
  * - Android 专属 Notification 构造与刷新
- * - lifecycleScope.launch + 自定义线程池调度入口
- * - 业务流程委托 [CheckSourceShared.checkSource]
+ * - lifecycleScope.launch 入口
  */
 class CheckSourceService : BaseService() {
-    private var threadCount = AppConfig.threadCount
-    private var searchCoroutine =
-        Executors.newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD)).asCoroutineDispatcher()
     private var notificationMsg = androidAppString("service_starting")
     private var checkJob: Job? = null
     private var originSize = 0
@@ -89,7 +76,6 @@ class CheckSourceService : BaseService() {
     override fun onDestroy() {
         super.onDestroy()
         Debug.finishChecking()
-        searchCoroutine.close()
         postEvent(EventBus.CHECK_SOURCE_DONE, 0)
         notificationManager.cancel(NotificationId.CheckSourceService)
     }
@@ -99,35 +85,29 @@ class CheckSourceService : BaseService() {
             toastOnUi("已有书源在校验,等完成后再试")
             return
         }
-        checkJob = lifecycleScope.launch(searchCoroutine) {
-            flow {
-                for (origin in ids) {
-                    appDb.bookSourceDao.getBookSource(origin)?.let {
-                        emit(it)
-                    }
+        checkJob = lifecycleScope.launch {
+            CheckSourceRunner.run(
+                ids = ids,
+                onStart = { total -> reportProgress("", 0, total) },
+                onProgress = { name, finish, total -> reportProgress(name, finish, total) },
+                onComplete = {
+                    stopSelf()
                 }
-            }.onStart {
-                originSize = ids.size
-                finishCount = 0
-                // 初始帧无书源名, 传 "" 会残留前导空格, trim 掉使其与后续带名字的帧一样左对齐
-                notificationMsg = androidAppString("progress_show", "", 0, originSize).trim()
-                upNotification()
-            }.onEachParallel(threadCount) {
-                CheckSourceShared.checkSource(it)
-            }.onEach {
-                finishCount++
-                notificationMsg = androidAppString(
-                    "progress_show",
-                    it.bookSourceName,
-                    finishCount,
-                    originSize
-                )
-                upNotification()
-                appDb.bookSourceDao.update(it)
-            }.onCompletion {
-                stopSelf()
-            }.collect()
+            )
         }
+    }
+
+    /**
+     * 记下这一帧进度并刷新通知。
+     *
+     * 首帧 (onStart) 传空书源名: 格式串内 %1$s 位置留白, trim 后与后续带名字的帧一样左对齐
+     * (对照原版 check 的 onStart 分支)。
+     */
+    private fun reportProgress(name: String, finish: Int, total: Int) {
+        finishCount = finish
+        originSize = total
+        notificationMsg = androidAppString("progress_show", name, finish, total).trim()
+        upNotification()
     }
 
     private fun upNotification() {

@@ -4,33 +4,26 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
-import io.legado.app.data.AppDbProviders
-import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
-import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.toast.Toasters
-import io.legado.app.model.CheckSourceShared
+import io.legado.app.model.CheckSourceRunner
 import io.legado.app.model.Debug
 import io.legado.app.napi.NotificationButton
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.ui.compose.platform.syncGetString
-import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.onCompletion
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 /**
  * 鸿蒙端书源校验调度 (对照 app 端 `CheckSourceService.check` / desktop `DesktopCheckSource`)。
  *
- * 鸿蒙无 Android Service, 与桌面端同样用协程 + [onEachParallel] 限流并发跑
- * [CheckSourceShared.checkSource] (业务全流程已下沉), 进度既发事件 (通知 UI) 也进通知栏
+ * 鸿蒙无 Android Service, 并发编排 (逐 id 取源 → 限流并发 → 进度回调 → 完成回调) 与执行线程池
+ * 口径走 commonMain [CheckSourceRunner], 进度既发事件 (通知 UI) 也进通知栏
  * (对照 app 端 CheckSourceService: 通知 id / 标题 / 取消动作与 app 端同一套, 两处文案的取舍见
  * [upNotification])。
  */
@@ -50,28 +43,21 @@ object OhosCheckSource {
         }
         val ids = selection.map { it.bookSourceUrl }
         if (ids.isEmpty()) return
-        val appDb = AppDbProviders.get()
-        var finishCount = 0
         checkJob = scope.launch {
-            // 初始帧 (对照 app 端 CheckSourceService.check 的 onStart 分支: 尚无书源名)
-            upNotification("", 0, ids.size)
-            flow<BookSource> {
-                for (origin in ids) {
-                    appDb.bookSourceDao.getBookSource(origin)?.let { emit(it) }
+            CheckSourceRunner.run(
+                ids = ids,
+                onStart = { total -> upNotification("", 0, total) },
+                onProgress = { name, finishCount, total ->
+                    upNotification(name, finishCount, total)
+                },
+                onComplete = {
+                    // 对照 CheckSourceService.onDestroy
+                    lastProgress = null
+                    Debug.finishChecking()
+                    postEvent(EventBus.CHECK_SOURCE_DONE, 0)
+                    OhosNativeBridge.cancelNotification(NotificationId.CheckSourceService)
                 }
-            }.onEachParallel(AppConfigProviders.get().threadCount) {
-                CheckSourceShared.checkSource(it)
-            }.onEach { source ->
-                finishCount++
-                upNotification(source.bookSourceName, finishCount, ids.size)
-                appDb.bookSourceDao.update(source)
-            }.onCompletion {
-                // 对照 CheckSourceService.onDestroy
-                lastProgress = null
-                Debug.finishChecking()
-                postEvent(EventBus.CHECK_SOURCE_DONE, 0)
-                OhosNativeBridge.cancelNotification(NotificationId.CheckSourceService)
-            }.collect { }
+            )
         }
         checkJob?.invokeOnCompletion { error ->
             if (error != null) AppLog.put("校验书源出错\n${error.message}", error)
