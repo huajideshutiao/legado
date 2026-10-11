@@ -13,7 +13,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.appInfo
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.crash.CrashMarkerProviders
 import io.legado.app.model.ReadAloud
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
@@ -76,7 +76,8 @@ class CrashHandler(val context: Context) : Thread.UncaughtExceptionHandler {
      */
     private fun handleException(ex: Throwable?) {
         if (ex == null) return
-        LocalConfig.appCrash = true
+        // 异常退出标记: 下次启动提示用户查看崩溃日志 (读取方 = shared notifyAppCrash)
+        CrashMarkerProviders.get().mark()
         //保存日志文件
         saveCrashInfo2File(ex)
         if ((ex is OutOfMemoryError || ex.cause is OutOfMemoryError) && AppConfig.recordHeapDump) {

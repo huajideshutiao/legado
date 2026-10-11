@@ -41,6 +41,7 @@ import io.legado.app.help.source.registerNativeSourceHelpAccessor
 import io.legado.app.help.source.registerNativeSourceProviders
 import io.legado.app.help.source.registerNativeVerificationUiProvider
 import io.legado.app.help.storage.registerNativeBackupRestoreHook
+import io.legado.app.help.storage.registerNativeCrashMarkerProvider
 import io.legado.app.help.toast.registerIosToaster
 import io.legado.app.help.tts.IosHttpTtsPlayer
 import io.legado.app.help.tts.TtsEngineProvider
@@ -267,6 +268,8 @@ fun registerIosProviders() {
     registerIosReadBookPlatform()
     // 备份/恢复钩子 (lastBackup 时间戳 + 恢复完成提示; zip 复制/解压走 BackupFileOps 默认实现)
     registerNativeBackupRestoreHook()
+    // 异常退出标记 (对照原版 LocalConfig.appCrash; 须在启动期提示读取之前, 与备份钩子同段)
+    registerNativeCrashMarkerProvider()
     registerIosNotificationProgress()
     // 通知分类 (带自定义动作的通知必须先注册分类再发送, 否则通知上不出现动作按钮):
     // 发送侧在 IosNotificationPublisher, 动作处理在 IosNotificationDelegate

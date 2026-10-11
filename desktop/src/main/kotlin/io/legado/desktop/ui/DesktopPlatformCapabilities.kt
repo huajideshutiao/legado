@@ -483,7 +483,10 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
             File(cacheDir, "logs"),
             DesktopCrashLogDirs.cacheCrashDir,
             File(cacheDir, "heapDump"),
-        ).filter { it.exists() }
+        ).filter { it.exists() }.toMutableList()
+        // JVM 致命错误现场 (hs_err_pid*.log) 不在任何目录内 (散落在工作目录/临时目录/用户主目录),
+        // 收集时逐个作为单文件源加入 zip, 否则用户导出的 logs.zip 里恰恰缺了最致命的那份现场
+        DesktopCrashLogDirs.findJvmFatalErrorLogs().forEach { sources.add(it) }
         if (sources.isEmpty()) throw NoStackTraceException("没有可保存的日志文件")
         val outDir = File(DataStorageProviders.get().userExportDir).apply { mkdirs() }
         val zipFile = File(outDir, "logs.zip")

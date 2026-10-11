@@ -76,6 +76,7 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.reader.ReaderDictWord
 import io.legado.app.ui.reader.ReaderImageActionMenu
 import io.legado.app.ui.about.preferenceUpVersionStore
+import io.legado.app.ui.about.notifyAppCrash
 import io.legado.app.ui.about.upVersion
 import io.legado.app.ui.root.AppFontScaleScope
 import io.legado.app.ui.root.AppForegroundState
@@ -725,6 +726,9 @@ private fun runDesktopApp() = application {
                 System.getProperty("legado.debug")?.toBoolean() == true,
                 preferenceUpVersionStore(),
             )
+            // 崩溃后重启提示 (对照原版 MainActivity.notifyAppCrash): 排在版本更新之后,
+            // 与 app 端同一位置; 标记由 DesktopCrashHandler 落盘时置位
+            notifyAppCrash(System.getProperty("legado.debug")?.toBoolean() == true)
         }
         // 文件关联分发: 队列在 main() 就可能有值 (argv 冷启动), 这里等首帧组合完成
         // (navigator 已注册) 再消费; 解压/读文件是阻塞 IO, 切 IO 线程

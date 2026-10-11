@@ -25,6 +25,7 @@ import legado.ui.generated.resources.Res
 import io.legado.app.help.AppFreezeMonitor
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.CrashHandler
+import io.legado.app.help.crash.AndroidNativeCrashHandler
 import io.legado.app.help.DefaultData
 import io.legado.app.help.StartupMaintenanceShared
 import io.legado.app.help.DispatchersMonitor
@@ -43,6 +44,7 @@ import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.config.ThemeConfig.applyDayNight
 import io.legado.app.help.config.ThemeConfig.applyDayNightInit
 import io.legado.app.help.config.migrateLegacyHomeSp
+import io.legado.app.help.config.registerAndroidCrashMarkerProvider
 import io.legado.app.help.config.registerAndroidLocalConfigStore
 import io.legado.app.help.config.registerAndroidPreferenceProvider
 import io.legado.app.lib.theme.MonetColorExtract
@@ -101,6 +103,8 @@ import io.legado.app.ui.main.AndroidUpdateBookCallback
 import io.legado.app.ui.platform.registerSharedAppContext
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.defaultSharedPreferences
+import io.legado.app.utils.externalCache
+import io.legado.app.utils.getFile
 import io.legado.app.utils.registerAndroidACacheDirProvider
 import io.legado.app.utils.registerAndroidRegexErrorHandler
 import io.legado.app.utils.registerAndroidScreenInfoProvider
@@ -296,6 +300,9 @@ class App : Application() {
             ReadBookConfigShared(PreferenceProviders.get())
         )
         CrashHandler(this)
+        // 异常退出标记 (对照原版 LocalConfig.appCrash): 须在启动期崩溃提示读取之前注册。
+        // 同时看偏好与信号路径写的标记文件 —— 原生崩溃只能落文件 (信号上下文不能写偏好)
+        registerAndroidCrashMarkerProvider(this)
         oldConfig = Configuration(resources.configuration)
         applyDayNightInit(this)
         registerActivityLifecycleCallbacks(LifecycleHelp)
@@ -468,5 +475,8 @@ class App : Application() {
         }.onFailure {
             LogUtils.d("App", "initQuickJs prewarm failed: ${it.message}")
         }
+        // 原生崩溃捕获 (NDK/JNI 信号的 POSIX 信号): native 库已在上方加载完毕, 此刻装才安全。
+        // 与 Java 异常捕获 (CrashHandler) 落同一目录, 两类崩溃在崩溃日志里一并可见
+        AndroidNativeCrashHandler.install(instance.externalCache.getFile("crash").absolutePath)
     }
 }

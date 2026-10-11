@@ -70,6 +70,7 @@ import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.ExportBookService
 import io.legado.app.ui.about.UpVersionStore
 import io.legado.app.ui.about.checkUpdateAndPrompt
+import io.legado.app.ui.about.notifyAppCrash
 import io.legado.app.ui.about.upVersion
 import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.association.LegadoDeepLink
@@ -884,7 +885,9 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
             )
             //设置本地密码
             setLocalPassword()
-            notifyAppCrash()
+            // 崩溃后重启提示: 与其余三端同一份 shared 实现 (原版 MainActivity.notifyAppCrash 的
+            // 读标记/清标记/弹框语义与位置一致; appCrash 标记由 CrashHandler 落盘时置位)
+            notifyAppCrash(BuildConfig.DEBUG)
             //备份同步
             backupSync()
             // 启动静默检查更新 (对照原版 AppUpdate.check(silent=true)): 无等待框无 toast,
@@ -959,19 +962,6 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
             cancelButton {
                 LocalConfig.password = ""
             }
-        }
-    }
-
-    private fun notifyAppCrash() {
-        if (!LocalConfig.appCrash || BuildConfig.DEBUG) {
-            return
-        }
-        LocalConfig.appCrash = false
-        alert(androidAppString("draw"), "检测到阅读发生了崩溃，是否打开崩溃日志以便报告问题？") {
-            yesButton {
-                AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("crash_logs"))
-            }
-            noButton()
         }
     }
 

@@ -51,9 +51,12 @@ import io.legado.app.help.showSourceLogin
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.about.CRASH_NOTICE_OVERLAY_KEY
 import io.legado.app.ui.about.CrashLogItem
 import io.legado.app.ui.about.CrashLogsDialog
+import io.legado.app.ui.about.CrashNoticeDialog
 import io.legado.app.ui.about.UpdateDialogOverlayContent
+import io.legado.app.ui.about.crashNoticeMessage
 import io.legado.app.ui.association.DeepLinkImportRequest
 import io.legado.app.ui.association.DeepLinkImportType
 import io.legado.app.ui.association.LegadoDeepLinkHandler
@@ -795,6 +798,8 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
         "bookVariable" -> BookVariableOverlayDialogContent(overlay, navigator)
         "change_cover" -> ChangeCoverDialogContent(overlay, navigator)
         "app_log" -> AppLogOverlayDialogContent(overlay, navigator)
+        // 崩溃后重启提示 (对照原版 MainActivity.notifyAppCrash 的 alert)
+        CRASH_NOTICE_OVERLAY_KEY -> CrashNoticeOverlayDialogContent(overlay, navigator)
         "httpTtsEdit" -> HttpTtsEditOverlayDialogContent(overlay, navigator)
 
         // java.copy 确认对话框 (完整文本在 IntentData, payload 只带 key, 见 CopyConfirmDialog.kt)
@@ -1080,6 +1085,21 @@ private fun ChangeCoverDialogContent(overlay: AppOverlay.Dialog, navigator: AppN
 @Composable
 private fun AppLogOverlayDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
     AppLogDialog(onDismiss = { navigator.dismissOverlay(overlay.key) })
+}
+
+// 崩溃后重启提示 (key=CRASH_NOTICE_OVERLAY_KEY, payload=标题串)
+@Composable
+private fun CrashNoticeOverlayDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
+    CrashNoticeDialog(
+        title = overlay.payload.orEmpty(),
+        message = crashNoticeMessage(),
+        onConfirm = {
+            navigator.dismissOverlay(overlay.key)
+            // 对照原版 yesButton 分支: 打开崩溃日志列表
+            navigator.showOverlay(AppOverlay.Dialog("crash_logs"))
+        },
+        onDismiss = { navigator.dismissOverlay(overlay.key) },
+    )
 }
 
 // 未知 key 兜底: 记日志并立即关闭。不画假对话框, 避免新 key 漏接线时静默通过

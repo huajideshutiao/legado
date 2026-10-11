@@ -2,6 +2,7 @@ package io.legado.desktop.help
 
 import io.legado.app.constant.AppLog
 import io.legado.app.help.crash.CrashLogWriter
+import io.legado.app.help.crash.CrashMarkerProviders
 import io.legado.app.help.file.desktopAppCacheDir
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.desktop.constant.DesktopAppInfo
@@ -34,6 +35,33 @@ object DesktopCrashLogDirs {
 
     /** 读取目标 (含历史版本只写导出目录的日志)。 */
     fun readDirs(): List<File> = writeDirs()
+
+    /**
+     * JVM 致命错误现场文件 (HotSpot 在进程崩溃时写的 `hs_err_pid<pid>.log`)。
+     *
+     * 落点由 JVM 自身决定 (启动参数 `-XX:ErrorFile` 不可用: jpackage 生成的 cfg 只展开
+     * `$APPDIR/$BINDIR/$ROOTDIR`, 环境变量展开是 JDK 25 才有的 JDK-8351447), 按 HotSpot
+     * 顺序为"当前工作目录 → 系统临时目录 → 用户主目录"。三个候选都查, 只取真正的
+     * `hs_err_pid<数字>.log` —— 其他 `.log` 不是本类现场。
+     */
+    fun findJvmFatalErrorLogs(): List<File> {
+        val candidates = listOfNotNull(
+            // 当前工作目录 (HotSpot 的首选落点)
+            File("").absoluteFile,
+            System.getProperty("java.io.tmpdir")?.let(::File),
+            System.getProperty("user.home")?.let(::File),
+        )
+        return candidates.distinct().flatMap { dir ->
+            runCatching {
+                dir.listFiles { f -> f.isFile && JVM_FATAL_ERROR_NAME.matches(f.name) }
+                    ?.toList()
+                    .orEmpty()
+            }.getOrDefault(emptyList())
+        }
+    }
+
+    /** HotSpot 致命错误日志文件名 (固定前缀 + pid)。 */
+    private val JVM_FATAL_ERROR_NAME = Regex("hs_err_pid\\d+\\.log")
 }
 
 /**
@@ -90,6 +118,9 @@ object DesktopCrashHandler {
         // 对照 app 端 CrashHandler.uncaughtException 先 ReadAloud.stop(context);
         // isRun 判空后再调, 避免为一次崩溃反而触发朗读宿主的惰性初始化
         runCatching { if (DesktopReadAloudHost.isRun) DesktopReadAloudHost.stop() }
+        // 异常退出标记: 下次启动提示用户查看崩溃日志 (对照 app 端 CrashHandler.handleException
+        // 的 LocalConfig.appCrash = true)。写偏好存储无需 async-signal-safe, 可正常分配
+        runCatching { CrashMarkerProviders.get().mark() }
         val files = runCatching {
             CrashLogWriter.save(ex, paramsMap, DesktopCrashLogDirs.writeDirs())
         }.getOrDefault(emptyList())

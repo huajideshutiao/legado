@@ -12,6 +12,7 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.refTo
 import platform.posix.O_APPEND
 import platform.posix.O_CREAT
+import platform.posix.O_TRUNC
 import platform.posix.O_WRONLY
 import platform.posix.close
 import platform.posix.open
@@ -35,7 +36,7 @@ import platform.posix.write
 object NativeCrashLogWriter {
 
     /** 崩溃日志文件名前缀, 供列表侧过滤 (与 JVM 侧 CrashLogWriter 同值)。 */
-    const val FILE_PREFIX = "crash-"
+    const val FILE_PREFIX = CRASH_LOG_FILE_PREFIX
 
     /** 保留天数, 与 app 端 CrashHandler / 桌面端 CrashLogWriter 同口径。 */
     private const val KEEP_DAYS = 7L
@@ -50,6 +51,12 @@ object NativeCrashLogWriter {
 
     /** 文件创建权限 (0644), 与 okio 建文件的默认权限一致。 */
     private const val FILE_MODE = 0x1A4
+
+    /** 异常退出标记文件名 (与崩溃日志同在 crash 目录)。 */
+    const val MARKER_FILE_NAME = CrashMarkerFile.FILE_NAME
+
+    /** 标记文件内容 (固定 ASCII, 安装期分配一次)。 */
+    private val MARKER_TEXT = "1\n".encodeToByteArray()
 
     /**
      * 崩溃日志目录。AppFilesDirs 未注册时回退 [fallbackDir]。
@@ -76,6 +83,9 @@ object NativeCrashLogWriter {
      * 任何一步失败都静默 —— 崩溃路径上不能再抛异常。返回写成功的文件名, 失败为 null。
      */
     fun writeException(kind: String, detail: String): String? = runCatching {
+        // 异常退出标记: 下次启动提示用户查看崩溃日志 (对照 app 端 CrashHandler.handleException
+        // 的 LocalConfig.appCrash = true)
+        runCatching { CrashMarkerProviders.get().mark() }
         val dir = File(crashDir)
         dir.mkdirs()
         cleanupExpired(dir)
@@ -87,6 +97,15 @@ object NativeCrashLogWriter {
     /** 文件名沿用全仓既有口径 (`crash-yy-MM-dd-HH-mm-ss-<millis>.log`)。 */
     fun fileName(now: Long = systemCurrentTimeMillis()): String =
         "$FILE_PREFIX${AppConst.fileNameFormat.format(now)}-$now.log"
+
+    /**
+     * 读取并清除信号路径写的异常退出标记, 无标记返回 false。
+     *
+     * **两个候选目录都查**: 崩溃可能发生在 `AppFilesDirs` 注册之前, 那时标记落在回退目录,
+     * 而读取方总是注册之后才跑 —— 只查真实目录会漏掉这类早期崩溃。
+     */
+    fun consumePendingMarker(): Boolean =
+        currentCrashPaths().any { CrashMarkerFile.consume(it) }
 
     // endregion
 
@@ -152,6 +171,14 @@ object NativeCrashLogWriter {
     /** 候选落盘路径 (安装期快照, 处理器内逐个试 open)。 */
     private var signalPaths: List<String> = emptyList()
 
+    /**
+     * 异常退出标记文件 (信号路径落盘用)。
+     *
+     * 信号处理器内不能走偏好存储 (需分配/加锁), 只能碰文件: 启动期提示读它并删除。
+     * 路径在安装期快照, 与 [signalPaths] 同源。
+     */
+    private var markerPath: String = ""
+
     /** 上一次建缓冲时用的路径集合 (用于判断是否需要重建)。 */
     private var builtPaths: List<String> = emptyList()
 
@@ -193,6 +220,8 @@ object NativeCrashLogWriter {
 
         signalTailRanges = ranges
         signalPaths = paths
+        // 标记文件与崩溃日志同目录 (paths 首项即真实沙盒目录优先, 与日志落盘同一处)
+        markerPath = paths.first().trimEnd('/', '\\') + "/" + MARKER_FILE_NAME
         builtPaths = paths
         signalBuffer = buffer
     }
@@ -215,6 +244,15 @@ object NativeCrashLogWriter {
         while (i < SIGNAL_NAME_WIDTH) {
             buffer[signalNameOffset + i] = name[i].code.toByte()
             i++
+        }
+        // 先置异常退出标记 (启动期提示读它; 偏好存储信号上下文内不可用, 只能碰文件),
+        // 再写日志正文 —— 标记失败不影响日志落盘
+        runCatching {
+            val fd = open(markerPath, O_WRONLY or O_CREAT or O_TRUNC, FILE_MODE)
+            if (fd >= 0) {
+                writeAll(fd, MARKER_TEXT, 0, MARKER_TEXT.size)
+                close(fd)
+            }
         }
         var index = 0
         while (index < signalPaths.size) {

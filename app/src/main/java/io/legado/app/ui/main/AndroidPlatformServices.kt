@@ -22,6 +22,7 @@ import io.legado.app.constant.AppPattern
 import io.legado.app.constant.DirUsage
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.crash.CRASH_LOG_FILE_PREFIX
 import io.legado.app.help.config.resolveImagePath
 import io.legado.app.help.file.AndroidDirAuthorizations
 import io.legado.app.model.bakeCoverImageFile
@@ -729,16 +730,19 @@ private class AndroidCrashLogProvider(
     override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> =
         withContext(Dispatchers.IO) {
             val list = arrayListOf<FileDoc>()
-            // 外部缓存目录 crash 子目录 (对照 CrashViewModel.initData)
-            activity.externalCacheDir?.getFile("crash")?.listFiles { it.isFile }?.forEach {
-                list.add(FileDoc.fromFile(it))
-            }
+            // 外部缓存目录 crash 子目录 (对照 CrashViewModel.initData)。
+            // 只收 crash- 前缀: 该目录还放着"上次异常退出"标记文件, 它不是崩溃现场, 不该进列表
+            activity.externalCacheDir?.getFile("crash")
+                ?.listFiles { it.isFile && it.name.startsWith(CRASH_LOG_FILE_PREFIX) }
+                ?.forEach {
+                    list.add(FileDoc.fromFile(it))
+                }
             // 备份路径下的 crash 目录 (对照 CrashViewModel.initData backupPath 分支)
             val backupPath = AppConfig.backupPath
             if (!backupPath.isNullOrEmpty()) {
                 val uri = backupPath.toUri()
                 FileDoc.fromUri(uri, true).find("crash")?.list { !it.isDir }?.let {
-                    list.addAll(it)
+                    list.addAll(it.filter { doc -> doc.name.startsWith(CRASH_LOG_FILE_PREFIX) })
                 }
             }
             list.sortedByDescending { it.name }.distinctBy { it.name }

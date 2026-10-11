@@ -10,6 +10,7 @@ import io.legado.app.help.book.registerNativeBookHelpAccessor
 import io.legado.app.help.book.registerNativeBookStorage
 import io.legado.app.help.openURL
 import io.legado.app.help.storage.registerNativeBackupRestoreHook
+import io.legado.app.help.storage.registerNativeCrashMarkerProvider
 import io.legado.app.help.storage.registerOhosDataStorage
 import io.legado.app.help.book.registerNativeBookImageStorage
 import io.legado.app.help.book.registerNativeContentProcessorAccessor
@@ -350,6 +351,8 @@ fun registerOhosProviders() {
     // 备份/恢复钩子 (lastBackup 时间戳 + 恢复完成提示; zip 复制/解压走 BackupFileOps 默认实现,
     // 与 iOS 端共用 nativeMain NativeBackupRestoreHook; 未注册时默认空实现静默丢这些副作用)
     registerNativeBackupRestoreHook()
+    // 异常退出标记 (对照原版 LocalConfig.appCrash; 须在启动期提示读取之前)
+    registerNativeCrashMarkerProvider()
 
     // 8.8 阅读排版真实字形度量器 (Skia Font 度量, 取代 SimpleTextMeasurer 等宽近似;
     // 须在任何章节排版之前, 依赖 skiko 随 compose ui 已就绪)

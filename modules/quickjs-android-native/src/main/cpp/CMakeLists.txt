@@ -87,6 +87,7 @@ add_library(legado_quickjs SHARED
         jni/jni_object_class.cpp
         jni/jni_value_convert.cpp
         jni/jni_callbacks.cpp
+        jni/native_crash_handler.cpp
 )
 
 # C++17 标准

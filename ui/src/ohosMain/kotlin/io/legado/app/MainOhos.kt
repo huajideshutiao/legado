@@ -22,6 +22,7 @@ import io.legado.app.help.AppVersionProviders
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.browser.OhosWebViewSlot
 import io.legado.app.ui.OhosPlatformCapabilities
+import io.legado.app.ui.about.notifyAppCrash
 import io.legado.app.ui.about.preferenceUpVersionStore
 import io.legado.app.ui.about.upVersion
 import io.legado.app.ui.about.versionNameToVersionCode
@@ -198,6 +199,10 @@ fun MainOhos() {
                                 preferenceUpVersionStore(),
                             )
                         }
+                        // 崩溃后重启提示 (对照原版 MainActivity.notifyAppCrash): 排在版本更新之后,
+                        // 与 app 端同一位置; 标记由 OhosCrashHandler 落盘时置位。
+                        // 鸿蒙无构建类型感知, isDebug 恒 false (对齐 release 行为)
+                        notifyAppCrash(isDebug = false)
                     }
                     // legado:// deep link 导入宿主
                     DeepLinkImportHost()

@@ -249,6 +249,15 @@ interface PlatformCapabilities {
     /** 创建堆转储 (对照 onCreateHeapDump / createHeapDump) */
     fun createHeapDump() = unsupported("创建堆转储")
 
+    /**
+     * 是否具备堆转储能力 (关于页"创建堆转储"入口的显隐 gate)。
+     *
+     * 只有存在 JVM 堆的平台才有这个概念 (Android 的 `Debug.dumpHprofData` / 桌面 JVM 的
+     * `HotSpotDiagnosticMXBean`); iOS/鸿蒙无 JVM, 保留入口只会弹一句"暂不支持"。
+     * 默认 true (与既有四端行为一致, 除 iOS/鸿蒙显式置 false)。
+     */
+    val createHeapDumpSupported: Boolean get() = true
+
     // 书籍详情页平台能力 (各端按需 override, 未实现端统一给出明确提示)
     // 对照 app 端 BookInfoActivity 同名方法
     /** 上传书籍到远程 (对照 onUploadBook) */

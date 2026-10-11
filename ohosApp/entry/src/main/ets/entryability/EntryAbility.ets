@@ -50,6 +50,9 @@ import { installSystemEventSources } from '../bridge/SystemEventSources';
 import { systemShare } from '@kit.ShareKit';
 import { handleKeyboardCommand } from '../bridge/KeyboardBridgeHandler';
 import { initPermissionBridge, handlePermissionRequest } from '../bridge/PermissionBridgeHandler';
+// 宿主层异常观测器 (errorManager): ArkTS 层 JS_CRASH 不进 K/N 异常钩子也不触发 POSIX 信号,
+// 必须单独接才能落盘 (见 installHostErrorObserver)
+import { errorManager } from '@kit.AbilityKit';
 
 // Notification tsfn 跨语言 payload (与 OhosNativeBridge.kt NotificationPayload 对齐)
 // 由 KMP 侧 KS_JSON 序列化为 JSON 字符串, 经 C++ tsfn dispatch 到 ArkTS 回调, 此处 JSON.parse 还原。
@@ -326,10 +329,58 @@ function registerSafely(register: () => void, successLog: string, failLogPrefix:
  * 直接链接 CPF `ohosArm64` 产物 `liblegado_shared.so` 与 Compose RenderNode 桥。
  * 根 Gradle staging 和 CMake 均对缺失产物直接失败，不再生成表面可运行的 mock HAP。
  */
+/**
+ * 宿主层 (ArkTS) 未捕获异常落盘。
+ *
+ * ArkTS 层的 JS_CRASH 既不进 Kotlin/Native 的未捕获异常钩子, 也不触发 POSIX 信号 ——
+ * KMP 侧已有的两条入口都抓不到, 不接就完全无日志。官方接口说明 (errorManager):
+ * "注册后可以捕获到应用产生的 js crash, 属于应用崩溃的一种。观测器捕获到该异常时应用不退出,
+ * 建议在回调函数执行完后, 增加同步退出操作"。
+ *
+ * 落盘交给 KMP (legado.reportHostException → NativeCrashLogWriter), 与 K/N 崩溃日志同目录
+ * 同文件名口径, 用户在"关于 → 崩溃日志"里能一并看到。
+ *
+ * 只在 onCreate 调一次 (官方要求仅主线程使用); 注册失败不阻断启动, 仅打日志。
+ */
+function installHostErrorObserver(): void {
+  try {
+    const observer: errorManager.ErrorObserver = {
+      onUnhandledException(errMsg: string): void {
+        reportHostException('arkts-unhandled', errMsg);
+      },
+      onException(errObj: Error): void {
+        const detail = 'ArkTS exception
+name=' + errObj.name +
+          '
+message=' + errObj.message +
+          '
+stack=' + (typeof errObj.stack === 'string' ? errObj.stack : '(no stack)');
+        reportHostException('arkts-exception', detail);
+      }
+    };
+    errorManager.on('error', observer);
+    console.info('[Legado] host error observer installed');
+  } catch (e) {
+    console.error('[Legado] installHostErrorObserver failed: ' + JSON.stringify(e));
+  }
+}
+
+/** 把异常现场交给 KMP 落盘; 失败只打日志 (崩溃路径上不能再抛)。 */
+function reportHostException(kind: string, detail: string): void {
+  try {
+    legado.reportHostException(kind, detail);
+  } catch (e) {
+    console.error('[Legado] reportHostException failed: ' + JSON.stringify(e));
+  }
+}
+
 export default class EntryAbility extends UIAbility {
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     console.info('[Legado] EntryAbility.onCreate');
+
+    // 宿主层异常观测器最先装: 本方法内后续任何一步抛异常都只能靠它留下现场
+    installHostErrorObserver();
 
     // KP7+: 注入鸿蒙应用沙盒 filesDir / cacheDir 真实路径 (供 shared AppFilesDir / DatabaseDriver 使用)。
     // 必须在 registerOhosProviders 之前调用, 使 OhosDatabaseDriver.defaultDbPath 读到真实沙盒路径

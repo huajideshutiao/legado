@@ -33,6 +33,7 @@ import io.legado.app.ui.book.source.SourceUiEventBridgeHost
 import io.legado.app.ui.book.video.IosVideoPlayPlatformProvider
 import io.legado.app.ui.book.video.VideoPlayPlatformProviders
 import io.legado.app.ui.association.DeepLinkImportHost
+import io.legado.app.ui.about.notifyAppCrash
 import io.legado.app.ui.about.preferenceUpVersionStore
 import io.legado.app.ui.about.upVersion
 import io.legado.app.ui.about.versionNameToVersionCode
@@ -186,6 +187,10 @@ fun MainViewController(): UIViewController {
                                     preferenceUpVersionStore(),
                                 )
                             }
+                            // 崩溃后重启提示 (对照原版 MainActivity.notifyAppCrash): 排在版本更新
+                            // 之后, 与 app 端同一位置; 标记由 IosCrashHandler 落盘时置位。
+                            // iOS 无构建类型感知, isDebug 恒 false (对齐 release 行为)
+                            notifyAppCrash(isDebug = false)
                         }
                     }
                     // 书源 UI 事件桥: 订阅 SOURCE_UI_REQUEST, 承接 JS 的 showLoginDialog/

@@ -89,10 +89,12 @@ fun AboutScreen(
             title = titleSaveLog,
             onClick = { actions.onSaveLog() },
         )
-        preference(
-            title = titleCreateHeapDump,
-            onClick = { actions.onCreateHeapDump() },
-        )
+        if (state.showCreateHeapDump) {
+            preference(
+                title = titleCreateHeapDump,
+                onClick = { actions.onCreateHeapDump() },
+            )
+        }
         preference(
             title = titleDonate,
             onClick = { actions.onShowDonateQr() },

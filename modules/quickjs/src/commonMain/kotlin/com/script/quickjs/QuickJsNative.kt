@@ -273,4 +273,16 @@ object QuickJsNative {
      * @param dangerousApi 是否旁路安全名单
      */
     external fun nativeSetDangerousApi(ctxPtr: Long, dangerousApi: Boolean)
+
+    // ============ 原生崩溃捕获 (仅 Android) ============
+
+    /**
+     * 安装原生信号处理器 (SIGSEGV/SIGABRT/SIGBUS/... 等 7 类)。
+     *
+     * JVM 未捕获异常处理器只能盖住 Java 异常; NDK/JNI 侧崩溃直接以信号终止进程,
+     * 一条日志都不会留下 —— 必须由 native 层接。实现见 `native_crash_handler.cpp`。
+     *
+     * @param crashDir 崩溃日志目录 (与 Kotlin 侧 NativeCrashLogWriter.crashDir 同一处)
+     */
+    external fun nativeInstallCrashHandler(crashDir: String)
 }

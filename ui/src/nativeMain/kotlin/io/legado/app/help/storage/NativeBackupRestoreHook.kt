@@ -2,7 +2,11 @@
 
 package io.legado.app.help.storage
 
+import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.crash.CrashMarkerProvider
+import io.legado.app.help.crash.CrashMarkerProviders
+import io.legado.app.help.crash.NativeCrashLogWriter
 import io.legado.app.help.toast.Toasters
 import kotlin.time.Clock
 
@@ -47,6 +51,36 @@ private object NativeBackupRestoreHook : BackupRestoreHook {
 /** 宿主启动早期注册一次 (任何备份/恢复之前)。 */
 fun registerNativeBackupRestoreHook() {
     BackupRestoreHooks.register(NativeBackupRestoreHook)
+}
+
+/**
+ * 注册 iOS/鸿蒙的异常退出标记实现 (对照原版 `LocalConfig.appCrash` 语义, 两端共用)。
+ *
+ * 与其余三端的差别只有信号路径: 信号处理器内不能走偏好存储 (需分配/加锁), 故
+ * [NativeCrashLogWriter.writeSignal] 改落标记文件; 本实现把两条来源合并 ——
+ * 异常钩子写偏好存储 (与 Android/桌面同键), 信号写文件。
+ */
+fun registerNativeCrashMarkerProvider() {
+    CrashMarkerProviders.register(NativeCrashMarker)
+}
+
+private object NativeCrashMarker : CrashMarkerProvider {
+
+    override fun mark() {
+        runCatching {
+            LocalConfigProviders.get().putBoolean(LocalConfigKeys.appCrash, true)
+        }
+    }
+
+    override fun consumePending(): Boolean = runCatching {
+        // 信号路径的标记文件优先消费 (它与偏好存储可能同时存在: 同一次崩溃只走其中一条路径,
+        // 但两次崩溃可能一条写文件一条写偏好)。两个候选目录都查, 覆盖"注册前就崩"的早期崩溃
+        val fromFile = NativeCrashLogWriter.consumePendingMarker()
+        val store = LocalConfigProviders.get()
+        val fromPrefs = store.getBoolean(LocalConfigKeys.appCrash, false)
+        if (fromPrefs) store.putBoolean(LocalConfigKeys.appCrash, false)
+        fromFile || fromPrefs
+    }.getOrDefault(false)
 }
 
 /**

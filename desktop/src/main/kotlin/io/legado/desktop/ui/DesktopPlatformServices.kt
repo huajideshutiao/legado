@@ -290,24 +290,36 @@ private class DesktopCrashLogProvider : CrashLogProvider {
         dirs().map { File(it, name) }.firstOrNull { it.isFile }
 
     override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> {
-        return dirs()
+        val dirs = dirs()
+        val files = dirs
             .filter { it.isDirectory }
             .flatMap { it.listFiles { f -> f.isFile }?.toList().orEmpty() }
+        // JVM 致命错误现场 (进程崩溃时 HotSpot 写的 hs_err_pid*.log): 按原版语义同列在
+        // 崩溃日志里 (原版无桌面端, 属新增能力; 该文件就是崩溃现场本身, 不另开一类)
+        val fatal = DesktopCrashLogDirs.findJvmFatalErrorLogs()
+        return (files + fatal)
             .sortedByDescending { it.name }
             .distinctBy { it.name }
             .map { CrashLogProvider.CrashLogEntry(it.name) }
     }
 
-    override suspend fun readCrashLog(name: String): String? = findFile(name)?.readText()
+    override suspend fun readCrashLog(name: String): String? =
+        (findFile(name) ?: findJvmFatalErrorLog(name))?.readText()
+
+    /** 按名字在 JVM 致命错误文件里查找 (列表已合并展示, 读取必须同一集合)。 */
+    private fun findJvmFatalErrorLog(name: String): File? =
+        DesktopCrashLogDirs.findJvmFatalErrorLogs().firstOrNull { it.name == name }
 
     override suspend fun clearCrashLogs() {
         dirs().forEach { dir ->
             if (dir.isDirectory) dir.listFiles()?.forEach { it.delete() }
         }
+        // JVM 致命错误文件不在崩溃目录内 (落在工作目录/临时目录/用户主目录), 清空时一并删
+        DesktopCrashLogDirs.findJvmFatalErrorLogs().forEach { it.delete() }
     }
 
     override fun shareCrashLog(name: String) {
         // desktop 无系统分享面板, 改为打开文件所在目录并选中
-        findFile(name)?.let { revealInFileManager(it) }
+        (findFile(name) ?: findJvmFatalErrorLog(name))?.let { revealInFileManager(it) }
     }
 }

@@ -23,7 +23,7 @@ object CrashLogWriter {
     private val format = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.US)
 
     /** 崩溃日志文件名前缀, 供列表侧过滤。 */
-    const val FILE_PREFIX = "crash-"
+    const val FILE_PREFIX = CRASH_LOG_FILE_PREFIX
 
     private const val KEEP_DAYS = 7L
 

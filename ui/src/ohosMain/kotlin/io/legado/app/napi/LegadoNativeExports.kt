@@ -12,6 +12,7 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.registerOhosProviders
+import io.legado.app.help.crash.NativeCrashLogWriter
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.root.AppNavigatorProviders
@@ -418,6 +419,28 @@ object LegadoNativeExports {
     @CName("legado_register_app_version")
     fun registerAppVersion(versionName: CPointer<ByteVar>) {
         OhosNativeBridge.registerAppVersionFn(versionName.toKString())
+    }
+
+    /**
+     * 宿主层 (ArkTS) 未捕获异常落盘 (ArkTS EntryAbility 的 errorManager 观测器回调调用)。
+     *
+     * 调用链: `ArkTS errorManager.on("error", observer)` → `legado.reportHostException(kind, detail)`
+     * → napi (legado_napi.cpp ReportHostException) → dlsym("legado_report_host_exception") → 本函数。
+     *
+     * # 为何需要这条通道
+     * ArkTS 层的 JS_CRASH 既不进 Kotlin/Native 的未捕获异常钩子, 也不触发 POSIX 信号 ——
+     * 上面两条已有入口都抓不到, 不接就完全无日志。落盘走 [NativeCrashLogWriter.writeException],
+     * 与 K/N 崩溃日志同目录同文件名口径, 用户在"关于 → 崩溃日志"里能一并看到。
+     *
+     * # 跨语言传递
+     * 两个字符串直接传 (无需 JSON 包装, 与 registerFileDir 同思路)。
+     *
+     * @param kind 崩溃来源描述 (如 `arkts-unhandled`)
+     * @param detail 异常消息与堆栈 (errorManager 回调给的 errMsg 原文)
+     */
+    @CName("legado_report_host_exception")
+    fun reportHostException(kind: CPointer<ByteVar>, detail: CPointer<ByteVar>) {
+        NativeCrashLogWriter.writeException(kind.toKString(), detail.toKString())
     }
 
     /**

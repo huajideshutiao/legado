@@ -100,6 +100,8 @@ fun AboutRoute(
                 // 入口 gate: 已注册 AppUpdateEnvironment 的端才显示 (当前 Android + desktop;
                 // iOS/鸿蒙未注册, 与原版一致 —— 原版也只有 Android 有这个入口)
                 showCheckUpdate = AppUpdateManager.isAvailable(),
+                // 堆转储入口: 只有存在 JVM 堆的平台才有该能力 (iOS/鸿蒙隐藏)
+                showCreateHeapDump = PlatformCapabilityProviders.get().createHeapDumpSupported,
             )
         )
     }

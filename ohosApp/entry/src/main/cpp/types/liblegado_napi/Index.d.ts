@@ -19,6 +19,10 @@
 // - chapterList(bookUrl: string): string     返回章节目录 JSON 数组 (仅含 index/title/url 字段)
 // - importBookSource(json: string): number   导入书源 JSON 数组, 返回导入数量
 //
+// 宿主层异常落盘 (ArkTS → Kotlin 同步推送, 同 registerFileDir 模式):
+// - reportHostException(kind: string, detail: string): void
+//                                           把 ArkTS errorManager 捕获的 JS_CRASH 现场交给 KMP 落盘
+//
 // 同步语义注意: 业务类函数内部用 runBlocking 转 suspend, 应在 TaskPool/Worker 中调用
 
 // CPF 渲染控制器接口 (与 @cpf-kmp-cmp/compose 的 libcompose_arkui_utils.so 声明结构一致)。
@@ -116,6 +120,19 @@ export interface LegadoNativeBridge {
    * @param versionName 应用版本名, 如 '3.26.092614'
    */
   registerAppVersion(versionName: string): void;
+
+  // ===== 宿主层异常落盘 (ArkTS → Kotlin 同步推送, 同 FileDir 模式) =====
+  /**
+   * 把 ArkTS 宿主层的未捕获异常现场交给 KMP 落盘。
+   *
+   * ArkTS 层 (EntryAbility / 各桥接处理器 / Compose 宿主) 的 JS_CRASH 不进 Kotlin/Native
+   * 的异常钩子, 也不触发 POSIX 信号 —— 不单独接就完全无日志。
+   * 调用方是 EntryAbility.onCreate 里注册的 errorManager 错误观测器回调。
+   *
+   * @param kind   崩溃来源描述, 如 'arkts-unhandled'
+   * @param detail 异常消息与堆栈 (errorManager 回调给的 errMsg 原文)
+   */
+  reportHostException(kind: string, detail: string): void;
 
   // ===== 屏幕尺寸注入 (ArkTS → Kotlin 同步推送, 同 FileDir 模式) =====
   /**
