@@ -213,22 +213,14 @@ fun registerOhosServiceLauncher(scope: CoroutineScope = CoroutineScope(Superviso
 }
 
 /**
- * 入队一本书的缓存下载 (创建模型 + addDownload), 不启动处理 job。
+ * 入队一本书的缓存下载 (目录保障 + 章节范围收敛 + 目录快照兜底), 不启动处理 job。
  *
- * [NativeServiceLauncher.startCacheBookService] 是 fire-and-forget 的, 等不到入队结果;
- * iOS 后台续跑 ([io.legado.app.help.service.IosBackgroundTasks]) 必须知道入队是否真的成功,
- * 故把这段抽出来两边共用 (启动器不消费返回值: 调度一律跑到结束)。
+ * 入队编排在 [CacheBookShared.enqueueDownload] (四端缓存入口共用), 本函数供 iOS 后台续跑
+ * ([io.legado.app.help.service.IosBackgroundTasks]) 按 bookUrl 重入队并消费入队结果;
+ * [NativeServiceLauncher.startCacheBookService] 是 fire-and-forget, 不使用返回值。
  *
- * @param end <0 表示下载到最后一章 (对照 app 端 CacheBookService.addDownloadData)
- * @return false = 这个 bookUrl 已取不到书 (不在书架 / 已删)
+ * @param end <0 表示下载到最后一章
+ * @return false = 这个 bookUrl 已取不到书 (不在书架 / 已删) 或目录保障失败
  */
-internal suspend fun enqueueCacheBook(bookUrl: String, start: Int, end: Int): Boolean {
-    val cacheBook = CacheBookShared.getOrCreate(bookUrl) ?: return false
-    val actualEnd = if (end < 0) {
-        cacheBook.book.lastChapterIndex
-    } else {
-        minOf(end, cacheBook.book.lastChapterIndex)
-    }
-    cacheBook.addDownload(start, actualEnd)
-    return true
-}
+internal suspend fun enqueueCacheBook(bookUrl: String, start: Int, end: Int): Boolean =
+    CacheBookShared.enqueueDownload(bookUrl, start, end)

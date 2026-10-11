@@ -2,15 +2,12 @@ package io.legado.app.model
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.model.CacheBookShared.CacheBookModelShared
-import kotlinx.coroutines.runBlocking
 
 /**
  * app 端 CacheBook 薄壳 (委托 [CacheBookShared])。
  *
- * 本 object 只保留 app 端独有的两件事:
- * 1. [registerCallback] —— 桥接活动阅读页 ([ActiveReadBookRegistry]), 由 App.onCreate 调用
- * 2. [getOrCreate] —— [io.legado.app.service.CacheBookService] 在非挂起上下文里取模型
+ * 本 object 只保留 app 端独有的一件事: [registerCallback] —— 桥接活动阅读页
+ * ([ActiveReadBookRegistry]), 由 App.onCreate 调用。
  *
  * 其余读写 (map / 计数 / 摘要 / 关闭 / 调度) 一律经 [CacheBookShared];
  * 缓存服务的启停不经本 object (调用方直接走 [io.legado.app.help.service.ServiceLaunchers])。
@@ -19,14 +16,6 @@ object CacheBook {
 
     /** 按 bookUrl 索引的下载模型 map (委托 [CacheBookShared.cacheBookMap]) */
     val cacheBookMap get() = CacheBookShared.cacheBookMap
-
-    /**
-     * 按 bookUrl 获取或创建下载模型。
-     * 调用方 (CacheBookService) 为同步签名, 保留 runBlocking;
-     * 并发安全由 [CacheBookShared] 内部锁保证, 外层不加锁。
-     */
-    fun getOrCreate(bookUrl: String): CacheBookModelShared? =
-        runBlocking { CacheBookShared.getOrCreate(bookUrl) }
 
     /** 停止全部下载任务并清空下载池 (委托 [CacheBookShared.close]) */
     fun close() = CacheBookShared.close()

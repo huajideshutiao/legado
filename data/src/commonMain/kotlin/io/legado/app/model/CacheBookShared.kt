@@ -20,8 +20,11 @@ import io.legado.app.model.CacheBookShared.close
 import io.legado.app.model.CacheBookShared.processScope
 import io.legado.app.model.CacheBookShared.startProcessJob
 import io.legado.app.model.webBook.WebBook.getContentAwait
+import io.legado.app.model.webBook.WebBook.getBookInfoAwait
+import io.legado.app.model.webBook.WebBook.getChapterListAwait
 import io.legado.app.utils.concurrent.newConcurrentMap
 import io.legado.app.utils.concurrent.newConcurrentSet
+import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
 import kotlinx.atomicfu.atomic
@@ -44,7 +47,9 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlin.concurrent.Volatile
 import kotlin.coroutines.CoroutineContext
 import kotlin.math.min
@@ -61,7 +66,7 @@ import kotlin.math.min
  * - ReadBook 单例回调 (contentLoadFinish/downloadedChapters/downloadFailChapters) →
  *   callback 抽象; 桌面端 callback 用 postEvent 通知阅读页自行重载
  * - BookHelp (BitmapFactory 等重 Android) → [BookHelpProviders]/[BookStorageProviders];
- *   桌面端 saveImages/hasImageContent 默认 no-op/false (与原 DesktopCacheBook 跳过图片一致)
+ *   四端均经 [BookHelpProviders] 接入同一份章节图片下载编排 (app/桌面/iOS/鸿蒙)
  * - appDb/AppConfig → [AppDbProviders.get()]/[AppConfigProviders.get().threadCount]
  *
  * 生命周期: object 单例进程内全局共享; [close] 由宿主 (CacheBookService.onDestroy /
@@ -71,6 +76,9 @@ object CacheBookShared {
 
     /** KMP 互斥锁 (替代 @Synchronized, Native 端 @Synchronized 无效) */
     private val lock = SynchronizedObject()
+
+    /** 目录保障互斥 (对照 app 端 CacheBookService 的实例 mutex, 跨书互斥防并发拉详情/目录) */
+    private val tocEnsureMutex = Mutex()
 
     /**
      * 按 bookUrl 索引的下载模型 map (对照 app 端 CacheBook.cacheBookMap)。
@@ -137,6 +145,37 @@ object CacheBookShared {
         val bookSource =
             AppDbProviders.get().bookSourceDao.getBookSource(book.origin) ?: return null
         return getOrCreate(bookSource, book)
+    }
+
+    /**
+     * 入队一段章节的缓存下载 (app 服务 / 桌面与 iOS 鸿蒙启动器的缓存入口共用)。
+     *
+     * 流程: 取模型 → 目录保障 [CacheBookModelShared.ensureToc] → 章节范围收敛到
+     * [Book.lastChapterIndex] → 内存目录快照兜底 → 入队。
+     *
+     * 目录保障失败时 [CacheBookModelShared.ensureToc] 已自行把该书的下载任务移出, 调用方
+     * 只需放弃本次入队。
+     *
+     * @param start 起始章节 index (含)
+     * @param end 结束章节 index (含); <0 表示下载到最后一章
+     * @return false = 这本书已取不到 (不在书架/已删/无书源) 或目录保障失败
+     */
+    suspend fun enqueueDownload(bookUrl: String, start: Int, end: Int): Boolean {
+        val cacheBook = getOrCreate(bookUrl) ?: return false
+        if (!cacheBook.ensureToc()) return false
+        val book = cacheBook.book
+        val actualEnd = if (end < 0) {
+            book.lastChapterIndex
+        } else {
+            min(end, book.lastChapterIndex)
+        }
+        if (cacheBook.chapterList == null) {
+            // 整本缓存不经过阅读页, 下一章地址要用的内存目录快照在这里从库兜底;
+            // 必须在 ensureToc 之后读 (目录原本为空时那一步刚把章节写进库)
+            cacheBook.chapterList = AppDbProviders.get().bookChapterDao.getChapterList(bookUrl)
+        }
+        cacheBook.addDownload(start, actualEnd)
+        return true
     }
 
     /**
@@ -300,7 +339,13 @@ object CacheBookShared {
         private var isStopped = false
         private var retryingCount = 0
         private var isLoading = false
-        /** 章节列表缓存 (addDownload 后由调用方设置, 避免每次查 DB) */
+
+        /**
+         * 内存目录快照, 供下载时取下一章地址 (部分书源依赖 nextChapterUrl)。
+         *
+         * 阅读页取到模型后注入已加载的目录; 缓存入口由 [CacheBookShared.enqueueDownload]
+         * 从库兜底加载。
+         */
         var chapterList: List<BookChapter>? = null
 
         val waitCount get() = waitDownloadSet.size
@@ -341,6 +386,79 @@ object CacheBookShared {
             isLoading = true
         }
 
+        /**
+         * 缓存前的目录保障 (对照 app 端 CacheBookService.addDownloadData 的目录为空分支):
+         * 章节为空时先拉详情页补目录地址, 再拉目录批量落库; 检查记录只 PATCH
+         * lastCheckTime/totalChapterNum 列, 整行 update 会冲掉缓存期间并发写入的其他字段。
+         *
+         * 失败时本方法自行收尾 ([failToc]): 复位加载中标记并把模型移出下载池, 各端调用点
+         * 只需放弃本次入队。
+         *
+         * @return false=拉取失败 (该书的下载任务已在收尾中移除)
+         */
+        suspend fun ensureToc(): Boolean {
+            val chapterCount = AppDbProviders.get().bookChapterDao.getChapterCount(book.bookUrl)
+            if (chapterCount > 0) return true
+            setLoading()
+            tocEnsureMutex.withLock {
+                val name = book.name
+                if (book.tocUrl.isEmpty()) {
+                    runCatching {
+                        getBookInfoAwait(bookSource, book)
+                    }.onFailure {
+                        book.lastCheckTime = systemCurrentTimeMillis()
+                        // 只 PATCH 检查记录列; 整行 update 会冲掉缓存期间并发写入的其他字段
+                        AppDbProviders.get().bookDao.updateLastCheckTime(
+                            book.bookUrl,
+                            book.lastCheckTime,
+                            book.totalChapterNum
+                        )
+                        AppLog.put("《$name》目录为空且加载详情页失败\n${it.message}", it, false)
+                        return failToc()
+                    }
+                }
+                getChapterListAwait(bookSource, book).onFailure {
+                    if (book.totalChapterNum > 0) {
+                        book.totalChapterNum = 0
+                    }
+                    book.lastCheckTime = systemCurrentTimeMillis()
+                    // 只 PATCH 检查记录列; 整行 update 会冲掉缓存期间并发写入的其他字段
+                    AppDbProviders.get().bookDao.updateLastCheckTime(
+                        book.bookUrl,
+                        book.lastCheckTime,
+                        book.totalChapterNum
+                    )
+                    AppLog.put("《$name》目录为空且加载目录失败\n${it.message}", it, false)
+                    return failToc()
+                }.getOrNull()?.let { toc ->
+                    AppDbProviders.get().bookChapterDao.insert(*toc.toTypedArray())
+                }
+                // 只 PATCH 检查记录列; 整行 update 会冲掉缓存期间并发写入的其他字段
+                AppDbProviders.get().bookDao.updateLastCheckTime(
+                    book.bookUrl,
+                    book.lastCheckTime,
+                    book.totalChapterNum
+                )
+            }
+            return true
+        }
+
+        /**
+         * 目录保障失败收尾: 清空队列、复位加载中标记并把本模型移出下载池。
+         *
+         * 收尾只能放在共享层: 模型带着 isLoading 留在池里既不可处理 (调度循环只挑
+         * [hasWaitingDownloads] / [isIdle] 的模型), 又不被清理 ([isIdle] 判 false),
+         * 缓存状态与托盘/通知因此永不消失, 调度循环还会每秒空转。
+         */
+        private fun failToc(): Boolean {
+            stop()
+            // 并发窗口内可能已有新模型顶替同名书, 只移除自己这一份
+            cacheBookMapRef.casUpdate { cur ->
+                if (cur[book.bookUrl] === this) cur - book.bookUrl else cur
+            }
+            return false
+        }
+
         fun stop() = synchronized(lock) {
             waitDownloadSet.clear()
             batchDownloadSet.clear()
@@ -355,10 +473,9 @@ object CacheBookShared {
          * 添加下载范围 (对照 app 端 CacheBookModel.addDownload)。
          *
          * @param start 起始章节 index (含)
-         * @param end 结束章节 index (含); 注意: 与 app 端一致, 调用方负责 clamp 到
-         *           [Book.lastChapterIndex] (app 端在 CacheBookService.addDownloadData 内
-         *           `min(end, book.lastChapterIndex)`, 桌面端在 DesktopCacheBook.addDownload
-         *           内 clamp)。本方法不做 clamp, 保持与 app 端 CacheBookModel.addDownload 一致。
+         * @param end 结束章节 index (含); 注意: 与 app 端一致, 本方法不做 clamp -
+         *           缓存入口的范围收敛由 [CacheBookShared.enqueueDownload] 负责, 阅读页
+         *           预下载由调用方自行收敛 (对照原版 CacheBookModel.addDownload)。
          */
         fun addDownload(start: Int, end: Int) = synchronized(lock) {
             isStopped = false
@@ -452,7 +569,7 @@ object CacheBookShared {
          * 2. 锁外查 DB chapter (suspend 不能进锁); 查不到/被 stop/isVolume/hasImageContent
          *    则加锁回滚预占
          * 3. 已缓存 (BookStorage.hasContent): 重新加载内容并 saveImages 刷新图片缓存
-         *    (app 端行为, 桌面端 saveImages no-op, 等价于仅 onSuccess)
+         *    (四端均走 [BookHelpProviders] 的同一份编排)
          * 4. 未缓存: getContentAwait + saveImages, 成功后通过
          *    [CacheBookCallback.onContentLoadFinish] 通知阅读流
          * 5. 任务一律 LAZY 构造 (锁内构造不执行), start() 在锁外: atomicfu 锁非重入,

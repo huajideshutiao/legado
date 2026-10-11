@@ -40,10 +40,8 @@ import java.nio.file.Paths
  * 模式参考 `registerAndroidMediaNotificationProvider`。
  *
  * # 注意
- * - startCacheBookService 的 chapterList 加载 + 目录为空时拉取详情/目录逻辑
- *   (app 端 CacheBookService.addDownloadData 内 mutex.withLock 段) 由桌面端
- *   阅读 VM 的 cacheBook()/addDownload() 在调用 startCacheBookService 前
- *   自行处理, 本方法仅做 addDownload + startProcessJob (与桌面端阅读 VM 的现有分工一致)。
+ * - startCacheBookService 的目录保障与内存目录快照兜底都在共享入队编排
+ *   ([CacheBookShared.enqueueDownload]) 内, 四端缓存入口同一实现。
  * - downloadJob 重启逻辑 (app 端 CacheBookService.removeDownload 内
  *   `if (downloadJob == null && CacheBook.isRun) download()`) 桌面端由
  *   阅读 VM 监听 isRun 自行管理, 本方法不直接重启。
@@ -56,18 +54,8 @@ class DesktopServiceLauncher(
         // 接入已下沉的 CacheBookShared: 创建模型 + 入队 + 把处理 job 跑到结束
         // (对照 app 端 CacheBookService.addDownloadData + download)
         scope.launch {
-            val cacheBook = CacheBookShared.getOrCreate(bookUrl)
-            if (cacheBook != null) {
-                // end<0 表示下载到最后一章 (app 端 CacheBookService.addDownloadData 内
-                // `if (end < 0) book.lastChapterIndex else min(end, book.lastChapterIndex)`)
-                val actualEnd = if (end < 0) {
-                    cacheBook.book.lastChapterIndex
-                } else {
-                    minOf(end, cacheBook.book.lastChapterIndex)
-                }
-                cacheBook.addDownload(start, actualEnd)
-            }
-            // 取不到书 (不在书架/已删/无书源) 时池为空, 本行让 job 立即结束: 与原版
+            CacheBookShared.enqueueDownload(bookUrl, start, end)
+            // 取不到书 (不在书架/已删/无书源) 或目录保障失败时池为空, 本行让 job 立即结束: 与原版
             // addDownloadData 的 onFinally 无条件 download() (内部 startProcessJob 返回后 stopSelf)
             // 一致 —— "服务起来了但没有可入队的书" 同样以调度 job 结束收尾, 不留悬空会话
             CacheBookShared.startProcessJob()
