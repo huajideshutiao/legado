@@ -44,11 +44,11 @@ object DesktopBookExport {
         books.forEach { epubShared.exportEpub(dir, it) }
     }
 
-    /** 导出图片书到 [dir] 目录, 每本书一个 cbz (对照 app 端 ExportBookService 的 cbz 分支)。 */
+    /** 导出图片书到 [dir] 目录, 每本书一个 cbz (对照 app 端 ExportBookService 的 cbz 分支, 导出前同安卓行为重建本地书目录兜底)。 */
     suspend fun exportCbz(dir: String, books: List<Book>) {
         File(dir).mkdirs()
         books.forEach { book ->
-            val chapters = AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
+            val chapters = shared.ensureChapterList(book)
             epubShared.exportCbz(dir, book, chapters)
         }
     }

@@ -1,11 +1,17 @@
 package io.legado.app.service
 
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.ReplaceRule
+import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isLocalModified
 import io.legado.app.lib.epublib.domain.Author
 import io.legado.app.lib.epublib.domain.Date
 import io.legado.app.lib.epublib.domain.EpubBook
 import io.legado.app.lib.epublib.domain.Metadata
+import io.legado.app.model.ActiveReadBookRegistry
+import io.legado.app.model.fileBook.FileBook
 import java.io.OutputStream
 import java.nio.charset.Charset
 
@@ -14,8 +20,9 @@ import java.nio.charset.Charset
  *
  * 背景: app 端 [ExportBookService] 是 Android Service (EPUB/CBZ/TXT 导出), Service 框架
  * (onStartCommand/通知/lifecycleScope) 不可下沉, 但导出业务逻辑可下沉供 desktop/iOS/鸿蒙复用。
- * 本类提取不依赖 FileDoc/Glide/appCtx.assets/BookHelp.getImage/FileBook/ReadBook 的纯业务
- * 方法: [setEpubMetadata] (纯 epublib domain 操作) / [exportTxt] (OutputStream 写入 + WebDav 上传)。
+ * 本类提取不依赖 FileDoc/Glide/appCtx.assets/BookHelp.getImage/ReadBook 的纯业务
+ * 方法: [setEpubMetadata] (纯 epublib domain 操作) / [exportTxt] (OutputStream 写入 + WebDav 上传) /
+ * [ensureChapterList] (本地书目录重建入库, FileBook/数据库/活动阅读页注册表均 shared 可用)。
  * 正文拼接纯逻辑 (getAllContents/getExportData) 已进一步下沉 commonMain [ExportBookContentShared]。
  *
  * 平台依赖经 [ExportBookDeps] 注入: R.string 文案 / AppConfig (exportCharset 等) /
@@ -23,7 +30,7 @@ import java.nio.charset.Charset
  * AppWebDav (android.net.Uri)。
  *
  * 未下沉 (保留 app 端): exportEpub (Glide+assets)、exportCbz (BookHelp.getImage)、
- * setEpubContent/fixPic、setAssets/setCover、ensureChapterList、CustomExporter;
+ * setEpubContent/fixPic、setAssets/setCover、CustomExporter;
  * 后续 FileDoc/BookHelp.getImage/ImageLoader 下沉后可继续迁移。
  *
  * @see ExportBookDeps 平台依赖注入接口
@@ -94,6 +101,38 @@ class ExportBookShared(private val deps: ExportBookDeps) {
             runCatching { deps.deleteExportUri(handle.uri) }
             throw e
         }
+    }
+
+    /**
+     * 导出前章节列表兜底重建 (对应 app 端 `ExportBookService.ensureChapterList`)。
+     *
+     * 本地书被修改过时重新解析目录入库 (删旧章节行 → 批量插入 → 更新书籍 →
+     * 通知活动阅读页目录已更新); 列表仍为空且是本地书时再兜底重建一次,
+     * 避免把空章节列表当作目录损坏直接导出空文件。
+     */
+    suspend fun ensureChapterList(book: Book): List<BookChapter> {
+        val appDb = AppDbProviders.get()
+        if (book.isLocalModified()) {
+            runCatching { FileBook.getChapterList(book) }.onSuccess {
+                appDb.bookChapterDao.delByBook(book.bookUrl)
+                appDb.bookChapterDao.insert(*it.toTypedArray())
+                appDb.bookDao.update(book)
+                // 通知活动阅读页目录已更新; 阅读页未打开时不动作
+                ActiveReadBookRegistry.current?.onChapterListUpdated(book)
+            }
+        }
+        var list = appDb.bookChapterDao.getChapterList(book.bookUrl)
+        if (list.isEmpty() && book.isLocal) {
+            runCatching { FileBook.getChapterList(book) }.onSuccess { fresh ->
+                if (fresh.isNotEmpty()) {
+                    appDb.bookChapterDao.delByBook(book.bookUrl)
+                    appDb.bookChapterDao.insert(*fresh.toTypedArray())
+                    appDb.bookDao.update(book)
+                    list = fresh
+                }
+            }
+        }
+        return list
     }
 }
 

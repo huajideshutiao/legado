@@ -22,13 +22,9 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.getExportFileName
-import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.setLiveOngoing
-import io.legado.app.model.ActiveReadBookRegistry
-import io.legado.app.model.fileBook.FileBook
 import io.legado.app.notificationManager
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.FileDoc
@@ -172,7 +168,7 @@ class ExportBookService : BaseService() {
                 val book = appDb.bookDao.getBook(bookUrl)
                 try {
                     book ?: throw NoStackTraceException("获取${bookUrl}书籍出错")
-                    val chapters = ensureChapterList(book)
+                    val chapters = shared.ensureChapterList(book)
                     notificationContentText = androidAppString(
                         "export_book_notification_content",
                         book.name,
@@ -210,29 +206,7 @@ class ExportBookService : BaseService() {
     }
 
     // Room KMP: 内部调用 suspend DAO 方法，改为 suspend fun；唯一调用方在 launch(IO) 协程内
-    private suspend fun ensureChapterList(book: Book): List<BookChapter> {
-        if (book.isLocalModified()) {
-            runCatching { FileBook.getChapterList(book) }.onSuccess {
-                appDb.bookChapterDao.delByBook(book.bookUrl)
-                appDb.bookChapterDao.insert(*it.toTypedArray())
-                appDb.bookDao.update(book)
-                // 通知活动阅读页目录已更新; 阅读页未打开时不动作
-                ActiveReadBookRegistry.current?.onChapterListUpdated(book)
-            }
-        }
-        var list = appDb.bookChapterDao.getChapterList(book.bookUrl)
-        if (list.isEmpty() && book.isLocal) {
-            runCatching { FileBook.getChapterList(book) }.onSuccess { fresh ->
-                if (fresh.isNotEmpty()) {
-                    appDb.bookChapterDao.delByBook(book.bookUrl)
-                    appDb.bookChapterDao.insert(*fresh.toTypedArray())
-                    appDb.bookDao.update(book)
-                    list = fresh
-                }
-            }
-        }
-        return list
-    }
+    // ensureChapterList 已下沉 [ExportBookShared.ensureChapterList] (安卓/桌面共用)
 
     /**
      * ExportBookDeps 平台实现, 桥接 AppConfig / ContentProcessor / FileDoc /
