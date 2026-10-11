@@ -228,7 +228,7 @@ class NativeAppConfigAccessor(
 
     // ---- 换源业务 ----
     override var changeSourceCheckAuthor: Boolean
-        get() = prefs.getBoolean(PreferKey.changeSourceCheckAuthor, true)
+        get() = prefs.getBoolean(PreferKey.changeSourceCheckAuthor, false)
         set(value) = prefs.putBoolean(PreferKey.changeSourceCheckAuthor, value)
 
     override var changeSourceLoadInfo: Boolean

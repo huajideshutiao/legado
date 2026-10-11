@@ -226,7 +226,7 @@ class DesktopAppConfigAccessor : AppConfigAccessor {
 
     // ---- 换源业务 ----
     override var changeSourceCheckAuthor: Boolean
-        get() = prefs.getBoolean(PreferKey.changeSourceCheckAuthor, true)
+        get() = prefs.getBoolean(PreferKey.changeSourceCheckAuthor, false)
         set(value) = prefs.putBoolean(PreferKey.changeSourceCheckAuthor, value)
 
     override var changeSourceLoadInfo: Boolean
@@ -389,11 +389,12 @@ class DesktopAppConfigAccessor : AppConfigAccessor {
         prefs.putInt(PreferKey.bitmapCacheSize, value)
     }
 
-    // 与 app 端 AppConfig.sourceEditMaxLine 语义一致: <10 视为不限制
+    // 与 app 端 AppConfig.sourceEditMaxLine 语义一致: 设置界面 range 5..30,
+    // 存储值不在该区间一律视为不限制, 返回 Int.MAX_VALUE 供 maxLines 直接消费
     override val sourceEditMaxLine: Int
         get() {
             val maxLine = prefs.getInt(PreferKey.sourceEditMaxLine, Int.MAX_VALUE)
-            return if (maxLine < 10) Int.MAX_VALUE else maxLine
+            return if (maxLine in 5..30) maxLine else Int.MAX_VALUE
         }
 
     // 不钳制: 存储值原样使用 (四端口径一致, 见 commonMain AppConfigAccessor.welcomeShowTime)
