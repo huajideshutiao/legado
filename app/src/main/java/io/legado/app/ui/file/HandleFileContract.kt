@@ -1,7 +1,6 @@
 package io.legado.app.ui.file
 
 import android.net.Uri
-import androidx.core.os.BundleCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentManager
@@ -62,23 +61,7 @@ class HandleFileLauncher(
         if (param.mode == HandleFileContract.IMAGE && param.allowExtensions.isEmpty()) {
             param.allowExtensions = arrayOf("jpg", "png", "bmp", "webp")
         }
-        fragmentManager.setFragmentResultListener("handleFile", lifecycleOwner) { _, bundle ->
-            val result = HandleFileContract.Result(
-                BundleCompat.getParcelable(bundle, "result", Uri::class.java),
-                bundle.getInt("requestCode"),
-                bundle.getString("value")
-            )
-            callback(result)
-        }
-        HandleFileDialog.show(
-            fragmentManager,
-            param.mode,
-            param.title,
-            param.allowExtensions,
-            param.otherActions,
-            param.fileData,
-            param.value,
-            param.requestCode
-        )
+        // 经声明式宿主 (HandleFileHost) 渲染, 结果仍走本回调 (原 Fragment 结果监听语义)
+        HandleFileRequests.request(param, lifecycleOwner, callback)
     }
 }

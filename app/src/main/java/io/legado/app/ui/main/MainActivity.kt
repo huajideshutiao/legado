@@ -628,6 +628,8 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
             ReaderImageActionMenu.Host()
             // 查词对话框 (选中词 → 词典查询, 本地/在线词典规则; 四端同一份, 见 shared ReaderDictWord)
             ReaderDictWord.Host()
+            // 文件选择/导出对话框宿主 (原 HandleFileDialog/FilePickerDialog Fragment 的声明式形态)
+            HandleFileHost()
         }
     }
 

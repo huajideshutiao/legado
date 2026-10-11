@@ -25,28 +25,6 @@ import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 
-inline fun <reified T : DialogFragment> AppCompatActivity.showDialogFragment(
-    arguments: Bundle.() -> Unit = {}
-) {
-    val dialog = T::class.java.newInstance()
-    val bundle = Bundle()
-    bundle.apply(arguments)
-    dialog.arguments = bundle
-    dialog.show(supportFragmentManager, T::class.simpleName)
-}
-
-inline fun <reified T : DialogFragment> AppCompatActivity.dismissDialogFragment() {
-    supportFragmentManager.fragments.forEach {
-        if (it is T) {
-            it.dismissAllowingStateLoss()
-        }
-    }
-}
-
-fun AppCompatActivity.showDialogFragment(dialogFragment: DialogFragment) {
-    dialogFragment.show(supportFragmentManager, dialogFragment::class.simpleName)
-}
-
 val WindowManager.windowSize: DisplayMetrics
     get() {
         val displayMetrics = DisplayMetrics()

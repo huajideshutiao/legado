@@ -21,14 +21,17 @@ class FilePickerViewModel(application: Application) : BaseViewModel(application)
     val isSelectFile: Boolean get() = mode == HandleFileContract.FILE
     val lastDir: File? get() = subDocs.lastOrNull() ?: rootDoc
 
-    fun initData(arguments: Bundle?) {
-        arguments?.let {
-            mode = it.getInt("mode", HandleFileContract.FILE)
-            isShowHideDir = it.getBoolean("isShowHideDir")
-            it.getString("initPath")?.let { path ->
-                rootDoc = File(path)
-            }
-            allowExtensions = it.getStringArray("allowExtensions")
+    fun initData(
+        mode: Int,
+        initPath: String?,
+        isShowHideDir: Boolean,
+        allowExtensions: Array<String>?,
+    ) {
+        this.mode = mode
+        this.isShowHideDir = isShowHideDir
+        this.allowExtensions = allowExtensions
+        initPath?.let { path ->
+            rootDoc = File(path)
         }
         upFiles(rootDoc)
     }

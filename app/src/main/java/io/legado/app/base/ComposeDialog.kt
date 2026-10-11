@@ -29,7 +29,7 @@ import io.legado.app.ui.compose.theme.AppTheme
 /**
  * 命令式 Compose 对话框宿主，供非 DialogFragment 的调用方(object/包装类)挂 ComposeView。
  * ComponentDialog 自带 Lifecycle/SavedState/ViewTree owner 并推到 RESUMED，ComposeView 可直接重组。
- * 窗口尺寸/E-Ink/圆角与 [BaseComposeDialogFragment] 对齐。
+ * 窗口尺寸/E-Ink/圆角与 [原命令式对话框基类(已删除)] 对齐。
  */
 open class ComposeDialog(
     context: Context,

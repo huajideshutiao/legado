@@ -14,21 +14,6 @@ import androidx.lifecycle.Lifecycle
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 
-inline fun <reified T : DialogFragment> Fragment.showDialogFragment(
-    arguments: Bundle.() -> Unit = {}
-) {
-    @Suppress("DEPRECATION")
-    val dialog = T::class.java.newInstance()
-    val bundle = Bundle()
-    bundle.apply(arguments)
-    dialog.arguments = bundle
-    dialog.show(childFragmentManager, T::class.simpleName)
-}
-
-fun Fragment.showDialogFragment(dialogFragment: DialogFragment) {
-    dialogFragment.show(childFragmentManager, dialogFragment::class.simpleName)
-}
-
 fun Fragment.getPrefBoolean(key: String, defValue: Boolean = false) =
     requireContext().defaultSharedPreferences.getBoolean(key, defValue)
 

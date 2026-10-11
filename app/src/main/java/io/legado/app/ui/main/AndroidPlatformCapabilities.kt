@@ -161,7 +161,6 @@ import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.restart
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.share
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.verificationField
