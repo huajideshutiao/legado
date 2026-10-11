@@ -1,6 +1,5 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -12,7 +11,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -80,8 +78,6 @@ fun ReviewListContent(
     paragraphIndex: Int,
     parentReview: Review? = null,
     onDismiss: () -> Unit,
-    /** 面板底色: 弹窗形态由宿主传底栏色, 宽屏侧栏面板维持背景色 */
-    containerColor: Color = AppTheme.colors.background,
     /** 回复详情嵌套承载: true=再开一层弹窗 (Host 弹窗形态, 原版两层 Dialog 语义); false=同容器替换 (宽屏面板形态) */
     wrapRepliesInSheet: Boolean = false,
 ) {
@@ -151,7 +147,7 @@ fun ReviewListContent(
         })
     }
 
-    Box(Modifier.fillMaxSize().background(containerColor)) {
+    Box(Modifier.fillMaxSize()) {
                     ReviewListDialog(
                         title = title,
                         parentReview = parentReview,
@@ -294,7 +290,6 @@ fun ReviewListDialogHost(
                     paragraphIndex = paragraphIndex,
                     parentReview = parentReview,
                     onDismiss = onDismiss,
-                    containerColor = AppTheme.colors.bottomBackground,
                     wrapRepliesInSheet = true,
                 )
             }
