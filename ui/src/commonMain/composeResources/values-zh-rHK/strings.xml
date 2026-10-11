@@ -910,7 +910,7 @@
     <string name="review_replies_count">全部 %1$d 條回覆 &gt;</string>
     <string name="review_replies_detail_title">評論詳情</string>
     <string name="review_replies_section_title">全部回覆 · %1$d</string>
-    <string name="review_list_section_title">全部評論 · %1$s</string>
+    <string name="review_title_with_count">評論(%1$s條)</string>
     <string name="review_sort_hot">熱門</string>
     <string name="review_sort_latest">最新</string>
     <string name="review_expand">展開</string>

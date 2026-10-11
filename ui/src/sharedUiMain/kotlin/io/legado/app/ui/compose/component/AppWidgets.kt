@@ -244,11 +244,14 @@ fun AppSwitch(
         contentAlignment = Alignment.Center,
     ) {
         if (onCheckedChange != null) {
+            // 开关自身不绘制指示: 按压/聚焦/悬停反馈由承载它的行提供
             Box(
                 Modifier
                     .requiredSizeIn(minWidth = 48.dp, minHeight = 48.dp)
                     .toggleable(
                         value = checked,
+                        interactionSource = null,
+                        indication = null,
                         enabled = enabled,
                         role = Role.Switch,
                         onValueChange = onCheckedChange,

@@ -32981,7 +32981,6 @@ HSPLlegado/ui/generated/resources/String10_commonMainKt;->review_delegate$lambda
 HSPLlegado/ui/generated/resources/String10_commonMainKt;->review_expand_delegate$lambda$0()Lorg/jetbrains/compose/resources/StringResource;
 HSPLlegado/ui/generated/resources/String10_commonMainKt;->review_id_rule_delegate$lambda$0()Lorg/jetbrains/compose/resources/StringResource;
 HSPLlegado/ui/generated/resources/String10_commonMainKt;->review_list_rule_delegate$lambda$0()Lorg/jetbrains/compose/resources/StringResource;
-HSPLlegado/ui/generated/resources/String10_commonMainKt;->review_list_section_title_delegate$lambda$0()Lorg/jetbrains/compose/resources/StringResource;
 HSPLlegado/ui/generated/resources/String10_commonMainKt;->review_load_failed_delegate$lambda$0()Lorg/jetbrains/compose/resources/StringResource;
 HSPLlegado/ui/generated/resources/String10_commonMainKt;->review_no_action_rule_delegate$lambda$0()Lorg/jetbrains/compose/resources/StringResource;
 HSPLlegado/ui/generated/resources/String10_commonMainKt;->review_no_current_book_delegate$lambda$0()Lorg/jetbrains/compose/resources/StringResource;

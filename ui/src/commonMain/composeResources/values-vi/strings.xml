@@ -658,6 +658,7 @@
     <string name="show_add_to_shelf_alert_title">Nhắc thêm vào tủ sách khi quay lại</string>
     <string name="show_add_to_shelf_alert_summary">Nhắc thêm vào tủ sách khi quay lại từ việc đọc sách không có trên tủ sách</string>
     <string name="review">Đánh giá</string>
+    <string name="review_title_with_count">Đánh giá (%1$s)</string>
     <string name="rule_review_url">URL đánh giá đoạn (reviewUrl)</string>
     <string name="rule_avatar">Avatar người đăng đánh giá đoạn (avatarRule)</string>
     <string name="rule_review_content">Nội dung đánh giá đoạn (contentRule)</string>

@@ -23,19 +23,17 @@ import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.ui.book.read.InputBar
 import io.legado.app.ui.book.read.ReviewListBody
 import io.legado.app.ui.book.read.ReviewListLoadMoreEffect
+import io.legado.app.ui.book.read.ReviewSortEntry
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
-import legado.ui.generated.resources.Res
-import legado.ui.generated.resources.review
-import org.jetbrains.compose.resources.stringResource
 
 /**
  * 书评列表页 shared Screen (KMP 共享)。
  *
- * 列表主体 (排序头 / 单条评论 / 点赞点踩 / 展开折叠 / 菜单删除 / 回复入口 / footer) 与底部输入栏
+ * 列表主体 (单条评论 / 点赞点踩 / 展开折叠 / 菜单删除 / 回复入口 / footer) 与底部输入栏
  * 全部复用 app 原版下沉的 [ReviewListBody] + [InputBar],
- * 本 Screen 只提供整页外壳 (AppTitleBar + 返回), 与 BottomSheet 形态的
+ * 本 Screen 只提供整页外壳 (AppTitleBar + 返回, 排序入口在顶栏右侧), 与 BottomSheet 形态的
  * [io.legado.app.ui.book.read.ReviewListDialog] 共用同一套 item 渲染。
  *
  * @param state 列表状态
@@ -62,24 +60,22 @@ fun ReviewListScreen(
             .background(rememberColor("background"))
     ) {
         AppTitleBar(
-            title = stringResource(Res.string.review),
+            title = state.titleText,
             onBack = actions::onBack,
+            // 评论列表模式专用外壳: 排序入口收进顶栏右侧
+            actions = { ReviewSortEntry(state.sortState, actions::onChangeSort) },
         )
         ReviewListBody(
             listState = listState,
             // 整页路由仅书评列表模式 (无楼主原评论)
             parentReview = null,
-            listTitleText = state.listTitleText,
             repliesTitleText = "",
             reviews = state.reviews,
-            sortState = state.sortState,
             footerLoading = state.footerLoading,
             footerHasMore = state.footerHasMore,
             expandedKeys = state.expandedKeys,
             votedIds = state.votedIds,
             votedDownIds = state.votedDownIds,
-            onLoadMore = actions::onLoadMore,
-            onChangeSort = actions::onChangeSort,
             onReviewClick = actions::onReviewClick,
             onReviewLongClick = actions::onReviewLongClick,
             onToggleExpand = actions::onToggleExpand,
@@ -176,8 +172,8 @@ data class ReviewListUiState(
     val expandedKeys: Set<String> = emptySet(),
     val votedIds: Set<String> = emptySet(),
     val votedDownIds: Set<String> = emptySet(),
-    /** "全部评论 · N"; 书源未配总数规则时为空 */
-    val listTitleText: String = "",
+    /** 顶栏标题 (评论数已缝合, 如 "评论(12条)"); 未配总数规则时计数取当前列表条数 */
+    val titleText: String = "",
     /** 底部输入栏提示 */
     val inputHint: String = "",
 )

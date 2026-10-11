@@ -936,7 +936,7 @@
     <string name="reply_review">Reply</string>
     <string name="review_replies_detail_title">Comment detail</string>
     <string name="review_replies_section_title">All replies · %1$d</string>
-    <string name="review_list_section_title">All comments · %1$s</string>
+    <string name="review_title_with_count">Comments (%1$s)</string>
     <string name="review_sort_hot">Hot</string>
     <string name="review_sort_latest">Latest</string>
     <string name="review_expand">Expand</string>

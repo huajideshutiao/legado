@@ -672,6 +672,7 @@
     <string name="show_add_to_shelf_alert_title">返回時提示放入書架</string>
     <string name="show_add_to_shelf_alert_summary">閱讀未放入書架的書籍在返回時提示放入書架</string>
     <string name="review">評論</string>
+    <string name="review_title_with_count">評論(%1$s條)</string>
     <string name="rule_review_url">段評URL（reviewUrl）</string>
     <string name="rule_avatar">段評發布者大頭貼（avatarRule）</string>
     <string name="rule_review_content">段評內容（contentRule）</string>

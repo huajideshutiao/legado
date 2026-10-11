@@ -40,11 +40,10 @@ import legado.ui.generated.resources.confirm_delete_review
 import legado.ui.generated.resources.delete
 import legado.ui.generated.resources.no
 import legado.ui.generated.resources.reply_review
-import legado.ui.generated.resources.review
-import legado.ui.generated.resources.review_list_section_title
 import legado.ui.generated.resources.review_post_hint
 import legado.ui.generated.resources.review_replies_detail_title
 import legado.ui.generated.resources.review_replies_section_title
+import legado.ui.generated.resources.review_title_with_count
 import legado.ui.generated.resources.yes
 import org.jetbrains.compose.resources.stringResource
 
@@ -106,19 +105,21 @@ fun ReviewListContent(
     val totalCount by viewModel.totalCount.collectAsState()
 
     // 一次性 UI 文本 (对照 app 端 onViewCreated 的 when 分支)
-    val titleText = when {
-        parentReview != null -> stringResource(Res.string.review_replies_detail_title)
-        paragraphIndex <= 0 -> stringResource(Res.string.review)
-        else -> stringResource(Res.string.review) + "  #" + paragraphIndex
-    }
+    val repliesDetailTitle = stringResource(Res.string.review_replies_detail_title)
     val inputHint = stringResource(
         if (parentReview != null) Res.string.reply_review else Res.string.review_post_hint
     )
-    // 列表头 "全部评论 · N": 规则未配置 (totalCount 空) 时不显示
+    // 评论数缝合进标题: "评论(N条)" / "评论(N条)  #段号"; N 优先书源总数规则文本,
+    // 未配置时用当前列表条数; 回复模式标题不缝合
     // (先拷本地再判空: 委托属性不可 smart-cast, 同 ReviewListRoute 做法)
     val count = totalCount
-    val listTitleText = if (count.isNullOrBlank()) ""
-    else stringResource(Res.string.review_list_section_title, count)
+    val countText = count.takeUnless { it.isNullOrBlank() } ?: reviews.size.toString()
+    val title = when {
+        parentReview != null -> repliesDetailTitle
+        paragraphIndex > 0 ->
+            stringResource(Res.string.review_title_with_count, countText) + "  #" + paragraphIndex
+        else -> stringResource(Res.string.review_title_with_count, countText)
+    }
     // 回复模式 "全部回复 · N" (对照 app 端 repliesTitleText)
     val repliesTitleText = if (parentReview != null) {
         stringResource(Res.string.review_replies_section_title, parentReview.replyCount)
@@ -151,9 +152,8 @@ fun ReviewListContent(
 
     Box(Modifier.fillMaxSize().background(AppTheme.colors.background)) {
                     ReviewListDialog(
-                        title = titleText,
+                        title = title,
                         parentReview = parentReview,
-                        listTitleText = listTitleText,
                         repliesTitleText = repliesTitleText,
                         inputHint = inputHint,
                         reviews = reviews,

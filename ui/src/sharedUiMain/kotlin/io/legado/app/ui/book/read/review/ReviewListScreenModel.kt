@@ -41,7 +41,7 @@ class ReviewListScreenModel(
     private val _state = MutableStateFlow(ReviewListUiState())
     val state: StateFlow<ReviewListUiState> = _state.asStateFlow()
 
-    /** 段评总数原始文本; Route 侧套 review_list_section_title 模板后回灌 [setTexts]。 */
+    /** 段评总数原始文本; Route 侧缝合进顶栏标题后回灌 [setTexts]。 */
     val totalCount: StateFlow<String?> = shared.totalCount
 
     /** 点击单条时暂存的回复目标 (对照 app 原版 replyToReview)。 */
@@ -85,9 +85,9 @@ class ReviewListScreenModel(
         shared.load()
     }
 
-    /** Route 侧注入本地化文本 (列表头 "全部评论 · N" / 输入栏提示)。 */
-    fun setTexts(listTitleText: String, inputHint: String) {
-        _state.update { it.copy(listTitleText = listTitleText, inputHint = inputHint) }
+    /** Route 侧注入本地化文本 (顶栏标题, 评论数已缝合 / 输入栏提示)。 */
+    fun setTexts(titleText: String, inputHint: String) {
+        _state.update { it.copy(titleText = titleText, inputHint = inputHint) }
     }
 
     /** 翻页追加 */

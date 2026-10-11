@@ -2,7 +2,7 @@ package io.legado.app.ui.book.read
 
 // I18N KEYS (新增/复用, 待 ResourceProvider.jvm.kt 补全桌面端字面量):
 // - review_post_hint / reply_review / review_replies_detail_title / review /
-//   review_replies_section_title / review_list_section_title / review_sort_hot /
+//   review_replies_section_title / review_sort_hot /
 //   review_sort_latest / review_expand / review_collapse / confirm_delete_review /
 //   vote_up / vote_down / review_replies_count / cancel / delete / menu / bottom_line
 //
@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -50,9 +51,11 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -91,16 +94,16 @@ import org.jetbrains.compose.resources.stringResource
  * 调用方持有全部状态传入; 交互经回调上抛; 图片渲染经 [avatarSlot]/[imageSlot] 注入
  * (app 端 Glide); 删除确认 / 发书评 / 查看大图由调用方实现平台专属行为。
  *
- * 业务对齐 (对照 app 端原版 ReviewListContent): 顶部关闭按钮 + 居中标题; LazyColumn 列表,
- * 段评模式顶部"全部评论·N"+ 排序, 回复模式顶部 parentReview 原文; 单条评论含头像/昵称/
+ * 业务 (对照 app 端原版 ReviewListContent): 顶部关闭按钮 + 居中标题, 列表模式评论数由调用方
+ * 缝合进标题、排序入口在顶栏右侧 (回复模式无排序); LazyColumn 列表, 回复模式顶部 parentReview
+ * 原文; 单条评论含头像/昵称/
  * 正文 6 行折叠/点赞/点踩/回复入口; footer loading/noMore; 翻底触发 onLoadMore。
  *
  * 与 app 端差异: BottomSheet 滚动交还的 nestedScrollInteropConnection 经 [lazyListModifier]
  * 由调用方注入 (Android 传 rememberNestedScrollInteropConnection(), 桌面传 Modifier)。
  *
- * @param title 顶部标题文本
+ * @param title 顶部标题文本 (列表模式评论数已由调用方缝合)
  * @param parentReview 回复模式的楼主原评论; null = 段评/章节评论模式
- * @param listTitleText 段评模式 "全部评论·N" 文本 (规则未配置时为空)
  * @param repliesTitleText 回复模式 "全部回复·N" 文本
  * @param inputHint 底部输入栏提示文本
  * @param reviews 当前评论列表
@@ -132,7 +135,6 @@ import org.jetbrains.compose.resources.stringResource
 fun ReviewListDialog(
     title: String,
     parentReview: Review?,
-    listTitleText: String,
     repliesTitleText: String,
     inputHint: String,
     reviews: List<Review>,
@@ -176,44 +178,57 @@ fun ReviewListDialog(
             .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
             .background(rememberColor("background"))
     ) {
-        Box(
-            Modifier
+        // 顶栏三段: 左关闭槽 + 居中标题 + 右排序槽。标题居中于整条顶栏 (对照原版
+        // tv_title layout_gravity=center), 可用宽度对称扣除两侧槽宽, 长标题不压住排序入口
+        TitleBarRow(
+            modifier = Modifier
                 .fillMaxWidth()
-                .height(DesignTokens.viewHeightXl)
+                .height(DesignTokens.viewHeightXl),
+            leading = {
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(Res.drawable.ic_review_close),
+                        contentDescription = stringResource(Res.string.cancel),
+                        tint = rememberColor("primaryText"),
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            },
+            trailing = {
+                // 列表模式: 排序入口收在顶栏右侧; 回复详情模式留同宽空槽, 标题居中不因模式而偏
+                if (parentReview == null) {
+                    ReviewSortEntry(sortState, onChangeSort)
+                } else {
+                    Spacer(Modifier.width(48.dp))
+                }
+            },
         ) {
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier.size(48.dp),
-            ) {
-                Icon(
-                    painter = painterResource(Res.drawable.ic_review_close),
-                    contentDescription = stringResource(Res.string.cancel),
-                    tint = rememberColor("primaryText"),
-                    modifier = Modifier.size(24.dp),
-                )
-            }
             Text(
                 text = title,
                 color = rememberColor("primaryText"),
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.Center),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = DesignTokens.spacingDefault),
             )
         }
         ReviewListBody(
             listState = listState,
             parentReview = parentReview,
-            listTitleText = listTitleText,
             repliesTitleText = repliesTitleText,
             reviews = reviews,
-            sortState = sortState,
             footerLoading = footerLoading,
             footerHasMore = footerHasMore,
             expandedKeys = expandedKeys,
             votedIds = votedIds,
             votedDownIds = votedDownIds,
-            onLoadMore = onLoadMore,
-            onChangeSort = onChangeSort,
             onReviewClick = onReviewClick,
             onReviewLongClick = onReviewLongClick,
             onToggleExpand = onToggleExpand,
@@ -234,7 +249,7 @@ fun ReviewListDialog(
 }
 
 /**
- * 评论列表主体 (header + items + footer), Dialog 与整页 Screen 共用。
+ * 评论列表主体 (items + footer), Dialog 与整页 Screen 共用; 排序与评论数在各外壳顶栏。
  *
  * 外壳差异 (BottomSheet 圆角+关闭钮 / 整页 AppTitleBar+返回) 由调用方各自提供。
  * [listState] 由调用方持有以便自行挂翻页监听 (见 [ReviewListDialog] 的 snapshotFlow)。
@@ -243,17 +258,13 @@ fun ReviewListDialog(
 internal fun ReviewListBody(
     listState: LazyListState,
     parentReview: Review?,
-    listTitleText: String,
     repliesTitleText: String,
     reviews: List<Review>,
-    sortState: Int,
     footerLoading: Boolean,
     footerHasMore: Boolean,
     expandedKeys: Set<String>,
     votedIds: Set<String>,
     votedDownIds: Set<String>,
-    onLoadMore: () -> Unit,
-    onChangeSort: (Int) -> Unit,
     onReviewClick: (Review) -> Unit,
     onReviewLongClick: (Review) -> Unit,
     onToggleExpand: (String) -> Unit,
@@ -295,8 +306,6 @@ internal fun ReviewListBody(
                 )
             }
             item { RepliesHeader(repliesTitleText) }
-        } else {
-            item { ListHeader(listTitleText, sortState, onChangeSort) }
         }
         items(reviews.size) { index ->
             ReviewItem(
@@ -355,69 +364,98 @@ internal fun ReviewListLoadMoreEffect(
     }
 }
 
-/** 段评模式头部: "全部评论·N" + 排序选择 */
+/**
+ * 顶栏三段布局: 左右槽按内容宽度测量 (槽只受上界约束, 见下), 标题居中于整条栏并对称扣除
+ * 两侧槽宽 (取较宽的一侧), 故标题截断点一定落在两侧入口之前。
+ */
 @Composable
-internal fun ListHeader(
-    listTitleText: String,
+private fun TitleBarRow(
+    modifier: Modifier = Modifier,
+    leading: @Composable () -> Unit,
+    trailing: @Composable () -> Unit,
+    title: @Composable () -> Unit,
+) {
+    Layout(
+        modifier = modifier,
+        content = {
+            leading()
+            title()
+            trailing()
+        },
+    ) { measurables, constraints ->
+        // 槽按 wrap 约束测量: 只给上界, 不给最小宽。外层 fillMaxWidth 传下来的
+        // minWidth = 整行宽会把槽内容 (关闭钮的 size / 排序入口的整块点击区) 强制撑满整行,
+        // 两槽各占整行后标题可用宽被夹成 0、居中落在关闭钮正中 (表现为排序跑最左、
+        // 关闭图标在画面中央、标题消失)。
+        val slotConstraints = constraints.copy(minWidth = 0)
+        val leadingPlaceable = measurables[0].measure(slotConstraints)
+        val trailingPlaceable = measurables[2].measure(slotConstraints)
+        val slot = maxOf(leadingPlaceable.width, trailingPlaceable.width)
+        val titlePlaceable = measurables[1].measure(
+            constraints.copy(
+                minWidth = 0,
+                maxWidth = (constraints.maxWidth - 2 * slot).coerceAtLeast(0),
+            )
+        )
+        val width = constraints.maxWidth
+        val height = maxOf(leadingPlaceable.height, trailingPlaceable.height, titlePlaceable.height)
+        layout(width, height) {
+            leadingPlaceable.place(0, (height - leadingPlaceable.height) / 2)
+            titlePlaceable.place((width - titlePlaceable.width) / 2, (height - titlePlaceable.height) / 2)
+            trailingPlaceable.place(width - trailingPlaceable.width, (height - trailingPlaceable.height) / 2)
+        }
+    }
+}
+
+/** 排序入口: "最热/最新 ▾" + 下拉菜单 (顶栏右侧, 评论列表模式专用; 回复模式无排序) */
+@Composable
+internal fun ReviewSortEntry(
     sortState: Int,
     onChangeSort: (Int) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(start = DesignTokens.spacingLg, top = DesignTokens.spacingMd, end = DesignTokens.spacingDefault, bottom = DesignTokens.spacingXs),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = listTitleText,
-            color = rememberColor("primaryText"),
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.weight(1f),
-        )
-        Box {
-            var sortMenuOpen by remember { mutableStateOf(false) }
-            Row(
-                Modifier
-                    .clickable { sortMenuOpen = true }
-                    .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
+    Box(modifier) {
+        var sortMenuOpen by remember { mutableStateOf(false) }
+        Row(
+            Modifier
+                .clickable { sortMenuOpen = true }
+                .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = rememberString(
+                    if (sortState == 1) "review_sort_latest" else "review_sort_hot"
+                ),
+                color = rememberColor("secondaryText"),
+                fontSize = 13.sp,
+            )
+            Icon(
+                painter = painterResource(Res.drawable.ic_arrow_drop_down),
+                contentDescription = null,
+                // 跟随夜间主题: 与相邻排序文本同色
+                tint = rememberColor("secondaryText"),
+            )
+        }
+        AppDropdownMenu(
+            expanded = sortMenuOpen,
+            onDismissRequest = { sortMenuOpen = false },
+        ) {
+            DropdownMenuItem(
+                onClick = { sortMenuOpen = false; onChangeSort(0) },
             ) {
                 Text(
-                    text = rememberString(
-                        if (sortState == 1) "review_sort_latest" else "review_sort_hot"
-                    ),
-                    color = rememberColor("secondaryText"),
-                    fontSize = 13.sp,
-                )
-                Icon(
-                    painter = painterResource(Res.drawable.ic_arrow_drop_down),
-                    contentDescription = null,
-                    // 跟随夜间主题: 与相邻排序文本同色
-                    tint = rememberColor("secondaryText"),
+                    stringResource(Res.string.review_sort_hot),
+                    color = AppTheme.colors.primaryText,
                 )
             }
-            AppDropdownMenu(
-                expanded = sortMenuOpen,
-                onDismissRequest = { sortMenuOpen = false },
+            DropdownMenuItem(
+                onClick = { sortMenuOpen = false; onChangeSort(1) },
             ) {
-                DropdownMenuItem(
-                    onClick = { sortMenuOpen = false; onChangeSort(0) },
-                ) {
-                    Text(
-                        stringResource(Res.string.review_sort_hot),
-                        color = AppTheme.colors.primaryText,
-                    )
-                }
-                DropdownMenuItem(
-                    onClick = { sortMenuOpen = false; onChangeSort(1) },
-                ) {
-                    Text(
-                        stringResource(Res.string.review_sort_latest),
-                        color = AppTheme.colors.primaryText,
-                    )
-                }
+                Text(
+                    stringResource(Res.string.review_sort_latest),
+                    color = AppTheme.colors.primaryText,
+                )
             }
         }
     }

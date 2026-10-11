@@ -38,8 +38,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -185,8 +189,9 @@ fun LazyListScope.switchPreference(
         isBottomBackground = isBottomBackground,
         onClick = { toggle() },
         onLongClick = onLongClick,
+        switchState = isChecked,
         widget = {
-            AppSwitch(checked = isChecked, onCheckedChange = { toggle() }, enabled = enabled)
+            AppSwitch(checked = isChecked, onCheckedChange = null, enabled = enabled)
         },
     )
 }
@@ -345,7 +350,11 @@ fun LazyListScope.iconListPreference(
     }
 }
 
-/** 行骨架：复刻 view_preference（透明底 + 图标 accent + 双行文本 + 行尾 widget；按压用 Compose 默认指示） */
+/**
+ * 行骨架：复刻 view_preference（透明底 + 图标 accent + 双行文本 + 行尾 widget）。
+ * 按压/聚焦反馈走 Compose 默认指示（主题波纹，覆盖整行）；[switchState] 非空表示
+ * 行尾是开关，开关角色与开/关状态朗读由本行承担，行尾开关只显示状态。
+ */
 @Composable
 internal fun PreferenceRow(
     title: String,
@@ -355,9 +364,17 @@ internal fun PreferenceRow(
     isBottomBackground: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    switchState: Boolean? = null,
     widget: (@Composable () -> Unit)? = null,
 ) {
     val (titleColor, summaryColor) = prefTextColors(isBottomBackground)
+    // 开关身份 (角色 + 开/关状态) 由本行提供且与 enabled 无关: 行尾开关只显示状态
+    val switchModifier = if (switchState != null) {
+        Modifier.semantics {
+            role = Role.Switch
+            toggleableState = ToggleableState(switchState == true)
+        }
+    } else Modifier
     val clickModifier = if ((onClick != null || onLongClick != null) && enabled) {
         Modifier.listItemFocus()
             .combinedClickable(
@@ -369,6 +386,7 @@ internal fun PreferenceRow(
         Modifier
             .fillMaxWidth()
             .then(clickModifier)
+            .then(switchModifier)
             .then(
                 if (enabled) Modifier else Modifier
                     .alpha(0.38f)

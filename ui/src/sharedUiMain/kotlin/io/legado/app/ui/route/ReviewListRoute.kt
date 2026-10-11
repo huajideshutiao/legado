@@ -24,8 +24,8 @@ import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.confirm_delete_review
 import legado.ui.generated.resources.delete
 import legado.ui.generated.resources.no
-import legado.ui.generated.resources.review_list_section_title
 import legado.ui.generated.resources.review_post_hint
+import legado.ui.generated.resources.review_title_with_count
 import legado.ui.generated.resources.yes
 import org.jetbrains.compose.resources.stringResource
 
@@ -62,13 +62,14 @@ fun ReviewListRoute(
     val state by screenModel.state.collectAsState()
     val totalCount by screenModel.totalCount.collectAsState()
 
-    // 列表头 "全部评论 · N": 规则未配置时不显示 (对照 app 端 totalCount 收集)
+    // 顶栏标题缝合评论数 ("评论(N条)"): N 优先书源总数规则文本, 未配置时用当前列表条数
+    // (对照 app 端 totalCount 收集)
     val count = totalCount
-    val listTitleText = if (count.isNullOrBlank()) ""
-    else stringResource(Res.string.review_list_section_title, count)
+    val countText = count.takeUnless { it.isNullOrBlank() } ?: state.reviews.size.toString()
+    val titleText = stringResource(Res.string.review_title_with_count, countText)
     val inputHint = stringResource(Res.string.review_post_hint)
-    LaunchedEffect(listTitleText, inputHint) {
-        screenModel.setTexts(listTitleText, inputHint)
+    LaunchedEffect(titleText, inputHint) {
+        screenModel.setTexts(titleText, inputHint)
     }
 
     // 发布输入弹窗状态 (对照原版 ReviewPostActivity): preview 非空 = 回复该条
