@@ -27,16 +27,15 @@ import kotlinx.coroutines.CoroutineScope
  *   与 BaseViewModel.execute 默认值一致)。
  * - 原 `android.text.TextUtils.join(",", set)` 下沉后用 Kotlin stdlib
  *   `set.joinToString(",")` 替代 (无 Android 依赖, 行为等价)。
- * - 原 `String.cnCompare(String)` (app 端 Android ICU 扩展) 仅在 saveToFile/getBookSources
- *   内使用 (该扩展现已下沉 commonMain utils/StringCnCompare.kt), 本类无排序需求不使用。
+ * - 原 `String.cnCompare(String)` (app 端 Android ICU 扩展) 已下沉 commonMain
+ *   `io.legado.app.utils.cnCompare` (各端排序共用); 本类无排序需求不使用。
  *
  * # Android 专属依赖 (留 app 端)
  *
- * - **saveToFile (2 个重载) / getBookSources**: 依赖 `context.filesDir` +
- *   `FileUtils.createFileWithReplace` + `GSON.writeToOutputStream` + 文件流 +
- *   `List<BookSourcePart>.toBookSource()` app 端扩展 (该扩展内部 runBlocking 调
- *   appDb.bookSourceDao.getBookSourcesFix), 不能下沉 commonMain, 留 app 端
- *   [BookSourceViewModel] 内自行实现。
+ * - **saveToFile (List<BookSource> 重载)**: 文件写入依赖 `context.filesDir` +
+ *   `FileUtils.createFileWithReplace` + `GSON.writeToOutputStream` + 文件流, 留 app 端
+ *   [BookSourceViewModel] 内自行实现; 取数+排序+比例分流+危险 API 清理在 commonMain
+ *   [getExportBookSources], 各端共用。
  *
  * # 设计选择 (组合委托)
  *
