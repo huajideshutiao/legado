@@ -34,8 +34,8 @@ import platform.posix.write
  */
 object NativeCrashLogWriter {
 
-    /** 崩溃日志文件名前缀, 供列表侧过滤 (与 JVM 侧 CrashLogWriter 同值)。 */
-    const val FILE_PREFIX = CRASH_LOG_FILE_PREFIX
+    /** 崩溃日志文件名前缀, 供列表侧过滤 (与 JVM 侧同名文件同前缀)。 */
+    private const val FILE_PREFIX = CRASH_LOG_FILE_PREFIX
 
     /** 保留天数, 与 app 端 CrashHandler / 桌面端 CrashLogWriter 同口径。 */
     private const val KEEP_DAYS = 7L
@@ -52,7 +52,7 @@ object NativeCrashLogWriter {
     private const val FILE_MODE = 0x1A4
 
     /** 异常退出标记文件名 (与崩溃日志同在 crash 目录)。 */
-    const val MARKER_FILE_NAME = CrashMarkerFile.FILE_NAME
+    private const val MARKER_FILE_NAME = CrashMarkerFile.FILE_NAME
 
     /**
      * 信号路径的崩溃日志文件名 (固定名 + 追加写)。

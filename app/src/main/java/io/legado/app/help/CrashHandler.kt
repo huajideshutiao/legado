@@ -1,6 +1,5 @@
 package io.legado.app.help
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
 import android.os.Debug
@@ -13,10 +12,10 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.appInfo
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.crash.CrashLogWriter
 import io.legado.app.help.crash.CrashMarkerProviders
 import io.legado.app.model.ReadAloud
 import io.legado.app.utils.FileDoc
-import io.legado.app.utils.FileUtils
 import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.createFolderReplace
 import io.legado.app.utils.externalCache
@@ -24,11 +23,7 @@ import io.legado.app.utils.getFile
 import io.legado.app.utils.longToastOnUiLegacy
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.writeText
-import java.io.PrintWriter
-import java.io.StringWriter
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.concurrent.TimeUnit
+import java.io.File
 
 /**
  * 异常管理类
@@ -119,54 +114,25 @@ class CrashHandler(val context: Context) : Thread.UncaughtExceptionHandler {
         }
 
         /**
-         * 格式化时间
-         */
-        @SuppressLint("SimpleDateFormat")
-        private val format = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss")
-
-        /**
-         * 保存错误信息到文件中
+         * 保存错误信息到文件中: 取一次快照, 配置的备份路径 (SAF) 与外部缓存各落一份。
+         *
+         * 参数头组装/cause 链拼接/文件名/7 天清理与桌面端同链路, 都在 [CrashLogWriter];
+         * 两处落盘传同一份快照, 文件名一致 (列表侧按名去重与回读)。
          */
         fun saveCrashInfo2File(ex: Throwable) {
-            val sb = StringBuilder()
-            for ((key, value) in paramsMap) {
-                sb.append(key).append("=").append(value).append("\n")
-            }
-
-            val writer = StringWriter()
-            val printWriter = PrintWriter(writer)
-            ex.printStackTrace(printWriter)
-            var cause: Throwable? = ex.cause
-            while (cause != null) {
-                cause.printStackTrace(printWriter)
-                cause = cause.cause
-            }
-            printWriter.close()
-            val result = writer.toString()
-            sb.append(result)
-            val crashLog = sb.toString()
-            val timestamp = System.currentTimeMillis()
-            val time = format.format(Date())
-            val fileName = "crash-$time-$timestamp.log"
+            val snapshot = CrashLogWriter.snapshot(ex, paramsMap)
             try {
                 val backupPath = AppConfig.backupPath
                     ?: throw NoStackTraceException("备份路径未配置")
                 val uri = backupPath.toUri()
                 val fileDoc = FileDoc.fromUri(uri, true)
-                fileDoc.createFileIfNotExist(fileName, "crash")
-                    .writeText(crashLog)
+                fileDoc.createFileIfNotExist(snapshot.fileName, "crash")
+                    .writeText(snapshot.text)
             } catch (_: Exception) {
             }
             kotlin.runCatching {
                 App.instance.externalCacheDir?.let { rootFile ->
-                    val exceedTimeMillis = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(7)
-                    rootFile.getFile("crash").listFiles()?.forEach {
-                        if (it.lastModified() < exceedTimeMillis) {
-                            it.delete()
-                        }
-                    }
-                    FileUtils.createFileIfNotExist(rootFile, "crash", fileName)
-                        .writeText(crashLog)
+                    CrashLogWriter.save(snapshot, listOf(File(rootFile, "crash")))
                 }
             }
         }

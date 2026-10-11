@@ -32,9 +32,9 @@ interface CrashMarkerProvider {
  * 崩溃日志文件名前缀 (四端一致)。
  *
  * 崩溃目录里除了崩溃现场还放着"上次异常退出"标记, 读取侧靠前缀分开两者。
- * jvmMain [io.legado.app.help.crash.CrashLogWriter] 与 nativeMain
- * [io.legado.app.help.crash.NativeCrashLogWriter] 各自的 `FILE_PREFIX` 均引用本常量,
- * 避免三处各写一份字面量。
+ * jvmAndAndroidMain [io.legado.app.help.crash.CrashLogWriter] (取名) 与 nativeMain
+ * [io.legado.app.help.crash.NativeCrashLogWriter] (取名与过滤) 都引用本常量,
+ * 避免各写一份字面量。
  */
 const val CRASH_LOG_FILE_PREFIX = "crash-"
 
