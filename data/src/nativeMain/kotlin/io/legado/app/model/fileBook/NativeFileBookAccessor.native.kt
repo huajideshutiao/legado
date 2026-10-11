@@ -13,9 +13,6 @@ import io.legado.app.exception.SecurityException
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.addType
-import io.legado.app.help.book.archiveName
-import io.legado.app.help.book.getRemoteUrl
-import io.legado.app.help.book.isArchive
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
@@ -50,7 +47,6 @@ import okio.Path.Companion.toPath
  *   [saveBookFileFromWebDav] (内部走既有 WebDav.downloadTo 直接写盘, 不经 InputStream 整份读入内存);
  *   网络路径用 AnalyzeUrlCore.getByteArrayAwait
  *   (native 响应体本就整块进内存, 走 getInputStreamAwait 无额外收益)
- * - importRemoteBook 的 zip 分支用 WebDav.readRange + RemoteZipCore (与 desktop RemoteZipWrapper 语义一致)
  */
 class NativeFileBookAccessor : FileBookAccessor {
 
@@ -188,28 +184,12 @@ class NativeFileBookAccessor : FileBookAccessor {
         )
     }
 
-    /** 统一导入逻辑 (对齐 app 端 FileBookAccessorImpl.importBook / desktop 版, runBlocking 适配 suspend DAO)。 */
-    private fun importBook(book: Book): Book {
-        val bookDao = AppDbProviders.get().bookDao
-        val dbBook = runBlocking { bookDao.getBook(book.bookUrl) }
-        return if (dbBook == null) {
-            book.apply {
-                FileBook.upBookInfo(this)
-                runBlocking { bookDao.insert(this@apply) }
-            }
-        } else {
-            deleteBook(dbBook, false)
-            dbBook.apply {
-                this.name = book.name
-                this.author = book.author
-                this.originName = book.originName
-                this.origin = book.origin
-                this.latestChapterTime = 0
-                FileBook.upBookInfo(this)
-                runBlocking { bookDao.update(this@apply) }
-            }
-        }
-    }
+    /**
+     * 统一导入逻辑 (对齐 app/桌面端: 编排在 [FileBookRemoteImportShared.importBook],
+     * runBlocking 适配 suspend DAO)。
+     */
+    private fun importBook(book: Book): Book =
+        runBlocking { FileBookRemoteImportShared.importBook(book) }
 
     override fun deleteBook(book: Book, deleteOriginal: Boolean) {
         // 与 app/desktop 同一口径: 章节缓存与封面在应用私有区, 删不掉不影响用户的源文件,
@@ -330,131 +310,12 @@ class NativeFileBookAccessor : FileBookAccessor {
         return "file://" + file.absolutePath
     }
 
-    override fun downloadRemoteBook(book: Book): Boolean {
-        // 与 desktop 一致: saveBookFile(str) + importFromArchive + bookDao.update
-        val webDavUrl = book.getRemoteUrl()
-            ?: throw NoStackTraceException("Book file is not webDav File")
-        val fileName = if (book.isArchive) book.archiveName else book.originName
-        val fileUriStr = runBlocking { saveBookFile(webDavUrl, fileName, null) }
-        if (book.isArchive) {
-            val newBook = importFromArchive(fileUriStr, book.originName) { name ->
-                name.contains(book.originName)
-            }.firstOrNull() ?: throw NoStackTraceException("Archive contains no matching book file")
-            book.origin = newBook.origin
-            book.bookUrl = newBook.bookUrl
-        } else {
-            book.bookUrl = fileUriStr
-        }
-        runBlocking { AppDbProviders.get().bookDao.update(book) }
-        return true
-    }
-
-    override fun mergeBook(localBook: Book, onLineBook: Book?): Book {
-        // 与 app 端一致: onLineBook 为 null 时返回 localBook; 字段合并 + bookDao.update 替代 Book.save()
-        onLineBook ?: return localBook
-        localBook.name = onLineBook.name.ifBlank { localBook.name }
-        localBook.author = onLineBook.author.ifBlank { localBook.author }
-        localBook.coverUrl = onLineBook.coverUrl
-        if (!onLineBook.intro.isNullOrBlank()) {
-            localBook.intro = onLineBook.intro
-        }
-        val bookDao = AppDbProviders.get().bookDao
-        runBlocking {
-            if (bookDao.has(localBook.bookUrl)) bookDao.update(localBook) else bookDao.insert(localBook)
-        }
-        return localBook
-    }
-
     override fun analyzeNameAuthor(fileName: String): Pair<String, String> {
         // 与 desktop 一致: 委托下沉的 BookNameAuthorAnalyzer, importFileNameJs 读同一 PreferKey
         val importFileNameJs = runCatching {
             PreferenceProviders.get().getString(PreferKey.bookImportFileName)
         }.getOrNull()
         return BookNameAuthorAnalyzer.analyzeNameAuthor(fileName, importFileNameJs)
-    }
-
-    override suspend fun importRemoteBook(
-        webDav: WebDav,
-        serverID: Long?,
-        name: String,
-        path: String,
-        size: Long,
-        lastModify: Long,
-        downloadFile: Boolean
-    ): Book {
-        val bookDao = AppDbProviders.get().bookDao
-        val origin = BookType.webDavTag + CustomUrl(path).putAttribute("serverID", serverID).toString()
-
-        suspend fun importAsImage(): Book {
-            val bookUrl = if (downloadFile && size <= 30 * 1024 * 1024) saveBookFile(origin, name, null) else origin
-            return importBook(
-                Book(
-                    bookUrl = bookUrl,
-                    name = name.substringBeforeLast("."),
-                    author = "",
-                    originName = name,
-                    latestChapterTime = lastModify,
-                    order = bookDao.minOrder() - 1,
-                    origin = origin,
-                    type = BookType.image or BookType.local
-                ).apply { variable = "cbz:${0L},${0L},${size}" }
-            )
-        }
-
-        suspend fun importAsEpub(): Book {
-            val bookUrl = if (downloadFile && size <= 30 * 1024 * 1024) saveBookFile(origin, name, null) else origin
-            return importBook(
-                Book(
-                    bookUrl = bookUrl,
-                    name = name.substringBeforeLast("."),
-                    author = "",
-                    originName = name,
-                    latestChapterTime = lastModify,
-                    order = bookDao.minOrder() - 1,
-                    origin = origin,
-                    type = BookType.text or BookType.local
-                ).apply { variable = "epub:${0L},${0L},${size},0" }
-            )
-        }
-
-        return when {
-            name.endsWith(".cbz", true) -> importAsImage()
-            name.endsWith(".epub", true) -> importAsEpub()
-            name.endsWith(".zip", true) -> {
-                // Range 读远程 zip 目录 (与 desktop RemoteZipWrapper 语义一致, 复用 commonMain RemoteZipCore)
-                val remoteZip = RemoteZipCore(
-                    RangedSource { offset, length, fileSize -> webDav.readRange(offset, length, fileSize) },
-                    name, size
-                )
-                try {
-                    val metas = remoteZip.ensureMeta().values
-                    val hasBookFile = metas.any { !it.entry.name.endsWith("/") && FileBook.isBookFile(it.entry.name) }
-                    val hasImageFile = metas.any { !it.entry.name.endsWith("/") && AppPattern.imgFileRegex.matches(it.entry.name) }
-                    when {
-                        hasImageFile -> importAsImage()
-                        hasBookFile -> {
-                            val meta = metas.first { !it.entry.name.endsWith("/") && FileBook.isBookFile(it.entry.name) }
-                            val uriStr = saveBookFile(
-                                remoteZip.readDecompressed(meta).toInputStream(),
-                                meta.entry.name.substringAfterLast('/')
-                            )
-                            importLocalFile(uriStr).apply {
-                                this.origin = origin
-                                addType(BookType.archive)
-                                runBlocking { bookDao.update(this@apply) }
-                            }
-                        }
-                        else -> throw NoStackTraceException("不支持的压缩包格式")
-                    }
-                } finally {
-                    remoteZip.close()
-                }
-            }
-            else -> importLocalFile(saveBookFile(origin, name, null)).apply {
-                this.origin = origin
-                runBlocking { bookDao.update(this@apply) }
-            }
-        }
     }
 
     override fun getUrlSuffix(name: String): String {

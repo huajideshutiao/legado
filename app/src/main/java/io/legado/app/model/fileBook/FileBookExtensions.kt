@@ -79,14 +79,14 @@ fun FileBook.saveBookFile(
  * 导入远程书籍 (RemoteBook 重载, 对应原 `FileBook.importRemoteBook(webDav, serverID, remoteBook, downloadFile)`)。
  *
  * 原 RemoteBook 参数在本扩展拍平为 name(filename)/path/size/lastModify 基本类型,
- * 委托 accessor (commonMain FileBook.importRemoteBook 同签名), 行为一致。
+ * 委托 commonMain [FileBook.importRemoteBook] (同签名), 行为一致。
  */
 suspend fun FileBook.importRemoteBook(
     webDav: WebDav,
     serverID: Long?,
     remoteBook: RemoteBook,
     downloadFile: Boolean = false
-): Book = FileBookProviders.get().importRemoteBook(
+): Book = FileBook.importRemoteBook(
     webDav, serverID,
     remoteBook.filename, remoteBook.path, remoteBook.size, remoteBook.lastModify,
     downloadFile

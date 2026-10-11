@@ -6,6 +6,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.TocEmptyException
 import io.legado.app.help.book.ContentProcessorProviders
+import io.legado.app.help.coroutine.runBlockingInScope
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.lib.webdav.WebDav
@@ -23,6 +24,7 @@ import io.legado.app.model.fileBook.FileBook.isBookFile
 import io.legado.app.model.fileBook.FileBook.mergeBook
 import io.legado.app.model.fileBook.FileBook.upBookInfo
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlin.coroutines.EmptyCoroutineContext
 
 /**
  * 书籍文件导入 目录正文解析
@@ -36,8 +38,11 @@ import io.legado.app.utils.systemCurrentTimeMillis
  * - **纯逻辑 (本类直接实现)**: [isBookFile] / [getChapterList] / [getContent] /
  *   [upBookInfo] / [getImage] / [WebFile] / [clear]
  * - **平台专属 (委托 [FileBookProviders])**: [getHandler] / [importFromArchive] /
- *   [importLocalFile] / [deleteBook] / [saveBookFile] / [downloadRemoteBook] /
- *   [getCoverPath] / [mergeBook] / [analyzeNameAuthor]
+ *   [importLocalFile] / [deleteBook] / [saveBookFile] / [normalizeBookRef] /
+ *   [getCoverPath] / [analyzeNameAuthor] / [getUrlSuffix]
+ * - **跨端编排 (委托 [FileBookRemoteImportShared])**: [importRemoteBook] / [mergeBook] /
+ *   [downloadRemoteBook] —— 四端共用一份判型/阈值/解包/落库/合并/远端下载, 各端只注入
+ *   文件读写原语 (保存目录与引用形式), 不经 accessor 二次分发
  *
  * 原 Uri 参数/返回值改用 String (Uri.toString()); app 端 [io.legado.app.model.fileBook.FileBookAccessorImpl]
  * 内部 String↔Uri 转换, 行为与下沉前一致。app 端调用方通过扩展函数
@@ -108,10 +113,15 @@ object FileBook : BaseFileBook {
 
     //文件类书源 合并在线书籍信息 在线 > 本地
     fun mergeBook(localBook: Book, onLineBook: Book?): Book =
-        accessor.mergeBook(localBook, onLineBook)
+        runBlockingInScope(EmptyCoroutineContext) {
+            FileBookRemoteImportShared.mergeBook(localBook, onLineBook)
+        }
 
     //下载book对应的远程文件 并更新Book
-    fun downloadRemoteBook(book: Book): Boolean = accessor.downloadRemoteBook(book)
+    fun downloadRemoteBook(book: Book): Boolean =
+        runBlockingInScope(EmptyCoroutineContext) {
+            FileBookRemoteImportShared.downloadRemoteBook(book)
+        }
 
     /**
      * 导入远程书籍 (对应原 `FileBook.importRemoteBook`)。
@@ -129,15 +139,17 @@ object FileBook : BaseFileBook {
         size: Long,
         lastModify: Long,
         downloadFile: Boolean = false
-    ): Book = accessor.importRemoteBook(webDav, serverID, name, path, size, lastModify, downloadFile)
+    ): Book = FileBookRemoteImportShared.importRemoteBook(
+        webDav, serverID, name, path, size, lastModify, downloadFile
+    )
 
     fun getCoverPath(bookUrl: String): String = accessor.getCoverPath(bookUrl)
 
     /**
      * 从文件分析书籍必要信息（书名 作者等）。
      *
-     * 纯逻辑已下沉 [BookNameAuthorAnalyzer], 各端 accessor 仅负责传入
-     * 平台配置 (app: `AppConfig.bookImportFileName`; 其他端暂无该配置)。
+     * 纯逻辑已下沉 [BookNameAuthorAnalyzer], 各端 accessor 仅负责传入平台配置
+     * (app: `AppConfig.bookImportFileName`; 其余端读同一偏好键 [io.legado.app.constant.PreferKey.bookImportFileName])。
      */
     fun analyzeNameAuthor(fileName: String): Pair<String, String> =
         accessor.analyzeNameAuthor(fileName)

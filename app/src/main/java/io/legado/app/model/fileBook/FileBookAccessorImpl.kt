@@ -15,10 +15,8 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.addType
-import io.legado.app.help.book.archiveName
 import io.legado.app.help.book.getArchiveUri
 import io.legado.app.help.book.getRemoteUrl
-import io.legado.app.help.book.isArchive
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
@@ -29,9 +27,7 @@ import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.i18n.appString
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.model.analyzeRule.AnalyzeUrl
-import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.model.fileBook.FileBookAccessorImpl.importLocalFile
-import io.legado.app.model.fileBook.FileBookAccessorImpl.importRemoteBook
 import io.legado.app.model.fileBook.FileBookAccessorImpl.saveBookFile
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
@@ -66,7 +62,7 @@ import java.util.Locale
  *
  * # 与 shared/commonMain 的关系
  * - [FileBook] (shared) 的平台专属方法 (importFromArchive / importLocalFile /
- *   saveBookFile / downloadRemoteBook / mergeBook / analyzeNameAuthor 等) 委托
+ *   saveBookFile / analyzeNameAuthor 等) 委托
  *   [FileBookProviders.get()], 最终走到本实现。
  * - [BaseFileBook] (shared) 的 getBookInputStream / getLastModified 默认实现
  *   (原 app 端接口默认方法) 在本实现以 override 形式提供, 供 shared 端经
@@ -78,9 +74,9 @@ import java.util.Locale
  * [Uri.parse] / [toString] 转换, 行为与原 app 端直接传 Uri 完全一致。
  *
  * # RemoteBook 拍平
- * [importRemoteBook] 原接收 [io.legado.app.model.remote.RemoteBook] (依赖 appDb
- * 构造, 未下沉), accessor 接口拍平为 name/path/size/lastModify 基本类型参数。
- * 本实现内部用这些参数直接走原逻辑, 不重建 RemoteBook。
+ * 远程书导入的编排 ([FileBookRemoteImportShared]) 原接收
+ * [io.legado.app.model.remote.RemoteBook] (依赖 appDb 构造, 未下沉), 进共享层前
+ * 拍平为 name/path/size/lastModify 基本类型参数, 不重建 RemoteBook。
  *
  * 注册时机: App.onCreate 经 [registerAndroidFileBookProviders]。
  * 模式参考 [io.legado.app.model.webBook.WebBookProvidersImpl] /
@@ -111,7 +107,7 @@ object FileBookAccessorImpl : FileBookAccessor {
                 }.firstOrNull()?.let {
                     getBookInputStream(it)
                 }
-            } else if (webDavUrl != null && downloadRemoteBook(book)) {
+            } else if (webDavUrl != null && FileBook.downloadRemoteBook(book)) {
                 // 下载远程链接
                 getBookInputStream(book)
             } else {
@@ -424,25 +420,6 @@ object FileBookAccessorImpl : FileBookAccessor {
         }
     }
 
-    /** 下载远程书籍文件并更新 Book (原 `FileBook.downloadRemoteBook`)。 */
-    override fun downloadRemoteBook(book: Book): Boolean {
-        val webDavUrl = book.getRemoteUrl()
-        if (webDavUrl.isNullOrBlank()) throw NoStackTraceException("Book file is not webDav File")
-        val fileName = if (book.isArchive) book.archiveName else book.originName
-        val fileUriStr = runBlocking { saveBookFile(webDavUrl, fileName) }
-        if (book.isArchive) {
-            val newBook = importFromArchive(fileUriStr, book.originName) { name ->
-                name.contains(book.originName)
-            }.firstOrNull() ?: throw NoStackTraceException("Archive contains no matching book file")
-            book.origin = newBook.origin
-            book.bookUrl = newBook.bookUrl
-        } else {
-            book.bookUrl = FileDoc.fromUri(fileUriStr.toUri(), false).toString()
-        }
-        book.save()
-        return true
-    }
-
     /** 获取封面缓存路径 (原 `FileBook.getCoverPath`)。 */
     override fun getCoverPath(bookUrl: String): String =
         FileUtils.getPath(
@@ -451,154 +428,27 @@ object FileBookAccessorImpl : FileBookAccessor {
             "${MD5Utils.md5Encode16(bookUrl)}.jpg"
         )
 
-    /** 合并在线书籍信息 (原 `FileBook.mergeBook`)。 */
-    override fun mergeBook(localBook: Book, onLineBook: Book?): Book {
-        onLineBook ?: return localBook
-        localBook.name = onLineBook.name.ifBlank { localBook.name }
-        localBook.author = onLineBook.author.ifBlank { localBook.author }
-        localBook.coverUrl = onLineBook.coverUrl
-        if (!onLineBook.intro.isNullOrBlank()) {
-            localBook.intro = onLineBook.intro
-        }
-        localBook.save()
-        return localBook
-    }
-
     /** 从文件名分析书名与作者 (原 `FileBook.analyzeNameAuthor`, 纯逻辑已下沉 [BookNameAuthorAnalyzer])。 */
     override fun analyzeNameAuthor(fileName: String): Pair<String, String> =
         BookNameAuthorAnalyzer.analyzeNameAuthor(fileName, AppConfig.bookImportFileName)
 
-    /**
-     * 导入远程书籍 (原 `FileBook.importRemoteBook`)。
-     *
-     * 原 RemoteBook 参数拍平为 name/path/size/lastModify 基本类型
-     * (RemoteBook 依赖 appDb 构造, 未下沉 commonMain)。
-     */
-    override suspend fun importRemoteBook(
-        webDav: WebDav,
-        serverID: Long?,
-        name: String,
-        path: String,
-        size: Long,
-        lastModify: Long,
-        downloadFile: Boolean
-    ): Book {
-        val origin = BookType.webDavTag + CustomUrl(path).putAttribute(
-            "serverID", serverID
-        ).toString()
-
-        suspend fun importAsImage(): Book {
-            val bookUrl = if (downloadFile && size <= 30 * 1024 * 1024) {
-                saveBookFile(origin, name)
-            } else origin
-            return importBook(
-                Book(
-                    bookUrl = bookUrl,
-                    name = name.substringBeforeLast("."),
-                    author = "",
-                    originName = name,
-                    latestChapterTime = lastModify,
-                    order = runBlocking { appDb.bookDao.minOrder() } - 1,
-                    origin = origin,
-                    type = BookType.image or BookType.local
-                ).apply {
-                    variable = "cbz:${0L},${0L},${size}"
-                })
-        }
-
-        // 远程EPUB处理：大于30MB不下载，使用动态加载
-        suspend fun importAsEpub(): Book {
-            val bookUrl = if (downloadFile && size <= 30 * 1024 * 1024) {
-                saveBookFile(origin, name)
-            } else origin
-            return importBook(
-                Book(
-                    bookUrl = bookUrl,
-                    name = name.substringBeforeLast("."),
-                    author = "",
-                    originName = name,
-                    latestChapterTime = lastModify,
-                    order = appDb.bookDao.minOrder() - 1,
-                    origin = origin,
-                    type = BookType.text or BookType.local
-                ).apply {
-                    variable = "epub:${0L},${0L},${size},0"
-                })
-        }
-
-        return when {
-            name.endsWith(".cbz", true) -> importAsImage()
-            name.endsWith(".epub", true) -> importAsEpub()
-            name.endsWith(".zip", true) -> {
-                val remoteZip = RemoteZipWrapper(
-                    RangedSource { offset, length, fileSize -> webDav.readRange(offset, length, fileSize) },
-                    name, size
-                )
-                val entries = remoteZip.entries().toList()
-                val hasBookFile = entries.any { !it.isDirectory && isBookFile(it.name) }
-                val hasImageFile =
-                    entries.any { !it.isDirectory && AppPattern.imgFileRegex.matches(it.name) }
-                if (hasImageFile) {
-                    importAsImage()
-                } else if (hasBookFile) {
-                    try {
-                        val entry = remoteZip.entries().asSequence()
-                            .first { !it.isDirectory && isBookFile(it.name) }
-                        val uriStr = saveBookFile(remoteZip.getInputStream(entry), entry.name)
-                        importLocalFile(uriStr).apply {
-                            this.origin = origin
-                            addType(BookType.archive)
-                            save()
-                        }
-                    } finally {
-                        remoteZip.close()
-                    }
-                } else throw NoStackTraceException("不支持的压缩包格式")
-            }
-
-            else -> importLocalFile(saveBookFile(origin, name)).apply {
-                this.origin = origin
-                save()
-            }
-        }
-    }
-
     /** 获取合法的文件后缀 (对应 `UrlUtil.getSuffix(name)`)。 */
     override fun getUrlSuffix(name: String): String = UrlUtil.getSuffix(name)
 
-    // ---------- 内部辅助方法 ----------
+    /** 保存引用 → bookUrl 存储引用 (非 SAF 的 file:// 去前缀, 原版 FileDoc 语义)。 */
+    override fun normalizeBookRef(uriStr: String): String =
+        FileDoc.fromUri(uriStr.toUri(), false).toString()
 
     /** 判断是否为支持的书籍文件 (原 `FileBook.isBookFile`)。 */
     private fun isBookFile(fileName: String): Boolean =
         AppPattern.bookFileRegex.matches(fileName)
 
     /**
-     * 统一核心导入逻辑 (原 `FileBook.importBook` private 方法)。
-     *
-     * Room KMP: DAO 方法已改为 suspend，importBook 保持同步语义用 runBlocking 适配。
+     * 统一核心导入逻辑 (旧书删旧缓存重建 / 新书上架), 编排下沉
+     * [FileBookRemoteImportShared.importBook]。
      */
-    private fun importBook(book: Book): Book {
-        val dbBook = runBlocking { appDb.bookDao.getBook(book.bookUrl) }
-        return if (dbBook == null) {
-            book.apply {
-                // 委托 commonMain FileBook.upBookInfo → accessor 分派到具体 handler
-                FileBook.upBookInfo(this)
-                runBlocking { appDb.bookDao.insert(this@apply) }
-            }
-        } else {
-            deleteBook(dbBook, false)
-            dbBook.apply {
-                this.name = book.name
-                this.author = book.author
-                this.originName = book.originName
-                this.origin = book.origin
-                // 文本书籍更新重置时间以触发重新解析，图片书直接使用文件时间
-                this.latestChapterTime = 0
-                FileBook.upBookInfo(this)
-                runBlocking { appDb.bookDao.update(this@apply) }
-            }
-        }
-    }
+    private fun importBook(book: Book): Book =
+        runBlocking { FileBookRemoteImportShared.importBook(book) }
 
 }
 

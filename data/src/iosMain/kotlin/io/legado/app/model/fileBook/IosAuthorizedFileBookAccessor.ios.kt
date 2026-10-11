@@ -33,9 +33,11 @@ import io.legado.app.utils.IosSecurityScopedStorage
  * - [importLocalFile] / [importFromArchive]: 源文件在外部目录的导入, 整个动作期间持租约
  *   (导入浏览器压缩包上架 / 文件关联导入); 压缩包分支内部还会把解出的书写进"书籍保存位置",
  *   故同时持落地目录租约;
- * - [importRemoteBook]: 整段持落地目录租约 (内部用 [NativeFileBookAccessor.saveBookFile] 落盘);
  * - [deleteBook]: 源文件在外部目录的删原文件, 整个动作期间持租约 (书架删原文件走这里);
  *   源文件本就不存在视为删除已达成 (见该方法注释)。
+ *
+ * 远程书导入 / 合并在线信息 / 远端下载的编排在 [FileBookRemoteImportShared] (四端共用),
+ * 它每次都经 [FileBookProviders.get] 取实现落盘, 故写盘点全部回到本装饰器的租约入口。
  *
  * 沙盒内文件 (`{filesDir}/books` 导入副本) 由授权层自动放行, 不产生额外 scope。
  */
@@ -155,8 +157,8 @@ class IosAuthorizedFileBookAccessor(
      * 目标路径报错, 而这里需要的只是授权本身; 沙盒内路径 (导入副本) 无需 scope, 租约为空操作。
      *
      * 覆写所有能直接或间接触发写入的入口 ([importLocalFile] / [importFromArchive] /
-     * `saveBookFile` 两个重载 / [saveBookFileFromWebDav] / [downloadRemoteBook] / [importRemoteBook])
-     * 的原因: `by delegate` 只转发未被覆写的方法, delegate 内部再调 `saveBookFile` 不会回到本类,
+     * `saveBookFile` 两个重载 / [saveBookFileFromWebDav]):
+     * `by delegate` 只转发未被覆写的方法, delegate 内部再调 `saveBookFile` 不会回到本类,
      * 故每个能触达落盘的入口都要单独包一层。
      *
      * `saveBookFileFromPath` (web 上传落盘) 不覆写: iOS 没有网页服务, 入口不可达; 该端保持
@@ -188,37 +190,6 @@ class IosAuthorizedFileBookAccessor(
         val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir(), DirUsage.BookTree)
         return try {
             delegate.saveBookFileFromWebDav(webDav, fileName)
-        } finally {
-            lease.close()
-        }
-    }
-
-    override fun downloadRemoteBook(book: Book): Boolean {
-        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir(), DirUsage.BookTree)
-        return try {
-            delegate.downloadRemoteBook(book)
-        } finally {
-            lease.close()
-        }
-    }
-
-    /**
-     * 导入远程书 (WebDav 浏览导入): delegate 内部经 `saveBookFile` 把书落到"有效书籍保存位置",
-     * 该调用不回到本类, 故整段持落地目录租约 (内部还可能再走 importFromArchive/importLocalFile,
-     * 它们的落地目录与本租约同一份)。
-     */
-    override suspend fun importRemoteBook(
-        webDav: WebDav,
-        serverID: Long?,
-        name: String,
-        path: String,
-        size: Long,
-        lastModify: Long,
-        downloadFile: Boolean
-    ): Book {
-        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir(), DirUsage.BookTree)
-        return try {
-            delegate.importRemoteBook(webDav, serverID, name, path, size, lastModify, downloadFile)
         } finally {
             lease.close()
         }

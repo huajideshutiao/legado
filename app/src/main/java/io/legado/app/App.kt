@@ -237,7 +237,7 @@ class App : Application() {
         }
         // 注册 FileBook 平台 provider (commonMain FileBook object 经
         // FileBookProviders 调到 app 端 FileBookAccessorImpl, 含 importFromArchive /
-        // importLocalFile / saveBookFile / downloadRemoteBook / mergeBook 等重 Android 逻辑)
+        // importLocalFile / saveBookFile 等重 Android 文件原语)
         registerAndroidFileBookProviders()
         // 注册本地书访问器与 zip 容器工厂 (用途校验装饰器): 须在平台实现注册之后,
         // 任何 FileBook 调用之前; IO 仍由平台实现唯一提供

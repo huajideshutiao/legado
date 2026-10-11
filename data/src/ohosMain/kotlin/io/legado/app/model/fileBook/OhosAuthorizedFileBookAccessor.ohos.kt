@@ -25,6 +25,9 @@ import io.legado.app.utils.inputStream
  *
  * 读子书时文件已不在 (压缩包被移走/改名) 则按压缩包名找回原压缩包重新解压后打开
  * (见 [reopenFromArchive])。
+ *
+ * 远程书导入 / 合并在线信息 / 远端下载的编排在 [FileBookRemoteImportShared] (四端共用),
+ * 它每次都经 [FileBookProviders.get] 取实现落盘, 故写盘点全部回到本装饰器。
  */
 class OhosAuthorizedFileBookAccessor(
     private val delegate: NativeFileBookAccessor = NativeFileBookAccessor(),
@@ -81,8 +84,7 @@ class OhosAuthorizedFileBookAccessor(
      * 写入前确保目录授权已激活 ([OhosDirAuthorizations.ensureActivatedFor]; 授权是持久态, 激活一次即可)。
      *
      * 覆写所有能直接或间接触发写入的入口 ([importLocalFile] / [importFromArchive] /
-     * `saveBookFile` 两个重载 / [saveBookFileFromWebDav] / [saveBookFileFromPath] /
-     * [downloadRemoteBook] / [importRemoteBook])
+     * `saveBookFile` 两个重载 / [saveBookFileFromWebDav] / [saveBookFileFromPath])
      * 的原因: `by delegate` 只转发未被覆写的方法, delegate 内部再调 `saveBookFile` 不会回到本类,
      * 故每个能触达落盘的入口都要单独包一层。
      */
@@ -115,29 +117,6 @@ class OhosAuthorizedFileBookAccessor(
     override fun saveBookFileFromPath(filePath: String, fileName: String): String {
         OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir(), DirUsage.BookTree)
         return delegate.saveBookFile(File(filePath).inputStream(), fileName)
-    }
-
-    override fun downloadRemoteBook(book: Book): Boolean {
-        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir(), DirUsage.BookTree)
-        return delegate.downloadRemoteBook(book)
-    }
-
-    /**
-     * 导入远程书 (WebDav 浏览导入): delegate 内部经 `saveBookFile` 把书落到"有效书籍保存位置",
-     * 该调用不回到本类, 故写入前先激活落地目录授权 (内部还可能再走 importFromArchive/importLocalFile,
-     * 它们的落地目录与本授权同一份)。
-     */
-    override suspend fun importRemoteBook(
-        webDav: WebDav,
-        serverID: Long?,
-        name: String,
-        path: String,
-        size: Long,
-        lastModify: Long,
-        downloadFile: Boolean
-    ): Book {
-        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir(), DirUsage.BookTree)
-        return delegate.importRemoteBook(webDav, serverID, name, path, size, lastModify, downloadFile)
     }
 
     private fun <T> withActivation(path: String, block: () -> T): T {
