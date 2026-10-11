@@ -142,7 +142,6 @@ abstract class BaseReadAloudService : BaseService() {
         private set
 
     internal var textChapter: TextChapterShared? = null
-    internal var pageIndex = 0
 
     /**
      * 来电三态状态机 (日志文案/恢复标记语义与下沉前逐字一致)。
@@ -324,9 +323,9 @@ abstract class BaseReadAloudService : BaseService() {
         if (chapterWatchJob?.isActive != true) armChapterWatch()
         val chapter = readBook?.curTextChapter?.value
         val chapterIndex = chapter?.chapterIndex ?: readBook?.durChapterIndexValue ?: return
-        this.pageIndex = pageIndex.coerceIn(0, chapter?.lastIndex?.coerceAtLeast(0) ?: 0)
+        val startPageIndex = pageIndex.coerceIn(0, chapter?.lastIndex?.coerceAtLeast(0) ?: 0)
         requestedChapterPosition = if (chapter != null) {
-            chapter.getReadLength(this.pageIndex) + startPos
+            chapter.getReadLength(startPageIndex) + startPos
         } else {
             (readBook?.durChapterPosValue ?: 0) + startPos
         }.coerceAtLeast(0)

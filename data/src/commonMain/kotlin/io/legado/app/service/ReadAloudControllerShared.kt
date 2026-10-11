@@ -12,6 +12,7 @@ import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.help.tts.TtsProgressListener
 import io.legado.app.help.tts.TtsProgressListenerToken
 import io.legado.app.help.tts.resolveHttpTtsChannel
+import io.legado.app.model.ActiveReadAloudHostPorts
 import io.legado.app.model.ActiveReadBookRegistry
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -249,6 +250,8 @@ class ReadAloudControllerShared(
             fromLastSpeakable = fromLastSpeakable,
         )
         pendingChapterRequest = request
+        // 对应原版 newReadAloud 开头的 pageIndex 重置: 每次新会话翻页联动游标回到起点
+        ActiveReadAloudHostPorts.resetReadAloudPageCursor(request.chapterPosition)
         if (chapterIndex !in 0 until chapterData.chapterCount) {
             pendingChapterRequest = null
             _lastError.tryEmit("章节索引越界: $chapterIndex")

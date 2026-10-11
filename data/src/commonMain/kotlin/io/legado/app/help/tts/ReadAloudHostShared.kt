@@ -353,6 +353,7 @@ abstract class ReadAloudHostShared(
         var pos = paragraphOffsets.getOrNull(real) ?: return
         if (index == 0) pos += firstParagraphSkip
         lastSyncedPos = pos
+        ports.advanceReadAloudPage(controller.chapterIndex.value, pos)
         ports.positionPublisher.publishPosition(pos)
     }
 
@@ -490,4 +491,10 @@ interface ReadAloudHostPorts {
     val currentPosition: ReadAloudPosition?
     val positionUpdates: Flow<ReadAloudPosition> get() = emptyFlow()
     val chapterUpdates: Flow<ReadAloudChapterUpdate> get() = emptyFlow()
+
+    /** 登记一次新朗读会话的起点; 无活动阅读页时 no-op。 */
+    fun resetReadAloudPageCursor(chapterPosition: Int) = Unit
+
+    /** 朗读位置推进联动: 返回是否发生了翻页; 无活动阅读页时 no-op 返回 false。 */
+    fun advanceReadAloudPage(chapterIndex: Int, readingPos: Int): Boolean = false
 }

@@ -315,7 +315,7 @@ class HttpReadAloudService : BaseReadAloudService(),
 
     private fun upPlayPos() {
         playIndexJob?.cancel()
-        val textChapter = textChapter ?: return
+        textChapter ?: return
         playIndexJob = lifecycleScope.launch {
             upTtsProgress(readAloudController.playbackQueue.readAloudNumber + 1)
             if (exoPlayer.duration <= 0) {
@@ -329,15 +329,13 @@ class HttpReadAloudService : BaseReadAloudService(),
             val sleep = exoPlayer.duration / speakTextLength
             val start = speakTextLength * exoPlayer.currentPosition / exoPlayer.duration
             for (i in start..readAloudController.playbackQueue.contentList[readAloudController.playbackQueue.nowSpeak].length) {
-                if (pageIndex + 1 < textChapter.pageSize
-                    && readAloudController.playbackQueue.readAloudNumber + i > textChapter.getReadLength(
-                        pageIndex + 1
-                    )
-                ) {
-                    pageIndex++
-                    ActiveReadAloudHostPorts.moveToNextPage()
-                    upTtsProgress(readAloudController.playbackQueue.readAloudNumber + i.toInt())
-                }
+                // 上报与翻页联动各走一路 (与 TTS 的 onStart/onRangeStart 同口径):
+                // 不把位置上报的条件搭在翻页判定结果上
+                val readingPos = readAloudController.playbackQueue.readAloudNumber + i.toInt()
+                ActiveReadAloudHostPorts.advanceReadAloudPage(
+                    readAloudController.chapterIndex.value, readingPos
+                )
+                upTtsProgress(readingPos)
                 delay(sleep)
             }
         }

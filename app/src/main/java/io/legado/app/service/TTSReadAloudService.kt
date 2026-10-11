@@ -143,22 +143,18 @@ class TTSReadAloudService : BaseReadAloudService() {
             if (generation != engineGeneration || s != AppConst.APP_TAG + currentPlaybackToken) return
             LogUtils.d(
                 TAG,
-                "onStart nowSpeak:${readAloudController.playbackQueue.nowSpeak} pageIndex:$pageIndex utteranceId:$s"
+                "onStart nowSpeak:${readAloudController.playbackQueue.nowSpeak} pageIndex:${readBook?.durPageIndexValue} utteranceId:$s"
             )
-            val chapter = textChapter ?: return
+            textChapter ?: return
             val paragraph = readAloudController.playbackQueue.contentList
                 .getOrNull(readAloudController.playbackQueue.nowSpeak) ?: return
             if (paragraph.matches(AppPattern.notReadAloudRegex)) {
                 nextParagraph(s.removePrefix(AppConst.APP_TAG).toLongOrNull() ?: return)
             }
-            if (pageIndex + 1 < chapter.pageSize
-                && readAloudController.playbackQueue.readAloudNumber + 1 > chapter.getReadLength(
-                    pageIndex + 1
-                )
-            ) {
-                pageIndex++
-                ActiveReadAloudHostPorts.moveToNextPage()
-            }
+            ActiveReadAloudHostPorts.advanceReadAloudPage(
+                readAloudController.chapterIndex.value,
+                readAloudController.playbackQueue.readAloudNumber + 1
+            )
             upTtsProgress(readAloudController.playbackQueue.readAloudNumber + 1)
         }
 
@@ -173,26 +169,24 @@ class TTSReadAloudService : BaseReadAloudService() {
             super.onRangeStart(utteranceId, start, end, frame)
             LogUtils.d(
                 TAG,
-                "onRangeStart nowSpeak:${readAloudController.playbackQueue.nowSpeak} pageIndex:$pageIndex utteranceId:$utteranceId " +
+                "onRangeStart nowSpeak:${readAloudController.playbackQueue.nowSpeak} pageIndex:${readBook?.durPageIndexValue} utteranceId:$utteranceId " +
                     "start:$start end:$end frame:$frame"
             )
-            val chapter = textChapter ?: return
-            if (pageIndex + 1 < chapter.pageSize
-                && readAloudController.playbackQueue.readAloudNumber + start > chapter.getReadLength(
-                    pageIndex + 1
-                )
-            ) {
-                pageIndex++
-                ActiveReadAloudHostPorts.moveToNextPage()
-                upTtsProgress(readAloudController.playbackQueue.readAloudNumber + start)
-            }
+            textChapter ?: return
+            // 上报与翻页联动各走一路: 位置上报不因翻页判定结果被抑制
+            // (宿主端 syncReadPosition 与 onStart 同口径)
+            val readingPos = readAloudController.playbackQueue.readAloudNumber + start
+            ActiveReadAloudHostPorts.advanceReadAloudPage(
+                readAloudController.chapterIndex.value, readingPos
+            )
+            upTtsProgress(readingPos)
         }
 
         override fun onError(utteranceId: String?, errorCode: Int) {
             if (generation != engineGeneration || utteranceId != AppConst.APP_TAG + currentPlaybackToken) return
             LogUtils.d(
                 TAG,
-                "onError nowSpeak:${readAloudController.playbackQueue.nowSpeak} pageIndex:$pageIndex utteranceId:$utteranceId " +
+                "onError nowSpeak:${readAloudController.playbackQueue.nowSpeak} pageIndex:${readBook?.durPageIndexValue} utteranceId:$utteranceId " +
                     "errorCode:$errorCode"
             )
             nextParagraph(utteranceId.removePrefix(AppConst.APP_TAG).toLongOrNull() ?: return)
@@ -203,7 +197,7 @@ class TTSReadAloudService : BaseReadAloudService() {
             if (generation != engineGeneration || s != AppConst.APP_TAG + currentPlaybackToken) return
             LogUtils.d(
                 TAG,
-                "onError nowSpeak:${readAloudController.playbackQueue.nowSpeak} pageIndex:$pageIndex s:$s"
+                "onError nowSpeak:${readAloudController.playbackQueue.nowSpeak} pageIndex:${readBook?.durPageIndexValue} s:$s"
             )
             nextParagraph(s.removePrefix(AppConst.APP_TAG).toLongOrNull() ?: return)
         }

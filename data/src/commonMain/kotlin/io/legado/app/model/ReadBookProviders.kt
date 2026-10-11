@@ -16,6 +16,8 @@ import io.legado.app.service.ReadAloudChapterNavigationPort
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadBookViewModelPort
 import io.legado.app.ui.book.read.page.entities.TextChapterShared
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -101,6 +103,52 @@ object ActiveReadAloudHostPorts : ReadAloudHostPorts {
     val currentChapter: TextChapterShared? get() = ownerSnapshot?.readBook?.curTextChapter?.value
     fun moveToNextPage() = ownerSnapshot?.moveToNextPage()
     fun uploadProgress() = ownerSnapshot?.uploadProgress()
+
+    // 朗读进度→阅读页翻页联动游标 (原版散在朗读服务内的 pageIndex, 下沉后单例持有)。
+    // 登记起点 (阅读页 UI 线程 / 朗读服务主线程) 与推进 (Android TTS 回调的 binder 线程、
+    // 其余端朗读宿主的 Dispatchers.Default) 分属不同线程, 游标与起点成对读写, 故用锁收口
+    // (与同模块 RemoteZipWrapper/ReadAloudControllerShared 同一写法)。
+    private val readAloudPageLock = SynchronizedObject()
+    private var readAloudPageCursor: Int = -1
+    private var readAloudPageStartPos: Int = 0
+
+    /**
+     * 登记一次新朗读会话的起点 (对照原版 newReadAloud 开头的 pageIndex 重置);
+     * 游标页在排版产物就绪后由 [advanceReadAloudPage] 反算。
+     */
+    override fun resetReadAloudPageCursor(chapterPosition: Int) {
+        synchronized(readAloudPageLock) {
+            readAloudPageStartPos = chapterPosition.coerceAtLeast(0)
+            readAloudPageCursor = -1
+        }
+    }
+
+    /**
+     * 朗读位置推进联动: 朗读位置越过下一页起点时把阅读页翻过去 (对照原版
+     * TTSReadAloudService onStart/onRangeStart 与 HttpReadAloudService upPlayPos 的判定)。
+     *
+     * 翻页回调在锁外调 (阅读页实现可能反向进入朗读宿主, 与 ReadAloudControllerShared
+     * 的"锁外调 navigator"同一约定)。
+     */
+    override fun advanceReadAloudPage(chapterIndex: Int, readingPos: Int): Boolean {
+        val chapter = currentChapter ?: return false
+        if (chapter.chapterIndex != chapterIndex) return false
+        val advanced = synchronized(readAloudPageLock) {
+            if (readAloudPageCursor < 0) {
+                readAloudPageCursor = chapter.getPageIndexByCharIndex(readAloudPageStartPos)
+            }
+            if (readAloudPageCursor + 1 < chapter.pageSize
+                && readingPos > chapter.getReadLength(readAloudPageCursor + 1)
+            ) {
+                readAloudPageCursor++
+                true
+            } else {
+                false
+            }
+        }
+        if (advanced) moveToNextPage()
+        return advanced
+    }
 
     override val currentPosition: ReadAloudPosition?
         get() = ownerSnapshot?.readBook?.let {
