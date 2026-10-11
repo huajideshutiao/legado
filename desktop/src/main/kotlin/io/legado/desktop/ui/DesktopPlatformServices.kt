@@ -229,8 +229,8 @@ private class DesktopWindowController(
 
     override fun setKeepScreenOn(enabled: Boolean) {
         // 对照 app 端 FLAG_KEEP_SCREEN_ON: 阻止系统休眠/息屏 (Win=SetThreadExecutionState,
-        // mac=caffeinate, Linux=systemd-inhibit), 见 DesktopKeepAwake
-        DesktopKeepAwake.setKeepScreenOn(enabled)
+        // mac=caffeinate, Linux=systemd-inhibit), 见 DesktopKeepAwake。窗口不可见时由那边释放
+        DesktopKeepAwake.requestKeepScreenOn(enabled)
     }
 
     override fun setOrientation(policy: OrientationPolicy) {

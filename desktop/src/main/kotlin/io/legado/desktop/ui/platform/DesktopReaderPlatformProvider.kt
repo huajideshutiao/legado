@@ -123,6 +123,15 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         (screenModel.menuController.state as? DesktopReadMenuState)?.stopAutoPage()
     }
 
+    // 退到后台 / 被别的页面盖住 → 挂起自动翻页 (开关保持, 只停推进), 回到可见期自动接着翻
+    override fun autoPagePause(screenModel: ReaderScreenModel) {
+        (screenModel.menuController.state as? DesktopReadMenuState)?.pauseAutoPage()
+    }
+
+    override fun autoPageResume(screenModel: ReaderScreenModel) {
+        (screenModel.menuController.state as? DesktopReadMenuState)?.resumeAutoPage()
+    }
+
     // 自动翻页滑条抬手 → 重新应用当前 TTS 语速 (对照 app 端 upTtsSpeechRate: 重读配置 +
     // pause/resume 让新语速立刻作用到当前段; 本方法不写配置, 只按现配置重放)
     override fun upTtsSpeechRate(screenModel: ReaderScreenModel) = DesktopReadAloudHost.upSpeechRate()
@@ -589,6 +598,21 @@ private class DesktopReadMenuState(
         autoPager = null
         autoPage = false
         readerAutoPageActive = false
+    }
+
+    /**
+     * 挂起自动翻页: 开关保持开着, 只停推进 (当前画面保持, 暂停时长不计入进度)。
+     *
+     * 退到后台 / 被别的页面盖住时由 [DesktopReaderPlatformProvider.autoPagePause] 调用,
+     * 回到可见期由 [resumeAutoPage] 接着推进 —— 用户不必再点一次自动翻页。
+     */
+    fun pauseAutoPage() {
+        autoPager?.pause()
+    }
+
+    /** 恢复自动翻页推进 (开关已被用户关掉时控制器已销毁, 此处自然 no-op)。 */
+    fun resumeAutoPage() {
+        autoPager?.resume()
     }
 
     /** 释放菜单状态与协程作用域 (阅读页退出时由 Provider 调用) */

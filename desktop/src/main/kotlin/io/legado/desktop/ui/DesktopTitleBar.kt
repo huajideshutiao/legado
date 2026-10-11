@@ -49,6 +49,7 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.MainTab
 import io.legado.app.ui.root.MainTabSwitcher
 import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.desktop.help.DesktopKeepAwake
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.ic_brightness
 import legado.ui.generated.resources.ic_daytime
@@ -134,10 +135,11 @@ object DesktopWindowChrome {
      *
      * 收进托盘与最小化都是窗口离开屏幕 = 退到后台; 只是丢焦点 (别的应用抢走焦点而本窗口仍在
      * 屏幕上) 不改变前后台 —— 桌面窗口能与其他应用同屏并存, 拿失活当后台会让阅读/朗读/视频
-     * 在用户只是切去浏览器时被挂起。
+     * 在用户只是切去浏览器时被挂起。屏幕常亮同步该判据: 窗口不可见就不该压着系统不熄屏。
      */
     private fun applyForeground(foreground: Boolean) {
         AppForegroundState.set(foreground)
+        DesktopKeepAwake.setWindowVisible(foreground)
     }
 
     /**

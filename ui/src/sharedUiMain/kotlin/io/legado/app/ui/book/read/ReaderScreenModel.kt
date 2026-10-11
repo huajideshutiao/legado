@@ -174,6 +174,19 @@ interface ReaderPlatformProvider {
      */
     fun autoPageStop(screenModel: ReaderScreenModel) {}
 
+    /**
+     * 页面离开可见期但仍在栈内时挂起自动翻页 (退到后台 / 被别的页面盖住)。
+     *
+     * 默认按原语义停止 (未实现挂起的端行为不变); 桌面端覆写为挂起: 开关保持, 只停推进,
+     * 回到可见期由 [autoPageResume] 接着推进。真正离开阅读页仍走 [autoPageStop]。
+     */
+    fun autoPagePause(screenModel: ReaderScreenModel) {
+        autoPageStop(screenModel)
+    }
+
+    /** 页面重新可见时恢复自动翻页 (仅与 [autoPagePause] 成对; 未实现挂起的端 no-op)。 */
+    fun autoPageResume(screenModel: ReaderScreenModel) {}
+
     /** 自动翻页滑条抬手后同步 TTS 语速 (对照原版 AutoReadDialog upTtsSpeechRate) */
     fun upTtsSpeechRate(screenModel: ReaderScreenModel) {}
 

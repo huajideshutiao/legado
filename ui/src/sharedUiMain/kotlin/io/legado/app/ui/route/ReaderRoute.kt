@@ -184,16 +184,21 @@ fun ReaderRoute(
     )
 
     // ② 可见期间 (RESUMED): 对照原版 Activity onResume/onPause。
-    //    被压栈或退到后台即挂起: inactive 先停自动翻页, 再做计时/落库/取消预下载。
+    //    被压栈或退到后台即挂起: 先挂起自动翻页, 再做计时/落库/取消预下载。
     //    desktop/iOS/OHOS 的路由压栈与退后台不会销毁 ScreenModel, 因此只停可复用控制器,
-    //    不调用 provider.onExit/dispose; 再次可见后仍可由同一菜单状态重新启动。
+    //    不调用 provider.onExit/dispose; 再次可见后恢复自动翻页, 页面与开关都不丢。
     //    Android 已由 Activity lifecycle observer 执行 autoPageStop/自动备份, 这里不重复触发平台副作用。
     OnRouteLifecycle(
         minState = Lifecycle.State.RESUMED,
-        onEnter = { screenModel.onResume() },
+        onEnter = {
+            screenModel.onResume()
+            if (AppConst.JS_PLATFORM != "android") {
+                provider.autoPageResume(screenModel)
+            }
+        },
         onLeave = {
             if (AppConst.JS_PLATFORM != "android") {
-                provider.autoPageStop(screenModel)
+                provider.autoPagePause(screenModel)
             }
             screenModel.onPause()
         },

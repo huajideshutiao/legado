@@ -5,6 +5,7 @@ import com.sun.jna.Platform
 import com.sun.jna.win32.StdCallLibrary
 import io.legado.app.constant.AppLog
 import java.util.concurrent.atomic.AtomicReference
+import javax.swing.SwingUtilities
 
 /**
  * 桌面端"屏幕常亮" (app 端 `Activity.keepScreenOn` / FLAG_KEEP_SCREEN_ON 的桌面等价)。
@@ -16,6 +17,9 @@ import java.util.concurrent.atomic.AtomicReference
  * - Linux: `systemd-inhibit --what=idle --who=legado sleep infinity` 子进程, 同上
  *
  * 非幂等调用安全: 重复开/关只作用一次。
+ *
+ * 下发由 [requestKeepScreenOn] (窗口策略请求) 与 [setWindowVisible] (窗口显隐) 两个入口合成:
+ * 窗口不可见期间不压常亮, 两者任一变化都当场重算, 不等界面重组 (收起托盘/最小化后没有帧)。
  */
 object DesktopKeepAwake {
 
@@ -26,13 +30,55 @@ object DesktopKeepAwake {
     /** 类 Unix 平台上持有抑制的子进程 (Windows 为 null)。 */
     private val inhibitor = AtomicReference<Process?>(null)
 
+    /** 平台侧当前是否真的在阻止休眠/熄屏 (下发去重)。 */
     @Volatile
     private var enabled = false
 
+    /** 窗口策略最近一次下发的常亮请求 (阅读页常亮开关 或 自动翻页在跑)。 */
+    @Volatile
+    private var requested = false
+
+    /** 主窗口是否对用户可见 (收进托盘 / 最小化 = false)。 */
+    @Volatile
+    private var windowVisible = true
+
+    /**
+     * 下发常亮请求。
+     *
+     * 真正是否压住系统由 [windowVisible] 决定: 界面收进托盘或最小化后不再重组, 下发时机
+     * 不能依赖下一次重组 —— 不可见时立即释放, 窗口回来后按这里记下的请求补下发。
+     */
     @Synchronized
-    fun setKeepScreenOn(on: Boolean) {
+    fun requestKeepScreenOn(on: Boolean) {
+        requested = on
+        apply()
+    }
+
+    /** 主窗口显隐翻转 (收进托盘 / 最小化 / 恢复) 时立即按当前请求重算。 */
+    @Synchronized
+    fun setWindowVisible(visible: Boolean) {
+        windowVisible = visible
+        apply()
+    }
+
+    /** 窗口不可见时一律不收常亮: 界面都看不见, 还压着系统不熄屏是错的。 */
+    private fun apply() = setEnabled(requested && windowVisible)
+
+    @Synchronized
+    private fun setEnabled(on: Boolean) {
         if (enabled == on) return
         enabled = on
+        // 平台调用统一收口到 EDT: Windows 的 SetThreadExecutionState 是线程级状态, 开在哪个
+        // 线程就必须在同一个线程关 (否则打开它的线程仍持有请求, 关不掉)。窗口显隐会从托盘菜单、
+        // 单实例转发前置、窗口事件等多个线程进来, 不收敛线程就会出现隐藏后系统仍不熄屏。
+        if (SwingUtilities.isEventDispatchThread()) {
+            applyNative(on)
+        } else {
+            SwingUtilities.invokeLater { applyNative(on) }
+        }
+    }
+
+    private fun applyNative(on: Boolean) {
         runCatching {
             when {
                 Platform.isWindows() -> setWindows(on)
