@@ -562,8 +562,23 @@ interface PlatformCapabilities {
     /** 空消息可见 (对照 emptyMsgVisible) */
     fun importBookEmptyMsgVisible(): StateFlow<Boolean> = PlatformCapabilitiesDefaults.falseFlow
 
-    /** 初始化导入数据 (对照 onActivityCreated 内 initData) */
-    fun initImportBookData() = unsupported("初始化本地书籍导入")
+    /**
+     * 当前目录是否还有上级目录 (返回键据此逐级返回, 对照原版
+     * `setupBackPress { goBackDir() }`: 已在根目录才退出页面)。
+     */
+    fun importBookHasParentDir(): StateFlow<Boolean> = PlatformCapabilitiesDefaults.falseFlow
+
+    /**
+     * 初始化导入数据 (对照 onActivityCreated 内 initData)。
+     *
+     * @return true = 尚未有可用目录, 页面需拉起选目录选择器 (对照原版 initRootDoc 的
+     *   `selectFolder.launch()` 条件); 返回时初始化已结束 (含其中的选目录流程), 调用方
+     *   据此决定是否再拉一次, 不会出现两个选择器并存。
+     */
+    suspend fun initImportBookData(): Boolean = false
+
+    /** 离开导入页时的收尾 (对照原版 Activity 销毁即取消进行中的目录扫描); 默认无动作。 */
+    fun onImportBookPageCleared() = Unit
 
     /** 处理文件关联直接传入的文件路径或 URI；未实现的平台必须明确报告不支持。 */
     fun openImportFile(filePath: String) {

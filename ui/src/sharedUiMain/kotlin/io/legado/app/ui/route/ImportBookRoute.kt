@@ -1,6 +1,7 @@
 package io.legado.app.ui.route
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -10,6 +11,7 @@ import io.legado.app.ui.book.import.local.ImportBookScreen
 import io.legado.app.ui.book.import.local.ImportBookScreenModel
 import io.legado.app.ui.book.import.local.ImportBookUiActions
 import io.legado.app.ui.book.import.local.ImportBookUiEvent
+import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -43,17 +45,22 @@ fun ImportBookRoute(
     val loading by platform.importBookLoading().collectAsState()
     val emptyMsgVisible by platform.importBookEmptyMsgVisible().collectAsState()
 
+    // 离开页面时停掉本页发起的目录扫描 (对照原版 Activity 销毁即取消 scanDocJob)
+    DisposableEffect(entry.id) {
+        onDispose { platform.onImportBookPageCleared() }
+    }
+
     // 平台状态推送到 ScreenModel, 供 selection/checkableCount 计算
     LaunchedEffect(items, path, loading, emptyMsgVisible) {
         screenModel.updatePlatformState(items, path, loading, emptyMsgVisible)
     }
 
-    // 对照 onActivityCreated: sortState = viewModel.sort；文件关联时直接处理目标文件，否则初始化默认目录。
+    // 对照 onActivityCreated: sortState = viewModel.sort, 初始化目录 (与文件关联处理互不排斥,
+    // 原版 initData() 同样无条件执行); 初始化自报是否还没有可用目录, 是则拉起一次选择器。
     LaunchedEffect(route.filePath) {
         screenModel.dispatch(ImportBookUiEvent.SetSort(AppConfigProviders.get().localBookImportSort))
-        route.filePath?.let { filePath ->
-            platform.openImportFile(filePath)
-        } ?: platform.initImportBookData()
+        if (platform.initImportBookData()) platform.pickImportFolder()
+        route.filePath?.let { filePath -> platform.openImportFile(filePath) }
     }
 
     val state by screenModel.state.collectAsState()
@@ -130,5 +137,16 @@ fun ImportBookRoute(
             }
         }
     }
+    // 对照原版 setupBackPress { goBackDir() }: 有上级目录时返回键逐级返回, 到根目录才退出页面
+    val backStack by navigator.backStack.collectAsState()
+    val isTopEntry = backStack.lastOrNull()?.id == entry.id
+    val hasParentDir by platform.importBookHasParentDir().collectAsState()
+    AppBackHandler(enabled = isTopEntry && hasParentDir) {
+        // 与列表里点"返回上级"同形: 上一级列表不含已选中的条目, 不清空会让"加入书架"
+        // 作用到当前不可见的条目上 (远程书籍页的返回键分支同理)
+        platform.goBackImportDir()
+        screenModel.dispatch(ImportBookUiEvent.SelectAll(false))
+    }
+
     ImportBookScreen(state = state, actions = actions)
 }

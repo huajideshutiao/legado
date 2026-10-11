@@ -873,13 +873,18 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
 
     // ===== 导入本地书 (状态与扫描见 NativeImportBook, 与 iOS 共用) =====
 
-    override fun initImportBookData() = NativeImportBook.init(restoreLast = true)
+    override suspend fun initImportBookData(): Boolean {
+        NativeImportBook.init(restoreLast = true)
+        return NativeImportBook.needsRootDir
+    }
 
     override fun importBookItems(): StateFlow<List<ImportFileItem>> = NativeImportBook.items
     override fun importBookPath(): StateFlow<String?> = NativeImportBook.path
     override fun importBookLoading(): StateFlow<Boolean> = NativeImportBook.loading
     override fun importBookEmptyMsgVisible(): StateFlow<Boolean> =
         NativeImportBook.emptyMsgVisible
+
+    override fun importBookHasParentDir(): StateFlow<Boolean> = NativeImportBook.hasParentDir
 
     // 对照 Android onPickFolder / selectFolder.launch;
     // 复用 OhosPlatformServices.pickDirectory (DocumentViewPicker 选目录 + 授权持久化 +

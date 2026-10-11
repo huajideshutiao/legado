@@ -33,6 +33,7 @@ import io.legado.app.ui.book.import.remote.ServersDialog
 import io.legado.app.ui.book.import.remote.ServersViewModelShared
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -228,6 +229,15 @@ fun RemoteBookRoute(
         sortKeyState = sortKeyState,
     )
     RemoteBookScreen(state = state, actions = actions)
+
+    // 对照原版 setupBackPress { goBackDir() }: 有上级目录时返回键逐级返回, 到根目录才退出页面
+    val backStack by navigator.backStack.collectAsState()
+    val isTopEntry = backStack.lastOrNull()?.id == entry.id
+    AppBackHandler(enabled = isTopEntry && shared.dirList.isNotEmpty()) {
+        shared.dirList.removeLastOrNull()
+        selected = emptySet()
+        shared.upPath()
+    }
 
     // 服务器配置对话框 (对照 app showDialogFragment<ServersDialog>)
     if (showServersDialog) {

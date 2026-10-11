@@ -1675,6 +1675,7 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="open_fun">打开方式</string>
     <string name="use_browser_open">是否使用外部浏览器打开？</string>
     <string name="open_sys_dir_picker_error">打开系统文件夹选择器出错，将自动打开应用文件夹选择器</string>
+    <string name="book_storage_help">由于安卓的存储访问限制，阅读需要设置公共目录下的子目录来实现书籍拷贝、下载，例如 Documents/Books、Download/Books。\n如不设置，将无法正常使用本地书籍、webDav 书籍的相关功能。</string>
     <string name="select_book_folder">选择保存书籍的文件夹</string>
     <string name="general">全局</string>
     <string name="copy_all">拷贝所有</string>

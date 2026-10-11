@@ -85,11 +85,20 @@ object NativeImportBook {
     private val _path = MutableStateFlow<String?>(null)
     private val _loading = MutableStateFlow(false)
     private val _emptyMsgVisible = MutableStateFlow(false)
+    private val _hasParentDir = MutableStateFlow(false)
 
     val items: StateFlow<List<ImportFileItem>> = _items.asStateFlow()
     val path: StateFlow<String?> = _path.asStateFlow()
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
     val emptyMsgVisible: StateFlow<Boolean> = _emptyMsgVisible.asStateFlow()
+
+    /**
+     * 当前目录是否还有上级目录 (返回键逐级返回的开关)。
+     *
+     * 语义是"当前目录是否在导入根目录之下", 与列表里有没有"返回上级"项无关 —— 平铺扫描
+     * 只换列表内容、不改当前目录, 据此清零会让扫描后返回键直接退出页面。
+     */
+    val hasParentDir: StateFlow<Boolean> = _hasParentDir.asStateFlow()
 
     private var rootDir: File? = null
     private val subDirs = mutableListOf<File>()
@@ -104,6 +113,9 @@ object NativeImportBook {
 
     /** 当前所在目录 (未选根目录时为 null)。 */
     private fun currentDir(): File? = subDirs.lastOrNull() ?: rootDir
+
+    /** 是否还没选定导入根目录 (页面进入后据此自动拉起选择器)。 */
+    val needsRootDir: Boolean get() = rootDir == null
 
     /**
      * 初始化导入页状态。
@@ -218,11 +230,13 @@ object NativeImportBook {
     }
 
     private fun reload() {
+        _hasParentDir.value = subDirs.isNotEmpty()
         val dir = currentDir()
         if (dir == null) {
             _items.value = emptyList()
             _path.value = null
             _emptyMsgVisible.value = true
+            _hasParentDir.value = false
             return
         }
         loadJob?.cancel()

@@ -215,20 +215,16 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     private lateinit var readerPlatform: AndroidReaderPlatformProvider
     private lateinit var services: AndroidPlatformServices
 
-    /** 导入书籍: SAF 选根目录 (对照 ImportBookActivity.selectFolder: 写 pref 后 initRootDoc(true))。 */
+    /** 导入书籍: SAF 选根目录 (对照 ImportBookActivity.selectFolder: 写 pref 后重建 rootDoc 并读目录)。 */
     private val importSelectFolder = registerHandleFile { result ->
         if (result.uri != null) {
             AppConfig.importBookPath = result.uri.toString()
             // 导入根目录下的文件按本地书读入, 登记为书籍用途
             AndroidDirAuthorizations.remember(result.uri.toString(), DirUsage.BookTree)
-            // 取消选择时不动当前 rootDoc (对照原版 selectFolder 回调 uri==null 直接 return)
-            pendingImportFolderCallback?.invoke()
-            pendingImportFolderCallback = null
         }
+        // 取消选择时不动当前 rootDoc (对照原版 selectFolder 回调 uri==null 直接 return)
+        capabilities.onImportFolderSelected(result.uri != null)
     }
-
-    /** 由 [AndroidPlatformCapabilities.pickImportFolder] 设置: 选完目录后重建 rootDoc 并加载。 */
-    var pendingImportFolderCallback: (() -> Unit)? = null
 
     /** 暴露给 [AndroidPlatformCapabilities] 启动 SAF 选目录。 */
     fun launchImportFolderPicker() = importSelectFolder.launch()

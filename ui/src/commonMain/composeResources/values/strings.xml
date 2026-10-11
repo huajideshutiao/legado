@@ -1608,6 +1608,7 @@
     <string name="open_fun">open function</string>
     <string name="use_browser_open">Is it opened in an external browser?</string>
     <string name="open_sys_dir_picker_error">Error opening system folder selector, automatically open application folder selector</string>
+    <string name="book_storage_help">Due to Android storage access restrictions, Legado needs a subdirectory under a public directory (for example Documents/Books or Download/Books) to copy and download books.\nWithout it, local books and WebDAV books will not work properly.</string>
     <string name="select_book_folder">Select the folder where the books are saved</string>
     <string name="general">General</string>
     <string name="copy_all">Copy all</string>

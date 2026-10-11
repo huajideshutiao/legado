@@ -604,6 +604,7 @@
     <string name="search_content_empty">搜尋內容為空，請檢查淨化/簡繁設定</string>
     <string name="book_tree_uri_t">書籍儲存位置</string>
     <string name="book_tree_uri_s">從其它應用程式打開的書籍儲存位置</string>
+    <string name="book_storage_help">由於安卓的儲存存取限制，閱讀需要設定公共目錄下的子目錄來實現書籍複製、下載，例如 Documents/Books、Download/Books。\n如不設定，將無法正常使用本地書籍、webDav 書籍的相關功能。</string>
     <string name="select_book_folder">選擇儲存書籍的資料夾</string>
     <string name="user_agent">使用者代理</string>
     <string name="bg_alpha">背景透明度</string>

@@ -256,10 +256,11 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 
     // 上次导入目录的授权经 minimal bookmark 恢复 (security-scoped URL 现在可跨启动解析),
     // 恢复失败则保持原行为: 等用户在导入页重新选目录 (restoreLast=false)
-    override fun initImportBookData() {
+    override suspend fun initImportBookData(): Boolean {
         val restored = IosSecurityScopedStorage.restoreImportRootPath()
         NativeImportBook.init(restoreLast = false)
         restored?.let { NativeImportBook.setRoot(it) }
+        return NativeImportBook.needsRootDir
     }
 
     override fun importBookItems(): StateFlow<List<ImportFileItem>> = NativeImportBook.items
@@ -267,6 +268,8 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     override fun importBookLoading(): StateFlow<Boolean> = NativeImportBook.loading
     override fun importBookEmptyMsgVisible(): StateFlow<Boolean> =
         NativeImportBook.emptyMsgVisible
+
+    override fun importBookHasParentDir(): StateFlow<Boolean> = NativeImportBook.hasParentDir
 
     // 对照 Android onPickFolder / selectFolder.launch。
     // 不用 IosFilePickerService.pickDirectory (只返回 path, 会丢 security-scoped URL):

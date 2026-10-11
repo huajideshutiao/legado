@@ -1060,10 +1060,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         withTimeoutOrNull(EXIT_EXPORT_GRACE_MS) { exportJob.join() }
     }
 
-    private companion object {
-        /** 退出时等导出收尾的上限 (超时就不再等, 由调用方继续结束进程)。 */
-        const val EXIT_EXPORT_GRACE_MS = 5_000L
-    }
+    private const val EXIT_EXPORT_GRACE_MS = 5_000L
 
     // ===== 其它设置 =====
 
@@ -1149,12 +1146,17 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
 
     // ===== 导入本地书 (状态与扫描见 DesktopImportBook) =====
 
-    override fun initImportBookData() = DesktopImportBook.init()
+    override suspend fun initImportBookData(): Boolean {
+        DesktopImportBook.init()
+        return DesktopImportBook.needsRootDir
+    }
 
     override fun importBookItems(): StateFlow<List<ImportFileItem>> = DesktopImportBook.items
     override fun importBookPath(): StateFlow<String?> = DesktopImportBook.path
     override fun importBookLoading(): StateFlow<Boolean> = DesktopImportBook.loading
     override fun importBookEmptyMsgVisible(): StateFlow<Boolean> = DesktopImportBook.emptyMsgVisible
+
+    override fun importBookHasParentDir(): StateFlow<Boolean> = DesktopImportBook.hasParentDir
 
     override fun pickImportFolder() {
         scope.launch { FileDialogs.pickDirectory("选择导入目录")?.let { DesktopImportBook.setRoot(it) } }
