@@ -11,7 +11,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.toast.Toasters
-import io.legado.app.help.tts.SpeakTest
+import io.legado.app.help.tts.OneShotTts
 import io.legado.app.ui.book.read.config.HttpTtsEditDialog
 import io.legado.app.ui.book.read.config.HttpTtsEditViewModelShared
 import io.legado.app.ui.compose.platform.syncGetString
@@ -44,9 +44,10 @@ private fun HttpTtsEditOverlayForm(overlay: AppOverlay.Dialog, navigator: AppNav
         )
     }
     // 朗读试听器 (测当前表单未保存内容; 对话框关闭时停声)
-    val speakTest = remember { SpeakTest() }
+    // 一次性朗读器 (试听强制指定引擎不走配置; 对话框关闭时停声)
+    val oneShotTts = remember { OneShotTts() }
     DisposableEffect(Unit) {
-        onDispose { speakTest.stop() }
+        onDispose { oneShotTts.stop() }
     }
     fun initForm(value: HttpTTS) {
         source = value.copy()
@@ -103,7 +104,7 @@ private fun HttpTtsEditOverlayForm(overlay: AppOverlay.Dialog, navigator: AppNav
             val value = formData()
             save(value) { value.showLoginDialog() }
         },
-        onTestSpeak = { speakTest.speak(formData(), SpeakTest.TEST_TEXT) },
+        onTestSpeak = { oneShotTts.speakWith(formData(), OneShotTts.TEST_TEXT) },
         onCopySource = { capabilities.copyToClipboard(KS_JSON.encodeToString(HttpTTS.serializer(), formData())) },
         onPasteSource = { vm.importFromClip(::initForm) },
         onShowHelp = { navigator.showOverlay(AppOverlay.Dialog("help", payload = "httpTTSHelp")) },

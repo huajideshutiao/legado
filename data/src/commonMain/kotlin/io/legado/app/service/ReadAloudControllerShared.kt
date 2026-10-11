@@ -11,6 +11,7 @@ import io.legado.app.help.tts.SystemTtsEngine
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.help.tts.TtsProgressListener
 import io.legado.app.help.tts.TtsProgressListenerToken
+import io.legado.app.help.tts.resolveHttpTtsChannel
 import io.legado.app.model.ActiveReadBookRegistry
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -337,26 +338,24 @@ class ReadAloudControllerShared(
      * 决定本次朗读走 HttpTTS 还是系统 TTS。
      *
      * 读 [ttsEngineConfigProvider] 取配置 (Book.ttsEngine 优先, 否则 AppConfig.ttsEngine),
-     * isNumeric → 用 [httpTtsConfigLoader] 查 DAO 拿 [HttpTTS] → 用 [httpTtsPlayerFactory] 造 player。
-     * 配置缺失 / DAO 查不到源 / 工厂未注册时降级走系统 TTS。
+     * 交 [resolveHttpTtsChannel] 判定 (与一次性朗读同一份): 配置缺失 / 非数字 / DAO 查不到源 /
+     * 平台未注册在线播放器时降级走系统 TTS。
      *
      * @return true 表示走 HttpTTS, false 表示走系统 TTS
      */
     private fun resolveEngine(): Boolean {
         httpTtsConfig = null
 
-        val ttsEngine = ttsEngineConfigProvider()?.takeIf { it.isNotBlank() } ?: return false
-        // isNumeric 判断 (替代 StringUtils.isNumeric, 不引入 apache commons 依赖)
-        if (ttsEngine.any { !it.isDigit() }) return false
+        val channel = runBlocking {
+            resolveHttpTtsChannel(
+                ttsEngineConfigProvider(),
+                httpTtsConfigLoader,
+                httpTtsPlayerFactory,
+            )
+        } ?: return false
 
-        val id = ttsEngine.toLong()
-        // 源被删掉时回落系统 TTS (对照原版 ReadAloud.getReadAloudClass: httpTTS == null 走 TTSReadAloudService)
-        val config = runBlocking { httpTtsConfigLoader(id) } ?: return false
-
-        val player = httpTtsPlayerFactory(config) ?: return false
-
-        httpTtsConfig = config
-        httpTtsPlayer = player
+        httpTtsConfig = channel.config
+        httpTtsPlayer = channel.player
         // HttpTTS speakSpeed (Int, 对标原版 AppConfig.ttsSpeechRate)
         httpTtsSpeechRate = AppConfigProviders.get().ttsSpeechRate
         return true

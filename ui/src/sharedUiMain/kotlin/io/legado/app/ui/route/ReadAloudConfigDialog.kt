@@ -19,7 +19,7 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.storage.BackupFileOps
-import io.legado.app.help.tts.SpeakTest
+import io.legado.app.help.tts.OneShotTts
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.read.config.ReadAloudConfigScreen
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
@@ -37,6 +37,7 @@ import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.association.DeepLinkImportType
 import io.legado.app.ui.widget.dialog.OnlineImportUrlDialog
 import io.legado.app.utils.GSON
+import io.legado.app.utils.toJson
 import io.legado.app.utils.isAbsUrl
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
@@ -120,12 +121,13 @@ private fun ReadAloudConfigContent(
     var showTtsUrlInput by remember { mutableStateOf(false) }
 
     // 朗读试听器 (行/编辑器测试共用; 关闭对话框时停声)
-    val speakTest = remember { SpeakTest() }
+    // 一次性朗读器 (行/编辑器试听共用, 强制指定引擎不走配置; 关闭对话框时停声)
+    val oneShotTts = remember { OneShotTts() }
     DisposableEffect(Unit) {
-        onDispose { speakTest.stop() }
+        onDispose { oneShotTts.stop() }
     }
     // 试听文本 = 固定双语探针 (中文+英文, 先中文, 不随应用语言)
-    val testSpeakText = SpeakTest.TEST_TEXT
+    val testSpeakText = OneShotTts.TEST_TEXT
     val exportSuccessText = stringResource(Res.string.export_success)
 
     // 统一 TTS 源导入入口: 文本/URL 交共享勾选导入对话框 (深链导入同一条链)
@@ -181,7 +183,7 @@ private fun ReadAloudConfigContent(
             },
             // 统一登录入口: URL 登录直开 WebView, 表单登录弹登录表单 (与 TTS 编辑器同一条链)
             onLogin = { engine -> engine.showLoginDialog() },
-            onTestSpeak = { engine -> speakTest.speak(engine, testSpeakText) },
+            onTestSpeak = { engine -> oneShotTts.speakWith(engine, testSpeakText) },
             onImportLocal = {
                 scope.launch {
                     val path = withContext(IoDispatcher) {

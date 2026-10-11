@@ -225,7 +225,7 @@ abstract class ReadAloudHostShared(
      * @param rate 原版 ttsSpeechRate 口径 (0..45), 折算倍率 (rate + 5) / 10f
      */
     fun setSpeechRate(rate: Int) {
-        controller.setSpeechRate((rate.coerceIn(0, 45) + 5) / 10f)
+        controller.setSpeechRate(ttsSpeechRateScale(rate.coerceIn(0, 45)))
         // 原版 upTtsSpeechRate 后会 pause+resume 让新语速立刻作用到当前段
         if (!isPause) {
             controller.pause()
@@ -235,7 +235,7 @@ abstract class ReadAloudHostShared(
 
     /** 按当前语速配置重新生效 (对照 `ReadAloud.upTtsSpeechRate`): 不写配置, 只重放。 */
     fun upSpeechRate() {
-        setSpeechRate(configuredSpeechRate())
+        setSpeechRate(configuredTtsSpeechRate())
     }
 
     // region 内部实现
@@ -298,19 +298,9 @@ abstract class ReadAloudHostShared(
         }
     }
 
-    /** AppConfig.ttsSpeechRate (0..45) 折算为控制器倍率 (原版 (rate + 5) / 10f)。 */
+    /** AppConfig.ttsSpeechRate (0..45) 折算为控制器倍率 (与一次性朗读共用 [ttsSpeechRateScale])。 */
     private fun applySpeechRate() {
-        controller.setSpeechRate((configuredSpeechRate() + 5) / 10f)
-    }
-
-    /** 当前生效语速 0..45; 跟随系统时回落默认语速 (对照原版 AppConfig.speechRatePlay)。 */
-    private fun configuredSpeechRate(): Int {
-        val prefs = PreferenceProviders.get()
-        return if (prefs.getBoolean(PreferKey.ttsFollowSys, true)) {
-            DEFAULT_SPEECH_RATE
-        } else {
-            prefs.getInt(PreferKey.ttsSpeechRate, DEFAULT_SPEECH_RATE)
-        }
+        controller.setSpeechRate(ttsSpeechRateScale(configuredTtsSpeechRate()))
     }
 
     /**
@@ -466,11 +456,6 @@ abstract class ReadAloudHostShared(
         }
     }
     // endregion
-
-    private companion object {
-        /** 原版 AppConfig.defaultSpeechRate。 */
-        const val DEFAULT_SPEECH_RATE = 5
-    }
 }
 
 data class ReadAloudPosition(val chapterIndex: Int, val chapterPosition: Int)
