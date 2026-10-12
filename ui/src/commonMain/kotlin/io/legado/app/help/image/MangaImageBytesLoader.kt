@@ -4,26 +4,24 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.FileUtilsCommon
+import io.legado.app.help.book.BookImageDownloadShared
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.image.MangaPluginImageFetcherProviders
-import io.legado.app.help.image.PluginImageUrl
-import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.fileBook.FileBook
-import io.legado.app.model.script.runScriptWithContext
-import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isFilePath
 import io.legado.app.utils.readAllAndClose
 import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.withContext
 
 /**
  * 漫画页字节加载 (app 端 `help.glide.ImageLoader.loadManga` 下沉)。
  *
  * 图片缓存读写走 [BookImageStorageProviders] (Android 委托 BookHelp, 桌面走 JvmBookImageStorage,
- * iOS/鸿蒙走 NativeBookImageStorage), 下载走 [AnalyzeUrlFactories] (书源 header/代理/限流),
- * 解密走 [ImageUtils.decode]。四端共用同一条链路: Coil 端经 MangaModelFetcher 调用,
- * 鸿蒙自绘端直接调用。
+ * iOS/鸿蒙走 NativeBookImageStorage), 下载 + 解密 + 落盘 + 同图去重走章节图片同一条编排
+ * [BookImageDownloadShared.loadImageBytes] (四端共用: Coil 端经 MangaModelFetcher 调用,
+ * 鸿蒙自绘端直接调用); 本对象的差别只在失败语义: 取不到图抛 [ImageLoadException] 让页面显示
+ * 占位/错误 (共享编排自身失败只记日志返回 null)。
  */
 object MangaImageBytesLoader {
 
@@ -55,30 +53,12 @@ object MangaImageBytesLoader {
                 return embedded
             }
         }
-        // 插件源图片: 内部协议形态 tachiyomi-img://<sourceId>/<urlencode(原始URL)>,
-        // 下载委托扩展自身 client (MangaPluginImageFetcher), 扩展拦截器 (禁漫图片
-        // 分割重排等) 在官方通道内生效; 缓存 key 与正文 src 同为内部形态 (稳定)。
-        PluginImageUrl.parse(imageUrl)?.let { (sourceId, encodedUrl) ->
-            val fetcher = MangaPluginImageFetcherProviders.getOrNull()
-                ?: throw ImageLoadException("插件源图片仅 Android 端支持: $imageUrl")
-            val bytes = fetcher.fetchImage(sourceId, encodedUrl)
-                ?: throw ImageLoadException("插件源图片下载失败: $imageUrl")
-            val decodedBytes = runScriptWithContext {
-                ImageUtils.decode(imageUrl, bytes, isCover = false, bookSource, book)
-            } ?: throw ImageLoadException("图片解码失败: $imageUrl")
-            // 先写磁盘 (同步), 再返回。避免协程持有 decodedBytes 导致 OOM
-            storage.saveImage(book, chapter, imageUrl, decodedBytes)
-            return decodedBytes
-        }
-        val bytes = AnalyzeUrlFactories.create(
-            rawUrl = imageUrl, source = bookSource, coroutineContext = coroutineContext
-        ).getByteArrayAwait()
-        val decodedBytes = runScriptWithContext {
-            ImageUtils.decode(imageUrl, bytes, isCover = false, bookSource, book)
-        } ?: throw ImageLoadException("图片解码失败: $imageUrl")
-        // 先写磁盘 (同步), 再返回。避免协程持有 decodedBytes 导致 OOM
-        storage.saveImage(book, chapter, imageUrl, decodedBytes)
-        return decodedBytes
+        // 下载 (含插件源分流) + 解密 + 落盘 + 同图去重走章节图片同一条编排 [BookImageDownloadShared];
+        // 漫画页的失败语义: 取不到图抛异常, 由页面显示占位/错误 (共享编排自身失败只记日志返回 null)。
+        // 在传入的上下文中执行: 共享编排内部按 currentCoroutineContext 建 AnalyzeUrl (书源 header/代理/限流)
+        return withContext(coroutineContext) {
+            BookImageDownloadShared.loadImageBytes(bookSource, book, imageUrl, chapter)
+        } ?: throw ImageLoadException("图片下载失败: $imageUrl")
     }
 
     class ImageLoadException(message: String) : IllegalStateException(message)
