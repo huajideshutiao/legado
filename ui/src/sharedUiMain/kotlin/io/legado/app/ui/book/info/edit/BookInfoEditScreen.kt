@@ -1,7 +1,5 @@
 ﻿package io.legado.app.ui.book.info.edit
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,25 +7,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Book
-import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppDropdownField
 import io.legado.app.ui.compose.component.AppOutlinedButton
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.AppUnderlineTextField
@@ -43,7 +36,6 @@ import legado.ui.generated.resources.book_type
 import legado.ui.generated.resources.book_url
 import legado.ui.generated.resources.change_cover_source
 import legado.ui.generated.resources.cover_path
-import legado.ui.generated.resources.ic_arrow_drop_down
 import legado.ui.generated.resources.ic_save
 import legado.ui.generated.resources.refresh_cover
 import legado.ui.generated.resources.select_local_image
@@ -233,44 +225,20 @@ private fun TypeSelector(
     actions: BookInfoEditUiActions,
 ) {
     val types = stringArrayResource(Res.array.book_type)
-    var expanded by remember { mutableStateOf(false) }
+    // 标签与下拉紧贴左对齐 (对照原版 activity_book_info_edit.xml 的 TextView + Spinner 同行)
     Row(
         Modifier.padding(start = DesignTokens.spacingXs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            stringResource(Res.string.book_type),
+            text = stringResource(Res.string.book_type),
             color = AppTheme.colors.primaryText,
             fontSize = 14.sp,
         )
-        Box {
-            Row(
-                Modifier
-                    .clickable { expanded = true }
-                    .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    types.getOrElse(state.typeIndex) { types[0] },
-                    color = AppTheme.colors.primaryText,
-                    fontSize = 14.sp,
-                )
-                Icon(
-                    painterResource(Res.drawable.ic_arrow_drop_down),
-                    null,
-                    tint = AppTheme.colors.secondaryText,
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-            AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                types.forEachIndexed { index, s ->
-                    DropdownMenuItem(
-                        onClick = { actions.onTypeChange(index); expanded = false },
-                    ) {
-                        Text(s, color = AppTheme.colors.primaryText)
-                    }
-                }
-            }
-        }
+        AppDropdownField(
+            options = types.toList(),
+            selectedIndex = state.typeIndex,
+            onSelect = { actions.onTypeChange(it) },
+        )
     }
 }

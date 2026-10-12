@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Review
 import io.legado.app.ui.book.read.review.ReviewInputCapsule
 import io.legado.app.ui.book.read.review.ReviewInputHint
+import io.legado.app.ui.compose.component.AppDropdownField
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -73,7 +74,6 @@ import legado.ui.generated.resources.bottom_line
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.copy
 import legado.ui.generated.resources.delete
-import legado.ui.generated.resources.ic_arrow_drop_down
 import legado.ui.generated.resources.ic_more_vert
 import legado.ui.generated.resources.ic_review_close
 import legado.ui.generated.resources.menu
@@ -404,58 +404,22 @@ private fun TitleBarRow(
     }
 }
 
-/** 排序入口: "最热/最新 ▾" + 下拉菜单 (顶栏右侧, 评论列表模式专用; 回复模式无排序) */
+/** 排序入口: 当前档位 + ▾ 点开菜单 (顶栏右侧, 评论列表模式专用; 回复模式无排序) */
 @Composable
 internal fun ReviewSortEntry(
     sortState: Int,
     onChangeSort: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier) {
-        var sortMenuOpen by remember { mutableStateOf(false) }
-        Row(
-            Modifier
-                .clickable { sortMenuOpen = true }
-                .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = rememberString(
-                    if (sortState == 1) "review_sort_latest" else "review_sort_hot"
-                ),
-                color = rememberColor("secondaryText"),
-                fontSize = 13.sp,
-            )
-            Icon(
-                painter = painterResource(Res.drawable.ic_arrow_drop_down),
-                contentDescription = null,
-                // 跟随夜间主题: 与相邻排序文本同色
-                tint = rememberColor("secondaryText"),
-            )
-        }
-        AppDropdownMenu(
-            expanded = sortMenuOpen,
-            onDismissRequest = { sortMenuOpen = false },
-        ) {
-            DropdownMenuItem(
-                onClick = { sortMenuOpen = false; onChangeSort(0) },
-            ) {
-                Text(
-                    stringResource(Res.string.review_sort_hot),
-                    color = AppTheme.colors.primaryText,
-                )
-            }
-            DropdownMenuItem(
-                onClick = { sortMenuOpen = false; onChangeSort(1) },
-            ) {
-                Text(
-                    stringResource(Res.string.review_sort_latest),
-                    color = AppTheme.colors.primaryText,
-                )
-            }
-        }
-    }
+    AppDropdownField(
+        options = listOf(
+            stringResource(Res.string.review_sort_hot),
+            stringResource(Res.string.review_sort_latest),
+        ),
+        selectedIndex = sortState,
+        onSelect = onChangeSort,
+        modifier = modifier,
+    )
 }
 
 /** 回复模式分隔条: 分割块 + "全部回复·N" */

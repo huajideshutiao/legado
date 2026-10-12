@@ -1,6 +1,5 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.draw.alpha
-import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
 import io.legado.app.model.webBook.SEARCH_LAYOUT_SOURCE_GROUP
@@ -30,7 +28,7 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppDropdownField
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
@@ -54,7 +52,6 @@ import legado.ui.generated.resources.explore_item_style
 import legado.ui.generated.resources.explore_style
 import legado.ui.generated.resources.font_scale
 import legado.ui.generated.resources.font_scale_summary
-import legado.ui.generated.resources.ic_arrow_drop_down
 import legado.ui.generated.resources.ok
 import legado.ui.generated.resources.search_layout
 import legado.ui.generated.resources.search_style_by_book
@@ -64,7 +61,6 @@ import legado.ui.generated.resources.source_edit_max_line_summary
 import legado.ui.generated.resources.source_edit_text_max_line
 import legado.ui.generated.resources.theme_setting
 import legado.ui.generated.resources.unlimited
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -374,7 +370,7 @@ private fun SearchLayoutConfigDialog(
     }
 }
 
-/** 复刻 AppCompatSpinner 语义: 当前值 + 下拉箭头, 点开 [AppDropdownMenu] 单选 */
+/** 复刻 AppCompatSpinner 语义: 当前值 + 下拉箭头, 点开 AppDropdownField 单选 */
 @Composable
 private fun LayoutStyleDropdown(
     options: List<String>,
@@ -382,32 +378,10 @@ private fun LayoutStyleDropdown(
     enabled: Boolean = true,
     onSelect: (Int) -> Unit,
 ) {
-    val colors = AppTheme.colors
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        Row(
-            Modifier
-                .clickable(enabled = enabled) { expanded = true }
-                .padding(horizontal = DesignTokens.spacingXs, vertical = DesignTokens.spacingXs),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                options.getOrElse(selectedIndex) { "" },
-                color = colors.primaryText,
-                fontSize = 14.sp,
-            )
-            Icon(
-                painter = painterResource(Res.drawable.ic_arrow_drop_down),
-                contentDescription = null,
-                tint = colors.secondaryText,
-            )
-        }
-        AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEachIndexed { i, label ->
-                DropdownMenuItem(onClick = { expanded = false; onSelect(i) }) {
-                    Text(label, color = colors.primaryText)
-                }
-            }
-        }
-    }
+    AppDropdownField(
+        options = options,
+        selectedIndex = selectedIndex,
+        onSelect = onSelect,
+        enabled = enabled,
+    )
 }

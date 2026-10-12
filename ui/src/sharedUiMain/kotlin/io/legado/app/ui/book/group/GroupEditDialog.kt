@@ -10,10 +10,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.DropdownMenuItem
-import androidx.compose.material.Icon
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,7 +34,7 @@ import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDialogSurface
-import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppDropdownField
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
@@ -61,11 +58,9 @@ import legado.ui.generated.resources.book_sort_update_time
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.delete
 import legado.ui.generated.resources.group_name
-import legado.ui.generated.resources.ic_arrow_drop_down
 import legado.ui.generated.resources.ok
 import legado.ui.generated.resources.sort
 import legado.ui.generated.resources.sure_del
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -75,7 +70,7 @@ import org.jetbrains.compose.resources.stringResource
  * 但去掉对 Android Fragment / registerHandleFile / appDb / ViewModel 的依赖, 改为纯
  * @Composable + 回调形式:
  * - 调用方传入 [group] (null=新增) 与 [onConfirm] / [onDismiss] / [onDelete] 回调
- * - 字段: 分组名 (AppUnderlineTextField) + 排序 (AppDropdownMenu, 7 项对照 @array/book_sort)
+ * - 字段: 分组名 (AppUnderlineTextField) + 排序 (AppDropdownField, 7 项对照 @array/book_sort)
  *   + 允许下拉刷新 (AppCheckbox)
  * - 确认时把字段写回 [group] (编辑态) 或新 [BookGroup] (新增态), 通过 [onConfirm] 回传;
  *   实际 DB 持久化 (viewModel.upGroup / addGroup) 由调用方决定
@@ -288,8 +283,7 @@ fun GroupEditDialog(
 /**
  * 排序选择行, 对照原 AppCompatSpinner (@array/book_sort, 选中位 = bookSort + 1)。
  *
- * 点击展开 AppDropdownMenu, 7 项对应 [sortEntries]; 选中后回调 [onSortSelected] 传入
- * `index - 1` (即 bookSort 值, 范围 -1..5)。
+ * 选中后回调 [onSortSelected] 传入 `index - 1` (即 bookSort 值, 范围 -1..5)。
  */
 @Composable
 private fun SortRow(
@@ -297,8 +291,6 @@ private fun SortRow(
     sortEntries: List<String>,
     onSortSelected: (Int) -> Unit,
 ) {
-    val colors = AppTheme.colors
-    var sortMenu by remember { mutableStateOf(false) }
     Row(
         Modifier
             .fillMaxWidth()
@@ -307,38 +299,14 @@ private fun SortRow(
     ) {
         Text(
             text = stringResource(Res.string.sort),
-            color = colors.accent,
+            color = AppTheme.colors.accent,
             fontSize = 14.sp,
             modifier = Modifier.padding(DesignTokens.spacingXs),
         )
-        Box {
-            Row(
-                Modifier
-                    .clickable { sortMenu = true }
-                    .padding(DesignTokens.spacingXs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = sortEntries[bookSort + 1],
-                    color = colors.primaryText,
-                    fontSize = 14.sp,
-                )
-                Icon(
-                    painter = painterResource(Res.drawable.ic_arrow_drop_down),
-                    contentDescription = null,
-                    tint = colors.secondaryText,
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-            AppDropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
-                sortEntries.forEachIndexed { index, entry ->
-                    DropdownMenuItem(
-                        onClick = { sortMenu = false; onSortSelected(index - 1) },
-                    ) {
-                        Text(entry, color = colors.primaryText)
-                    }
-                }
-            }
-        }
+        AppDropdownField(
+            options = sortEntries,
+            selectedIndex = bookSort + 1,
+            onSelect = { onSortSelected(it - 1) },
+        )
     }
 }

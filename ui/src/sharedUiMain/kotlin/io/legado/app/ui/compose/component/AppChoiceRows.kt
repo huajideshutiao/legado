@@ -1,7 +1,6 @@
 package io.legado.app.ui.compose.component
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -288,7 +287,6 @@ private fun ChoiceDropdown(row: ChoiceRow, modifier: Modifier) {
         AppDropdownAnchor(
             valueText = row.displayValue,
             modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.End,
             menuContent = { dismiss -> ChoiceDropdownMenu(row, dismiss) },
         )
     }

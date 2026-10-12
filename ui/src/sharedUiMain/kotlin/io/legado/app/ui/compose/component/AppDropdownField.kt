@@ -1,7 +1,6 @@
 package io.legado.app.ui.compose.component
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -41,6 +40,8 @@ fun AppDropdownField(
     label: String? = null,
     labelFontSize: TextUnit = TextUnit.Unspecified,
     onLabelClick: (() -> Unit)? = null,
+    /** false 时不可展开且当前值走次级文字色 (对照原 AppCompatSpinner.isEnabled=false)。 */
+    enabled: Boolean = true,
 ) {
     val colors = AppTheme.colors
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
@@ -59,6 +60,7 @@ fun AppDropdownField(
         }
         AppDropdownAnchor(
             valueText = options.getOrElse(selectedIndex) { "" },
+            enabled = enabled,
             menuContent = { dismiss -> AppSingleChoiceMenu(options, onSelect, dismiss) },
         )
     }
@@ -82,34 +84,30 @@ internal fun AppSingleChoiceMenu(
 }
 
 /**
- * 下拉锚点: 当前值 + ▾, 点开菜单。[AppDropdownField] (单选选中即收起) 与筛选行
- * (多选点选不收起) 共用同一外观, 差别只在 [menuContent]。
+ * 下拉锚点: 当前值 + ▾, 点开菜单。整块锚点都是热区 (调用方给了权重时即标签以外的整行),
+ * 行内不留死区。
  *
- * [leading] 非空时与值区同处一个热区 (筛选行把标题放进来, 整行点开菜单, 行内不留死区)。
- * [horizontalArrangement] 供热区占满整行时把值 + ▾ 推到行尾。
+ * [leading] 非空时与值区同处一个热区 (筛选行把标题放进来, 整行点开菜单)。
  */
 @Composable
 internal fun AppDropdownAnchor(
     valueText: String,
     modifier: Modifier = Modifier,
     leading: (@Composable RowScope.() -> Unit)? = null,
-    horizontalArrangement: Arrangement.Horizontal? = null,
+    enabled: Boolean = true,
     menuContent: @Composable (dismiss: () -> Unit) -> Unit,
 ) {
     val colors = AppTheme.colors
     var expanded by remember { mutableStateOf(false) }
-    Box(modifier) {
+    Box(modifier.clickable(enabled = enabled) { expanded = true }) {
         Row(
-            Modifier
-                .clickable { expanded = true }
-                .padding(horizontal = DesignTokens.spacingXs, vertical = DesignTokens.spacingXs),
-            horizontalArrangement = horizontalArrangement ?: Arrangement.Start,
+            Modifier.padding(horizontal = DesignTokens.spacingXs, vertical = DesignTokens.spacingXs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             leading?.invoke(this)
             Text(
                 text = valueText,
-                color = colors.primaryText,
+                color = if (enabled) colors.primaryText else colors.secondaryText,
                 fontSize = 14.sp,
             )
             Icon(

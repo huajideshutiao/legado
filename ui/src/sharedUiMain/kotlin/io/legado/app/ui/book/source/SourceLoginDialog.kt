@@ -4,7 +4,6 @@
 //   "login_source" / "ok" / "show_login_header" / "del_login_header" / "log" /
 //   "login_header" / "copy" / "success"
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,8 +41,10 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppDropdownAnchor
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppFilletTextButton
+import io.legado.app.ui.compose.component.AppSingleChoiceMenu
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
@@ -64,7 +65,6 @@ import kotlinx.coroutines.withContext
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.copy
 import legado.ui.generated.resources.del_login_header
-import legado.ui.generated.resources.ic_arrow_drop_down
 import legado.ui.generated.resources.ic_check
 import legado.ui.generated.resources.ic_more_vert
 import legado.ui.generated.resources.log
@@ -414,49 +414,25 @@ private fun SelectRow(
 ) {
     val colors = AppTheme.colors
     val chars = rowUi.chars ?: emptyList()
-    var expanded by remember { mutableStateOf(false) }
     Row(
         modifier,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(rowUi.name, color = colors.primaryText, modifier = Modifier.padding(end = DesignTokens.spacingDefault))
-        // 自定义实现替代 MD3 ExposedDropdownMenuBox: Box + TextField + AppDropdownMenu
-        Box(modifier = Modifier.weight(1f)) {
-            AppUnderlineTextField(
-                value = loginData[rowUi.name] ?: "",
-                onValueChange = {},
-                readOnly = true,
-                // 点击 TextField 切换菜单展开状态
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded },
-                // trailing icon 用 IconButton + ic_arrow_drop_down, 点击切换展开
-                trailingIcon = {
-                    IconButton(onClick = { expanded = !expanded }) {
-                        Icon(
-                            painter = painterResource(Res.drawable.ic_arrow_drop_down),
-                            contentDescription = null,
-                            tint = colors.secondaryText
-                        )
+        // 与其它下拉同一外观 (当前值 + ▾); 热区占满标签以外的整行, 对照原版 spinner 的
+        // LinearLayout.LayoutParams(0, MATCH_PARENT, 1f) 命中面
+        AppDropdownAnchor(
+            valueText = chars.getOrElse(chars.indexOf(loginData[rowUi.name])) { "" },
+            modifier = Modifier.weight(1f),
+            menuContent = { dismiss ->
+                AppSingleChoiceMenu(chars, { index ->
+                    val item = chars[index]
+                    if (loginData[rowUi.name] != item) {
+                        loginData[rowUi.name] = item
+                        onButtonClick(rowUi)
                     }
-                }
-            )
-            AppDropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-            ) {
-                chars.forEach { item ->
-                    DropdownMenuItem(onClick = {
-                        expanded = false
-                        if (loginData[rowUi.name] != item) {
-                            loginData[rowUi.name] = item
-                            onButtonClick(rowUi)
-                        }
-                    }) {
-                        Text(item)
-                    }
-                }
-            }
-        }
+                }, dismiss)
+            },
+        )
     }
 }

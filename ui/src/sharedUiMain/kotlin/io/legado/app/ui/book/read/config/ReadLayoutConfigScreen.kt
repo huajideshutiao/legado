@@ -1,7 +1,6 @@
 package io.legado.app.ui.book.read.config
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -11,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -28,7 +26,7 @@ import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.page.TITLE_SIZE_EXTRA_SP
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDetailSeekBar
-import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppDropdownField
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.preference.ColorPickerDialog
 import io.legado.app.ui.compose.theme.AppTheme
@@ -251,8 +249,8 @@ fun ReadLayoutConfigScreen(
         // 正文标题 ──────────── [模式▾]
         SectionHeader(stringResource(Res.string.body_title)) {
             StatusDropdownButton(
-                label = titleModes[titleMode] ?: "",
                 options = titleModes.entries.map { it.value to it.key },
+                currentKey = titleMode,
                 onSelect = { index ->
                     titleMode = index
                     tipController.titleMode = index
@@ -300,8 +298,8 @@ fun ReadLayoutConfigScreen(
         // 页眉 ──────────── [显示▾] ☑分隔线
         SectionHeader(stringResource(Res.string.header)) {
             StatusDropdownButton(
-                label = headerModes[headerMode] ?: "",
                 options = headerModes.entries.map { it.value to it.key },
+                currentKey = headerMode,
                 onSelect = { key ->
                     headerMode = key
                     tipController.headerMode = key
@@ -523,35 +521,18 @@ private fun SectionHeader(text: String, trailing: (@Composable RowScope.() -> Un
     }
 }
 
-/** 分区标题行尾的显示状态下拉按钮：显示当前值，点击弹 AppDropdownMenu 单选（右对齐） */
+/** 分区标题行尾的显示状态下拉按钮：显示当前值，点击弹 AppDropdownField 单选（右对齐） */
 @Composable
 private fun StatusDropdownButton(
-    label: String,
     options: List<Pair<String, Int>>,
+    currentKey: Int,
     onSelect: (Int) -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        Text(
-            label,
-            color = AppTheme.colors.primaryText,
-            modifier = Modifier
-                .clickable { expanded = true }
-                .padding(start = DesignTokens.spacingDefault, top = DesignTokens.spacingXs, bottom = DesignTokens.spacingXs),
-        )
-        AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { (text, value) ->
-                DropdownMenuItem(
-                    onClick = {
-                        expanded = false
-                        onSelect(value)
-                    },
-                ) {
-                    Text(text)
-                }
-            }
-        }
-    }
+    AppDropdownField(
+        options = options.map { it.first },
+        selectedIndex = options.indexOfFirst { it.second == currentKey },
+        onSelect = { index -> onSelect(options[index].second) },
+    )
 }
 
 /** 分区标题行尾的带文案开关（对照原 边距屏 LineCheckbox：文案 + AppCheckbox；size 前置钳住

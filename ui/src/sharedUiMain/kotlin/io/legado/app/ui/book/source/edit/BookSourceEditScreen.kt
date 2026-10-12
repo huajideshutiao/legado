@@ -45,7 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.compose.component.AppCheckbox
-import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppDropdownField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.code.CodeEditorSearchTarget
@@ -79,7 +79,6 @@ import legado.ui.generated.resources.explore_cols
 import legado.ui.generated.resources.explore_item_style
 import legado.ui.generated.resources.explore_style
 import legado.ui.generated.resources.help
-import legado.ui.generated.resources.ic_arrow_drop_down
 import legado.ui.generated.resources.ic_bug_report
 import legado.ui.generated.resources.ic_save
 import legado.ui.generated.resources.js_tutorial
@@ -713,7 +712,7 @@ private fun SpinnerField(entity: EditEntity) {
     }
 }
 
-/** 复刻 AppCompatSpinner 语义: 当前值 + 下拉箭头, 点开 AppDropdownMenu 单选 */
+/** 复刻 AppCompatSpinner 语义: 当前值 + 下拉箭头, 点开 AppDropdownField 单选 */
 @Composable
 private fun DropdownBox(
     options: List<String>,
@@ -721,32 +720,10 @@ private fun DropdownBox(
     onSelect: (Int) -> Unit,
     enabled: Boolean = true,
 ) {
-    val colors = AppTheme.colors
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        Row(
-            Modifier
-                .clickable(enabled = enabled) { expanded = true }
-                .padding(horizontal = DesignTokens.spacingXs, vertical = DesignTokens.spacingXs),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                options.getOrElse(selectedIndex) { "" },
-                color = if (enabled) colors.primaryText else colors.secondaryText,
-                fontSize = 14.sp,
-            )
-            Icon(
-                painter = painterResource(Res.drawable.ic_arrow_drop_down),
-                contentDescription = null,
-                tint = colors.secondaryText,
-            )
-        }
-        AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEachIndexed { i, label ->
-                DropdownMenuItem(onClick = { expanded = false; onSelect(i) }) {
-                    Text(label, color = colors.primaryText)
-                }
-            }
-        }
-    }
+    AppDropdownField(
+        options = options,
+        selectedIndex = selectedIndex,
+        onSelect = onSelect,
+        enabled = enabled,
+    )
 }
