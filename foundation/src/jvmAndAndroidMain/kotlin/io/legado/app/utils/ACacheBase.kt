@@ -82,7 +82,9 @@ object ACacheProviders {
  * @param maxSize 最大缓存字节数
  * @param maxCount 最大缓存文件数
  * @param writeFileAtomically 整份写入条目 (同目录临时件 + 改名就位) 的实现, 成功返回 true;
- *   各端注入的入口形如 `io.legado.app.help.writeBytesAtomically`
+ *   各端注入的入口形如 `io.legado.app.help.writeBytesAtomically`。临时件名契约见
+ *   [io.legado.app.utils.atomicWriteTempPath], 启动清点 ([ACacheManager]) 时会排除这些
+ *   非条目文件并回收已成孤儿的那些。
  */
 open class ACacheBase protected constructor(
     cacheDir: File,
@@ -420,7 +422,12 @@ open class ACacheBase protected constructor(
         }
 
         /**
-         * 计算 cacheSize和cacheCount
+         * 计算 cacheSize 和 cacheCount。
+         *
+         * 整份写入被强杀留下的临时件不是条目 (不被任何读取方按名读取, 也不受写入方管理), 计入
+         * 大小/条数会让 LRU 提前淘汰正常条目, 故清点时排除; 已成孤儿的那份在本趟一并回收
+         * (正在写的那份刚创建, 判不成孤儿)。目录里其它非条目的残留 (如替换备份件) 仍按原样
+         * 计入, 由产生它的替换/删除路径自行清理。
          */
         private fun calculateCacheSizeAndCacheCount() {
             Thread {
@@ -430,7 +437,14 @@ open class ACacheBase protected constructor(
                     var count = 0
                     val cachedFiles = cacheDir.listFiles()
                     if (cachedFiles != null) {
+                        val now = System.currentTimeMillis()
                         for (cachedFile in cachedFiles) {
+                            if (isAtomicWriteTempName(cachedFile.name)) {
+                                if (isOrphanAtomicWriteTemp(cachedFile.name, cachedFile.lastModified(), now)) {
+                                    cachedFile.delete()
+                                }
+                                continue
+                            }
                             size += calculateSize(cachedFile).toInt()
                             count += 1
                             lastUsageDates[cachedFile] = cachedFile.lastModified()

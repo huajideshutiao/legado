@@ -44,15 +44,15 @@ fun replaceFileAtomically(src: File, dst: File) {
 /**
  * 复制 [src] 整份内容替换 [dst], 失败时 [dst] 内容照旧并抛 [IOException]。
  *
- * 复制到 [dst] 同目录的临时件 (名字带随机唯一串) 再 [replaceFileAtomically] 就位: 临时件名不依赖
- * 时钟, 同一目标的两次复制 (含上次被强杀留下的临时件) 绝不共用一条路径; 复制中途中断只留下临时件,
- * 不会把目标写成半截。
+ * 复制到 [dst] 同目录的临时件 (名按共享契约 [atomicWriteTempPath] 生成) 再 [replaceFileAtomically]
+ * 就位: 同一目标的两次复制 (含上次被强杀留下的临时件) 绝不共用一条路径; 复制中途中断只留下临时件,
+ * 不会把目标写成半截。被强杀残留的临时件是孤儿件, 由目录清点方按 [isAtomicWriteTempName] 排除并回收。
  *
  * @return [dst] (便于调用方链式使用)
  */
 fun copyFileAtomically(src: File, dst: File): File {
     dst.parentFile?.mkdirs()
-    val temp = siblingOf(dst, ".${randomUUIDString()}$REPLACE_TEMP_SUFFIX")
+    val temp = File(atomicWriteTempPath(dst.path))
     try {
         src.copyTo(temp, overwrite = true)
         replaceFileAtomically(temp, dst)
@@ -65,9 +65,6 @@ fun copyFileAtomically(src: File, dst: File): File {
 
 /** 替换时原文件让位用的后缀: 目标名让给新件, 原件原样留在这份备份里。 */
 private const val REPLACE_BACKUP_SUFFIX = ".bak"
-
-/** 复制临时件后缀 (落在目标同目录, 改名就位才能同卷)。 */
-private const val REPLACE_TEMP_SUFFIX = ".tmp"
 
 /** [dst] 的同目录兄弟件 (无父路径时按当前目录)。 */
 private fun siblingOf(dst: File, suffix: String): File {

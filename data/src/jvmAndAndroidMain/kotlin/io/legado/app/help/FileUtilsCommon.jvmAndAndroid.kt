@@ -10,6 +10,7 @@ import io.legado.app.help.FileUtilsCommon.writeBytes
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.InputStream
+import io.legado.app.utils.isAtomicWriteTempName
 import java.io.File
 
 /**
@@ -84,6 +85,8 @@ actual object FileUtilsCommon {
         return FileUtilsBase.delete(path, deleteRootDir)
     }
 
+    actual fun length(path: String): Long = FileUtilsBase.getLength(path)
+
     actual fun listFiles(path: String): List<String> {
         // 与原 getTxtInFolder 内 folder.listFiles() 一致: 仅文件, 不含子目录
         val dir = File(path)
@@ -140,7 +143,9 @@ actual object FileUtilsCommon {
         val file = File(path)
         if (!file.exists()) return 0L
         if (file.isFile) return file.length()
-        return file.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+        return file.walkTopDown()
+            .filter { it.isFile && !isAtomicWriteTempName(it.name) }
+            .sumOf { it.length() }
     }
 
     actual fun lastModified(path: String): Long {

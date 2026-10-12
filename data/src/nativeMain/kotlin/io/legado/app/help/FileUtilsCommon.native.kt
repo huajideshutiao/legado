@@ -4,6 +4,7 @@ import io.legado.app.exception.SecurityException
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.utils.File
 import io.legado.app.utils.InputStream
+import io.legado.app.utils.isAtomicWriteTempName
 
 /**
  * FileUtilsCommon 的 nativeMain actual (iOS / 鸿蒙 共用)。
@@ -129,6 +130,12 @@ actual object FileUtilsCommon {
         }
     }
 
+    actual fun length(path: String): Long {
+        // 与 jvmAndAndroid actual 同语义 (FileUtilsBase.getLength): 不存在或非普通文件返回 0
+        val file = File(path)
+        return if (file.isFile) file.length() else 0L
+    }
+
     actual fun listFiles(path: String): List<String> {
         // 与 jvm actual 一致: 仅文件, 不含子目录
         val dir = File(path)
@@ -197,7 +204,9 @@ actual object FileUtilsCommon {
         if (!file.exists()) return 0L
         if (file.isFile) return file.length()
         var size = 0L
-        file.walkTopDown().forEach { if (it.isFile) size += it.length() }
+        file.walkTopDown().forEach {
+            if (it.isFile && !isAtomicWriteTempName(it.name)) size += it.length()
+        }
         return size
     }
 

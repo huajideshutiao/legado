@@ -12,14 +12,15 @@ import java.io.FileOutputStream
  * 直接往目标上写字节, 写一半被打断就留下半截文件 (目标旧内容已被截断); 本实现让目标始终是
  * 完整的旧内容或完整的新内容。
  *
- * 复制到 [dst] 同目录的临时件 (名字带随机唯一串) 再交给 [FileUtilsBase.replaceFileAtomically]
- * 就位: 临时件名不依赖时钟, 同一目标的两次复制 (含上次被强杀留下的临时件) 绝不共用一条路径。
+ * 复制到 [dst] 同目录的临时件 (名按共享契约 [atomicWriteTempPath] 生成) 再交给
+ * [FileUtilsBase.replaceFileAtomically] 就位: 同一目标的两次复制 (含上次被强杀留下的临时件)
+ * 绝不共用一条路径。被强杀残留的临时件是孤儿件, 由目录清点方按 [isAtomicWriteTempName] 排除并回收。
  *
  * @return [dst] (便于调用方链式使用)
  */
 fun copyFileAtomically(src: File, dst: File): File {
     dst.parentFile?.mkdirs()
-    val temp = File(dst.parentFile, "${dst.name}.${randomUUIDString()}$COPY_TEMP_SUFFIX")
+    val temp = File(atomicWriteTempPath(dst.path))
     try {
         FileInputStream(src).use { input ->
             FileOutputStream(temp).use { output -> input.copyTo(output) }
@@ -31,6 +32,3 @@ fun copyFileAtomically(src: File, dst: File): File {
     }
     return dst
 }
-
-/** 复制临时件后缀 (落在目标同目录, 改名就位才能同卷)。 */
-private const val COPY_TEMP_SUFFIX = ".tmp"

@@ -72,6 +72,14 @@ expect object FileUtilsCommon {
     fun delete(path: String, deleteRootDir: Boolean = true): Boolean
 
     /**
+     * 文件大小 (字节); 不存在或不是普通文件返回 0。
+     *
+     * 供"缓存文件是否有效"类判据使用 (图片缓存的存在性判据即"存在且非空"): 整份写入
+     * 后目标名上不会出现写一半的半截内容, 剩下的退化情况只有零字节文件, 判非空即可把它与可用缓存分开。
+     */
+    fun length(path: String): Long
+
+    /**
      * 列出目录下所有文件 (不含子目录) 的绝对路径。
      * 非目录或不存在返回空列表 (与原 folder.listFiles 行为对齐)。
      */
@@ -109,6 +117,9 @@ expect object FileUtilsCommon {
 
     /**
      * 递归统计目录下所有普通文件的大小总和 (字节); 文件返回自身大小, 不存在返回 0。
+     *
+     * 整份写入的临时件不计入 ([io.legado.app.utils.isAtomicWriteTempName]): 消费方是缓存条目
+     * 占用统计 (漫画缓存 512MB 预算 / 单本书缓存大小展示), 临时件不是条目。
      */
     fun getDirSize(path: String): Long
 
