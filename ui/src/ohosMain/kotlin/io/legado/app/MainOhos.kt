@@ -20,13 +20,13 @@ import io.legado.app.help.registerComposeDefaultDataResourceProvider
 import io.legado.app.help.StartupMaintenanceShared
 import io.legado.app.help.AppVersionProvider
 import io.legado.app.help.AppVersionProviders
+import io.legado.app.help.versionNameToVersionCode
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.browser.OhosWebViewSlot
 import io.legado.app.ui.OhosPlatformCapabilities
 import io.legado.app.ui.about.notifyAppCrash
 import io.legado.app.ui.about.preferenceUpVersionStore
 import io.legado.app.ui.about.upVersion
-import io.legado.app.ui.about.versionNameToVersionCode
 import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
 import io.legado.app.ui.book.audio.SharedAudioPlayPlatformProvider
 import io.legado.app.ui.book.manga.MangaReaderScreenModel

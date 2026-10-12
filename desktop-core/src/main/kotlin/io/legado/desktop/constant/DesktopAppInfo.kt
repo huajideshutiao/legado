@@ -1,6 +1,6 @@
 package io.legado.desktop.constant
 
-import io.legado.app.ui.about.versionNameToVersionCode
+import io.legado.app.help.versionNameToVersionCode
 import io.legado.desktop.constant.DesktopAppInfo.FALLBACK_VERSION_NAME
 import io.legado.desktop.constant.DesktopAppInfo.versionCode
 import io.legado.desktop.constant.DesktopAppInfo.versionName

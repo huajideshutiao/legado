@@ -16,6 +16,7 @@ import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.StartupMaintenanceShared
 import io.legado.app.help.AppVersionProvider
 import io.legado.app.help.AppVersionProviders
+import io.legado.app.help.versionNameToVersionCode
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
 import io.legado.app.ui.book.info.SharedBlurCoverBgCoil
@@ -37,7 +38,6 @@ import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.about.notifyAppCrash
 import io.legado.app.ui.about.preferenceUpVersionStore
 import io.legado.app.ui.about.upVersion
-import io.legado.app.ui.about.versionNameToVersionCode
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
