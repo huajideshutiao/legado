@@ -238,7 +238,7 @@ class ImportReplaceRuleViewModelShared(
      * # 实现细节保持
      *
      * - 遍历 [allRules], 调 `appDb.replaceRuleDao.findById(it.id)` 查本地;
-     * - defaultChecked: rule 为 null (本地不存在) 时选中 (新增默认选);
+     * - defaultChecked: 本地不存在, 或本地已有但 [replaceRuleChanged] 判为有变化 (新增与更新都默认选);
      * - `onSuccess` 推送 `_successState.tryEmit(allRules.size)` (与 app 端
      *   `onSuccess { successLiveData.postValue(allRules.size) }` 一致, 注意原版
      *   comparisonSource 是 onSuccess 才推送 successState, 与其他 VM 直接推送不同,
@@ -251,7 +251,8 @@ class ImportReplaceRuleViewModelShared(
             allRules.forEach {
                 val rule = appDb.replaceRuleDao.findById(it.id)
                 checkRules.add(rule)
-                defaultChecked.add(rule == null)
+                // 本地已有且实质内容变了才算"需要导入"; 无变化的不默认勾选, 免得覆盖用户改过的同 id 规则
+                defaultChecked.add(rule == null || replaceRuleChanged(it, rule))
             }
         }.onSuccess {
             _successState.tryEmit(allRules.size)

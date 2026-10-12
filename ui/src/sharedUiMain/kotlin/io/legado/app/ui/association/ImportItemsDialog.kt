@@ -467,7 +467,7 @@ class ImportBookSourceItemsVm(
         } ?: false
 }
 
-/** 替换规则适配器 (对照 app 端 ImportReplaceRuleDialog: pattern/replacement/isRegex/scope 比对)。 */
+/** 替换规则适配器 (对照 app 端 ImportReplaceRuleDialog; 按 id 查本地, 内容变了算更新)。 */
 class ImportReplaceRuleItemsVm(
     private val vm: ImportReplaceRuleViewModelShared,
 ) : ImportItemsVm {
@@ -483,10 +483,7 @@ class ImportReplaceRuleItemsVm(
         val item = vm.allRules[index]
         return when {
             local == null -> ImportItemState.NEW
-            item.pattern != local.pattern
-                || item.replacement != local.replacement
-                || item.isRegex != local.isRegex
-                || item.scope != local.scope -> ImportItemState.UPDATE
+            replaceRuleChanged(item, local) -> ImportItemState.UPDATE
 
             else -> ImportItemState.EXISTING
         }
@@ -527,7 +524,7 @@ class ImportTxtTocRuleItemsVm(
     override fun itemJson(index: Int): String = GSON.toJson(vm.allSources[index])
 }
 
-/** 字典规则适配器 (对照 app 端 ImportDictRuleDialog: 仅 新增/已有 两态)。 */
+/** 字典规则适配器 (对照 app 端 ImportDictRuleDialog; 按 name 查本地, 内容变了算更新)。 */
 class ImportDictRuleItemsVm(
     private val vm: ImportDictRuleViewModelShared,
 ) : ImportItemsVm {
@@ -535,8 +532,16 @@ class ImportDictRuleItemsVm(
 
     override fun itemLabel(index: Int): String = vm.allSources[index].name
 
-    override fun itemState(index: Int): ImportItemState =
-        if (vm.checkSources[index] == null) ImportItemState.NEW else ImportItemState.EXISTING
+    override fun itemState(index: Int): ImportItemState {
+        val local = vm.checkSources[index]
+        val item = vm.allSources[index]
+        return when {
+            local == null -> ImportItemState.NEW
+            dictRuleChanged(item, local) -> ImportItemState.UPDATE
+
+            else -> ImportItemState.EXISTING
+        }
+    }
 
     override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
         vm.importSelect(checked, finally)
@@ -618,9 +623,7 @@ class ImportSourceFilterRuleItemsVm(
         val item = vm.allRules[index]
         return when {
             local == null -> ImportItemState.NEW
-            item.pattern != local.pattern
-                || item.fields != local.fields
-                || item.scope != local.scope -> ImportItemState.UPDATE
+            sourceFilterRuleChanged(item, local) -> ImportItemState.UPDATE
 
             else -> ImportItemState.EXISTING
         }

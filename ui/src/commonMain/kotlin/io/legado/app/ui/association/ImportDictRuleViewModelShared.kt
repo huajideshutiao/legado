@@ -210,7 +210,7 @@ class ImportDictRuleViewModelShared(
      *
      * - 遍历 [allSources], 调 `appDb.dictRuleDao.getByName(it.name)` 查本地 (注意是按 name
      *   查询, 与其他 VM 按 id 查询不同, 因为 DictRule 用 name 作唯一标识);
-     * - defaultChecked: source 为 null (本地不存在) 时选中 (新增默认选);
+     * - defaultChecked: 本地不存在, 或本地已有但 [dictRuleChanged] 判为有变化 (新增与更新都默认选);
      * - 推送 `_successState.tryEmit(allSources.size)` (替代 `successLiveData.postValue(allSources.size)`)。
      *
      * 业务在 IO 跑 (DAO 查询必须 IO), 与 BaseViewModel.execute 默认值一致。
@@ -220,7 +220,7 @@ class ImportDictRuleViewModelShared(
             allSources.forEach {
                 val source = appDb.dictRuleDao.getByName(it.name)
                 checkSources.add(source)
-                defaultChecked.add(source == null)
+                defaultChecked.add(source == null || dictRuleChanged(it, source))
             }
             _successState.tryEmit(allSources.size)
         }
