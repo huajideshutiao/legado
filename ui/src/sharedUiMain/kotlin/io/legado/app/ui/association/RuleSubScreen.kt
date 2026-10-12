@@ -60,7 +60,7 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 规则订阅页展示状态 (immutable)。
  *
- * 宿主端 (app 端 [RuleSubActivity] / 桌面端) 持有 `mutableStateOf<RuleSubUiState>`,
+ * 宿主端 (路由层 [io.legado.app.ui.route.RuleSubRoute] / 桌面端) 持有 `mutableStateOf<RuleSubUiState>`,
  * 数据更新时 copy 出新实例以触发 Compose 重组。
  *
  * @param ruleSubs 当前订阅规则列表 (已按 customOrder 排序)
@@ -72,7 +72,7 @@ data class RuleSubUiState(
 /**
  * 规则订阅页事件回调集合。
  *
- * app 端 [RuleSubActivity] 实现本接口, 平台相关依赖 (appDb / showDialogFragment /
+ * 路由层实现本接口, 平台相关依赖 (appDb / showDialogFragment /
  * `alert` 编辑弹窗 / `toastOnUi` 等) 在回调内桥接, shared 端不直接持有 Android 依赖。
  *
  * - [onBack]: 返回 (finish)
@@ -109,12 +109,10 @@ interface RuleSubUiActions {
  * 下沉改动:
  * - 字符串资源 `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)` (key-based, 跨平台)
  * - 图标资源 `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")` (key-based, 跨平台)
- * - 平台依赖 (appDb / showDialogFragment / alert 编辑弹窗) 通过 [RuleSubUiActions] 回调桥接,
- *   编辑弹窗 (`showEditDialog`) 与订阅打开 (`openSubscription`) 仍由 app 端 Activity 持有
+ * - 平台依赖 (appDb / showDialogFragment / alert 编辑弹窗) 通过 [RuleSubUiActions] 回调桥接, 由路由层持有
  * - 复用 shared/compose/component 的 [RuleManageScaffold] 骨架 + [AppTitleBar] / [AppDropdownMenu]
  *
- * 注: 类型名称 (typeName) 在 shared 端用 [rememberString] 按 type 映射到对应字符串 key,
- * 与 app 端 Activity 的 `typeName(type)` (走 getString) 行为对齐。
+ * 注: 类型名称 (typeName) 按 type 映射到对应字符串 key, 与原版 `typeName(type)` 行为对齐。
  */
 @Composable
 fun RuleSubScreen(
@@ -158,10 +156,11 @@ fun RuleSubScreen(
 }
 
 /**
- * 单条订阅项: 名称 + 类型徽标 + url + 编辑按钮 + 更多菜单 (置顶/置底/删除)。
+ * 单条订阅项: 名称 + 类型徽标 (名称右侧) + url + 编辑按钮 + 更多菜单 (置顶/置底/删除)。
  * 长按空白把手区触发拖拽排序 (longPressDraggableHandle 来自 reorderable 库)。
  *
- * 注: 对照原 `RuleSubActivity.RuleSubItem`, 宽高/边距/字号/圆角/颜色逻辑全部保持一致,
+ * 类型徽标与名称同排: 名称过长时先截断, 徽标恒可见。
+ * 对照原 `RuleSubActivity.RuleSubItem`, 字号/圆角/颜色逻辑保持一致,
  * 仅将 viewModel 直调 / showEditDialog / openSubscription / delete 替换为外部回调。
  */
 @Composable
@@ -185,28 +184,29 @@ private fun RuleItemScope.RuleSubItem(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(
-                text = item.name,
-                color = colors.primaryText,
-                fontSize = 16.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Row(
-                Modifier.padding(top = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TypeBadge(typeName(item.type))
-                Spacer(Modifier.width(DesignTokens.spacingXs))
+            // 类型徽标贴名称右侧 (原版为名称下一行左侧)
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = item.url,
-                    color = colors.secondaryText,
-                    fontSize = 12.sp,
+                    text = item.name,
+                    color = colors.primaryText,
+                    fontSize = 16.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f, fill = false),
                 )
+                Spacer(Modifier.width(DesignTokens.spacingXs))
+                TypeBadge(typeName(item.type))
             }
+            Text(
+                text = item.url,
+                color = colors.secondaryText,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.MiddleEllipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp),
+            )
         }
         IconButton(onClick = onEdit) {
             Icon(
@@ -263,7 +263,7 @@ private fun TypeBadge(text: String) {
  * 订阅类型 → 显示名称: 0/1 书源 / 1 RSS源 / 2 替换规则 / 3 TXT目录规则 / 4 字典规则 / 5 TTS。
  *
  * 对照原 `RuleSubActivity.typeName(type)`, 仅将 `getString(R.string.xxx)` 替换为
- * [rememberString] ("xxx"), 跨平台按 key 命中 app 端 R.string。
+ * [stringResource] (Res.string.xxx), 跨平台按 key 命中 app 端 R.string。
  */
 @Composable
 private fun typeName(type: Int): String = when (type) {
