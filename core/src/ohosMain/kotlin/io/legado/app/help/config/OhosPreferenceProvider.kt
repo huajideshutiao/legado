@@ -3,6 +3,7 @@ package io.legado.app.help.config
 import kotlin.concurrent.Volatile
 
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.writeTextAtomically
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -16,7 +17,11 @@ import io.legado.app.utils.File
  * 鸿蒙平台没有 SharedPreferences, 当前用 kotlin.io.File + kotlinx-serialization.json
  * 在 [AppFilesDirs.filesDir] 下持久化为 `legado_config.json`:
  * - 读: 文件存在则解析为 JsonObject, 否则空 Map
- * - 写: 全量序列化为 JSON 文本回写 (配置项数量少, 全量写可接受)
+ * - 写: 全量序列化为 JSON 文本整份原子落盘 ([writeTextAtomically]: 同目录临时件 + 改名就位;
+ *   配置项数量少, 全量写可接受)
+ *
+ * 写入必须是整份的: 直接覆盖写会在写完之前把文件截断, 而本类启动时按同一路径整读该文件,
+ * 半截 JSON 解析失败会让 [cache] 退回空表 —— 用户看到的是全部配置被重置。
  *
  * 模式参考桌面端 `DesktopPreferenceProvider` (java.util.prefs 持久化):
  * 鸿蒙端额外做文件持久化, 适合最小可运行骨架; 后续接入鸿蒙原生
@@ -62,8 +67,10 @@ class OhosPreferenceProvider(
     private fun persist() {
         val file = resolveFile() ?: return  // 内存模式, 不持久化
         runCatching {
-            file.parentFile?.mkdirs()
-            file.writeText(json.encodeToString(JsonObject.serializer(), cache))
+            writeTextAtomically(
+                file.path,
+                json.encodeToString(JsonObject.serializer(), cache),
+            )
         }
     }
 
