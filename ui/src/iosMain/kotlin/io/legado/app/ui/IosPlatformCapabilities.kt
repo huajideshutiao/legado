@@ -10,7 +10,6 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.BookHelpProviders
