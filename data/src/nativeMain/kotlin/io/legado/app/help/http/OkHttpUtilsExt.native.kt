@@ -1,6 +1,7 @@
 package io.legado.app.help.http
 
 import io.legado.app.utils.EncodingDetect
+import io.legado.app.utils.File
 import io.legado.app.utils.Utf8BomUtils
 import io.legado.app.utils.textCharsetCodec
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -86,6 +87,9 @@ actual fun KmpResponseBody.decompressed(): KmpResponseBody {
  *   Content-Type: contentType\r\n\r\n<bytes>\r\n`
  * - 结束: `--boundary--\r\n`
  *
+ * 载荷类型与 jvm 分支一致: 平台文件 ([io.legado.app.utils.File], iOS/鸿蒙的载荷类型) 读其字节;
+ * `ByteArray` 直接作为内容; `String` 按 UTF-8 编码; 其它对象取字符串表示 (与 jvm 分支同语义)。
+ *
  * type 入参对应 OkHttp MultipartBody 的整体 MediaType (如 "multipart/form-data"),
  * 实际不生效 (Ktor setBody 时统一用 multipart/form-data; boundary=...); 与 jvm 行为基本一致。
  */
@@ -115,6 +119,7 @@ actual fun KmpRequestBuilder.postMultipart(type: String?, form: Map<String, Any>
                 val contentBytes: ByteArray = when (file) {
                     is ByteArray -> file
                     is String -> file.encodeToByteArray()
+                    is File -> file.readBytes()
                     else -> file?.toString()?.encodeToByteArray() ?: ByteArray(0)
                 }
                 // header + content + CRLF 一起作为一个 part
