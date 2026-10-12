@@ -37,9 +37,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.legado.treeview.JsonTreeItem
-import io.legado.treeview.defaultDarkColors
-import io.legado.treeview.defaultLightColors
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.book.manage.SourcePickerDialog
@@ -54,9 +51,13 @@ import io.legado.app.ui.compose.component.code.CodeSearchHighlightState
 import io.legado.app.ui.compose.component.code.CodeTextField
 import io.legado.app.ui.compose.component.code.KeyboardToolbar
 import io.legado.app.ui.compose.component.code.KeyboardToolbarState
-import io.legado.app.ui.compose.component.code.JsonTreePane
+import io.legado.app.ui.compose.component.code.TreeKind
+import io.legado.app.ui.compose.component.code.TreePane
+import io.legado.app.ui.compose.component.code.TreePaneState
 import io.legado.app.ui.compose.component.code.rememberCodeEditorState
 import io.legado.app.ui.compose.component.code.rememberFullCodeSyntax
+import io.legado.app.ui.compose.component.code.rememberTreePaneState
+import io.legado.app.ui.compose.component.code.treeKindOf
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.widget.dialog.TextDialog
@@ -102,11 +103,11 @@ fun SourceToolboxScreen(
     actions: SourceToolboxUiActions,
 ) {
     val colors = AppTheme.colors
-    // 全文查看: title / content / 已解析 JSON 根 (树视图直通用, 文本查看场景为 null)
+    // 全文查看: title / content
     var fullText by remember { mutableStateOf<Pair<String, String>?>(null) }
     var showSourcePicker by remember { mutableStateOf(false) }
-    // 响应区树视图的聚焦栈与原始值文本视图 (就地聚焦, 不新开窗口)
-    var focusStack by remember { mutableStateOf<List<JsonTreeItem>>(emptyList()) }
+    // 响应区树视图的聚焦状态 (就地聚焦, 不新开窗口)
+    val treeState = rememberTreePaneState(state.resBody)
     // 键盘辅助条 + 活跃编辑器 (书源编辑同款: 聚焦字段登记, 辅助键/撤销/重做/查找都作用于它)
     val keyboardState = remember { KeyboardToolbarState() }
     val searchHighlight = remember { CodeSearchHighlightState() }
@@ -132,8 +133,7 @@ fun SourceToolboxScreen(
                     Row(Modifier.weight(1f).fillMaxWidth()) {
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                             RequestPane(
-                                state, actions, activeEditor, searchHighlight, showFullText,
-                                focusStack, { focusStack = it },
+                                state, actions, activeEditor, searchHighlight, showFullText, treeState,
                             )
                             Spacer(Modifier.heightIn(min = DesignTokens.spacingLg))
                         }
@@ -148,8 +148,7 @@ fun SourceToolboxScreen(
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                     SourceStageHeader(state, actions) { showSourcePicker = true }
                     RequestPane(
-                        state, actions, activeEditor, searchHighlight, showFullText,
-                        focusStack, { focusStack = it },
+                        state, actions, activeEditor, searchHighlight, showFullText, treeState,
                     )
                     InputSection(state, actions, activeEditor, searchHighlight, showFullText)
                     Spacer(Modifier.heightIn(min = DesignTokens.spacingLg))
@@ -245,10 +244,11 @@ private fun RequestPane(
     activeEditor: MutableState<CodeEditorState?>,
     searchHighlight: CodeSearchHighlightState,
     showFullText: (String, String) -> Unit,
-    focusStack: List<JsonTreeItem>,
-    onFocusStackChange: (List<JsonTreeItem>) -> Unit,
+    treeState: TreePaneState,
 ) {
     val colors = AppTheme.colors
+    // 树类型判定与对话框共用 treeKindOf: 同一响应体在各处的树按钮显隐一致
+    val resTreeKind = remember(state.resBody) { treeKindOf(state.resBody) }
     val editMaxLine = remember { AppConfigProviders.get().sourceEditMaxLine }
     val searchRefreshScope = rememberCoroutineScope()
     val urlEditor = rememberCodeEditorState(state.urlText)
@@ -294,7 +294,7 @@ private fun RequestPane(
         }
         // 请求成功拿到响应才展示树形切换与耗时/状态/大小
         if (!state.busy && state.resError == null && state.resCode != 0) {
-            if (state.resIsJson) {
+            if (resTreeKind != null) {
                 Spacer(Modifier.width(DesignTokens.spacingMd))
                 AppOutlinedButton(
                     stringResource(if (state.resTreeMode) Res.string.source_text else Res.string.tree_view),
@@ -317,8 +317,8 @@ private fun RequestPane(
     ResponseSection(
         state = state,
         showFullText = showFullText,
-        focusStack = focusStack,
-        onFocusStackChange = onFocusStackChange,
+        treeState = treeState,
+        treeKind = resTreeKind,
     )
 }
 
@@ -326,8 +326,8 @@ private fun RequestPane(
 private fun ResponseSection(
     state: ToolboxUiState,
     showFullText: (String, String) -> Unit,
-    focusStack: List<JsonTreeItem>,
-    onFocusStackChange: (List<JsonTreeItem>) -> Unit,
+    treeState: TreePaneState,
+    treeKind: TreeKind?,
 ) {
     val colors = AppTheme.colors
     if (state.resCode == 0 && state.resError == null) return
@@ -343,36 +343,19 @@ private fun ResponseSection(
         )
         return
     }
-    if (state.resTreeMode) {
-        var treeError by remember(state.resBody) { mutableStateOf<Throwable?>(null) }
-        // 换响应后聚焦栈失效 (旧聚焦指向上一份文档的节点), 就地复位
-        LaunchedEffect(state.resBody) {
-            onFocusStackChange(emptyList())
-        }
-        // "查看": 对象/数组就地聚焦到该节点, 原始值就地显示值文本 (面包屑均照常可退回)
-        JsonTreePane(
-            json = state.resBody,
-            focusStack = focusStack,
-            onFocusStackChange = onFocusStackChange,
+    if (state.resTreeMode && treeKind != null) {
+        // "查看": 对象/数组/元素就地聚焦到该节点, 原始值就地显示值文本 (面包屑均照常可退回)
+        TreePane(
+            content = state.resBody,
+            kind = treeKind,
             rootLabel = responseTitle,
             modifier = Modifier.fillMaxWidth(),
             treeModifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 320.dp),
-            colors = if (colors.isDark) defaultDarkColors else defaultLightColors,
             contentPadding = PaddingValues(horizontal = DesignTokens.spacingXs),
-            onError = { treeError = it },
+            state = treeState,
         )
-        treeError?.let { err ->
-            SelectableText(
-                text = err.toString(),
-                color = colors.secondaryText,
-                fontSize = 13.sp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = DesignTokens.spacingXs),
-            )
-        }
     } else {
         Text(
             text = state.resBody,

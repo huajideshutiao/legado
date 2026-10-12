@@ -12,7 +12,6 @@ import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.analyzeRule.RuleDataInterface
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
-import io.legado.app.utils.KS_JSON
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -63,7 +62,6 @@ data class ToolboxUiState(
     val resMessage: String = "",
     val resElapsedMs: Long = 0,
     val resError: String? = null,
-    val resIsJson: Boolean = false,
     val resTreeMode: Boolean = false,
     /** 请求进行中: 请求按钮禁用并显示转圈 */
     val busy: Boolean = false,
@@ -232,7 +230,6 @@ class SourceToolboxScreenModel(
                         resError = e.toString(),
                         resCode = 0,
                         resBody = "",
-                        resIsJson = false,
                     )
                 }
             },
@@ -261,8 +258,6 @@ class SourceToolboxScreenModel(
                     resBody = body,
                     resError = null,
                     resTreeMode = false,
-                    // 与树视图宽松解析同口径: 宽松合法 JSON 也开树, 严格失败走树内错误提示
-                    resIsJson = runCatching { KS_JSON.parseToJsonElement(body) }.isSuccess,
                 )
             }
         }
