@@ -11,7 +11,7 @@ import android.view.WindowManager
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.IntRect
-import io.legado.app.help.FileUtilsCommon
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.model.AndroidRealScreen.register
 import kotlin.concurrent.Volatile
 import kotlin.math.abs
@@ -111,8 +111,9 @@ private fun writeWebp(bitmap: android.graphics.Bitmap, destPath: String): Boolea
         bitmap.recycle()
     }
     if (encoded == null) return false
-    // 经 FileUtilsCommon 落盘: 自动建父目录 (产物在缓存根子目录) 且不漏关流
-    return FileUtilsCommon.writeBytes(destPath, encoded)
+    // 整份落盘: 产物按"文件已存在即有效"被复用 (ensureBakedImage / 启动封面直接解码),
+    // 半截 WEBP 会被当成已烘焙好的产物, 之后不再重烘焙 (启动封面/背景图一直显示不出来)
+    return writeBytesAtomically(destPath, encoded)
 }
 
 /**

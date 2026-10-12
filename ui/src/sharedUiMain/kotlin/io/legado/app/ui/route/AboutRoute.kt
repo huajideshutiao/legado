@@ -17,6 +17,7 @@ import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.update.AppUpdateManager
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.ui.about.AboutHeaderCard
 import io.legado.app.ui.about.AboutScreen
 import io.legado.app.ui.about.AboutScreenModel
@@ -215,11 +216,13 @@ private val donateQrWriteLock = Mutex()
  *
  * 目录取 [FileUtilsCommon.getCachePath] (Android externalCacheDir, 其余端 cacheDir):
  * 这张图只是"点开看一眼"的临时载体, 不需要用户找得到、也不需要跨启动存活, 系统随时可回收。
- * 文件名带内容摘要, 换图后自然指向新文件, 不会因相同字节数读到旧缓存。
+ * 文件名带内容摘要, 换图后自然指向新文件, 不会因相同字节数读到旧缓存; 同名即同内容, 文件在
+ * 即直接用, 不再回读比对。
  * 不放 `image_cache` —— 那是 [io.legado.app.help.image.ImageBytesCache] 的私有目录,
  * 它的清理逻辑会扫整个目录。
  *
- * 写盘失败直接抛出, 不静默回退。
+ * 落盘整份归位 (同目录临时件 + 改名就位): 直接覆盖写会在写完之前把目标截断, 此时按该路径
+ * 直读的大图查看器拿到的是半张图。写盘失败直接抛出, 不静默回退。
  */
 private suspend fun donateQrFilePath(): String = donateQrWriteLock.withLock {
     val bytes = Res.readBytes(DONATE_QR_RES_PATH)
@@ -230,12 +233,8 @@ private suspend fun donateQrFilePath(): String = donateQrWriteLock.withLock {
     val path = FileUtilsCommon.getPath(
         FileUtilsCommon.getCachePath(), "$DONATE_QR_CACHE_PREFIX$digest.jpg"
     )
-    val cached = FileUtilsCommon.readBytes(path)
-    if (cached == null || !cached.contentEquals(bytes)) {
-        check(FileUtilsCommon.writeBytes(path, bytes)) { "捐赠二维码落盘失败: $path" }
-    }
-    check(FileUtilsCommon.readBytes(path)?.contentEquals(bytes) == true) {
-        "捐赠二维码校验失败: $path"
+    if (!FileUtilsCommon.exist(path) && !writeBytesAtomically(path, bytes)) {
+        error("捐赠二维码落盘失败: $path")
     }
     path
 }

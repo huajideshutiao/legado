@@ -3,6 +3,7 @@ package io.legado.app.model.fileBook
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.file.desktopResolveStoredRef
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.lib.epublib.epub.EpubReader
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image
@@ -92,7 +93,7 @@ actual fun decodeBitmap(bytes: ByteArray): Any? {
  * @param bitmap [decodeBitmap] 返回的 [Image]
  * @param format "JPEG" / "PNG" / "WEBP"
  * @param quality 0..100 (JPEG / WEBP 压缩质量)
- * @param destPath 目标文件绝对路径 (内部自动创建父目录)
+ * @param destPath 目标文件绝对路径 (内部自动创建父目录, 整份落盘)
  * @return 成功 true
  */
 actual fun resolveStoredLocalPath(path: String): String {
@@ -109,10 +110,8 @@ actual fun compressBitmap(bitmap: Any?, format: String, quality: Int, destPath: 
         else -> EncodedImageFormat.JPEG
     }
     return runCatching {
-        val dest = File(destPath)
-        dest.parentFile?.mkdirs()
+        // 封面按"文件已存在即有效"被复用, 往目标上盖写留下的半截 JPEG 会被永久当成有效封面
         val data = bitmap.encodeToData(skFormat, quality.coerceIn(0, 100)) ?: return false
-        dest.writeBytes(data.bytes)
-        true
+        writeBytesAtomically(destPath, data.bytes)
     }.getOrDefault(false)
 }

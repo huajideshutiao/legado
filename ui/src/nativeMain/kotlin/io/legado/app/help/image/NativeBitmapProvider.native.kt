@@ -1,5 +1,6 @@
 package io.legado.app.help.image
 
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.model.fileBook.BitmapProvider
 import io.legado.app.utils.File
 import io.legado.app.utils.InputStream
@@ -24,10 +25,8 @@ class NativeBitmapProvider(private val imageOps: ImageOps) : BitmapProvider {
         if (bytes.isEmpty()) return false
         val ref = imageOps.decode(bytes)
         val jpeg = imageOps.encode(ref, "jpg", quality)
-        val target = File(outFile.path)
-        target.parentFile?.mkdirs()
-        target.writeBytes(jpeg)
-        true
+        // 整份落盘: 封面提取按"目标文件已存在即有效"被复用, 半截 JPEG 会被永久当成封面
+        writeBytesAtomically(outFile.path, jpeg)
     }.getOrDefault(false)
 
     private fun InputStream.readAllBytes(): ByteArray {

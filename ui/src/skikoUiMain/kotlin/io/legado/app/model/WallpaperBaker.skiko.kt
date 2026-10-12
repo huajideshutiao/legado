@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.unit.IntRect
 import io.legado.app.help.FileUtilsCommon
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.utils.ScreenInfoProviders
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.FilterTileMode
@@ -83,7 +84,9 @@ internal actual fun bakeBlurredImageFile(
         )
     }.encodeToData(EncodedImageFormat.WEBP, 80)?.bytes
         ?: return@runCatching false
-    FileUtilsCommon.writeBytes(destPath, encoded)
+    // 整份落盘: 产物按"文件已存在即有效"被复用 (ensureBakedBlurredImage), 半截 WEBP 会被
+    // 当成已烘焙好的产物, 之后不再重烘焙 (渲染端一直解不开)
+    writeBytesAtomically(destPath, encoded)
 }.getOrNull() ?: false
 
 /**
@@ -116,7 +119,9 @@ actual fun bakeCoverImageFile(
     )
     val encoded = out.encodeToData(EncodedImageFormat.WEBP, 80)?.bytes
         ?: return@runCatching false
-    FileUtilsCommon.writeBytes(destPath, encoded)
+    // 整份落盘: 产物按"文件已存在即有效"被复用 (ensureBakedImage / 启动封面直接解码),
+    // 半截 WEBP 会被当成已烘焙好的产物, 之后不再重烘焙 (启动封面/背景图一直显示不出来)
+    writeBytesAtomically(destPath, encoded)
 }.getOrNull() ?: false
 
 internal actual fun probeDecodeImage(bytes: ByteArray): Boolean =

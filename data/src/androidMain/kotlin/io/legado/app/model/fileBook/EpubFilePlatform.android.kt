@@ -16,13 +16,14 @@ import io.legado.app.data.entities.Book
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.getRemoteUrl
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.lib.epublib.epub.EpubReader
 import io.legado.app.lib.epublib.util.zip.AndroidZipFile
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavException
 import kotlinx.coroutines.runBlocking
+import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
 
 /**
@@ -174,13 +175,12 @@ actual fun resolveStoredLocalPath(path: String): String = path
 /**
  * [compressBitmap] 的 Android actual 实现。
  *
- * 用 [Bitmap.compress], 行为对齐原 app 端
- * `cover.compress(Bitmap.CompressFormat.JPEG, 90, FileOutputStream(out))`。
+ * 编码参数 (格式映射 / quality) 与原 app 端 `cover.compress(Bitmap.CompressFormat.JPEG, 90, ...)` 一致。
  *
  * @param bitmap [decodeBitmap] 返回的 [Bitmap]
  * @param format "JPEG" / "PNG" (映射到 [Bitmap.CompressFormat])
  * @param quality 0..100
- * @param destPath 目标文件绝对路径 (内部自动创建父目录)
+ * @param destPath 目标文件绝对路径 (内部自动创建父目录, 整份落盘)
  * @return 成功 true
  */
 actual fun compressBitmap(bitmap: Any?, format: String, quality: Int, destPath: String): Boolean {
@@ -192,12 +192,10 @@ actual fun compressBitmap(bitmap: Any?, format: String, quality: Int, destPath: 
         else -> Bitmap.CompressFormat.JPEG
     }
     return runCatching {
-        val dest = File(destPath)
-        dest.parentFile?.mkdirs()
-        if (!dest.exists()) dest.createNewFile()
-        FileOutputStream(dest).use { out ->
-            bitmap.compress(compressFormat, quality, out)
-        }
-        true
+        // Bitmap.compress 逐块写流, 先收进内存再整份落盘: 封面按"文件已存在即有效"被复用,
+        // 往目标上盖写留下的半截 JPEG 会被永久当成有效封面
+        val jpeg = ByteArrayOutputStream()
+        bitmap.compress(compressFormat, quality, jpeg)
+        writeBytesAtomically(destPath, jpeg.toByteArray())
     }.getOrElse { false }
 }

@@ -1,5 +1,6 @@
 package io.legado.desktop.help.book
 
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.model.fileBook.BitmapProvider
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image
@@ -31,9 +32,8 @@ object DesktopBitmapProvider : BitmapProvider {
                     EncodedImageFormat.JPEG,
                     quality.coerceIn(0, 100)
                 ) ?: return false
-                outFile.parentFile?.mkdirs()
-                outFile.writeBytes(jpegData.bytes)
-                true
+                // 整份落盘: 封面提取按"目标文件已存在即有效"被复用, 半截 JPEG 会被永久当成封面
+                writeBytesAtomically(outFile.path, jpegData.bytes)
             }
         }.getOrDefault(false)
     }
