@@ -28,13 +28,16 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * [TvBoxService] 的 JVM 家族实现 (jvmAndAndroidMain: Android 与桌面共用): 桥接
+ * [TvBoxService] 的 JVM 家族实现 (data 源集 jvmAndAndroidMain: Android 与桌面共用): 桥接
  * [TvBoxManager] (配置拉取/持久化) 与它同步出来的虚拟 BookSource 行
  * (站点开关 = 该行是否存在, 即站点是否已添加; 行的 enabled 归书源界面管,
  * 控制是否参与搜索, 本层不写它)。
  *
  * Android 端 MainActivity.initializePlatform 一行注册, 桌面端 DesktopCore
  * registerDesktopTvBoxProviders 注册; 未注册端 UI 隐藏入口。
+ *
+ * 实现与契约 ([TvBoxService], data 源集 commonMain) 同层: 注册方含不含界面的桌面核心,
+ * 而界面层单向依赖数据层。
  *
  * 平台依赖经 provider 注入: 目录走 [AppFilesDirs] (Android=filesDir, 桌面=
  * {dataRoot}/files, tvbox/ 布局两端一致), jar 装载/引导脚本/上下文走

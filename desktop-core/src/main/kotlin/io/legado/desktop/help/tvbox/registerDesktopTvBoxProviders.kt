@@ -12,7 +12,7 @@ import io.legado.app.ui.book.tvbox.TvBoxServiceProviders
  *
  * 1. 平台钩子 (jar 类加载/上下文) 注册 + 引导脚本 provider (composeResources 单一数据源)
  *    —— 管理页导入与取数链路的前置;
- * 2. TvBoxService 注册 (jvmAndAndroidMain 实现 Android/桌面共用) —— 「我的」页入口以
+ * 2. TvBoxService 注册 (data 源集 jvmAndAndroidMain 实现 Android/桌面共用) —— 「我的」页入口以
  *    [TvBoxServiceProviders.getOrNull] 判空显隐, 注册即入口可见;
  * 3. [TvBoxManager.init] 幂等初始化 —— 重载已持久化配置 + 注册 TVBox 取数委派。
  *

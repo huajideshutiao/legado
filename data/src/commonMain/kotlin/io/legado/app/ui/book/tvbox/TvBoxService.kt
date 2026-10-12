@@ -6,10 +6,13 @@ import kotlin.concurrent.Volatile
 /**
  * TVBox 影视源管理能力暴露 (平台接口, 模式同 MangaExtensionService 与其 Providers)。
  *
- * 接口只依赖 shared/ui 层数据类型, 不感知 TvBoxManager 与 jar 装载实现 (平台差异经
+ * 接口只依赖数据层数据类型, 不感知 TvBoxManager 与 jar 装载实现 (平台差异经
  * [io.legado.app.help.tvbox.TvBoxPlatforms] 注入: Android=DexClassLoader, 桌面=URLClassLoader);
  * app 端 MainActivity 与桌面端 DesktopCore 都经 [TvBoxServiceProviders.register] 注册,
  * getOrNull()==null 的未注册平台隐藏「我的」页入口。
+ *
+ * 与实现 ([JvmTvBoxPlatform]) 同处数据层: 注册方含不含界面的宿主 (桌面核心/headless),
+ * 而界面层单向依赖数据层。
  *
  * 站点以虚拟 BookSource 行 (bookSourceType=video) 进入书源体系后, 取数走 WebBook 的
  * PluginSourceDelegates 委派, 搜索/详情/书内播放复用既有路径 —— 本接口刻意不提供

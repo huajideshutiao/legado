@@ -202,7 +202,8 @@ fun TvBoxManageScreen(
                 }
             }
             // 最近一次错误 (导入/切换/刷新/jar 装载失败)
-            if (state.error != null) {
+            val errorText = state.error
+            if (errorText != null) {
                 item(key = "error") {
                     Row(
                         Modifier
@@ -211,7 +212,7 @@ fun TvBoxManageScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = state.error,
+                            text = errorText,
                             fontSize = 12.sp,
                             color = ErrorColor,
                             modifier = Modifier.weight(1f),
@@ -431,9 +432,9 @@ private fun JarRow(jar: TvBoxJarItem, onRetry: () -> Unit) {
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-        if (jar.message != null) {
+        jar.message?.let { message ->
             Text(
-                text = jar.message,
+                text = message,
                 fontSize = 12.sp,
                 color = ErrorColor,
                 maxLines = 3,
