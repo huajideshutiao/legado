@@ -53,7 +53,8 @@ import legado.ui.generated.resources.all_source
 import legado.ui.generated.resources.book_source
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.group
-import legado.ui.generated.resources.ic_arrow_back
+import legado.ui.generated.resources.close
+import legado.ui.generated.resources.ic_baseline_close
 import legado.ui.generated.resources.ic_search
 import legado.ui.generated.resources.ok
 import legado.ui.generated.resources.screen
@@ -268,13 +269,6 @@ private fun ScopeTitleBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (!groupMode && showScreen) {
-            IconButton(onClick = { onShowScreenChange(false) }) {
-                Icon(
-                    painter = painterResource(Res.drawable.ic_arrow_back),
-                    contentDescription = null,
-                    tint = colors.primaryText,
-                )
-            }
             AppSearchField(
                 value = screenText,
                 onValueChange = onScreenTextChange,
@@ -282,7 +276,18 @@ private fun ScopeTitleBar(
                 modifier = Modifier.weight(1f),
                 textFieldModifier = Modifier.focusRequester(focusRequester),
             )
-            LaunchedEffect(Unit) { focusRequester.requestFocus() }
+            // 单个叉两用 (对照原版 SearchView.onCloseClicked): 有字时由输入框自带的清除叉清空,
+            // 无字时才补这个退出叉 —— 两者互斥, 任意时刻屏上恒为一个叉, 不会出现两个同形叉
+            if (screenText.isEmpty()) {
+                IconButton(onClick = { onShowScreenChange(false) }) {
+                    Icon(
+                        painter = painterResource(Res.drawable.ic_baseline_close),
+                        contentDescription = stringResource(Res.string.close),
+                        tint = colors.primaryText,
+                    )
+                }
+            }
+            LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
         } else {
             Text(
                 text = stringResource(Res.string.search_scope),

@@ -231,7 +231,6 @@
     <string name="publish_lyric">Lyrics on car display</string>
     <string name="publish_lyric_summary">Push the current lyric line to the now-playing title (car display / Bluetooth / lock screen); it replaces the chapter name</string>
     <string name="all_source">All Sources</string>
-    <string name="groups_or_source">Multi-group / book source</string>
     <string name="precision_search">Precise search</string>
     <string name="screen">Filter</string>
     <string name="search_book_key">Search book name/author</string>

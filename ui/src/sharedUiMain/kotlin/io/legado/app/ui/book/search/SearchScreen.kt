@@ -102,7 +102,6 @@ import legado.ui.generated.resources.book_source_manage
 import legado.ui.generated.resources.bookshelf
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.clear
-import legado.ui.generated.resources.groups_or_source
 import legado.ui.generated.resources.intro_show_null
 import legado.ui.generated.resources.log
 import legado.ui.generated.resources.ok
@@ -113,6 +112,7 @@ import legado.ui.generated.resources.search_book_key
 import legado.ui.generated.resources.search_result_empty
 import legado.ui.generated.resources.search_result_empty_close_precision
 import legado.ui.generated.resources.search_result_empty_switch_all
+import legado.ui.generated.resources.search_scope
 import legado.ui.generated.resources.source_filter_rule
 import legado.ui.generated.resources.stop
 import org.jetbrains.compose.resources.stringResource
@@ -443,24 +443,24 @@ private fun SearchActions(
         } else {
             scope.displayNames
         }
-        // 顺序对照 book_search.xml + onMenuOpened: 静态项在前, 动态范围组居中, 日志 (orderInCategory 9999) 最后
-        CheckMenuItem(stringResource(Res.string.precision_search), precisionSearch) {
-            dismiss(); viewModel.togglePrecisionSearch()
-        }
+        // 顺序: 书源管理置顶, 其后精准搜索, 搜索范围入口, 当前范围项与全部书源, 筛选规则, 日志收尾
         TextMenuItem(stringResource(Res.string.book_source_manage)) {
             dismiss(); navCallbacks.onManageBookSources()
         }
-        TextMenuItem(stringResource(Res.string.groups_or_source)) {
-            dismiss(); navCallbacks.onAlertSearchScope()
+        CheckMenuItem(stringResource(Res.string.precision_search), precisionSearch) {
+            dismiss(); viewModel.togglePrecisionSearch()
         }
-        TextMenuItem(stringResource(Res.string.source_filter_rule)) {
-            dismiss(); navCallbacks.onShowSourceFilterRule()
+        TextMenuItem(stringResource(Res.string.search_scope)) {
+            dismiss(); navCallbacks.onAlertSearchScope()
         }
         names.forEach { name ->
             CheckMenuItem(name, checked = true) { dismiss(); viewModel.removeScopeName(name) }
         }
         CheckMenuItem(stringResource(Res.string.all_source), checked = names.isEmpty()) {
             dismiss(); viewModel.selectScopeAll()
+        }
+        TextMenuItem(stringResource(Res.string.source_filter_rule)) {
+            dismiss(); navCallbacks.onShowSourceFilterRule()
         }
         TextMenuItem(stringResource(Res.string.log)) { dismiss(); navCallbacks.onShowAppLog() }
     }

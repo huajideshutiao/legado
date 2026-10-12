@@ -231,7 +231,6 @@
     <string name="publish_lyric">车载歌词</string>
     <string name="publish_lyric_summary">当前歌词行推到 now-playing 标题 (车机 / 蓝牙 / 锁屏), 会顶掉章节名</string>
     <string name="all_source">全部书源</string>
-    <string name="groups_or_source">多分组/书源</string>
     <string name="precision_search">精准搜索</string>
     <string name="screen">筛选</string>
     <string name="search_book_key">搜索书名、作者</string>

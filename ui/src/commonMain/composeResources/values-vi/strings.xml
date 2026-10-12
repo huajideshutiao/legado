@@ -696,7 +696,6 @@
     <string name="audio_play_wake_lock">Khóa đánh thức dịch vụ âm thanh</string>
     <string name="copy_rule">Sao chép quy tắc</string>
     <string name="paste_rule">Dán quy tắc</string>
-    <string name="groups_or_source">Đa nhóm / nguồn sách</string>
     <string name="replace_state_change">Thay thế (bật / tắt)</string>
     <string name="show_last_update_time">Hiển thị thời gian cập nhật lần cuối</string>
     <string name="refresh_list">Làm mới danh sách</string>

@@ -711,7 +711,6 @@
     <string name="audio_play_wake_lock">音訊服務喚醒鎖</string>
     <string name="copy_rule">複製規則</string>
     <string name="paste_rule">貼上規則</string>
-    <string name="groups_or_source">多分組/書源</string>
     <string name="replace_state_change">取代(啟用/禁用)</string>
     <string name="show_last_update_time">顯示上次更新時間</string>
     <string name="refresh_list">重新整理列表</string>
