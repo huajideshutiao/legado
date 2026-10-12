@@ -23,9 +23,6 @@ object FileUtils {
     fun createFolderIfNotExist(filePath: String): File =
         FileUtilsBase.createFolderIfNotExist(filePath)
 
-    fun createFileIfNotExist(filePath: String): File =
-        FileUtilsBase.createFileIfNotExist(filePath)
-
     fun createFileWithReplace(filePath: String): File =
         FileUtilsBase.createFileWithReplace(filePath)
 
@@ -164,24 +161,6 @@ object FileUtils {
     @JvmOverloads
     fun writeText(filepath: String, content: String, charset: String = "utf-8"): Boolean =
         FileUtilsBase.writeText(filepath, content, charset)
-
-    /**
-     * 保存文件内容
-     */
-    fun writeBytes(filepath: String, data: ByteArray): Boolean =
-        FileUtilsBase.writeBytes(filepath, data)
-
-    /**
-     * 保存文件内容
-     */
-    fun writeInputStream(filepath: String, data: InputStream): Boolean =
-        FileUtilsBase.writeInputStream(filepath, data)
-
-    /**
-     * 保存文件内容
-     */
-    fun writeInputStream(file: File, data: InputStream): Boolean =
-        FileUtilsBase.writeInputStream(file, data)
 
     /**
      * 追加文本内容

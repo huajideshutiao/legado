@@ -11,7 +11,6 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.FileWriter
 import java.io.IOException
-import java.io.InputStream
 import java.io.UnsupportedEncodingException
 import java.nio.charset.Charset
 import java.text.SimpleDateFormat
@@ -383,35 +382,6 @@ object FileUtilsBase {
             false
         } finally {
             closeSilently(fos)
-        }
-    }
-
-    /**
-     * 保存文件内容
-     */
-    fun writeInputStream(filepath: String, data: InputStream): Boolean {
-        val file = File(filepath)
-        return writeInputStream(file, data)
-    }
-
-    /**
-     * 保存文件内容
-     */
-    fun writeInputStream(file: File, data: InputStream): Boolean {
-        return try {
-            if (!file.exists()) {
-                file.parentFile?.mkdirs()
-                file.createNewFile()
-            }
-            data.use {
-                FileOutputStream(file).use { fos ->
-                    data.copyTo(fos)
-                    fos.flush()
-                }
-            }
-            true
-        } catch (e: IOException) {
-            false
         }
     }
 
