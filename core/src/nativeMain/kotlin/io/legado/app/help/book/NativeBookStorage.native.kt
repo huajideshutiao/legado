@@ -14,7 +14,8 @@ import kotlinx.coroutines.runBlocking
  * iOS 与鸿蒙两端 BookStorage 主体逻辑完全一致 (章节缓存 I/O: saveText/getContent/hasContent/
  * delContent/clearCache/updateCacheFolder/clearInvalidCache), 仅 iOS 端原用 NSFileManager + NSData,
  * 鸿蒙端用 kotlin.io.File; Kotlin/Native 在 iOS/linuxArm64 (鸿蒙) 上均支持 [kotlin.io.File],
- * 故统一改为 [kotlin.io.File] 实现下沉到 nativeMain 共用, 平台源集用 typealias 别名 + 各自 register 函数。
+ * 故统一改为 [kotlin.io.File] 实现下沉到 nativeMain 共用,
+ * iOS/鸿蒙宿主启动链各调一次 [registerNativeBookStorage]。
  *
  * # 目录结构
  * - rootPath: `{AppFilesDirs.filesDir}/book_cache/` (沙盒 / 用户工作目录下持久化)

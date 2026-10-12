@@ -14,7 +14,7 @@ import kotlinx.coroutines.runBlocking
  * ContentProcessorShared, 通过 [DefaultContentProcessorDeps] 注入平台专属依赖,
  * processorCache 缓存策略相同), 仅类名 (IosContentProcessorAccessor /
  * OhosContentProcessorAccessor) 与注册函数不同, 故下沉到 nativeMain 共用,
- * 平台源集用 typealias 别名 + 各自 register 函数。
+ * iOS/鸿蒙宿主启动链各调一次 [registerNativeContentProcessorAccessor]。
  *
  * 与桌面端 [io.legado.desktop.model.webBook.DesktopContentProcessorAccessor] 行为对齐,
  * 完整执行 ContentProcessorShared 提供的核心逻辑 (替换规则 / 简繁 / 段落重排 / 去重复标题),
@@ -31,7 +31,7 @@ import kotlinx.coroutines.runBlocking
  * Native 端默认单线程 (iOS main actor / 鸿蒙 main ability), 无需 ConcurrentHashMap;
  * 后续如多线程访问再补冻结/synchronized。
  *
- * 模式参考 [NativeBookHelpAccessor] / desktop `DesktopContentProcessorAccessor`。
+ * 模式参考 `NativeBookHelpAccessor` (ui 的 nativeMain) / desktop `DesktopContentProcessorAccessor`。
  */
 class NativeContentProcessorAccessor : ContentProcessorAccessor {
 

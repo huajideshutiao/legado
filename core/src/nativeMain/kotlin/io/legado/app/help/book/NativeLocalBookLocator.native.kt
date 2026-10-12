@@ -14,7 +14,8 @@ import io.legado.app.utils.inputStream
  * iOS 与鸿蒙两端 LocalBookLocator 主体逻辑完全一致 (本地书路径解析 + 路径缓存:
  * getLocalPath/removeLocalPathCache),
  * Kotlin/Native 在 iOS/linuxArm64 (鸿蒙) 上均支持 [kotlin.io.File],
- * 故统一改为 [kotlin.io.File] 实现下沉到 nativeMain 共用, 平台源集用 typealias 别名 + 各自 register 函数。
+ * 故统一改为 [kotlin.io.File] 实现下沉到 nativeMain 共用,
+ * 两端的源集各派生 Ios/Ohos 子类并各自注册 (core/iosMain `registerIosLocalBookLocator` / core/ohosMain `registerOhosLocalBookLocator`)。
  *
  * # 路径解析规则 (与 jvmMain [JvmLocalBookLocator] 行为对齐)
  * - bookUrl 形如 `file:///var/mobile/.../book.txt` (iOS) 或 `file:///data/storage/.../book.txt` (鸿蒙)
