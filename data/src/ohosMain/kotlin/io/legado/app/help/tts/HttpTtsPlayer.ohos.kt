@@ -9,9 +9,12 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.KmpRequestBuilder
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.storage.DataStorageProviders
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.isAtomicWriteTempName
+import io.legado.app.utils.isOrphanAtomicWriteTemp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -54,7 +57,8 @@ import io.legado.app.utils.ensureParentDirectory
  * # 降级策略 (桥接未就绪时, 与占位行为一致)
  * [OhosNativeBridge.isMediaBridgeReady] 返回 false (tsfn 未注入) 时, 降级为
  * "网络下载已就绪, 播放占位" 模式 (play/pause/stop 仅维护标志, 不出声),
- * 让 [ReadAloudController] 状态机能正常推进 (onReady/onEndOfMedia 触发段落推进)。
+ * 让 [io.legado.app.service.ReadAloudControllerShared] 状态机能正常推进 (onReady/onEndOfMedia
+ * 触发段落推进)。
  *
  * # 缓存: `{DataStorageProviders.chapterCacheDir}/httpTTS/{md5(url)}.mp3`
  * url 已含 speakText+语速 (AnalyzeUrl 求值后), 去重粒度对齐原版 md5(url-|-rate-|-content);
@@ -308,7 +312,9 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
         while (true) {
             try {
                 val bytes = downloadBytes(url, headers)
-                target.writeBytes(bytes)
+                // 整份落盘: 读方以"存在且非空"当作可用缓存 (半截 mp3 非空, 会被当成完整音频);
+                // 写不进时照样当下载失败进入熔断计数, 不能返回一个不存在的路径
+                check(writeBytesAtomically(target.path, bytes)) { "TTS 缓存写入失败: ${target.path}" }
                 downloadErrorBreaker.reset()
                 return target
             } catch (e: CancellationException) {
@@ -356,6 +362,9 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
     /**
      * 老化清理: 删除超过 10 分钟未更新的缓存文件 (近似原版 removeCacheFile 的 600000ms 规则;
      * 无章节名分组, 当前会话文件靠新鲜度豁免)。
+     *
+     * 整份写入的临时件不是缓存条目: 只回收已成孤儿的那部分 ([isOrphanAtomicWriteTemp], 超时限),
+     * 正在写的那份刚创建不会被删 —— 删掉它会让本次写入的改名失败, 下载随即被判失败 (朗读被暂停)。
      */
     private fun cleanupAgedCache() {
         runCatching {
@@ -363,7 +372,14 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
             if (!cacheDir.exists()) return
             val now = kotlin.time.Clock.System.now().toEpochMilliseconds()
             cacheDir.listFiles()?.forEach { file ->
-                if (file.isFile && now - file.lastModified() > 600000L) {
+                if (!file.isFile) return@forEach
+                if (isAtomicWriteTempName(file.name)) {
+                    if (isOrphanAtomicWriteTemp(file.name, file.lastModified(), now)) {
+                        runCatching { file.delete() }
+                    }
+                    return@forEach
+                }
+                if (now - file.lastModified() > 600000L) {
                     runCatching { file.delete() }
                 }
             }

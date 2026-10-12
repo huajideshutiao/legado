@@ -5,12 +5,16 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.HttpTTS
+import io.legado.app.help.copyToFileAtomically
 import io.legado.app.help.coroutine.printStackTraceOnDebug
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.script.JsEngines
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.isAtomicWriteTempName
+import io.legado.app.utils.isOrphanAtomicWriteTemp
 import io.legado.app.utils.isRetryableNetworkError
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CancellationException
@@ -122,20 +126,11 @@ interface HttpTtsCacheDirProvider {
     /** 判断文件是否存在。 */
     fun exist(path: String): Boolean
 
-    /** 创建文件（如不存在）,返回平台 File 句柄（Any 避免 commonMain 引用 java.io.File）。 */
-    fun createFileIfNotExist(path: String): Any
-
     /** 列出目录下所有文件和子目录;目录不存在返回 null。 */
     fun listDirsAndFiles(dirPath: String): List<HttpTtsFileInfo>?
 
     /** 删除文件或目录。 */
     fun delete(path: String): Boolean
-
-    /** 把输入流写入指定路径文件。 */
-    fun writeInputStream(path: String, stream: InputStream): Boolean
-
-    /** 把字节数组写入指定路径文件。 */
-    fun writeBytes(path: String, bytes: ByteArray): Boolean
 
     /** 无声音频占位字节数据（各平台从资源加载,如 app 端 R.raw.silent_sound）。 */
     fun silentSoundBytes(): ByteArray
@@ -222,26 +217,43 @@ class HttpTtsDownloadScheduler(
     fun getSpeakFilePath(name: String): String =
         ttsCacheDir() + name + ".mp3"
 
-    /** 创建空缓存文件,返回平台 File 句柄。 */
-    fun createSpeakFile(name: String): Any =
-        cacheDirProvider.createFileIfNotExist(ttsCacheDir() + name + ".mp3")
-
-    /** 从输入流创建缓存文件。 */
+    /**
+     * 从输入流创建缓存文件: 流式写入同目录临时件, 写成功后整份改名就位，无论成败都关流。
+     *
+     * 读方以“目标名存在”判定缓存可用 ([hasSpeakFile]), 直接在目标名上流式写会让下载中断留下的
+     * 半截音频被当作完整音频长期复用; 失败抛出, 目标名上不留半截字节。
+     * 流由本方法持有 (取自网络响应体), 不关会泄掉连接。
+     */
     fun createSpeakFile(name: String, inputStream: InputStream) {
-        cacheDirProvider.writeInputStream(ttsCacheDir() + name + ".mp3", inputStream)
+        try {
+            copyToFileAtomically(getSpeakFilePath(name), inputStream)
+        } finally {
+            runCatching { inputStream.close() }
+        }
     }
 
-    /** 写入无声音频占位。 */
+    /** 写入无声音频占位 (整份落盘, 目标名上不会留下半截占位件)。 */
     fun createSilentSound(name: String) {
-        cacheDirProvider.writeBytes(ttsCacheDir() + name + ".mp3", cacheDirProvider.silentSoundBytes())
+        writeBytesAtomically(getSpeakFilePath(name), cacheDirProvider.silentSoundBytes())
     }
 
-    /** 移除过期缓存文件:非当前章节且超过 10 分钟的文件 + 所有无声音频占位。 */
+    /**
+     * 移除过期缓存文件:非当前章节且超过 10 分钟的文件 + 所有无声音频占位。
+     *
+     * 整份写入的临时件不是缓存条目: 只回收已成孤儿的那部分 ([isOrphanAtomicWriteTemp], 超时限),
+     * 正在写的那份刚创建不会被删 —— 删掉它会让本次写入的改名失败, 下载随即被判失败 (朗读被暂停)。
+     */
     fun removeCacheFile(chapterTitle: String?) {
         val titleMd5 = MD5Utils.md5Encode16(chapterTitle ?: "")
         val dirPath = ttsCacheDir()
         val now = cacheDirProvider.currentTimeMillis()
         cacheDirProvider.listDirsAndFiles(dirPath)?.forEach { info ->
+            if (isAtomicWriteTempName(info.name)) {
+                if (isOrphanAtomicWriteTemp(info.name, info.lastModified, now)) {
+                    cacheDirProvider.delete(dirPath + info.name)
+                }
+                return@forEach
+            }
             val isSilentSound = info.length == 2160L
             if ((!info.name.startsWith(titleMd5) && now - info.lastModified > 600000L) || isSilentSound) {
                 cacheDirProvider.delete(dirPath + info.name)
