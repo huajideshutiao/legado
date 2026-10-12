@@ -42,7 +42,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.Slider
 import androidx.compose.material.SliderDefaults
@@ -61,8 +60,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.AppSheetSurface
-import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.LocalSheetDismissRequest
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -253,32 +252,12 @@ fun ReadAloudDialog(
                         ),
                         modifier = Modifier.weight(1f),
                     )
-                    // 当前时间显示 + 点击弹选时菜单 (与原版 Text(timer_m) + context.selector 对齐)
-                    Box {
-                        Text(
-                            text = stringResource(Res.string.timer_m, timer.coerceAtLeast(0)),
-                            color = colors.primaryText,
-                            modifier = Modifier.clickable { timerMenuExpanded = true },
-                        )
-                        // 定时选项菜单 (与原版 context.selector + intArrayOf(0,5,10,15,30,60,90,180) 对齐)
-                        AppDropdownMenu(
-                            expanded = timerMenuExpanded,
-                            onDismissRequest = { timerMenuExpanded = false },
-                        ) {
-                            val times = intArrayOf(0, 5, 10, 15, 30, 60, 90, 180)
-                            times.forEach { t ->
-                                DropdownMenuItem(
-                                    onClick = {
-                                        timerMenuExpanded = false
-                                        timer = t
-                                        onSetTimer(t)
-                                    },
-                                ) {
-                                    Text(stringResource(Res.string.timer_m, t))
-                                }
-                            }
-                        }
-                    }
+                    // 当前时间显示 + 点击弹选择对话框 (对照原版 Text(timer_m) + context.selector)
+                    Text(
+                        text = stringResource(Res.string.timer_m, timer.coerceAtLeast(0)),
+                        color = colors.primaryText,
+                        modifier = Modifier.clickable { timerMenuExpanded = true },
+                    )
                 }
 
                 // 语速标题行: 标题 + 当前值 + 跟随系统开关 (与原版 Row + Text(speed) + Text(value) + Text(flow_sys) + AppSwitch 对齐)
@@ -400,6 +379,23 @@ fun ReadAloudDialog(
                 }
             }
         }
+    }
+
+    // 定时档位选择 (对照原版 tvTimer 的 context.selector("设定时间", timeKeys)):
+    // 居中窄对话框, 不撑满屏幕宽度 —— 与其它选择型对话框同形
+    if (timerMenuExpanded) {
+        val times = intArrayOf(0, 5, 10, 15, 30, 60, 90, 180)
+        AppSelectorDialog(
+            onDismissRequest = { timerMenuExpanded = false },
+            title = stringResource(Res.string.set_timer),
+            items = times.map { stringResource(Res.string.timer_m, it) },
+            onItemSelected = { index ->
+                val t = times[index]
+                timerMenuExpanded = false
+                timer = t
+                onSetTimer(t)
+            },
+        )
     }
 }
 
