@@ -26,6 +26,7 @@ import io.legado.app.help.service.ServiceLaunchers
 import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.Toasters
+import io.legado.app.help.writeTextAtomically
 import io.legado.app.model.Debug
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.FileAssociationDispatch
@@ -56,6 +57,8 @@ import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.GSON
 import io.legado.app.utils.browseUrl
+import io.legado.app.utils.FileUtilsBase
+import io.legado.app.utils.atomicWriteTempPath
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.openFileWithSystem
 import io.legado.app.utils.toJson
@@ -491,9 +494,17 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         if (sources.isEmpty()) throw NoStackTraceException("没有可保存的日志文件")
         val outDir = File(DataStorageProviders.get().userExportDir).apply { mkdirs() }
         val zipFile = File(outDir, "logs.zip")
-        zipFile.delete()
-        if (!ZipUtils.zipFiles(sources, zipFile)) {
-            throw NoStackTraceException("打包日志失败")
+        // 打包到同目录临时件再整份改名就位: 直接打包到目标会先把上一轮的 logs.zip 截断,
+        // 打包被中断时用户手里既没有新件也没有旧件。临时件名走共享契约 ([atomicWriteTempPath]):
+        // 导出目录是用户可见目录, 没有孤儿临时件的回收方, 残留只能靠下面的 finally 清掉
+        val tempZip = File(atomicWriteTempPath(zipFile.path))
+        try {
+            if (!ZipUtils.zipFiles(sources, tempZip)) {
+                throw NoStackTraceException("打包日志失败")
+            }
+            FileUtilsBase.replaceFileAtomically(tempZip, zipFile)
+        } finally {
+            tempZip.delete()
         }
         zipFile.absolutePath
     }
@@ -1015,7 +1026,10 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
             val json = selectedSourcesJson(selection, allCount, sortAscending, sort) ?: return@launch
             val dir = File(DataStorageProviders.get().userExportDir).apply { mkdirs() }
             val file = File(dir, "shareBookSource.json")
-            runCatching { file.writeText(json, Charsets.UTF_8) }
+            runCatching {
+                // 整份落盘: 覆盖写被中断会在用户目录留下半截 JSON, 分享出去的是一份打不开的文件
+                check(writeTextAtomically(file.path, json)) { "写入失败: ${file.path}" }
+            }
                 .onSuccess {
                     // 分享与提示是界面动作, 回主线程; 能力作用域是 IO。
                     withContext(mainDispatcher) {
