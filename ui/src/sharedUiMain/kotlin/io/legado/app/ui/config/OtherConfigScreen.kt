@@ -208,6 +208,16 @@ fun OtherConfigScreen(
                 summary = summaryAutoRefresh,
                 defaultValue = false,
             )
+            // 关闭主窗口时缩小到托盘: 只有桌面端有系统托盘 (其余端无窗口关闭语义)。
+            // 键不存在 = 用户未选择过 (开关显示为关), 首次关闭时弹询问框; 拨过开关即定案
+            if (showCloseToTray) {
+                switchPreference(
+                    prefKey = PreferKey.closeToTray,
+                    title = titleCloseToTray,
+                    summary = summaryCloseToTray,
+                    defaultValue = false,
+                )
+            }
             switchPreference(
                 prefKey = PreferKey.devFeat,
                 title = titleDevFeat,
@@ -382,16 +392,6 @@ fun OtherConfigScreen(
                     prefKey = PreferKey.recordHeapDump,
                     title = titleRecordHeapDump,
                     summary = summaryRecordHeapDump,
-                    defaultValue = false,
-                )
-            }
-            // 关闭主窗口时缩小到托盘: 只有桌面端有系统托盘 (其余端无窗口关闭语义)。
-            // 键不存在 = 用户未选择过 (开关显示为关), 首次关闭时弹询问框; 拨过开关即定案
-            if (showCloseToTray) {
-                switchPreference(
-                    prefKey = PreferKey.closeToTray,
-                    title = titleCloseToTray,
-                    summary = summaryCloseToTray,
                     defaultValue = false,
                 )
             }
