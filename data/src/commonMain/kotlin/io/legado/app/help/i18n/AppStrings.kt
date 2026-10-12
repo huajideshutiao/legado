@@ -47,6 +47,10 @@ enum class AppStringKey {
     download_url_rule_not_configured,
     upload_failed_with_body,
 
+    // 直链上传打包单条目 zip 失败 (iOS/鸿蒙 NativeZipCodec): JVM/Android 端同一环节是
+    // ZipUtils 抛 IOException, 文案由 JDK 给出, 不在此列
+    upload_compress_failed_with_name,
+
     // 批注：跨章选区无单章区间可存
     underline_cross_chapter_unsupported,
 

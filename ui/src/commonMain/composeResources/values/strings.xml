@@ -1007,6 +1007,7 @@
     <string name="upload_url_not_configured">Upload URL not configured</string>
     <string name="download_url_rule_not_configured">Download URL rule not configured</string>
     <string name="upload_failed_with_body">Upload failed: %1$s</string>
+    <string name="upload_compress_failed_with_name">Compress failed: %1$s</string>
     <string name="desktop_backstage_webview_unsupported">BackstageWebView is not supported on desktop (depends on android.webkit.WebView). Use HTTP paths or book sources that do not rely on WebView instead</string>
     <string name="book_info_copied">Book info copied</string>
     <string name="need_more_time_load_content">When the body length is too long, it may take more time to load the text.</string>

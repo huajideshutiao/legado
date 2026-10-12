@@ -1019,6 +1019,7 @@
     <string name="upload_url_not_configured">上传url未配置</string>
     <string name="download_url_rule_not_configured">下载地址规则未配置</string>
     <string name="upload_failed_with_body">上传失败,%1$s</string>
+    <string name="upload_compress_failed_with_name">压缩失败,%1$s</string>
     <string name="desktop_backstage_webview_unsupported">桌面端不支持 BackstageWebView (依赖 android.webkit.WebView), 请改用 HTTP 路径或选用不依赖 webView 的书源</string>
     <string name="book_info_copied">已复制书籍信息</string>
     <string name="need_more_time_load_content">正文长度过长时，加载正文可能会花费更多时间</string>

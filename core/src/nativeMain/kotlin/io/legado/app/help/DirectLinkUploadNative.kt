@@ -1,5 +1,7 @@
 package io.legado.app.help
 
+import io.legado.app.help.i18n.AppStringKey
+import io.legado.app.help.i18n.appString
 import io.legado.app.help.storage.NativeZipCodec
 import io.legado.app.utils.File
 
@@ -25,7 +27,9 @@ object DirectLinkUploadNativePrimitives : DirectLinkUploadPrimitives {
         try {
             src.parentFile?.mkdirs()
             src.writeBytes(data)
-            check(NativeZipCodec.zipFiles(listOf(src.path), zip.path)) { "zip failed: ${zip.path}" }
+            check(NativeZipCodec.zipFiles(listOf(src.path), zip.path)) {
+                appString(AppStringKey.upload_compress_failed_with_name, entryName)
+            }
             return zip.readBytes()
         } finally {
             src.delete()

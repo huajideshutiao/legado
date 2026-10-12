@@ -29,9 +29,9 @@ object NativeDirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUploadD
     }
 
     override fun putConfig(rule: DirectLinkUploadRule) {
-        val file = File(configPath)
-        file.parentFile?.takeIf { !it.exists() }?.mkdirs()
-        file.writeText(GSON.toJson(rule))
+        // 整份落盘: 覆盖写被中断会在盘上留下无法解析的 JSON, 读方按解析失败回落到默认规则
+        // (自定义直链规则静默丢失); 写失败时盘上仍是上一份完整配置
+        writeTextAtomically(configPath, GSON.toJson(rule))
     }
 
     override fun getDefaultRules(): List<DirectLinkUploadRule> = defaultRulesCache
