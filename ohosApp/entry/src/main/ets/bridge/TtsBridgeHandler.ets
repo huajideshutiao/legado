@@ -36,7 +36,7 @@ import { BridgeCommand, parseBridgeCommand } from './BridgeDispatch';
  *
  * # 注意
  * @kit.CoreSpeechKit textToSpeech 无 pause/resume API, pause/resume 命令仅打日志,
- * 由 Kotlin 侧标记状态 + ReadAloudController 重播当前段落。
+ * 由 Kotlin 侧标记状态 + 朗读控制器重播当前段落。
  */
 
 // TTS 事件回调类型 (由 EntryAbility 注入, 内部调 legado.ttsEvent)

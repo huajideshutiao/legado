@@ -7,7 +7,7 @@ import io.legado.app.help.tts.ReadAloudQueue
  * TTS 朗读纯逻辑（KMP commonMain 版）。
  *
  * 从 app 端 `TTSReadAloudService.play()` 抽取的批量入队朗读计划计算:
- * 给定段落列表、起始段、段内偏移,计算真正需要交给引擎朗读的 (段下标, 文本) 序列。
+ * 给定段落表快照（起始段、段内偏移随快照一起给出）,计算真正需要交给引擎朗读的 (段下标, 文本) 序列。
  *
  * 平台相关（Android TextToSpeech.QUEUE_FLUSH/ADD、UtteranceProgressListener、
  * 引擎 init/retry、章节切换、音频焦点）留 app 端。
@@ -28,20 +28,20 @@ object TtsReadAloudShared {
      * 计算批量朗读计划。
      *
      * 行为对齐 app 端 `TTSReadAloudService.play()` 的循环体:
-     * - 从 [ReadAloudQueue.nowSpeak] 遍历到 contentList 末尾
-     * - 第一段应用 [ReadAloudQueue.paragraphStartPos] 偏移
+     * - 从快照的 [ReadAloudQueue.Snapshot.nowSpeak] 遍历到段表末尾
+     * - 第一段应用 [ReadAloudQueue.Snapshot.paragraphStartPos] 偏移
      * - 跳过匹配 [AppPattern.notReadAloudRegex] 的段
      *
-     * @param queue 朗读队列状态机
+     * @param snapshot 队列快照 (一次取值即自洽, 不跨版本)
      * @return 待朗读的 [SpeakItem] 列表; 空列表表示当前章节无可朗读段（调用方应切下一章）
      */
-    fun buildSpeakPlan(queue: ReadAloudQueue): List<SpeakItem> {
+    fun buildSpeakPlan(snapshot: ReadAloudQueue.Snapshot): List<SpeakItem> {
         val plan = mutableListOf<SpeakItem>()
-        val list = queue.contentList
-        for (i in queue.nowSpeak until list.size) {
+        val list = snapshot.contentList
+        for (i in snapshot.nowSpeak until list.size) {
             var text = list[i]
-            if (queue.paragraphStartPos > 0 && i == queue.nowSpeak) {
-                text = text.substring(queue.paragraphStartPos)
+            if (snapshot.paragraphStartPos > 0 && i == snapshot.nowSpeak) {
+                text = text.substring(snapshot.paragraphStartPos)
             }
             if (text.matches(AppPattern.notReadAloudRegex)) continue
             plan += SpeakItem(i, text)

@@ -107,7 +107,7 @@ object ActiveReadAloudHostPorts : ReadAloudHostPorts {
     // 朗读进度→阅读页翻页联动游标 (原版散在朗读服务内的 pageIndex, 下沉后单例持有)。
     // 登记起点 (阅读页 UI 线程 / 朗读服务主线程) 与推进 (Android TTS 回调的 binder 线程、
     // 其余端朗读宿主的 Dispatchers.Default) 分属不同线程, 游标与起点成对读写, 故用锁收口
-    // (与同模块 RemoteZipWrapper/ReadAloudControllerShared 同一写法)。
+    // (与同模块 RemoteZipWrapper 同一写法)。
     private val readAloudPageLock = SynchronizedObject()
     private var readAloudPageCursor: Int = -1
     private var readAloudPageStartPos: Int = 0

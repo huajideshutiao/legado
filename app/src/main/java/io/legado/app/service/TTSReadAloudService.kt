@@ -27,7 +27,12 @@ class TTSReadAloudService : BaseReadAloudService() {
 
     private var engine: TextToSpeechEngine? = null
     private var speakJob: Coroutine<*>? = null
+
+    /** 引擎初始化代次: 写侧在 @Synchronized 的 initEngine/play 内, 读侧在 TTS 进度回调的 binder
+     *  线程 (拦旧引擎的迟到回调), 故需要可见性。 */
+    @Volatile
     private var engineGeneration = 0L
+
     private var initializedEngineName: String? = null
     private val TAG = "TTSReadAloudService"
 
@@ -103,7 +108,7 @@ class TTSReadAloudService : BaseReadAloudService() {
         MediaHelp.playSilentSound(this@TTSReadAloudService)
         speakJob?.cancel()
         speakJob = execute {
-            LogUtils.d(TAG, "朗读列表大小 ${readAloudController.playbackQueue.contentList.size}")
+            LogUtils.d(TAG, "朗读列表大小 ${readAloudController.playbackQueue.snapshot.contentList.size}")
             LogUtils.d(TAG, "朗读页数 ${textChapter?.pageSize}")
             val utteranceId = AppConst.APP_TAG + currentPlaybackToken
             val result = engine.speak(currentPlaybackText, utteranceId)
@@ -141,21 +146,22 @@ class TTSReadAloudService : BaseReadAloudService() {
 
         override fun onStart(s: String) {
             if (generation != engineGeneration || s != AppConst.APP_TAG + currentPlaybackToken) return
+            // 一次取快照: 段下标/段文本/已读位置必须同源 (本回调在 TTS binder 线程, 切章在调用方线程)
+            val playback = readAloudController.playbackQueue.snapshot
             LogUtils.d(
                 TAG,
-                "onStart nowSpeak:${readAloudController.playbackQueue.nowSpeak} pageIndex:${readBook?.durPageIndexValue} utteranceId:$s"
+                "onStart nowSpeak:${playback.nowSpeak} pageIndex:${readBook?.durPageIndexValue} utteranceId:$s"
             )
             textChapter ?: return
-            val paragraph = readAloudController.playbackQueue.contentList
-                .getOrNull(readAloudController.playbackQueue.nowSpeak) ?: return
+            val paragraph = playback.currentParagraph() ?: return
             if (paragraph.matches(AppPattern.notReadAloudRegex)) {
                 nextParagraph(s.removePrefix(AppConst.APP_TAG).toLongOrNull() ?: return)
             }
             ActiveReadAloudHostPorts.advanceReadAloudPage(
                 readAloudController.chapterIndex.value,
-                readAloudController.playbackQueue.readAloudNumber + 1
+                playback.readAloudNumber + 1
             )
-            upTtsProgress(readAloudController.playbackQueue.readAloudNumber + 1)
+            upTtsProgress(playback.readAloudNumber + 1)
         }
 
         override fun onDone(s: String) {
@@ -167,15 +173,16 @@ class TTSReadAloudService : BaseReadAloudService() {
         override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
             if (generation != engineGeneration || utteranceId != AppConst.APP_TAG + currentPlaybackToken) return
             super.onRangeStart(utteranceId, start, end, frame)
+            val playback = readAloudController.playbackQueue.snapshot
             LogUtils.d(
                 TAG,
-                "onRangeStart nowSpeak:${readAloudController.playbackQueue.nowSpeak} pageIndex:${readBook?.durPageIndexValue} utteranceId:$utteranceId " +
+                "onRangeStart nowSpeak:${playback.nowSpeak} pageIndex:${readBook?.durPageIndexValue} utteranceId:$utteranceId " +
                     "start:$start end:$end frame:$frame"
             )
             textChapter ?: return
             // 上报与翻页联动各走一路: 位置上报不因翻页判定结果被抑制
             // (宿主端 syncReadPosition 与 onStart 同口径)
-            val readingPos = readAloudController.playbackQueue.readAloudNumber + start
+            val readingPos = playback.readAloudNumber + start
             ActiveReadAloudHostPorts.advanceReadAloudPage(
                 readAloudController.chapterIndex.value, readingPos
             )
@@ -186,7 +193,7 @@ class TTSReadAloudService : BaseReadAloudService() {
             if (generation != engineGeneration || utteranceId != AppConst.APP_TAG + currentPlaybackToken) return
             LogUtils.d(
                 TAG,
-                "onError nowSpeak:${readAloudController.playbackQueue.nowSpeak} pageIndex:${readBook?.durPageIndexValue} utteranceId:$utteranceId " +
+                "onError nowSpeak:${readAloudController.playbackQueue.snapshot.nowSpeak} pageIndex:${readBook?.durPageIndexValue} utteranceId:$utteranceId " +
                     "errorCode:$errorCode"
             )
             nextParagraph(utteranceId.removePrefix(AppConst.APP_TAG).toLongOrNull() ?: return)
@@ -197,7 +204,7 @@ class TTSReadAloudService : BaseReadAloudService() {
             if (generation != engineGeneration || s != AppConst.APP_TAG + currentPlaybackToken) return
             LogUtils.d(
                 TAG,
-                "onError nowSpeak:${readAloudController.playbackQueue.nowSpeak} pageIndex:${readBook?.durPageIndexValue} s:$s"
+                "onError nowSpeak:${readAloudController.playbackQueue.snapshot.nowSpeak} pageIndex:${readBook?.durPageIndexValue} s:$s"
             )
             nextParagraph(s.removePrefix(AppConst.APP_TAG).toLongOrNull() ?: return)
         }

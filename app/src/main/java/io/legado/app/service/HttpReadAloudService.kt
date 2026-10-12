@@ -65,7 +65,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
-import java.io.InputStream
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -317,21 +316,22 @@ class HttpReadAloudService : BaseReadAloudService(),
         playIndexJob?.cancel()
         textChapter ?: return
         playIndexJob = lifecycleScope.launch {
-            upTtsProgress(readAloudController.playbackQueue.readAloudNumber + 1)
+            // 一次取快照: 本协程按当前段时长逐字上报, 逐次重读队列会跨段/跨章取到混合值
+            val playback = readAloudController.playbackQueue.snapshot
+            upTtsProgress(playback.readAloudNumber + 1)
             if (exoPlayer.duration <= 0) {
                 return@launch
             }
-            val speakTextLength =
-                readAloudController.playbackQueue.contentList[readAloudController.playbackQueue.nowSpeak].length
+            val speakTextLength = playback.currentParagraph()?.length ?: 0
             if (speakTextLength <= 0) {
                 return@launch
             }
             val sleep = exoPlayer.duration / speakTextLength
             val start = speakTextLength * exoPlayer.currentPosition / exoPlayer.duration
-            for (i in start..readAloudController.playbackQueue.contentList[readAloudController.playbackQueue.nowSpeak].length) {
+            for (i in start..speakTextLength.toLong()) {
                 // 上报与翻页联动各走一路 (与 TTS 的 onStart/onRangeStart 同口径):
                 // 不把位置上报的条件搭在翻页判定结果上
-                val readingPos = readAloudController.playbackQueue.readAloudNumber + i.toInt()
+                val readingPos = playback.readAloudNumber + i.toInt()
                 ActiveReadAloudHostPorts.advanceReadAloudPage(
                     readAloudController.chapterIndex.value, readingPos
                 )
@@ -413,7 +413,7 @@ class HttpReadAloudService : BaseReadAloudService(),
     override fun onPlayerError(error: PlaybackException) {
         super.onPlayerError(error)
         AppLog.put(
-            "朗读错误\n${readAloudController.playbackQueue.contentList[readAloudController.playbackQueue.nowSpeak]}",
+            "朗读错误\n${readAloudController.playbackQueue.snapshot.currentParagraph().orEmpty()}",
             error
         )
         deleteCurrentSpeakFile()
@@ -480,21 +480,12 @@ class HttpReadAloudService : BaseReadAloudService(),
 
         override fun exist(path: String): Boolean = FileUtils.exist(path)
 
-        override fun createFileIfNotExist(path: String): Any =
-            FileUtils.createFileIfNotExist(path)
-
         override fun listDirsAndFiles(dirPath: String): List<HttpTtsFileInfo>? =
             FileUtils.listDirsAndFiles(dirPath)?.map {
                 HttpTtsFileInfo(it.name, it.length(), it.lastModified())
             }
 
         override fun delete(path: String): Boolean = FileUtils.delete(path)
-
-        override fun writeInputStream(path: String, stream: InputStream): Boolean =
-            FileUtils.writeInputStream(path, stream)
-
-        override fun writeBytes(path: String, bytes: ByteArray): Boolean =
-            FileUtils.writeBytes(path, bytes)
 
         override fun silentSoundBytes(): ByteArray =
             resources.openRawResource(R.raw.silent_sound).readBytes()

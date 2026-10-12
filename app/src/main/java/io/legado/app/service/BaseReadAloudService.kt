@@ -135,11 +135,22 @@ abstract class BaseReadAloudService : BaseService() {
     }
 
     internal val readBook: ReadBookShared? get() = ActiveReadAloudHostPorts.currentReadBook
+
+    /**
+     * 控制器交给本服务的当前段: 文本、令牌、已排版章节。
+     *
+     * 控制器在调用方线程或引擎回调线程里写 (start/切章), 读侧在 TTS 进度回调的 binder 线程、
+     * ExoPlayer 回调与主线程, 三个字段各自当前值即最终值, 只需可见性。
+     */
+    @Volatile
     internal var currentPlaybackText: String = ""
         private set
+
+    @Volatile
     internal var currentPlaybackToken: Long = 0L
         private set
 
+    @Volatile
     internal var textChapter: TextChapterShared? = null
 
     /**
