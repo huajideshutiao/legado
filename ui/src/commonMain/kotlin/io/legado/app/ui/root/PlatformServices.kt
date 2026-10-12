@@ -8,6 +8,7 @@ import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.resolveImagePath
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.model.bakeCoverImageFile
 import io.legado.app.model.bakedImagePath
 import io.legado.app.model.probeDecodeImage
@@ -252,9 +253,10 @@ fun importImageSetFile(srcPath: String): String? = runCatching {
     val suffix = normalizeImageSuffix(srcName.substringAfterLast('.', "").take(8))
     val fileName = bytes.size.toString() + if (suffix.isBlank()) "" else ".$suffix"
     val dest = FileUtilsCommon.getPath(dir, fileName)
-    // 同名 (同字节数=同内容) 已存在则复用不重复拷贝 (拷贝数=图集文件数, 换同名图零 IO)
+    // 同名 (同字节数=同内容) 已存在则复用不重复拷贝 (拷贝数=图集文件数, 换同名图零 IO);
+    // 落盘整份归位: 半截文件会被上面的存在性判定当成有效图集条目, 之后不再重新生成
     if (!FileUtilsCommon.exist(dest)) {
-        if (!FileUtilsCommon.writeBytes(dest, bytes)) return@runCatching null
+        if (!writeBytesAtomically(dest, bytes)) return@runCatching null
     }
     fileName
 }.getOrNull()

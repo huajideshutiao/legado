@@ -6,6 +6,7 @@ import io.legado.app.help.FileUtilsCommon.createFolderIfNotExist
 import io.legado.app.help.FileUtilsCommon.exist
 import io.legado.app.help.FileUtilsCommon.getName
 import io.legado.app.help.FileUtilsCommon.getPath
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.model.bakeCoverVariantsToCache
 import io.legado.app.model.coverOriginalDir
 import io.legado.app.ui.root.normalizeImageSuffix
@@ -33,8 +34,9 @@ object CoverPersistenceShared {
             val dir = coverOriginalDir().also { createFolderIfNotExist(it) }
             val suffix = normalizeImageSuffix(displayName.substringAfterLast("."))
             val target = getPath(dir, "$id.$suffix")
-            // 同名文件已存在 (同字节数=同内容) 则复用, 不重复复制
-            if (!exist(target) && !FileUtilsCommon.writeBytes(target, bytes)) {
+            // 同名文件已存在 (同字节数=同内容) 则复用, 不重复复制; 落盘整份归位:
+            // 半截文件会被上面的存在性判定当成有效封面, 之后就再也不会重新生成
+            if (!exist(target) && !writeBytesAtomically(target, bytes)) {
                 throw IllegalStateException("封面写入图集失败: $target")
             }
             // 烘焙产物写缓存 (派生物; 失败只记日志——原图已入图集, 渲染端回落原图解码)

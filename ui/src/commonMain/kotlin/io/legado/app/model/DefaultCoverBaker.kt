@@ -2,6 +2,7 @@ package io.legado.app.model
 
 import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.writeBytesAtomically
 
 /**
  * 把用户选中的默认封面原图烘焙成指定比例的小图字节 (写盘由调用方负责)。
@@ -33,7 +34,8 @@ fun bakeCoverVariantsToCache(bytes: ByteArray, id: String): Boolean {
     FileUtilsCommon.createFolderIfNotExist(dir)
     return BookCoverShared.CoverRatio.entries.all { ratio ->
         val baked = bakeDefaultCoverBytes(bytes, ratio) ?: return false
-        FileUtilsCommon.writeBytes(
+        // 整份落盘: 缓存文件被读的并发度高于写入, 半截文件会被当成已经烘焙好的产物
+        writeBytesAtomically(
             FileUtilsCommon.getPath(dir, "${id}_${ratio.fileTag}.webp"),
             baked,
         )
