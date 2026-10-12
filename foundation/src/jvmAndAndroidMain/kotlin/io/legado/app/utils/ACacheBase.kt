@@ -74,14 +74,21 @@ object ACacheProviders {
  *
  * app 端 [ACache] 继承本类, 添加 Bitmap/Drawable/JSONObject/JSONArray 重载 + myPid() 后缀。
  *
+ * 条目落盘必须是整份的: 读方按同一路径整读该条目 (命中即整份消费, 拿不出可判别的错误),
+ * 直接覆盖写会在写完之前把条目截断, 并发读方拿到半截内容并被当成完整值。本类内没有直接
+ * 覆盖写路径, 整份写入的实现由构造方注入 (本类在 :foundation, 看不到 :data 的落盘机制)。
+ *
  * @param cacheDir 缓存目录
  * @param maxSize 最大缓存字节数
  * @param maxCount 最大缓存文件数
+ * @param writeFileAtomically 整份写入条目 (同目录临时件 + 改名就位) 的实现, 成功返回 true;
+ *   各端注入的入口形如 `io.legado.app.help.writeBytesAtomically`
  */
 open class ACacheBase protected constructor(
     cacheDir: File,
     maxSize: Long,
-    maxCount: Int
+    maxCount: Int,
+    private val writeFileAtomically: (path: String, data: ByteArray) -> Boolean,
 ) {
 
     companion object {
@@ -118,8 +125,11 @@ open class ACacheBase protected constructor(
         mCache?.let { mCache ->
             try {
                 val file = mCache.newFile(key)
-                file.writeText(value)
-                mCache.put(file)
+                if (writeFileAtomically(file.path, value.encodeToByteArray())) {
+                    mCache.put(file)
+                } else {
+                    throw IOException("缓存写入失败: ${file.path}")
+                }
             } catch (e: Exception) {
                 e.printStackTraceOnDebug()
             }
@@ -181,7 +191,9 @@ open class ACacheBase protected constructor(
     fun put(key: String, value: ByteArray) {
         mCache?.let { mCache ->
             val file = mCache.newFile(key)
-            file.writeBytes(value)
+            if (!writeFileAtomically(file.path, value)) {
+                throw IOException("缓存写入失败: ${file.path}")
+            }
             mCache.put(file)
         }
     }

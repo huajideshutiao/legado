@@ -2,6 +2,7 @@ package io.legado.app.help.image
 
 import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.storage.DataStorageProviders
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.utils.MD5Utils
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -127,7 +128,9 @@ internal object ImageBytesCache {
         }
         val dir = diskDir(persistent)
         if (!FileUtilsCommon.createFolderIfNotExist(dir)) return
-        if (!FileUtilsCommon.writeBytes(
+        // 整份落盘 (同目录临时件 + 改名就位): 图片字节按同一路径整读, 直接覆盖写会在写完之前
+        // 把条目截断, 并发读方 (图片加载器/保存链路) 会把半截字节当成完整图
+        if (!writeBytesAtomically(
                 FileUtilsCommon.getPath(dir, diskFileName(url, origin, isCover, persistent)),
                 bytes
             )

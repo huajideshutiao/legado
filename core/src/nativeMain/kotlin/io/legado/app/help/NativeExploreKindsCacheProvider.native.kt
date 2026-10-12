@@ -2,6 +2,7 @@ package io.legado.app.help
 
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.utils.File
+import okio.IOException
 
 /**
  * nativeMain: [ExploreKindsCacheProvider] 的 iOS/鸿蒙共用文件缓存实现
@@ -26,9 +27,12 @@ class NativeExploreKindsCacheProvider : ExploreKindsCacheProvider {
     }
 
     override fun put(key: String, value: String) {
-        val file = File(resolvePath(key))
-        file.parentFile?.takeIf { !it.exists() }?.mkdirs()
-        file.writeText(value)
+        // 整份落盘 (同目录临时件 + 改名就位): 直接覆盖写会在写完之前把条目截断, 并发读方
+        // 会把半截内容当成完整值; 落盘失败如实上抛, 调用方按未落盘处理
+        val path = resolvePath(key)
+        if (!writeTextAtomically(path, value)) {
+            throw IOException("写入发现规则缓存失败: $path")
+        }
     }
 
     override fun remove(key: String) {

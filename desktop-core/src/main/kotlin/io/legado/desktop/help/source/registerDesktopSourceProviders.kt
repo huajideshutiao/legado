@@ -11,6 +11,7 @@ import io.legado.app.help.UserAgentProvider
 import io.legado.app.help.UserAgentProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.help.http.SharedCookieStore
 import io.legado.app.help.JsCryptoProviderJvm
 import io.legado.app.help.JsCryptoProviders
@@ -125,7 +126,7 @@ private object DesktopExploreKindsCacheProvider : ExploreKindsCacheProvider {
 
 /** [ACacheBase] 构造器是 protected, 桌面端开一个薄子类接管目录 (对照 app 端 ACache)。 */
 private class DesktopACache(cacheDir: File) : ACacheBase(
-    cacheDir, ACacheBase.MAX_SIZE.toLong(), ACacheBase.MAX_COUNT
+    cacheDir, ACacheBase.MAX_SIZE.toLong(), ACacheBase.MAX_COUNT, ::writeBytesAtomically
 )
 
 /**

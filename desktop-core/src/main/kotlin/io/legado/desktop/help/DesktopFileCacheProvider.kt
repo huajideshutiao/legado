@@ -3,6 +3,7 @@ package io.legado.desktop.help
 import io.legado.app.help.FileCacheProvider
 import io.legado.app.help.FileCacheProviders
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.utils.ACacheBase
 import java.io.File
 
@@ -71,7 +72,7 @@ object DesktopFileCacheProvider : FileCacheProvider {
 
 /** [ACacheBase] 构造器是 protected, 桌面端开一个薄子类接管目录 (对照 app 端 ACache)。 */
 private class DesktopFileACache(cacheDir: File) : ACacheBase(
-    cacheDir, ACacheBase.MAX_SIZE.toLong(), ACacheBase.MAX_COUNT
+    cacheDir, ACacheBase.MAX_SIZE.toLong(), ACacheBase.MAX_COUNT, ::writeBytesAtomically
 )
 
 /**

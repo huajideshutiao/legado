@@ -89,7 +89,9 @@ class NativeFileCacheProvider : FileCacheProvider {
     }
 
     private fun putBytes(key: String, data: ByteArray, persistent: Boolean) {
-        runCatching { file(key, persistent).writeBytes(data) }
+        // 整份落盘 (同目录临时件 + 改名就位): 读方按同一路径整读条目, 直接覆盖写会在写完之前
+        // 把条目截断, 并发读方会把半截内容当成完整值; 落盘失败静默 (下次读取未命中重算)
+        runCatching { writeBytesAtomically(file(key, persistent).path, data) }
     }
 
     /** 读取原始字节 (含日期头), 不存在/已过期/读取失败返回 null。 */

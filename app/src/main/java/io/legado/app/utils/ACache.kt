@@ -2,6 +2,7 @@
 package io.legado.app.utils
 
 import io.legado.app.App
+import io.legado.app.help.writeBytesAtomically
 import java.io.File
 
 /**
@@ -17,7 +18,7 @@ class ACache private constructor(
     cacheDir: File,
     maxSize: Long,
     maxCount: Int
-) : ACacheBase(cacheDir, maxSize, maxCount) {
+) : ACacheBase(cacheDir, maxSize, maxCount, ::writeBytesAtomically) {
 
     companion object {
         private val mInstanceMap = HashMap<String, ACache>()
