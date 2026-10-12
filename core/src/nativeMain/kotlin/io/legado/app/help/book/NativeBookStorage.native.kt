@@ -4,8 +4,10 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.storage.DataStorageProviders
+import io.legado.app.help.writeTextAtomically
 import io.legado.app.utils.File
 import kotlinx.coroutines.runBlocking
+import okio.IOException
 
 /**
  * [BookStorage] iOS/鸿蒙 (Native target) 共用真实实现 (基于 [kotlin.io.File])。
@@ -85,11 +87,12 @@ class NativeBookStorage(
 
     override fun saveText(book: Book, chapter: BookChapter, text: String) {
         if (text.isEmpty()) return
-        val file = File(resolveChapterFile(book, chapter))
-        // 父目录不存在则递归创建 (与 Android FileUtils.createFileIfNotExist / iOS createDirectoryAtPath 行为对齐)
-        file.parentFile?.mkdirs()
-        // 直接 writeText (默认 UTF-8) (kotlin.io.File 无原子写 API, 与 JVM Files.write 行为一致)
-        file.writeText(text)
+        val path = resolveChapterFile(book, chapter)
+        // 整份落盘 (同目录临时件 + 改名就位): 阅读页会与本次写入并发整读同一章节文件,
+        // 直接 writeText 会在写完前把文件截断, 并发读方拿到的是半截正文
+        if (!writeTextAtomically(path, text)) {
+            throw IOException("章节正文写入失败: $path")
+        }
     }
 
     override fun getContent(book: Book, chapter: BookChapter): String? {

@@ -3,7 +3,9 @@ package io.legado.app.help.book
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.storage.DataStorageProviders
+import io.legado.app.help.writeTextAtomically
 import kotlinx.coroutines.runBlocking
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -70,9 +72,11 @@ class JvmBookStorage(
     override fun saveText(book: Book, chapter: BookChapter, text: String) {
         if (text.isEmpty()) return
         val file = resolveChapterFile(book, chapter)
-        // 父目录不存在则递归创建 (与 Android FileUtils.createFileIfNotExist 行为对齐)
-        Files.createDirectories(file.parent)
-        Files.write(file, text.toByteArray(Charsets.UTF_8))
+        // 整份落盘 (同目录临时件 + 改名就位): 阅读页会与本次写入并发整读同一章节文件,
+        // 直接 Files.write 会在写完前把文件截断, 并发读方拿到的是半截正文
+        if (!writeTextAtomically(file.toString(), text)) {
+            throw IOException("章节正文写入失败: $file")
+        }
     }
 
     override fun getContent(book: Book, chapter: BookChapter): String? {

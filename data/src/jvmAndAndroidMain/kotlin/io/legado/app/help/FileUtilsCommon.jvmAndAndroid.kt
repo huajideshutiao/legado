@@ -26,6 +26,8 @@ import java.io.File
  * - [delete] / [getPath] 委托 [FileUtilsBase], 与原 FileUtils 转发链等价
  * - [readBytes] / [writeBytes] / [createFileReplace] 直接走 java.io.File,
  *   与原 app 端 JsExtensions 内联实现一致 (File.readBytes / File.writeBytes / File.createFileReplace)
+ * - [replaceFileAtomically] 委托 [FileUtilsBase.replaceFileAtomically] (同卷改名, Windows 上目标
+ *   被占用时走备份让位重试), 失败收成 false
  */
 actual object FileUtilsCommon {
 
@@ -150,4 +152,9 @@ actual object FileUtilsCommon {
         val idx = maxOf(path.lastIndexOf('/'), path.lastIndexOf('\\'))
         return if (idx >= 0) path.substring(idx + 1) else path
     }
+
+    actual fun replaceFileAtomically(srcPath: String, dstPath: String): Boolean =
+        runCatching {
+            FileUtilsBase.replaceFileAtomically(File(srcPath), File(dstPath))
+        }.isSuccess
 }

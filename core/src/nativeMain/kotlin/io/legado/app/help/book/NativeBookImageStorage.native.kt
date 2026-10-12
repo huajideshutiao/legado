@@ -2,6 +2,7 @@ package io.legado.app.help.book
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.File
 
@@ -21,7 +22,7 @@ import io.legado.app.utils.File
  *   (与 Android 端 BookHelp.getImage 路径结构对齐, cacheImageFolderName = "images")
  *
  * # 行为对齐 jvmMain JvmBookImageStorage / 原 iOS IosBookImageStorage / 原 ohos OhosBookImageStorage
- * - [saveImage]: 字节头 magic number 校验 + [File.writeBytes]
+ * - [saveImage]/[writeImageBytes]: 字节头 magic number 校验 + 原子落盘 (同目录临时件 + 改名就位)
  * - [getImagePath]/[isImageExist]: [File.exists]
  * - [hasImageContent]: 目录存在 + 至少一个文件 (短路语义)
  * - [clearCache]: [File.deleteRecursively]
@@ -43,10 +44,7 @@ class NativeBookImageStorage(
         // 校验字节流是否为有效图, 失败返回 null
         if (!isValidImage(bytes)) return null
         val path = resolveImageFile(book, url)
-        val file = File(path)
-        // 父目录不存在则递归创建 (与 iOS createDirectoryAtPath 行为对齐)
-        file.parentFile?.mkdirs()
-        file.writeBytes(bytes)
+        if (!writeBytesAtomically(path, bytes)) return null
         // 返回解析时的路径字符串 (与 iOS 端 saveImage 返回 resolveImageFile 结果行为对齐,
         // 避免依赖 File.absolutePath 在不同 Kotlin/Native 版本下的归一化差异)
         return path
@@ -81,10 +79,7 @@ class NativeBookImageStorage(
 
     /** 原始字节落盘 (不校验, 校验失败也照写, 与 Android BookHelp.writeImage 行为对齐)。 */
     override fun writeImageBytes(book: Book, chapter: BookChapter, url: String, bytes: ByteArray) {
-        val path = resolveImageFile(book, url)
-        val file = File(path)
-        file.parentFile?.mkdirs()
-        file.writeBytes(bytes)
+        writeBytesAtomically(resolveImageFile(book, url), bytes)
     }
 
     /**

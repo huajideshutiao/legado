@@ -120,4 +120,18 @@ expect object FileUtilsCommon {
      * 尾部带分隔符的路径返回空串。
      */
     fun getName(path: String): String
+
+    /**
+     * 用 [srcPath] 整份替换 [dstPath] (同卷原子改名), 成功返回 true。
+     *
+     * 供"先把字节写同目录临时件, 再改名就位"的写入方使用: 调用期间 [dstPath] 要么是完整的
+     * 旧内容、要么是完整的新内容, 并发读方不会读到已截断或写一半的文件。
+     *
+     * [srcPath] 与 [dstPath] 必须同卷 (临时件要落在目标同目录); 改名不复制字节, [srcPath]
+     * 成功后就位为 [dstPath]。失败保持 [dstPath] 原内容可用并返回 false, [srcPath] 由调用方清理。
+     *
+     * 平台实现: jvmAndAndroidMain 委托 [io.legado.app.utils.FileUtilsBase.replaceFileAtomically],
+     * nativeMain 委托 [io.legado.app.utils.replaceFileAtomically] (两端同一语义)。
+     */
+    fun replaceFileAtomically(srcPath: String, dstPath: String): Boolean
 }

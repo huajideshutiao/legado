@@ -12,11 +12,12 @@ import io.legado.app.help.book.BookHelp.clearCacheExtra
 import io.legado.app.help.book.BookHelp.clearInvalidCache
 import io.legado.app.help.book.BookHelp.getCacheFile
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.writeBytesAtomically
+import io.legado.app.help.writeTextAtomically
 import io.legado.app.ui.book.read.page.provider.ChapterContentParserShared
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SvgUtils
-import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.exists
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
@@ -116,13 +117,16 @@ object BookHelp {
         content: String
     ) {
         if (content.isEmpty()) return
-        //保存文本
-        FileUtils.createFileIfNotExist(
+        //保存文本 (整份落盘: 阅读页会与本次写入并发整读同一章节文件, 覆盖写会留半截正文)
+        val path = FileUtils.getPath(
             downloadDir,
             cacheFolderName,
             book.getFolderName(),
             bookChapter.getFileName(),
-        ).writeText(content)
+        )
+        if (!writeTextAtomically(path, content)) {
+            throw IOException("章节正文写入失败: $path")
+        }
         BookHelpShared.upWordCount(book, bookChapter, content)
     }
 
@@ -164,7 +168,11 @@ object BookHelp {
     }
 
     fun writeImage(book: Book, src: String, bytes: ByteArray) {
-        getImage(book, src).createFileIfNotExist().writeBytes(bytes)
+        val path = getImage(book, src).absolutePath
+        // 落盘失败不能静默: 调用方按“已写入”继续走会拿着一个不存在的路径 (原实现由 writeBytes 抛 IOException)
+        if (!writeBytesAtomically(path, bytes)) {
+            throw IOException("图片缓存写入失败: $path")
+        }
     }
 
     fun isImageExist(book: Book, src: String): Boolean {

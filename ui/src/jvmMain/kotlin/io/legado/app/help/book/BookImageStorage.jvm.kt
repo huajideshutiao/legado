@@ -2,6 +2,7 @@ package io.legado.app.help.book
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.SvgRasterizer
 import io.legado.app.utils.UrlUtil
@@ -23,6 +24,9 @@ import java.nio.file.Paths
  * 图片有效性校验: 用 Skia [Codec.makeFromData] 判断字节流是否为有效图 (返回 null 视为损坏),
  * 仅做有效性判断后立即丢弃解码结果 (微秒级, 零 SPI 反射查找, 完美支持 WebP/GIF/PNG/JPG/BMP)。
  *
+ * 落盘走 [writeBytesAtomically]: 缓存文件被读的并发度高于写入, 直接覆盖写会让
+ * 同时读该文件的链路拿到半截字节。
+ *
  * SVG: 对照 Android 端 SvgUtils 兜底, 栅格校验失败时改由 [SvgRasterizer] 解析为 PNG 字节。
  *
  * 注册: desktop 模块启动时通过 [BookImageStorageProviders.register] 注入。
@@ -42,8 +46,7 @@ class JvmBookImageStorage(
         // 与 Android BookHelp.checkImage 行为对齐: 先按栅格图校验, 失败再试 SVG, 都不是则返回 null
         val data = if (isValidImage(bytes)) bytes else SvgRasterizer.toPng(bytes) ?: return null
         val file = resolveImageFile(book, url)
-        Files.createDirectories(file.parent)
-        Files.write(file, data)
+        if (!writeBytesAtomically(file.toString(), data)) return null
         return file.toString()
     }
 
@@ -82,9 +85,7 @@ class JvmBookImageStorage(
 
     /** 原始字节落盘 (不校验, 校验失败也照写, 与 Android BookHelp.writeImage 行为对齐)。 */
     override fun writeImageBytes(book: Book, chapter: BookChapter, url: String, bytes: ByteArray) {
-        val file = resolveImageFile(book, url)
-        Files.createDirectories(file.parent)
-        Files.write(file, bytes)
+        writeBytesAtomically(resolveImageFile(book, url).toString(), bytes)
     }
 
     /**

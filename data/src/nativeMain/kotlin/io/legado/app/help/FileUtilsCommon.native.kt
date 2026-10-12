@@ -20,6 +20,8 @@ import io.legado.app.utils.InputStream
  * - [resolveCachePath] 安全检查走 absolutePath 比较 (无 canonicalPath; POSIX 路径解析由 fs 保证)
  * - [delete] 递归删除子项后删自身 (kotlin.io.File 无 File.deleteRecursively, 但有 listFiles)
  * - [createFileReplace] 用 delete + createNewFile (kotlin.io.File 无原子写, 与 jvm 行为对齐)
+ * - [replaceFileAtomically] 委托 [io.legado.app.utils.replaceFileAtomically] (okio atomicMove =
+ *   POSIX rename), 失败收成 false
  *
  * # 行为差异说明
  * - canonicalPath: JVM 有, Native 无。安全检查退化用 absolutePath 比较, 业务可接受
@@ -208,4 +210,9 @@ actual object FileUtilsCommon {
         val idx = maxOf(path.lastIndexOf('/'), path.lastIndexOf('\\'))
         return if (idx >= 0) path.substring(idx + 1) else path
     }
+
+    actual fun replaceFileAtomically(srcPath: String, dstPath: String): Boolean =
+        runCatching {
+            io.legado.app.utils.replaceFileAtomically(File(srcPath), File(dstPath))
+        }.isSuccess
 }
