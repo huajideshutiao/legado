@@ -48,6 +48,7 @@ import io.legado.app.help.config.ThemeConfig.applyDayNightInit
 import io.legado.app.help.config.migrateLegacyHomeSp
 import io.legado.app.help.config.registerAndroidCrashMarkerProvider
 import io.legado.app.help.config.registerAndroidLocalConfigStore
+import io.legado.app.help.config.registerAndroidManualThemeColorChangeProvider
 import io.legado.app.help.config.registerAndroidPreferenceProvider
 import io.legado.app.lib.theme.MonetColorExtract
 import io.legado.app.help.coroutine.Coroutine
@@ -288,6 +289,8 @@ class App : Application() {
         // 莫奈取色自动跟随:开关仍开着则冷启动补挂壁纸颜色监听 (只挂监听不派生, 8 键已持久化);
         // 必须在 registerAndroidPreferenceProvider 之后 (恢复判定读跟随开关 pref)
         MonetColorExtract.restoreListenerIfNeeded(this)
+        // 手动改色出口: 主题定制对话框提交色值前通知安卓拆掉跟随机关 (桌面/iOS/鸿蒙无该机制, 不注册)
+        registerAndroidManualThemeColorChangeProvider(this)
         // 旧版 SP 主页设置/收藏迁移 (e8b2c5837d 改存 filesDir JSON 后旧数据弃读, 见 LegacyHomeSpMigration);
         // 须在 registerAndroidAppFilesDir (onCreate 早段) 之后、Home 首次 load 之前
         migrateLegacyHomeSp(defaultSharedPreferences)
@@ -326,7 +329,7 @@ class App : Application() {
             io.legado.app.api.ShortCuts.buildShortCuts(this@App)
             // 默认数据补齐 (app 端薄壳 DefaultData.upVersion → 下沉件 StartupMaintenanceShared):
             // 三道 (预置分组/键盘助手/三批默认资源) 整包在 `appVersionCode < 当前版本号` 这道版本门内,
-            // 资源侧另按各自版本 key 门控 (`LocalConfig.needUpXxx` → isLastVersion: 先写回版本 key
+            // 资源侧另按各自版本 key 门控 (原版 `LocalConfig.needUpXxx` → isLastVersion: 先写回版本 key
             // 再返回"需要导入", 每资源每版本只尝试一次, 那次失败也不重试 —— 与原版一致)。
             // 版本号本处只读: 写回 appVersionCode 的是 MainActivity.upVersion() 的弹窗。
             // 排队必须在弹窗之前 (原版 App.onCreate 同样早于 MainActivity)。

@@ -28,7 +28,7 @@ import io.legado.app.help.config.currentEInkMode
  *
  * 映射依据 (拍板): accent←scheme.primary, background←scheme.surface,
  * bottomBackground←scheme.surfaceContainer, cPrimary←与 background 同值
- * (对齐 ThemeConfig.saveCustomTheme / ThemeCustomizeDialog 的 cPrimary=背景色 现状语义)。
+ * (对齐 ThemeCustomizeDialog 的 cPrimary=背景色 现状语义)。
  * 文字色不落盘, 仍由 AppTheme.readAppColors 按背景亮度反推; eInk 读取层强制白底黑字,
  * 与本类写入的键值无关。
  *
@@ -95,8 +95,9 @@ object MonetColorExtract {
      * 手动改色/选预设/应用内置主题前拆除跟随机关 (对照 WallpaperSeed.abandonFollowIfActive):
      * 这些路径不经本类,若跟随 pref 仍为 true,壁纸一变残留回调就会把刚选的颜色拽回壁纸色。
      * 幂等:跟随 pref 已为 false 时直接返回,不产生递归写入;不触碰主题色 8 键。
-     * 调用点:app ThemeConfig 的 saveCustomTheme/applyConfig/applyBuiltin (Android 手动改色
-     * 全部入口,均在用户交互路径上,启动/日夜切换不经过)。
+     * 调用点:app ThemeConfig 的 applyConfig/applyBuiltin (选预设/应用内置主题, 均在用户交互路径上,
+     * 启动/日夜切换不经过); 共享主题定制对话框的手动改色经
+     * [io.legado.app.help.config.ManualThemeColorChangeProvider] 回调本方法。
      */
     fun abandonFollowIfActive(context: Context) {
         if (!PreferenceProviders.get().getBoolean(PreferKey.monetWallpaperFollow, false)) return

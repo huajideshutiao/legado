@@ -40,6 +40,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.ManualThemeColorChangeProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ThemeConfigData
 import io.legado.app.help.config.ThemeConfigProviders
@@ -251,6 +252,9 @@ fun ThemeCustomizeDialog(
     }
 
     fun saveToPrefs() {
+        // 用户手动改色: 有跟随壁纸机制的端 (Android) 在此拆掉机关, 否则刚写入的颜色会被
+        // 下一次壁纸变化重写回壁纸色 (无该机制的端未注册, 直接跳过)
+        ManualThemeColorChangeProviders.getOrNull()?.onManualColorChange()
         if (isNight) {
             prefs.putInt(PreferKey.cNPrimary, bg)
             prefs.putInt(PreferKey.cNAccent, accent)
@@ -573,8 +577,7 @@ private fun ColorRow(label: String, color: Int, onClick: () -> Unit) {
 }
 
 /**
- * 读日/夜自定义色 pref, 未设置 (0) 回落默认色
- * (对照 app 端 ThemeConfig.readCustomTheme 的 getPrefInt 回落 readDefaultColors)。
+ * 读日/夜自定义色 pref, 未设置 (0) 回落默认色。
  */
 private fun readCustomColors(prefs: io.legado.app.help.config.PreferenceProvider, isNight: Boolean):
     Triple<Int, Int, Int> {
