@@ -3,6 +3,7 @@ package io.legado.app.utils
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.http.newCallResponse
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -34,17 +35,25 @@ object RemoteAssetsUtils {
         File(remoteAssetsDir, "tc").apply { if (!exists()) mkdirs() }
     }
 
-    suspend fun downloadTcIfNeeded(fileName: String): ByteArray? {
-        return downloadFile(tcCacheDir, TC_DIR, fileName)
+    /**
+     * 缓存不可用时重新下载并整份落盘, 返回落盘后的字节。
+     *
+     * [isUsable] 是调用方注入的"缓存可用"判据, 必须与加载侧是同一条
+     * ([io.legado.app.utils.isCachedTcDictUsable]): 判据只此一处定义, 本对象不再自带判据 ——
+     * 两侧各写一套时, 加载侧判不可用而下载侧判可用会让"重下"空转, 坏缓存既不被加载也不被替换。
+     */
+    suspend fun downloadTcIfNeeded(fileName: String, isUsable: (File) -> Boolean): ByteArray? {
+        return downloadFile(tcCacheDir, TC_DIR, fileName, isUsable)
     }
 
     private suspend fun downloadFile(
         cacheDir: File,
         dirPath: String,
-        fileName: String
+        fileName: String,
+        isUsable: (File) -> Boolean
     ): ByteArray? {
         val cachedFile = File(cacheDir, fileName)
-        if (cachedFile.exists() && cachedFile.length() > 0) {
+        if (isUsable(cachedFile)) {
             return withContext(Dispatchers.IO) { cachedFile.readBytes() }
         }
 
@@ -61,7 +70,9 @@ object RemoteAssetsUtils {
                 }.use { response ->
                     if (response.isSuccessful) {
                         response.body.bytes().also {
-                            cachedFile.writeBytes(it)
+                            // 整份落盘: 直接覆盖写会让同时在读该文件的一方 (loadDict 正在建词典)
+                            // 拿到半截词表, 并被当成完整词表固定在内存里
+                            writeBytesAtomically(cachedFile.path, it)
                         }
                     } else null
                 }

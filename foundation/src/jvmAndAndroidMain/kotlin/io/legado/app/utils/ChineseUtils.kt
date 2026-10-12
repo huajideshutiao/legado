@@ -35,6 +35,22 @@ fun interface TcDictCachePathProvider {
     fun getPath(fileName: String): File
 }
 
+/**
+ * 缓存的简繁词典文件可用判据: 是普通文件且不小于 [MIN_DICT_FILE_BYTES]。
+ *
+ * 加载方 ([ChineseUtils.loadDict]) 与"缓存缺失即后台拉取"的触发点共用这一条判据; 下载入口不自带
+ * 判据, 由宿主 lambda 把本函数作为参数注入。判据只有一处, 不存在"加载方判不可用、下载方当有效"
+ * 而永久停在坏缓存上的可能。
+ *
+ * 阈值只用来挡掉退化文件 (0 字节、几字节的错误响应体)——这种文件非空, 过不了朴素的非空判定,
+ * 却会被当成完整词表加载成一份几乎空的词典并固定在内存里。上游同名词表最小的一份是
+ * t2hk.txt (821 字节, quick-transfer-core 依赖包内的 tc/ 目录), 512 字节装不下任何一份完整词表。
+ */
+fun isCachedTcDictUsable(file: File): Boolean =
+    file.isFile && file.length() >= MIN_DICT_FILE_BYTES
+
+private const val MIN_DICT_FILE_BYTES = 512L
+
 actual object ChineseUtils {
 
     private var fixed = false
@@ -119,7 +135,7 @@ actual object ChineseUtils {
 
         fileNames.forEach { fileName ->
             val file = provider.getPath(fileName)
-            if (file.exists() && file.length() > 0) {
+            if (isCachedTcDictUsable(file)) {
                 hasCached = true
                 runCatching {
                     file.inputStream().bufferedReader().useLines { lines ->

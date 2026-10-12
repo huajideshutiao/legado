@@ -10,6 +10,7 @@ import io.legado.app.model.script.quickjs.QuickJsJsEngine
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.RemoteAssetsUtils
 import io.legado.app.utils.TcDictCachePathProvider
+import io.legado.app.utils.isCachedTcDictUsable
 import io.legado.desktop.image.DesktopImageOps
 import java.io.File
 import java.nio.file.Files
@@ -79,8 +80,8 @@ fun registerDesktopJsEngines() {
  * 与 [io.legado.app.help.file.DesktopAppFilesDir] 的 cacheDir 同根。
  *
  * # 与 app 端 [io.legado.app.utils.TcDictCachePathProvider] (ChineseUtilsProvider.kt) 差异
- * - app 端 lambda 内置 `RemoteAssetsUtils.downloadTcIfNeeded(fileName)` 后台拉取副作用,
- *   缺失即异步下载 (依赖 Coroutine.async + RemoteAssetsUtils);
+ * - app 端 lambda 内置 `RemoteAssetsUtils.downloadTcIfNeeded(fileName, isCachedTcDictUsable)`
+ *   后台拉取副作用, 缺失即异步下载 (依赖 Coroutine.async + RemoteAssetsUtils);
  * - 桌面端同语义: 缓存文件缺失/为空时经 `Coroutine.async` 后台拉取 quick-transfer
  *   默认词典, 副作用在 loadDict 实际调用时触发 (对照 app 端 ChineseUtilsProvider 的下载副作用);
  *   词典存临时目录, 行为可用但不持久化。
@@ -91,9 +92,13 @@ private val DesktopTcDictCachePathProvider = TcDictCachePathProvider { fileName 
     Files.createDirectories(cacheRoot)
     val file = File(cacheRoot.toFile(), fileName)
     // 缺失即后台拉取 (对照 app 端 registerAndroidChineseUtils 的下载副作用,
-    // 2026-08-06 补: 此前桌面端只定位不下载, 每次启动回落 quick-transfer 默认词典加载慢)
-    if (!file.exists() || file.length() == 0L) {
-        Coroutine.async { RemoteAssetsUtils.downloadTcIfNeeded(fileName) }
+    // 2026-08-06 补: 此前桌面端只定位不下载, 每次启动回落 quick-transfer 默认词典加载慢);
+    // 可用的判据与加载方同一条 ([isCachedTcDictUsable]), 并原样传给下载入口 (下载侧不自带判据):
+    // 两侧判据不一致时, 加载方判不可用而下载方当有效, 坏缓存永远不会重下
+    if (!isCachedTcDictUsable(file)) {
+        Coroutine.async {
+            RemoteAssetsUtils.downloadTcIfNeeded(fileName, ::isCachedTcDictUsable)
+        }
     }
     file
 }
