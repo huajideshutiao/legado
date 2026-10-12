@@ -35,36 +35,6 @@ by App.instance.getSharedPreferences("local", Context.MODE_PRIVATE) {
             putLong("lastBackup", value)
         }
 
-    val readHelpVersionIsLast: Boolean
-        get() = isLastVersion(1, "readHelpVersion", "firstRead")
-
-    val backupHelpVersionIsLast: Boolean
-        get() = isLastVersion(1, "backupHelpVersion", "firstBackup")
-
-    val readMenuHelpVersionIsLast: Boolean
-        get() = isLastVersion(1, "readMenuHelpVersion", "firstReadMenu")
-
-    val bookSourcesHelpVersionIsLast: Boolean
-        get() = isLastVersion(1, "bookSourceHelpVersion", "firstOpenBookSources")
-
-    val webDavBookHelpVersionIsLast: Boolean
-        get() = isLastVersion(1, "webDavBookHelpVersion", "firstOpenWebDavBook")
-
-    val ruleHelpVersionIsLast: Boolean
-        get() = isLastVersion(1, "ruleHelpVersion")
-
-    val needUpHttpTTS: Boolean
-        get() = !isLastVersion(6, "httpTtsVersion")
-
-    val needUpTxtTocRule: Boolean
-        get() = !isLastVersion(3, "txtTocRuleVersion")
-
-    val needUpRssSources: Boolean
-        get() = !isLastVersion(6, "rssSourceVersion")
-
-    val needUpDictRule: Boolean
-        get() = !isLastVersion(2, "needUpDictRule")
-
     var versionCode
         get() = getLong(versionCodeKey, 0)
         set(value) {
@@ -76,18 +46,6 @@ by App.instance.getSharedPreferences("local", Context.MODE_PRIVATE) {
             getBoolean = { k, d -> getBoolean(k, d) },
             putBoolean = { k, v -> edit { putBoolean(k, v) } }
         )
-
-    @Suppress("SameParameterValue")
-    private fun isLastVersion(
-        lastVersion: Int,
-        versionKey: String,
-        firstOpenKey: String? = null
-    ): Boolean = LocalConfigShared.isLastVersion(
-        lastVersion, versionKey, firstOpenKey,
-        getInt = { k, d -> getInt(k, d) },
-        getBoolean = { k, d -> getBoolean(k, d) },
-        putInt = { k, v -> edit { putInt(k, v) } }
-    )
 
     var deleteBookOriginal: Boolean
         get() = getBoolean("deleteBookOriginal")

@@ -43,7 +43,7 @@ object DefaultData {
      *
      * 语义对齐原版 `DefaultData.upVersion()`:
      * - 三道判断整包在 `LocalConfig.versionCode < AppConst.appInfo.versionCode` 这道版本门内;
-     * - 资源版本 key 的读写走 `LocalConfig.needUpXxx` → [io.legado.app.help.config.LocalConfigShared.isLastVersion],
+     * - 资源版本 key 的读写走原版 `LocalConfig.needUpXxx` → [io.legado.app.help.config.LocalConfigShared.isLastVersion],
      *   **先写回再返回"需要导入"** —— 每资源每版本只尝试一次, 那次抛异常也不重试 (原版由
      *   `Coroutine.async { ... }.onError { it.printOnDebug() }` 记日志后放过);
      * - `appVersionCode` 本函数只读不写 (写回它的只有 `MainActivity.upVersion()` 的弹窗)。

@@ -154,7 +154,7 @@ fun BookSourceManageRoute(
     // 书源分组管理对话框 (对照 app 端 GroupManageDialog; 管理 BookSource.bookSourceGroup, 非书架 BookGroup)
     var showGroupManage by remember { mutableStateOf(false) }
 
-    // 首次打开帮助引导 (对照 app 端 onActivityCreated: !LocalConfig.bookSourcesHelpVersionIsLast)
+    // 首次打开帮助引导 (对照原版 onActivityCreated: !LocalConfig.bookSourcesHelpVersionIsLast)
     LaunchedEffect(Unit) {
         // 版本标记存 "local" prefs (LocalConfigStore), 与原版 LocalConfig 同存储
         val local = LocalConfigProviders.get()

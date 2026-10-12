@@ -49,7 +49,7 @@ fun blurredImageVariantPath(resolvedAbsPath: String): String =
  * 避免清一处时误伤其它引用 (另一处渲染端只剩兜底/成孤儿)。
  *
  * @param withFile true 连原图文件一并删 (换图/清除/残留清理);
- *                 false 只删烘焙产物 (提交换图时原图留给 clearBg 按白名单清)
+ *                 false 只删烘焙产物 (提交换图时原图留给启动期的 [io.legado.app.help.config.ThemeConfigProvider.clearBg] 按白名单清)
  * @param excludeKey 调用方正在替换/清除的键 (删除发生在该键写新值之前, 不排除会被"仍引用"误拦)
  */
 fun deleteImageIfUnreferenced(absPath: String, withFile: Boolean, excludeKey: String? = null) {

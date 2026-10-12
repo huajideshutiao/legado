@@ -33,7 +33,7 @@ import kotlin.math.max
  *
  * @param screenLabel 搜索框 hint 前缀 (app 端 R.string.screen "界面")
  * @param noGroupLabel 无分组名兜底 (app 端 R.string.no_group)
- * @param resolveBookSort 按 groupId 取排序方式 (app 端 AppConfig.getBookSortByGroupId, suspend 因 DAO 查询)
+ * @param resolveBookSort 按 groupId 取排序方式 (原版 AppConfig.getBookSortByGroupId, suspend 因 DAO 查询)
  * @param loadCacheFiles 书籍加载后扫描缓存文件 (app 端 viewModel.loadCacheFiles)
  */
 class BookshelfManageScreenModel(

@@ -47,6 +47,9 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
 
     /**
      * 判断指定Activity是否存在
+     *
+     * 原版消费方是媒体键路由 (`MediaButtonReceiver` 按阅读页/音频页是否开着决定按键去向),
+     * 本仓该分发已由无头会话分支取代, 故本仓无调用点。原版既有公开 API, 保留以对齐原版。
      */
     fun isExistActivity(activityClass: Class<*>): Boolean {
         activities.forEach { item ->

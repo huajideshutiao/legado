@@ -49,6 +49,8 @@ suspend fun ApplicationCall.parseMultipart(): MultipartParseResult {
                 val name = part.name ?: return@forEachPart
                 // Ktor 3 的 FileItem.provider() 返回 ByteReadChannel, 用 toByteArray 全量读
                 val bytes = part.provider().toByteArray()
+                // 请求内暂存件: 请求处理结束由 KtorRouting.handleApiCall 的 finally 删掉,
+                // 不落长期孤儿件 (名字不取共享临时件契约)
                 val tempFile = File(
                     AppFilesDirs.get().cacheDir,
                     "upload_${systemCurrentTimeMillis()}_${name}.tmp",

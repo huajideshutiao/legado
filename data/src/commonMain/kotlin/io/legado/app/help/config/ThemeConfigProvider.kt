@@ -91,13 +91,10 @@ data class ThemeConfigData(
 }
 
 /**
- * 主题自定义编辑数据类 (KMP 版, commonMain)。
+ * 主题自定义编辑表单的色值状态 (三色, ARGB packed Int, 与 ColorPicker 一致)。
  *
- * 对照 app 端 `ThemeConfig.CustomTheme` (accent/background/bottomBackground/bgImage/bgImageBlur),
- * 去掉背景图相关字段 (背景图功能不下沉), 仅保留三色 (ARGB packed Int, 与 ColorPicker 一致)。
- *
- * 供 ThemeCustomizeDialog 下沉后跨平台共享表单状态 (EDIT_PREFS / EDIT_CONFIG / NEW_CONFIG 三模式),
- * 颜色用 Int 而非 Compose Color, 保持 commonMain 无 Compose UI 依赖 (与 [ThemeConfigData] 用 String 同理)。
+ * 颜色用 Int 而非 Compose Color, 保持 commonMain 无 Compose UI 依赖 (与 [ThemeConfigData] 用 String 同理);
+ * 供 ThemeCustomizeDialog 跨平台共享表单状态 (EDIT_PREFS / EDIT_CONFIG / NEW_CONFIG 三模式)。
  */
 data class CustomThemeData(
     val accent: Int,
@@ -239,12 +236,15 @@ interface ThemeConfigProvider {
     fun upConfig()
 
     /**
-     * 清理主题背景图片缓存 (对照 app 端 `ThemeConfig.clearBg`)。
+     * 清理主题背景图与启动封面图缓存。
      *
-     * # 目录约定 (2026 图集化): 主题背景图统一落 `{文件根}/customImg` 图集目录,
-     * 内容特征值命名 `<字节数>.<ext>` (见 FilePickerService.importBackgroundImage,
-     * 启动图同规则), 故清理只删 customImg 下主干为纯数字的背景图/启动图文件, 封面图集 (covers 子目录)/启动图/阅读背景等其他图集文件不受影响
-     * (烘焙产物与封面烘焙产物同在缓存根 customImg 目录, 不参与纯数字清理)。
+     * # 目录约定 (2026 图集化): 主题背景图与启动封面图共用 `{文件根}/customImg` 图集目录,
+     * 均按内容特征值命名 `<字节数>.<ext>` (见 FilePickerService.importBackgroundImage,
+     * 启动图同规则); 清理只扫该目录下主干为纯数字的文件, 四个引用键 (启动封面 日/夜、
+     * 界面背景 日/夜) 都不再指向的删掉 (判定见 [deleteImageIfUnreferenced]), 仍被任一键引用的
+     * 保留 —— 同图在日/夜或封面/背景间复用是常态, 物理上只有一份文件。封面图集 (covers 子目录,
+     * 单层列举不进入) 与阅读背景等其他目录的文件不受影响; 烘焙产物在**缓存根**的同名 customImg 目录,
+     * 不在本方法扫描的目录里, 它们的回收跟着原图走 (见 [deleteImageIfUnreferenced])。
      *
      * # 平台差异
      * - 各端同一实现: 经 [AppFilesDirs] + [BackupFileOps] 跨平台抽象;

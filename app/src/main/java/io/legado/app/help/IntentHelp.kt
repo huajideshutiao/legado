@@ -37,6 +37,11 @@ object IntentHelp {
         }
     }
 
+    /**
+     * 跳转系统“安装未知来源应用”设置页。
+     *
+     * 原版既有本方法, 且原版自身无消费方 (仅本处定义); 保留以对齐原版公开 API。
+     */
     fun toInstallUnknown(context: Context) {
         kotlin.runCatching {
             val intent = Intent()

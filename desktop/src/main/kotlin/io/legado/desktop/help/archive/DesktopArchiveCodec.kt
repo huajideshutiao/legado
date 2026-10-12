@@ -84,7 +84,8 @@ internal object DesktopArchiveCodec : DesktopArchiveSupport {
     /**
      * 从压缩包字节内容取 [path] 条目字节 (对齐 `LibArchiveUtils.getByteArrayContent`)。
      *
-     * 无文件名可依据, 用魔数嗅探格式 ([sniffFormat]); rar/7z 需随机访问, 落临时文件后再读。
+     * 无文件名可依据, 用魔数嗅探格式 ([sniffFormat]); 各格式均从内存字节读 (7z 用 setByteArray,
+     * rar 用 ByteArrayInputStream), 不落临时文件。
      */
     fun getByteArrayContent(bytes: ByteArray, path: String): ByteArray? {
         var result: ByteArray? = null

@@ -5,8 +5,6 @@ import android.os.Build
 import io.legado.app.App
 import io.legado.app.BuildConfig
 import io.legado.app.constant.PreferKey
-import io.legado.app.data.appDb
-import io.legado.app.data.entities.getRealBookSort
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
@@ -15,10 +13,8 @@ import io.legado.app.utils.isNightMode
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.putPrefString
-import io.legado.app.utils.removePref
 import io.legado.app.utils.sysConfiguration
 import io.legado.app.utils.toastOnUi
-import kotlinx.coroutines.runBlocking
 
 @Suppress("MemberVisibilityCanBePrivate", "ConstPropertyName")
 object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
@@ -272,11 +268,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var pageTouchSlop by intPref(PreferKey.pageTouchSlop, 0)
     var bookshelfSort by intPref(PreferKey.bookshelfSort, 0)
 
-    fun getBookSortByGroupId(groupId: Long): Int {
-        return runBlocking { appDb.bookGroupDao.getByID(groupId) }?.getRealBookSort(bookshelfSort)
-            ?: bookshelfSort
-    }
-
     private fun getPrefUserAgent(): String {
         val ua = App.instance.getPrefString(PreferKey.userAgent)
         if (ua.isNullOrBlank()) {
@@ -351,11 +342,5 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var welcomeShowTextDark by boolPref(PreferKey.welcomeShowTextDark, true)
     var welcomeShowIconDark by boolPref(PreferKey.welcomeShowIconDark, true)
     val enableWelcome by boolPref(PreferKey.enableWelcome, true)
-
-    /** 恢复默认 UA:清 pref 并立即重载缓存,不等监听器 */
-    fun resetUserAgent() {
-        App.instance.removePref(PreferKey.userAgent)
-        reloadCachedPref(PreferKey.userAgent)
-    }
 
 }

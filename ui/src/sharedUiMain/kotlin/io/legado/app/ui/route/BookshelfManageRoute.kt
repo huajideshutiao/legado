@@ -106,7 +106,7 @@ fun BookshelfManageRoute(
         BookshelfManageScreenModel(
             screenLabel = screenLabel,
             noGroupLabel = noGroupLabel,
-            // 对照 app 端 AppConfig.getBookSortByGroupId: 分组自定义排序 (bookSort>=0) 优先,
+            // 对照原版 AppConfig.getBookSortByGroupId: 分组自定义排序 (bookSort>=0) 优先,
             // 否则回退全局 bookshelfSort (3=手动排序可拖拽, canDrag 由 ScreenModel 解析)
             resolveBookSort = { groupId ->
                 val group = runCatching {

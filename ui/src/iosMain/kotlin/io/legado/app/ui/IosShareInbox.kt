@@ -82,7 +82,14 @@ object IosShareInbox {
     /** 应用内接收目录名: 容器里的收件先落这里, 再由既有导入链就地读取。 */
     private const val STORE_DIR_NAME = "ShareImports"
 
-    /** 隐藏临时件的后缀 (写件侧与 [stage] 同一套: ".<原名>.part")。 */
+    /**
+     * 隐藏临时件的后缀 (写件侧与 [stage] 同一套: ".<原名>.part")。
+     *
+     * 这是与分享扩展 (`iosApp/ShareExtension/ShareViewController.swift` 的 `deliver`) 的跨进程命名
+     * 契约, 两侧逐字一致, 不能换名; 它不属整份写入的共享临时件契约
+     * ([io.legado.app.utils.ATOMIC_WRITE_TEMP_SUFFIX]), 因此不被按共享契约清点的方删除——残留件
+     * 只由 [discardAbandonedTemps] 在启动取件时清。
+     */
     private const val TEMP_SUFFIX = ".part"
 
     /** "分享入口不可用"提示一次的记忆键 (未签名 ipa / 签名未勾 App Groups 的产物上会用到)。 */

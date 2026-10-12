@@ -316,7 +316,7 @@ fun BackupConfigRoute(
 
     // 对照 app 端 init: 初始化 6 个动态 summary
     LaunchedEffect(Unit) {
-        // 对照 app 端 onViewCreated: 首次进入弹 webDavHelp (LocalConfig.backupHelpVersionIsLast)
+        // 对照原版 onViewCreated: 首次进入弹 webDavHelp (LocalConfig.backupHelpVersionIsLast)
         // 版本标记存 "local" prefs (LocalConfigStore), 与 app 端 LocalConfig 同存储, 老用户升级不重复弹
         val local = LocalConfigProviders.get()
         val isLastHelp = LocalConfigShared.isLastVersion(

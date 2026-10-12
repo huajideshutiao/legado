@@ -132,7 +132,7 @@ fun BookSourceEditRoute(
         })
     }
 
-    // 首次打开规则帮助引导 (对照 app 端 onPostCreate: !LocalConfig.ruleHelpVersionIsLast)
+    // 首次打开规则帮助引导 (对照原版 onPostCreate: !LocalConfig.ruleHelpVersionIsLast)
     LaunchedEffect(Unit) {
         // 版本标记存 "local" prefs (LocalConfigStore), 与原版 LocalConfig 同存储
         val local = LocalConfigProviders.get()

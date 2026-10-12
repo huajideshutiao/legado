@@ -62,7 +62,7 @@ object StartupMaintenanceShared {
      * 1. 预置书架分组: 按主键缺啥补啥 (不覆盖用户改动)
      * 2. 默认键盘助手: 按 (type,key) 逐项补齐
      * 3. httpTTS / txtTocRule / dictRule: 各自再加一层资源版本门
-     *    ([LocalConfigShared.isLastVersion], 与 `LocalConfig.needUpXxx` 同一算法)
+     *    ([LocalConfigShared.isLastVersion], 与原版 `LocalConfig.needUpXxx` 同一算法)
      *
      * 版本门要求 [AppVersionProviders] 注册进来的当前版本号随版本推进单调不减
      * (iOS/鸿蒙/桌面 由 `versionNameToVersionCode` 的定宽位槽编码保证): 按数值大小判"版本是否推进"。
@@ -83,7 +83,7 @@ object StartupMaintenanceShared {
      * # 存储注入 (getInt/putInt/getBoolean/getLong)
      *
      * 版本门涉及的 key 在各端落脚不同: app 端历史上它们全在独立的 `local` 配置里
-     * (`LocalConfig.versionCode` / `LocalConfig.needUpXxx`), 桌面/iOS/鸿蒙 则在默认配置。
+     * (`LocalConfig.versionCode` 与原版 `LocalConfig.needUpXxx`), 桌面/iOS/鸿蒙 则在默认配置。
      * 不注入而直接用默认配置, 会让 app 端老用户把已记录的版本当成 0 而重跑一次默认导入 ——
      * 字典规则是按名称 insert-or-replace, 会覆盖用户对同名默认规则的修改。
      *
@@ -165,7 +165,7 @@ object StartupMaintenanceShared {
             what: String,
             import: suspend () -> Unit,
         ) {
-            // firstOpenKey 传 null: 与 app 端 `isLastVersion(6, "httpTtsVersion")` 等资源档调用一致
+            // firstOpenKey 传 null: 与原版 `isLastVersion(6, "httpTtsVersion")` 等资源档调用一致
             // (只有 help 引导那几档才带 firstOpenKey)
             val isLast = LocalConfigShared.isLastVersion(
                 lastVersion = lastVersion,

@@ -26,7 +26,7 @@ import io.legado.app.help.StartupMaintenanceShared
  *    主路径是建库回调 (`BundledDatabaseDriver` 构造时挂的 `AppDatabaseDefaults.onCreate`),
  *    这里只兜"建库回调挂上之前的老库"与"以后新增的预置项"。
  * 2. **键盘助手补齐**: 同门控, 按 (type,key) 逐项补缺。
- * 3. **资源版本门**: 与 app 端 `LocalConfig.needUpXxx` 同一算法 (`LocalConfigShared.isLastVersion`:
+ * 3. **资源版本门**: 与原版 `LocalConfig.needUpXxx` 同一算法 (`LocalConfigShared.isLastVersion`:
  *    先写回资源版本 key 再返回"需要导入"), 每资源每版本只尝试一次, 那次失败也不重试 (对齐原版)。
  *
  * 三道整包在**同一个版本门** (`appVersionCode < 当前版本号`) 内; 该键本件只读 —— 写回它的是

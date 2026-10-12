@@ -201,14 +201,6 @@ fun FileDoc.writeText(text: String) {
     FileDocIo.writeText(this, text)
 }
 
-fun FileDoc.writeFile(file: File) {
-    openOutputStream().getOrThrow().use { out ->
-        file.inputStream().use {
-            it.copyTo(out)
-        }
-    }
-}
-
 fun FileDoc.delete() {
     FileDocIo.delete(this)
 }

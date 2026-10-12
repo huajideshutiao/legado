@@ -73,7 +73,6 @@ object LocalConfigKeys {
     // 资源升级版本 key
     const val httpTtsVersion = "httpTtsVersion"
     const val txtTocRuleVersion = "txtTocRuleVersion"
-    const val rssSourceVersion = "rssSourceVersion"
     const val needUpDictRule = "needUpDictRule"
 
     const val appVersionCode = "appVersionCode"
@@ -153,8 +152,8 @@ fun rememberBookExportDir(path: String?) {
 /**
  * 各 help 引导 / 资源升级的最新版本号常量。
  *
- * 与 app 端 [io.legado.app.help.config.LocalConfig] 各 `isLastVersion` / `needUpXxx`
- * 属性调用时传入的 `lastVersion` 参数值完全一致。
+ * 与原版 `LocalConfig` 各 `isLastVersion` / `needUpXxx` 调用时传入的 `lastVersion`
+ * 参数值一致。
  */
 @Suppress("ConstPropertyName")
 object HelpVersion {
@@ -182,15 +181,12 @@ object HelpVersion {
     /** TxtTocRule 资源最新版本 (对应 `!isLastVersion(3, "txtTocRuleVersion")`)。 */
     const val txtTocRule = 3
 
-    /** RssSources 资源最新版本 (对应 `!isLastVersion(6, "rssSourceVersion")`)。 */
-    const val rssSources = 6
-
     /** DictRule 资源最新版本 (对应 `!isLastVersion(2, "needUpDictRule")`)。 */
     const val dictRule = 2
 }
 
 /**
- * 版本比较算法 (平台无关, 与 app 端 [io.legado.app.help.config.LocalConfig.isLastVersion] 逻辑完全一致)。
+ * 版本比较算法 (平台无关, 与原版 `LocalConfig.isLastVersion` 逻辑完全一致)。
  *
  * 算法步骤:
  * 1. 读取当前版本号 [versionKey] (默认 0)
@@ -198,9 +194,6 @@ object HelpVersion {
  *    - 标志为 false (非首次) → 视为版本 1 (兼容旧版本迁移)
  * 3. 若当前版本 < [lastVersion] → 写入最新版本, 返回 false (需要展示引导)
  * 4. 否则返回 true (已是最新版本)
- *
- * 放在 [LocalConfigShared] object 内, 避免与 app 端 [io.legado.app.help.config.LocalConfig]
- * 的同名私有方法在调用时产生命名歧义 (app 端用 `LocalConfigShared.isLastVersion(...)` 显式调用)。
  *
  * @param lastVersion 最新版本号
  * @param versionKey 版本存储 key

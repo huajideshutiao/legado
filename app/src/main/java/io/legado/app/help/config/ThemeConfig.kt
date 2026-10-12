@@ -18,20 +18,16 @@ import io.legado.app.constant.Theme
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.lib.theme.MonetColorExtract
 import io.legado.app.lib.theme.ThemeStore
-import io.legado.app.model.deleteImageIfUnreferenced
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.GSON
-import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getCompatColor
-import io.legado.app.utils.getFile
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.hexString
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefInt
-import io.legado.app.utils.putPrefString
 import io.legado.app.utils.removePref
 import io.legado.app.utils.toJson
 import kotlinx.serialization.Serializable
@@ -126,55 +122,6 @@ object ThemeConfig {
             )
         }
 
-    /** 自定义主题编辑页的 pref 快照 */
-    data class CustomTheme(
-        val accent: Int,
-        val background: Int,
-        val bottomBackground: Int,
-        val bgImage: String?,
-        val bgImageBlur: Int,
-    )
-
-    /** 读取指定模式的自定义主题,色值 0 视为未设置回落默认色 */
-    fun readCustomTheme(context: Context, isNight: Boolean): CustomTheme = with(context) {
-        val (defAccent, defBg, defBbg) = readDefaultColors(context, isNight)
-        val accentKey = if (isNight) PreferKey.cNAccent else PreferKey.cAccent
-        val bgKey = if (isNight) PreferKey.cNBackground else PreferKey.cBackground
-        val bbgKey = if (isNight) PreferKey.cNBBackground else PreferKey.cBBackground
-        val bgImageKey = if (isNight) PreferKey.bgImageN else PreferKey.bgImage
-        val blurKey = if (isNight) PreferKey.bgImageNBlurring else PreferKey.bgImageBlurring
-        CustomTheme(
-            accent = getPrefInt(accentKey).let { if (it == 0) defAccent else it },
-            background = getPrefInt(bgKey).let { if (it == 0) defBg else it },
-            bottomBackground = getPrefInt(bbgKey).let { if (it == 0) defBbg else it },
-            bgImage = getPrefString(bgImageKey),
-            bgImageBlur = getPrefInt(blurKey, 0),
-        )
-    }
-
-    /** 保存指定模式的自定义主题;bgImage 为空清除背景图 */
-    fun saveCustomTheme(context: Context, isNight: Boolean, theme: CustomTheme) = with(context) {
-        // 手动改色接管:若莫奈跟随壁纸开着,先拆机关 (注销监听+开关落 false),
-        // 否则壁纸一变残留回调会把刚保存的颜色拽回壁纸色
-        MonetColorExtract.abandonFollowIfActive(this)
-        val primaryKey = if (isNight) PreferKey.cNPrimary else PreferKey.cPrimary
-        val accentKey = if (isNight) PreferKey.cNAccent else PreferKey.cAccent
-        val bgKey = if (isNight) PreferKey.cNBackground else PreferKey.cBackground
-        val bbgKey = if (isNight) PreferKey.cNBBackground else PreferKey.cBBackground
-        val bgImageKey = if (isNight) PreferKey.bgImageN else PreferKey.bgImage
-        val blurKey = if (isNight) PreferKey.bgImageNBlurring else PreferKey.bgImageBlurring
-        putPrefInt(primaryKey, theme.background)
-        putPrefInt(accentKey, theme.accent)
-        putPrefInt(bgKey, theme.background)
-        putPrefInt(bbgKey, theme.bottomBackground)
-        if (theme.bgImage.isNullOrBlank()) {
-            removePref(bgImageKey)
-        } else {
-            putPrefString(bgImageKey, theme.bgImage)
-        }
-        putPrefInt(blurKey, theme.bgImageBlur)
-    }
-
     /**
      * 前置到主题列表最前的两个虚拟条目，不写盘、不进 configList
      */
@@ -205,7 +152,7 @@ object ThemeConfig {
      * 应用内置默认主题：清 6 个 pref → applyTheme 走 XML 实时读取
      */
     fun applyBuiltin(context: Context, isNight: Boolean) {
-        // 选预设接管:拆莫奈跟随机关 (同 saveCustomTheme, 残留壁纸回调不得拽回壁纸色)
+        // 选预设接管:拆莫奈跟随机关 (残留壁纸回调不得拽回壁纸色)
         MonetColorExtract.abandonFollowIfActive(context)
         if (isNight) {
             context.removePref(PreferKey.cNAccent)
@@ -239,7 +186,12 @@ object ThemeConfig {
         return createConfigurationContext(configuration).getCompatColor(id)
     }
 
-    /** 壁纸贴边亮度缓存: key = 路径-mtime-窗口宽-窗口高-是否顶边 (特征值同名同内容, 换图靠 mtime 失效) */
+    /**
+     * 壁纸贴边亮度缓存: key = 路径-mtime-窗口宽-窗口高-是否顶边。
+     *
+     * 换背景图天然换键 (路径与 mtime 都变), 旧条目只是本进程内存里的残留, 无需显式清空;
+     * 条目量以"用过的背景图 × 用过的窗口尺寸 (含顶/底边)"为界, 不随使用时长增长。
+     */
     private val bgEdgeLightCache = HashMap<String, Boolean>()
 
     /**
@@ -312,19 +264,6 @@ object ThemeConfig {
         configList.addAll(getConfigsFromDisk())
     }
 
-    fun clearBg() {
-        bgEdgeLightCache.clear()
-        // 图集化后背景图落 customImg 内容特征值命名 (pref 存裸文件名, 经 resolveImagePath 解析);
-        // 只处理纯数字主干文件, 删除前经 deleteImageIfUnreferenced 四键检查 (启动封面/界面背景
-        // 日/夜), 任一键仍引用则保留 —— 同图复用场景不误删, 封面/启动图等其他图集文件不动
-        App.instance.externalFiles.getFile("customImg").listFiles()?.forEach {
-            val stem = it.name.substringBeforeLast('.', it.name)
-            if (stem.isNotEmpty() && stem.all(Char::isDigit)) {
-                deleteImageIfUnreferenced(it.absolutePath, withFile = true)
-            }
-        }
-    }
-
     fun addConfig(json: String): Boolean {
         GSON.fromJsonObject<Config>(json.trim { it < ' ' }).getOrNull()
             ?.let {
@@ -394,7 +333,7 @@ object ThemeConfig {
     }
 
     fun applyConfig(context: Context, config: Config) {
-        // 选预设接管:拆莫奈跟随机关 (同 saveCustomTheme, 残留壁纸回调不得拽回壁纸色)
+        // 选预设接管:拆莫奈跟随机关 (残留壁纸回调不得拽回壁纸色)
         MonetColorExtract.abandonFollowIfActive(context)
         try {
             applyConfigToPrefs(context, config)

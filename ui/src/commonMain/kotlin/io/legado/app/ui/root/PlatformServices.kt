@@ -197,7 +197,8 @@ interface FilePickerService {
      */
     fun importBackgroundImage(srcPath: String, isNight: Boolean): String? {
         // 内容特征值命名 (非固定名): 换图不同大小各留一文件, 同大小复用; 旧文件交由
-        // clearBg 白名单清理, 不在导入时删——日夜可能引用同一份文件, 导入侧删会误伤
+        // 启动期缓存清理的白名单 (ThemeConfigProviders.clearBg) 回收, 不在导入时删
+        // ——日夜可能引用同一份文件, 导入侧删会误伤
         val ref = importImageSetFile(srcPath)
             ?: return null
         val abs = resolveImagePath(ref) ?: return ref
