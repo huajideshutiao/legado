@@ -25,7 +25,6 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.help.ui.OpenUrlProviders
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
-import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.model.analyzeRule.QueryTTF
 import io.legado.app.model.script.jsContext
 import io.legado.app.model.script.jsContextOrNull
@@ -40,6 +39,7 @@ import io.legado.app.utils.JsURL
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.StringUtils
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.getUrlSuffix
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.mapAsync
 import io.legado.app.utils.postEvent
@@ -1247,26 +1247,5 @@ private fun codePointToString(code: Int): String {
         val high = 0xD800 + (normalized shr 10)
         val low = 0xDC00 + (normalized and 0x3FF)
         charArrayOf(high.toChar(), low.toChar()).concatToString()
-    }
-}
-
-/**
- * 提取 URL 的合法文件后缀 (对应 jvmAndAndroidMain `UrlUtil.getSuffix`)。
- *
- * UrlUtil 在 jvmAndAndroidMain (依赖 CustomUrl + 正则), 未下沉 commonMain;
- * 此处复刻同逻辑 (CustomUrl 已在 commonMain) 供 [JsExtensionsCommon.downloadFile] 使用。
- */
-private fun getUrlSuffix(str: String): String {
-    val suffix = CustomUrl(str).getUrl()
-        .substringAfterLast("/")
-        .substringBefore("?")
-        .substringBefore("#")
-        .substringAfterLast(".", "")
-    val fileSuffixRegex = Regex("^[a-z\\d]+$", RegexOption.IGNORE_CASE)
-    return if (suffix.length > 5 || !suffix.matches(fileSuffixRegex)) {
-        AppLog.put("Cannot find legal suffix:\n target: $str\n suffix: $suffix")
-        "ext"
-    } else {
-        suffix
     }
 }

@@ -16,7 +16,8 @@ import io.legado.app.utils.UrlUtil
  * 依赖说明:
  * - formatBookAuthor 已移至 [BookHelpShared] (commonMain), 此处委托;
  * - getDurChapter 及其章节名/章节号辅助方法已移至 [BookHelpChapterLocator] (commonMain), 此处委托;
- * - [UrlUtil.getSuffix] 仍在 jvmAndAndroidMain (依赖 java.net.URL 等), 故本文件保留在 jvmAndAndroidMain。
+ * - [UrlUtil.getSuffix] 本身已下沉 commonMain ([io.legado.app.utils.getUrlSuffix], 此处经
+ *   UrlUtil 同名方法委托), jvmAndAndroidMain 只留 [UrlUtil.getFileName] 等依赖 java.net.URL 的部分。
  *
  * app 端 `BookHelp` 同名方法改为薄壳委托, 70+ 处消费方零改动。
  */

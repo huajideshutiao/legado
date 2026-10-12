@@ -14,6 +14,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.fileBook.FileBookProviders
+import io.legado.app.utils.getUrlSuffix
 import io.legado.app.utils.isContentScheme
 import kotlinx.coroutines.currentCoroutineContext
 import kotlin.coroutines.cancellation.CancellationException
@@ -37,8 +38,8 @@ import kotlin.coroutines.cancellation.CancellationException
  *
  * # 与 app 端的两处等价替换
  * - `AnalyzeUrl` (app 端 JsApi 子类) → [AnalyzeUrlCore] (commonMain 同实现基类), 解析行为一致
- * - `UrlUtil.getFileName` (在 jvmAndAndroidMain, 含 HEAD 探测) → 本文件 [getUrlFileName] 复刻,
- *   照 [io.legado.app.help.JsExtensionsCommon] 复刻 `UrlUtil.getSuffix` 的同一先例
+ * - `UrlUtil.getFileName` (在 jvmAndAndroidMain, 含 HEAD 探测) → 本文件 [getUrlFileName] 复刻
+ *   (后缀判据不走复刻: 各方统一调 commonMain [io.legado.app.utils.getUrlSuffix])
  */
 object WebFileImportShared {
 
@@ -147,8 +148,6 @@ object WebFileImportShared {
     /** 路径后缀不可信的黑名单 (与 `UrlUtil.unExpectFileSuffixs` 一致)。 */
     private val unExpectFileSuffixs = arrayOf("php", "html")
 
-    private val fileSuffixRegex = Regex("^[a-z\\d]+$", RegexOption.IGNORE_CASE)
-
     /**
      * 根据网络 url 获取文件名 (对应 `UrlUtil.getFileName`)。
      *
@@ -166,7 +165,7 @@ object WebFileImportShared {
     private fun getFileNameFromPath(fileUrl: String): String? {
         val path = CustomUrl(fileUrl).getUrl()
         val name = path.substringAfterLast("/").substringBefore("?").substringBefore("#")
-        val suffix = legalSuffix(path)
+        val suffix = getUrlSuffix(path, "").ifEmpty { null }
         return if (suffix != null && suffix !in unExpectFileSuffixs && name.isNotEmpty()) {
             name
         } else {
@@ -242,14 +241,5 @@ object WebFileImportShared {
         val out = ByteArray(bytes.size)
         bytes.forEachIndexed { index, b -> out[index] = b }
         return out.decodeToString()
-    }
-
-    /** 合法文件后缀; 非法或缺失返回 null (对应 `UrlUtil.getSuffix` 走 default 分支的判据)。 */
-    private fun legalSuffix(str: String): String? {
-        val suffix = str.substringAfterLast("/")
-            .substringBefore("?")
-            .substringBefore("#")
-            .substringAfterLast(".", "")
-        return if (suffix.length > 5 || !suffix.matches(fileSuffixRegex)) null else suffix
     }
 }
