@@ -8,7 +8,6 @@ import androidx.core.graphics.createBitmap
 import io.legado.app.App
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.LocalBookLocators
-import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SystemUtils
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.parseToUri
@@ -78,12 +77,8 @@ object AndroidPdfRenderPort : PdfRenderPort {
         // no-op: 与原版一致, 页图磁盘缓存由 ImageProvider.cacheImage 外层完成
     }
 
-    override fun coverFileExists(book: Book): Boolean =
-        !book.coverUrl.isNullOrEmpty() && File(book.coverUrl!!).exists()
-
-    override fun writeCoverFile(book: Book, bytes: ByteArray) {
-        FileUtils.createFileIfNotExist(book.coverUrl!!).writeBytes(bytes)
-    }
+    override fun coverFilePath(book: Book): String? =
+        book.coverUrl?.takeIf { it.isNotEmpty() }
 
     /**
      * 打开书籍文件描述符: 内容 URI 与本地路径两种引用各自解析, 打不开返回 null

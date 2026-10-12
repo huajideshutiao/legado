@@ -3,8 +3,10 @@ package io.legado.app.model.fileBook
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.utils.InputStream
 import java.io.ByteArrayInputStream
+import java.io.File
 import kotlin.concurrent.Volatile
 import kotlin.math.ceil
 
@@ -136,17 +138,26 @@ class PdfBookFile(internal var book: Book) {
         return chapterList
     }
 
+    /**
+     * 首页渲染成封面 (fastCheck 时已有封面文件就不再烘焙)。
+     *
+     * 封面按"文件存在即有效"被复用 (fastCheck 直接跳过), 半截 JPEG 会被永久当成有效封面,
+     * 故整份落盘 (同目录临时件 + 改名就位)。
+     */
     private fun upBookCover(fastCheck: Boolean = false) {
         try {
             if (!ensureOpen()) return
             if (book.coverUrl.isNullOrEmpty()) {
                 book.coverUrl = FileBook.getCoverPath(book.bookUrl)
             }
-            if (fastCheck && port.coverFileExists(book)) {
+            val coverPath = port.coverFilePath(book) ?: return
+            if (fastCheck && File(coverPath).exists()) {
                 return
             }
             val bytes = port.renderPageJpegBytes(0) ?: return
-            port.writeCoverFile(book, bytes)
+            if (!writeBytesAtomically(coverPath, bytes)) {
+                AppLog.put("加载书籍封面失败\n封面写入失败: $coverPath")
+            }
         } catch (e: Exception) {
             AppLog.put("加载书籍封面失败\n${e.message}", e)
         }

@@ -5,7 +5,7 @@ import io.legado.app.utils.InputStream
 import kotlin.concurrent.Volatile
 
 /**
- * PDF 渲染后端跨平台端口: 打开/关闭文档、按页渲染为 JPEG 字节、页图缓存与封面文件读写。
+ * PDF 渲染后端跨平台端口: 打开/关闭文档、按页渲染为 JPEG 字节、页图缓存与封面路径解析。
  *
  * 编排骨架 ([PdfFileShared] / PdfBookFile) 经 [PdfRenderProviders] 取本端口实现;
  * 宽度选择 (屏幕宽)、白底、JPEG 质量 90、渲染互斥均由实现内部决定, 骨架不感知。
@@ -41,11 +41,12 @@ interface PdfRenderPort {
     /** 写第 [index] 页的缓存图 (与 [readCachedPage] 同 key 规则; 无缓存机制时 no-op)。 */
     fun writeCachedPage(book: Book, index: Int, bytes: ByteArray)
 
-    /** 封面文件是否已存在 (fastCheck 用; coverUrl 为落库引用, 由实现解析为本地路径)。 */
-    fun coverFileExists(book: Book): Boolean
-
-    /** 把封面 JPEG 字节写入 [book].coverUrl 指向的文件 (实现负责引用解析与建父目录)。 */
-    fun writeCoverFile(book: Book, bytes: ByteArray)
+    /**
+     * [book] 封面文件的本地路径 ([book].coverUrl 为落库引用, 由实现解析); 未设置封面时为 null。
+     *
+     * 只交引用解析: 封面"已存在就不重烘焙"与整份落盘都在骨架 [PdfFileShared] 一处做。
+     */
+    fun coverFilePath(book: Book): String?
 }
 
 /**

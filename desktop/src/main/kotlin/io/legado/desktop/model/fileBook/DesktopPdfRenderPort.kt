@@ -7,7 +7,6 @@ import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.file.desktopResolveStoredRef
 import io.legado.app.help.image.toSkiaImage
 import io.legado.app.model.fileBook.PdfRenderPort
-import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.ScreenInfoProviders
 import io.legado.desktop.model.webBook.placeholderImageChapter
 import org.apache.pdfbox.Loader
@@ -26,7 +25,7 @@ import java.io.InputStream
  *
  * 渲染宽度取屏幕宽 (provider 未注册时回退 1080), 白底 ([ImageType.RGB] 不透明位图
  * 渲染前填白), JPEG 质量 90; 页图缓存走 [BookImageStorageProviders] (缓存 key 带渲染
- * 宽度, 换屏幕后自然失效); 封面 coverUrl 是落库存储引用, 读写前先解析为本地路径。
+ * 宽度, 换屏幕后自然失效); 封面 coverUrl 是落库存储引用, 解析为本地路径后交骨架落盘。
  * 编排骨架在共享 [PdfFileShared], 注册: desktop main() 经 [PdfRenderProviders.register] 注入。
  */
 object DesktopPdfRenderPort : PdfRenderPort {
@@ -101,17 +100,8 @@ object DesktopPdfRenderPort : PdfRenderPort {
         runCatching { storage.saveImage(book, chapter, cacheKey, bytes) }
     }
 
-    override fun coverFileExists(book: Book): Boolean {
-        val coverUrl = book.coverUrl ?: return false
-        // coverUrl 是落库存储引用 (oldCovers/ 相对引用), 读写文件前先解析为本地路径
-        return desktopResolveStoredRef(coverUrl).exists()
-    }
-
-    override fun writeCoverFile(book: Book, bytes: ByteArray) {
-        val coverUrl = book.coverUrl ?: return
-        val coverFile = desktopResolveStoredRef(coverUrl)
-        FileUtilsBase.createFileIfNotExist(coverFile.absolutePath).writeBytes(bytes)
-    }
+    override fun coverFilePath(book: Book): String? =
+        book.coverUrl?.let { desktopResolveStoredRef(it).absolutePath }
 
     /**
      * 渲染第 [index] 页 (宽度取屏幕宽, 高度按页面比例, 白底)。
