@@ -71,9 +71,29 @@ internal fun readClickActionConfig(): ClickActionConfig {
 }
 
 /**
+ * 写入 9 个区域动作配置, 与 [readClickActionConfig] 同一批 PreferKey。
+ *
+ * 对照 app 端 ClickActionConfigDialog 的 `putPrefInt(PreferKey.clickActionXX, action)`:
+ * 每格选完即落盘, 无"确定"汇总写入。
+ */
+internal fun writeClickActionConfig(config: ClickActionConfig) {
+    val prefs = PreferenceProviders.get()
+    prefs.putInt(PreferKey.clickActionTL, config.tl)
+    prefs.putInt(PreferKey.clickActionTC, config.tc)
+    prefs.putInt(PreferKey.clickActionTR, config.tr)
+    prefs.putInt(PreferKey.clickActionML, config.ml)
+    prefs.putInt(PreferKey.clickActionMC, config.mc)
+    prefs.putInt(PreferKey.clickActionMR, config.mr)
+    prefs.putInt(PreferKey.clickActionBL, config.bl)
+    prefs.putInt(PreferKey.clickActionBC, config.bc)
+    prefs.putInt(PreferKey.clickActionBR, config.br)
+}
+
+/**
  * 九宫格点击区域校验 (对照原版 AppConfig.detectClickArea):
  * 9 格全部非 0 (无菜单格) 时, 强制恢复中间格 (MC) 为菜单动作并 toast。
- * 调用时机与原版一致: 阅读页初始化 (原 ReadBookViewModel.init) + 点击区域配置变更后 (原配置页 onDestroy)。
+ * 调用时机: 阅读页初始化 (原 ReadBookViewModel.init) + 点击区域配置对话框销毁时
+ * (原 ClickActionConfigDialog.onDestroy)。
  */
 internal fun detectClickArea() {
     val prefs = PreferenceProviders.get()

@@ -484,6 +484,16 @@ interface PlatformCapabilities {
      */
     fun isTablet(): Boolean = false
 
+    /**
+     * 是否电视/机顶盒形态 (对照 app 端 `Context.isTv`: uiMode 为 TELEVISION)。
+     *
+     * 决定阅读页首启引导开哪种配置界面 (对照 app 端 BaseReadBookActivity 的
+     * `if (isTv) showCustomPageKeyConfig() else showClickRegionalConfig()`):
+     * 遥控器无"点击区域"概念, 电视机型引导配置翻页按键。
+     * 其余端无此形态, 默认 false。
+     */
+    fun isTelevision(): Boolean = false
+
     /** 获取 app 版本名 (对照 app 端 AppConst.appInfo.versionName), 供 AboutRoute 初始化 state */
     fun getAppVersionName(): String? = null
 

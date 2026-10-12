@@ -428,6 +428,16 @@ class MangaReaderScreenModel : ScreenModel {
         _state.update { it.copy(clickActionConfig = config) }
     }
 
+    /**
+     * 从偏好重读点击区域配置到状态。
+     *
+     * 对话框关闭时的九宫格校验可能改写 MC (对照原版 AppConfig.detectClickArea), 而漫画点击
+     * 动作读的是 state 里的快照, 必须跟上 (原版每次点击现读 AppConfig.clickActionXX)。
+     */
+    fun refreshClickActionConfig() {
+        _state.update { it.copy(clickActionConfig = readClickActionConfig()) }
+    }
+
     /** 菜单勾选的布尔开关直写 prefs (key 与 app 端 AppConfig 一致), 返回切换后的新值。 */
     private fun togglePrefBoolean(key: String, defaultValue: Boolean): Boolean {
         val prefs = PreferenceProviders.get()

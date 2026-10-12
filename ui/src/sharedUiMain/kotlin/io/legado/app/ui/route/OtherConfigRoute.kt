@@ -18,7 +18,7 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.image.DecodedBitmapCache
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.CheckSourceShared
-import io.legado.app.ui.book.read.config.PageKeyDialog
+import io.legado.app.ui.book.read.config.CustomPageKeyDialogHost
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppTitleBar
@@ -301,21 +301,7 @@ fun OtherConfigRoute(
 
     // 自定义翻页按键对话框 (对照 app 端 onCustomPageKey: PageKeyDialog().show)
     if (showCustomPageKey) {
-        val keyMappings = remember {
-            val prev = pref.getStringOrNull(PreferKey.prevKeys) ?: ""
-            val next = pref.getStringOrNull(PreferKey.nextKeys) ?: ""
-            parsePageKeyMappings(prev, next)
-        }
-        PageKeyDialog(
-            keyMappings = keyMappings,
-            onConfirm = { mappings ->
-                val (prev, next) = splitPageKeyMappings(mappings)
-                pref.putString(PreferKey.prevKeys, prev)
-                pref.putString(PreferKey.nextKeys, next)
-                showCustomPageKey = false
-            },
-            onDismiss = { showCustomPageKey = false },
-        )
+        CustomPageKeyDialogHost(onDismiss = { showCustomPageKey = false })
     }
 
     // 本地密码对话框 (对照 app 端 alertLocalPassword: alert + editTextView + LocalConfig.password =)
@@ -381,20 +367,4 @@ fun OtherConfigRoute(
             cancelButton = AlertButton(text = cancelStr),
         )
     }
-}
-
-// 解析 prevKeys/nextKeys 字符串为 PageKeyDialog 需要的 Map<Int, String>
-// 与 PageKeyDialog 内部 buildKeyMappings 反向逻辑对齐
-private fun parsePageKeyMappings(prevKeys: String, nextKeys: String): Map<Int, String> {
-    val map = mutableMapOf<Int, String>()
-    prevKeys.split(",").mapNotNull { it.trim().toIntOrNull() }.forEach { map[it] = "prev_page" }
-    nextKeys.split(",").mapNotNull { it.trim().toIntOrNull() }.forEach { map[it] = "next_page" }
-    return map
-}
-
-// 将 Map<Int, String> 反序列化为 prevKeys/nextKeys 字符串写回 prefs
-private fun splitPageKeyMappings(mappings: Map<Int, String>): Pair<String, String> {
-    val prev = mappings.filter { it.value == "prev_page" }.keys.joinToString(",") { it.toString() }
-    val next = mappings.filter { it.value == "next_page" }.keys.joinToString(",") { it.toString() }
-    return prev to next
 }

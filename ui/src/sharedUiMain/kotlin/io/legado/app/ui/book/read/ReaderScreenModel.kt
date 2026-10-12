@@ -1275,6 +1275,9 @@ sealed interface ReaderDialogEvent {
     /** 朗读控制面板 (对照原版 ReadMenu 朗读按钮长按 → showReadAloudDialog) */
     object ReadAloud : ReaderDialogEvent
 
+    /** 首启阅读菜单帮助 (对照原版 ReadMenu.menuInListener.onAnimationEnd → ReadBookActivity.showHelp("readMenuHelp")) */
+    object ReadMenuHelp : ReaderDialogEvent
+
     /** 更多设置 (对照原版 设置按钮 → MoreConfigDialog) */
     object MoreConfig : ReaderDialogEvent
 

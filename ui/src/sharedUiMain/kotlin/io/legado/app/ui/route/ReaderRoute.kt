@@ -38,6 +38,10 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.HelpVersion
+import io.legado.app.help.config.LocalConfigKeys
+import io.legado.app.help.config.LocalConfigProviders
+import io.legado.app.help.config.LocalConfigShared
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
@@ -78,6 +82,8 @@ import io.legado.app.ui.book.read.config.AutoReadActions
 import io.legado.app.ui.book.read.config.AutoReadController
 import io.legado.app.ui.book.read.config.AutoReadPanelDialogHost
 import io.legado.app.ui.book.read.config.ChineseConverterSelectorDialog
+import io.legado.app.ui.book.read.config.ClickRegionalConfigDialogHost
+import io.legado.app.ui.book.read.config.CustomPageKeyDialogHost
 import io.legado.app.ui.book.read.config.ReadAloudDialog
 import io.legado.app.ui.book.read.page.TITLE_SIZE_EXTRA_SP
 import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegateCompose
@@ -106,6 +112,7 @@ import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.ui.widget.dialog.HelpDialog
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.ui.generated.resources.Res
@@ -641,6 +648,33 @@ fun ReaderRoute(
         }
     }
 
+    // 阅读页首启引导 (对照原版 BaseReadBookActivity.onActivityCreated:
+    // `if (!LocalConfig.readHelpVersionIsLast) { if (isTv) showCustomPageKeyConfig() else showClickRegionalConfig() }`)
+    // 版本标记由 isLastVersion 在判定时写入 (与原版同一时机: 每次进阅读页判定, 首启写标记后不再弹)
+    var showReadHelpGuide by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        val local = LocalConfigProviders.get()
+        val isLastHelp = LocalConfigShared.isLastVersion(
+            lastVersion = HelpVersion.readHelp,
+            versionKey = LocalConfigKeys.readHelpVersion,
+            firstOpenKey = LocalConfigKeys.firstRead,
+            getInt = local::getInt,
+            getBoolean = local::getBoolean,
+            putInt = local::putInt,
+        )
+        if (!isLastHelp) showReadHelpGuide = true
+    }
+
+    // 首启引导: 电视形态配翻页按键, 其余配点击区域 (对照 app 端 isTv 分支)。
+    // 不占对话框槽位: 引导与启动期的其它对话框可各自独立显示, 互不顶掉
+    if (showReadHelpGuide) {
+        if (PlatformCapabilityProviders.get().isTelevision()) {
+            CustomPageKeyDialogHost(onDismiss = { showReadHelpGuide = false })
+        } else {
+            ClickRegionalConfigDialogHost(onDismiss = { showReadHelpGuide = false })
+        }
+    }
+
     // 云进度同步确认对话框 (对照 app 端 ReadBookActivity.sureNewProgress)
     var syncProgress by remember { mutableStateOf<BookProgress?>(null) }
     LaunchedEffect(screenModel) {
@@ -906,6 +940,12 @@ fun ReaderRoute(
 
         is ReaderDialogEvent.Log -> {
             AppLogDialog(onDismiss = { closeDialog() })
+        }
+
+        // 首启阅读菜单帮助 (对照原版 ReadBookActivity.showHelp: TextDialog 读
+        // assets 的 web/help/md/readMenuHelp.md; 本文档已随其它帮助文档下沉 composeResources)
+        is ReaderDialogEvent.ReadMenuHelp -> {
+            HelpDialog("readMenuHelp") { closeDialog() }
         }
 
         // 更多设置 (对照原版 设置按钮 → MoreConfigDialog 底部弹窗)

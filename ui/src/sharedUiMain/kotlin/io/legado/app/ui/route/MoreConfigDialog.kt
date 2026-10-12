@@ -14,10 +14,8 @@ import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
-import io.legado.app.ui.book.read.config.ClickActionConfig
-import io.legado.app.ui.book.read.config.ClickActionDialog
+import io.legado.app.ui.book.read.config.ClickRegionalConfigDialogHost
 import io.legado.app.ui.book.read.config.MoreConfigScreen
-import io.legado.app.ui.book.read.page.detectClickArea
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSheetSurface
@@ -120,34 +118,6 @@ private fun MoreConfigBody(
 
     // 点击区域配置对话框 (对齐 app 端 showClickRegionalConfig)
     if (showClickRegional) {
-        val config = ClickActionConfig(
-            tl = pref.getInt(PreferKey.clickActionTL, 2),
-            tc = pref.getInt(PreferKey.clickActionTC, 2),
-            tr = pref.getInt(PreferKey.clickActionTR, 1),
-            ml = pref.getInt(PreferKey.clickActionML, 2),
-            mc = pref.getInt(PreferKey.clickActionMC, 0),
-            mr = pref.getInt(PreferKey.clickActionMR, 1),
-            bl = pref.getInt(PreferKey.clickActionBL, 2),
-            bc = pref.getInt(PreferKey.clickActionBC, 1),
-            br = pref.getInt(PreferKey.clickActionBR, 1),
-        )
-        ClickActionDialog(
-            clickActionConfig = config,
-            onConfirm = { updated ->
-                pref.putInt(PreferKey.clickActionTL, updated.tl)
-                pref.putInt(PreferKey.clickActionTC, updated.tc)
-                pref.putInt(PreferKey.clickActionTR, updated.tr)
-                pref.putInt(PreferKey.clickActionML, updated.ml)
-                pref.putInt(PreferKey.clickActionMC, updated.mc)
-                pref.putInt(PreferKey.clickActionMR, updated.mr)
-                pref.putInt(PreferKey.clickActionBL, updated.bl)
-                pref.putInt(PreferKey.clickActionBC, updated.bc)
-                pref.putInt(PreferKey.clickActionBR, updated.br)
-                // 对照原版配置页 onDestroy → AppConfig.detectClickArea: 变更后立即校验,
-                // 九宫格全部非 0 时强制恢复中间格为菜单 + toast
-                detectClickArea()
-            },
-            onDismiss = { showClickRegional = false },
-        )
+        ClickRegionalConfigDialogHost(onDismiss = { showClickRegional = false })
     }
 }

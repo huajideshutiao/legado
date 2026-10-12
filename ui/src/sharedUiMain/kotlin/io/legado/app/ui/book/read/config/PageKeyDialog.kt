@@ -1,11 +1,6 @@
-﻿// I18N KEYS (新增, 待 ResourceProvider.jvm.kt 补全桌面端字面量):
-// - custom_page_key: "自定义翻页按键" (已存在 jvmMain)
-// - prev_page_key: "上一页按键"
-// - next_page_key: "下一页按键"
-// - reset: "重置"
-// - ok: "确认" (已存在 jvmMain)
-//
-// PAINTER KEYS: 本 Dialog 不使用 painter key (无图标)
+﻿// 本 Dialog 引用的字符串均取自 Compose Resources 按 key 索引的映射表
+// (ui/src/commonMain/composeResources 为四端单一数据源, 无需各端补字面量):
+// custom_page_key / prev_page_key / next_page_key / reset / ok; 本 Dialog 无图标资源
 
 package io.legado.app.ui.book.read.config
 
@@ -34,6 +29,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
+import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDialogSurface
@@ -241,4 +238,49 @@ private fun buildKeyMappings(prev: String, next: String): Map<Int, String> {
         .mapNotNull { it.trim().toIntOrNull() }
         .forEach { result[it] = "next_page" }
     return result
+}
+
+/**
+ * 自定义翻页按键对话框宿主: 读当前 prevKeys/nextKeys 偏好 → [PageKeyDialog] → 确认后回写两个键。
+ *
+ * 由"其它设置"的自定义翻页按键入口与阅读页首启引导(电视形态)共用, 两处读写同一对偏好键。
+ * 确认即关闭 (对照原版 PageKeyDialog 的 tvOk 写入后 dismiss)。
+ */
+@Composable
+fun CustomPageKeyDialogHost(
+    onDismiss: () -> Unit,
+) {
+    val pref = remember { PreferenceProviders.get() }
+    val keyMappings = remember {
+        parsePageKeyMappings(
+            pref.getStringOrNull(PreferKey.prevKeys) ?: "",
+            pref.getStringOrNull(PreferKey.nextKeys) ?: "",
+        )
+    }
+    PageKeyDialog(
+        keyMappings = keyMappings,
+        onConfirm = { mappings ->
+            val (prev, next) = splitPageKeyMappings(mappings)
+            pref.putString(PreferKey.prevKeys, prev)
+            pref.putString(PreferKey.nextKeys, next)
+            onDismiss()
+        },
+        onDismiss = onDismiss,
+    )
+}
+
+// 解析 prevKeys/nextKeys 字符串为 PageKeyDialog 需要的 Map<Int, String>
+// 与 PageKeyDialog 内部 buildKeyMappings 反向逻辑对齐
+private fun parsePageKeyMappings(prevKeys: String, nextKeys: String): Map<Int, String> {
+    val map = mutableMapOf<Int, String>()
+    prevKeys.split(",").mapNotNull { it.trim().toIntOrNull() }.forEach { map[it] = "prev_page" }
+    nextKeys.split(",").mapNotNull { it.trim().toIntOrNull() }.forEach { map[it] = "next_page" }
+    return map
+}
+
+// 将 Map<Int, String> 反序列化为 prevKeys/nextKeys 字符串写回 prefs
+private fun splitPageKeyMappings(mappings: Map<Int, String>): Pair<String, String> {
+    val prev = mappings.filter { it.value == "prev_page" }.keys.joinToString(",") { it.toString() }
+    val next = mappings.filter { it.value == "next_page" }.keys.joinToString(",") { it.toString() }
+    return prev to next
 }

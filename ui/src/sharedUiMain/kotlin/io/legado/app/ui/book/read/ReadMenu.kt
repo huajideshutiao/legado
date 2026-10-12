@@ -105,6 +105,10 @@ import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.book.isNotShelf
+import io.legado.app.help.config.HelpVersion
+import io.legado.app.help.config.LocalConfigKeys
+import io.legado.app.help.config.LocalConfigProviders
+import io.legado.app.help.config.LocalConfigShared
 import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.config.currentEInkMode
 import io.legado.app.help.config.currentNightTheme
@@ -430,7 +434,23 @@ open class BaseReadMenuState(
     }
 
     override fun onTransitionIdle(shown: Boolean) {
-        if (shown) return
+        if (shown) {
+            // 首启阅读菜单帮助 (对照原版 ReadMenu.menuInListener.onAnimationEnd:
+            // !LocalConfig.readMenuHelpVersionIsLast → callBack.showHelp())。
+            // 原版 E-Ink 无动画分支 (runMenuIn anim=false) 也手动调 onAnimationEnd, 同一时机。
+            // 版本标记由 isLastVersion 在判定时写入, 与原版同一点触发, 关闭后再开菜单不重弹
+            val local = LocalConfigProviders.get()
+            val isLastHelp = LocalConfigShared.isLastVersion(
+                lastVersion = HelpVersion.readMenuHelp,
+                versionKey = LocalConfigKeys.readMenuHelpVersion,
+                firstOpenKey = LocalConfigKeys.firstReadMenu,
+                getInt = local::getInt,
+                getBoolean = local::getBoolean,
+                putInt = local::putInt,
+            )
+            if (!isLastHelp) screenModel.postDialogEvent(ReaderDialogEvent.ReadMenuHelp)
+            return
+        }
         val onEnd = onMenuOutEnd
         onMenuOutEnd = null
         onEnd?.invoke()
