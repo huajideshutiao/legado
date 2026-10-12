@@ -56,7 +56,7 @@ class JvmBookImageStorage(
     }
 
     override fun isImageExist(book: Book, chapter: BookChapter, url: String): Boolean {
-        return Files.isRegularFile(resolveImageFile(book, url))
+        return isCachedImageUsable(resolveImageFile(book, url).toString())
     }
 
     override fun hasImageContent(book: Book): Boolean {

@@ -5,6 +5,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.writeBytesAtomically
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.File
+import io.legado.app.utils.getUrlSuffix
 
 /**
  * [BookImageStorage] iOS/鸿蒙 (Native target) 共用真实实现 (基于 [kotlin.io.File])。
@@ -23,7 +24,7 @@ import io.legado.app.utils.File
  *
  * # 行为对齐 jvmMain JvmBookImageStorage / 原 iOS IosBookImageStorage / 原 ohos OhosBookImageStorage
  * - [saveImage]/[writeImageBytes]: 字节头 magic number 校验 + 原子落盘 (同目录临时件 + 改名就位)
- * - [getImagePath]/[isImageExist]: [File.exists]
+ * - [getImagePath]/[isImageExist]: [File.exists] + 共享判据 [isCachedImageUsable] (存在且非空)
  * - [hasImageContent]: 目录存在 + 至少一个文件 (短路语义)
  * - [clearCache]: [File.deleteRecursively]
  *
@@ -31,7 +32,7 @@ import io.legado.app.utils.File
  * - 文件 I/O: iOS 用 NSFileManager + NSData.writeToFile(atomically=true);
  *   统一后用 [kotlin.io.File] (mkdirs / writeBytes / exists / deleteRecursively)
  * - 图片有效性校验: 与两端完全一致 (字节头 magic number: JPEG/PNG/GIF/WebP/BMP)
- * - 后缀提取: 与两端完全一致 ([getImageSuffix] 简化版, 不依赖 CustomUrl)
+ * - 后缀提取: 与两端完全一致 ([getUrlSuffix])
  *
  * 模式参考 [io.legado.app.help.book.JvmBookImageStorage]。
  */
@@ -56,7 +57,7 @@ class NativeBookImageStorage(
     }
 
     override fun isImageExist(book: Book, chapter: BookChapter, url: String): Boolean {
-        return File(resolveImageFile(book, url)).exists()
+        return isCachedImageUsable(resolveImageFile(book, url))
     }
 
     override fun hasImageContent(book: Book): Boolean {
@@ -85,33 +86,12 @@ class NativeBookImageStorage(
     /**
      * 解析图片缓存文件路径: `{cacheRoot}/{bookFolderName}/images/{md5(url)}.{suffix}`。
      *
-     * suffix 用 [getImageSuffix] 提取, 默认 "jpg" (与 Android BookHelp.getImageSuffix 对齐)。
+     * suffix 用 [getUrlSuffix] 提取, 默认 "jpg" (与 Android BookHelp.getImageSuffix 对齐)。
      */
     private fun resolveImageFile(book: Book, url: String): String {
-        val suffix = getImageSuffix(url, "jpg")
+        val suffix = getUrlSuffix(url, "jpg")
         val fileName = "${MD5Utils.md5Encode16(url)}.$suffix"
         return "$cacheRootPath/${book.getFolderName()}/$IMAGE_FOLDER_NAME/$fileName"
-    }
-
-    /**
-     * 从 URL 提取合法图片后缀 (简化版 [io.legado.app.utils.UrlUtil.getSuffix])。
-     *
-     * 与 jvmAndAndroidMain / iOS 端行为对齐:
-     * - 截取 URL 路径最后一段 `.` 后的部分 (排除 query/fragment)
-     * - 长度 > 5 或含非字母数字字符时返回 [default]
-     * - 不依赖 CustomUrl (避免引入额外 URL 规范化开销)
-     */
-    private fun getImageSuffix(url: String, default: String): String {
-        val suffix = url.substringAfterLast("/")
-            .substringBefore("?")
-            .substringBefore("#")
-            .substringAfterLast(".", "")
-        // 后缀合法性: 仅允许字母数字, 长度 <= 5 (与 jvmAndAndroidMain fileSuffixRegex 对齐)
-        return if (suffix.length in 1..5 && suffix.all { it.isLetterOrDigit() }) {
-            suffix.lowercase()
-        } else {
-            default
-        }
     }
 
     /**

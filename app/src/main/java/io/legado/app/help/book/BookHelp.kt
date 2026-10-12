@@ -176,7 +176,7 @@ object BookHelp {
     }
 
     fun isImageExist(book: Book, src: String): Boolean {
-        return getImage(book, src).exists()
+        return isCachedImageUsable(getImage(book, src).absolutePath)
     }
 
     fun getImageSuffix(src: String): String =

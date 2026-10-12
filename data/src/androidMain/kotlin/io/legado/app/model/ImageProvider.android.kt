@@ -18,17 +18,16 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelpProviders
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.copyToFileAtomically
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.File
-import io.legado.app.utils.FileUtilsBase
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.FileInputStream
-import java.io.FileOutputStream
 import kotlin.math.max
 import kotlin.math.min
 
@@ -82,7 +81,7 @@ actual class ImageProviderLruCache actual constructor() :
  * - `R.drawable.image_loading_error` → 经 ImageErrorBytesProviders 注入 (资源单点在 :ui)
  * - `AppConfig.bitmapCacheSize` → [AppConfigProviders.get] + `setBitmapCacheSize`
  * - `BookHelp.getImage/isImageExist/saveImage` → [BookHelpProviders.get]
- * - `FileUtils.createFileIfNotExist` → [FileUtilsBase.createFileIfNotExist]
+ * - `FileUtils.createFileIfNotExist` + `FileOutputStream` 直写 → [copyToFileAtomically] (同目录临时件 + 改名就位)
  * - `appCtx.toastOnUi` → [Toasters.get].toast
  * - `withContext(IO)` → [withContext]([IoDispatcher])
  * - `BitmapUtils` / `SvgUtils` → 内联 [BitmapDecode] / [SvgDecode] (需 androidsvg 依赖)
@@ -176,10 +175,8 @@ actual object ImageProvider {
                             null
                         }
                     inputStream?.use { input ->
-                        val newFile = FileUtilsBase.createFileIfNotExist(vFile.absolutePath)
-                        FileOutputStream(newFile).use { output ->
-                            input.copyTo(output)
-                        }
+                        // 整份落盘: 半截截图出现在目标名上会被存在性判据当成有效缓存永久复用
+                        copyToFileAtomically(vFile.absolutePath, input)
                     }
                 }
             }
