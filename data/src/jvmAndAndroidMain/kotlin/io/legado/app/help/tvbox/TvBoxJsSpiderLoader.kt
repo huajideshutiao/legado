@@ -9,7 +9,10 @@ import com.script.quickjs.QuickJsContext
 import com.script.quickjs.QuickJsEngine
 import com.script.quickjs.ScriptBindings
 import io.legado.app.constant.AppLog
+import io.legado.app.help.PackagedResourceBytesProviders
+import io.legado.app.help.deleteOrphanAtomicWriteTempFiles
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.writeTextAtomically
 import io.legado.app.utils.NetworkUtils
 import org.json.JSONArray
 import org.json.JSONObject
@@ -37,7 +40,7 @@ import java.util.concurrent.atomic.AtomicReference
  * 同站点的并发调用 (取播与嗅探) 在 JS 侧串行化, 调用方无需自行避并发。
  *
  * 平台面: 目录走 [AppFilesDirs] (Android=filesDir/cacheDir, 桌面=~/.legado 等),
- * 引导脚本经 [TvBoxHostAssetProviders] 注入 (composeResources 单一数据源, 两端无平台副本)。
+ * 引导脚本经 [PackagedResourceBytesProviders] 注入 (composeResources 单一数据源, 各端无平台副本)。
  */
 class TvBoxJsSpiderLoader {
 
@@ -402,7 +405,7 @@ class TvBoxJsSpider internal constructor(
      * 模块取源 (阻塞):
      * - `assets://<path>` → **宿主自带引导资源** (FongMi/TV 语义: `assets://js/lib/x.js`
      *   即随包 `js/lib/x.js`; 本仓库宿主资源唯一落点为 composeResources
-     *   `files/tvbox/`, 经 [TvBoxHostAssetProviders] 读)。宿主未随包时按需下载, 见 [fetchAsset];
+     *   `files/tvbox/`, 经 [PackagedResourceBytesProviders] 读)。宿主未随包时按需下载, 见 [fetchAsset];
      * - http(s) → 壳 OkHttp (信任全部证书, 与 jar 内请求环境一致), 落缓存目录 tvbox/js;
      * - lib/x.js (裸路径) → 相对配置基准解析 (FongMi Module/UriUtil 同语义);
      * - file:// 或裸路径 → 本地文件。
@@ -436,11 +439,19 @@ class TvBoxJsSpider internal constructor(
                 "响应不是 JS (前 120 字: ${body.trimStart().take(120).replace(Regex("\\s+"), " ")})",
             )
         }
-        runCatching {
-            cached.parentFile?.mkdirs()
-            cached.writeText(body)
-        }
+        writeCachedJs(cached, body)
         return body
+    }
+
+    /**
+     * 写模块缓存 (整份落盘): 同一缓存文件可能被 [cachedJs] (只粗判"像 JS") 与
+     * [cachedVerifiedJs] (md5 校验) 任一读入口取用, 半截 JS 一旦被粗判判据放行就会进 eval
+     * 报与真实原因无关的语法错, 并长期留在缓存里。缓存写失败不阻断本次取源。
+     */
+    private fun writeCachedJs(cached: File, body: String) {
+        // js 缓存目录没有别的清点方 (只有下载新模块时写一次): 在此顺带回收孤儿临时件
+        cached.parent?.let { deleteOrphanAtomicWriteTempFiles(it) }
+        runCatching { writeTextAtomically(cached.path, body) }
     }
 
     /**
@@ -489,10 +500,7 @@ class TvBoxJsSpider internal constructor(
                 lastError = "md5 不符 ($url)"
                 continue
             }
-            runCatching {
-                cached.parentFile?.mkdirs()
-                cached.writeText(body)
-            }
+            writeCachedJs(cached, body)
             return body
         }
         AppLog.put(
@@ -514,7 +522,7 @@ class TvBoxJsSpider internal constructor(
         "https://cdn.jsdelivr.net/gh/${TvBoxJsSpiderLoader.REMOTE_ASSET_JSDELIVR_REPO}$path",
     )
 
-    /** 缓存命中取源: 命中且内容仍像 JS 才用, 否则当未命中重下 (错误页/半写内容不得进 eval)。 */
+    /** 缓存命中取源: 命中且内容仍像 JS 才用, 否则当未命中重下 (404 正文/防盗链 HTML 这类非法正文不进 eval)。 */
     private fun cachedJs(file: File): String? {
         if (!file.isFile || file.length() <= 0) return null
         val text = runCatching { file.readText() }.getOrNull() ?: return null
@@ -567,12 +575,12 @@ class TvBoxJsSpider internal constructor(
 }
 
 /**
- * 读宿主自带引导脚本 (composeResources 单一数据源, 见 [TvBoxHostAssetProviders]);
- * 缺失时抛错, 避免静默空运行时。
+ * 读宿主自带引导脚本 (composeResources 单一数据源, 经共享原语
+ * [PackagedResourceBytesProviders] 读取; 实现由界面侧注册); 缺失时抛错, 避免静默空运行时。
  */
 internal fun readHostAsset(assetPath: String): String {
-    val provider = TvBoxHostAssetProviders.get()
-    val text = runCatching { provider.read(assetPath) }.getOrNull()
+    val provider = PackagedResourceBytesProviders.get()
+    val text = runCatching { provider.readBytes(assetPath).decodeToString() }.getOrNull()
     check(!text.isNullOrBlank()) { "TVBox JS 引导脚本缺失: $assetPath" }
     return text
 }

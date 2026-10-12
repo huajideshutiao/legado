@@ -19,7 +19,7 @@ import java.net.URLClassLoader
  *   不可用, 在 spider 调用点如实报错。
  *
  * 引导脚本读取不在此类: 两端统一走 composeResources 单一数据源
- * (见 registerComposeTvBoxAssetProvider)。
+ * (读取原语注册见 DesktopCore.registerEarlyProviders)。
  *
  * Android 端对应物为 app 模块 AndroidTvBoxHostPlatform (DexClassLoader)。
  */

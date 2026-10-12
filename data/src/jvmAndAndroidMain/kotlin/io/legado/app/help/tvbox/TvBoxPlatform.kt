@@ -11,7 +11,7 @@ import kotlin.concurrent.Volatile
  *   stub 实例), 供 Init.set 与 jar 内 Init.context() / Spider.init(context, ext) 使用;
  * - [newJarClassLoader]: spider jar 类加载器 (Android=DexClassLoader, 桌面=URLClassLoader)。
  *
- * 引导脚本读取不在此钩子内: 已统一走 composeResources 单一数据源, 见 [TvBoxHostAssetProviders]。
+ * 引导脚本读取不在此钩子内: 已统一走 composeResources 单一数据源, 见 [PackagedResourceBytesProviders]。
  *
  * Android 端由 app 模块 AndroidTvBoxHostPlatform 注册 (App.onCreate), 桌面端由
  * desktop-core DesktopTvBoxHostPlatform 注册 (DesktopCore.registerDesktopTvBoxProviders)。

@@ -27,6 +27,7 @@ import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.image.MangaPluginImageFetcherProviders
 import io.legado.app.help.notification.registerDesktopNotificationProgress
 import io.legado.app.help.registerComposeDefaultDataResourceProvider
+import io.legado.app.help.registerComposeResourceBytesProvider
 import io.legado.app.help.service.DesktopUpdateBookCallback
 import io.legado.app.help.service.UpdateBookCallbacks
 import io.legado.app.help.service.registerDesktopServiceLauncher
@@ -280,6 +281,9 @@ object DesktopCore {
         // (首次建库 dbCallback.onCreate → DefaultData.keyboardAssists → DefaultDataResourceProviders
         // .get().readResource("keyboardAssists.json")), 否则首次建库时 keyboardAssists 表无默认数据
         registerComposeDefaultDataResourceProvider()
+        // 注册打包资源字节原语 (:ui 的 ComposeResourceBytesProvider, 经 Res.readBytes 取数):
+        // TVBox JS 引导脚本读取 (数据层契约 PackagedResourceBytesProviders) 依赖它已注册
+        registerComposeResourceBytesProvider()
         // 注册桌面端 AppDatabase provider (BundledDatabaseDriver 用 Room.databaseBuilder +
         // BundledSQLiteDriver 构造 AppDatabase, 同一实例经 AppDatabaseProviders 共享)
         val dbDriver = BundledDatabaseDriver()

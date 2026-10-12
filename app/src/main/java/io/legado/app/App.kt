@@ -92,9 +92,9 @@ import io.legado.app.model.script.registerAndroidJsEngines
 import io.legado.app.model.webBook.registerAndroidBookInfoRefresher
 import io.legado.app.help.tvbox.AndroidTvBoxHostPlatform
 import io.legado.app.help.tvbox.AndroidTvBoxSniffer
+import io.legado.app.help.registerComposeResourceBytesProvider
 import io.legado.app.help.tvbox.TvBoxPlatforms
 import io.legado.app.help.tvbox.TvBoxSniffPlatforms
-import io.legado.app.help.tvbox.registerComposeTvBoxAssetProvider
 import io.legado.app.model.tvbox.TvBoxManager
 import io.legado.app.model.webBook.registerAndroidWebBookProviders
 import io.legado.app.service.WebService
@@ -221,8 +221,9 @@ class App : Application() {
         // 先注册, 再幂等 init (重载已持久化配置 + 注册 TVBox 取数委派; 与漫画/视频插件
         // 委派并列, 各实现身份互斥, 与注册顺序无关)
         TvBoxPlatforms.register(AndroidTvBoxHostPlatform(this))
-        // TVBox JS 引导脚本走 composeResources 单一数据源 (与 DefaultData 同款 provider 注入)
-        registerComposeTvBoxAssetProvider()
+        // TVBox JS 引导脚本走 composeResources 单一数据源 (与 DefaultData 同款 provider 注入:
+        // 读取实现由界面侧注册, 数据层只依赖 PackagedResourceBytesProviders 契约)
+        registerComposeResourceBytesProvider()
         TvBoxSniffPlatforms.register(AndroidTvBoxSniffer)
         TvBoxManager.init()
         // 注册 Coil3 BookImageLoader (Compose 图片加载, 替代 Glide 迁移批 1 共享面接线)
