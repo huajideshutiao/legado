@@ -5,10 +5,12 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.SecurityException
 import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.storage.NativeZipCodec
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.model.fileBook.RangedSource
 import io.legado.app.model.fileBook.RemoteZipCore
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.File
+import io.legado.app.utils.atomicWriteTempPath
 import okio.Buffer
 import okio.GzipSource
 
@@ -50,11 +52,12 @@ object NativeArchiveProvider : ArchiveProvider {
                 }
             }
 
-            // 单文件 gzip: 直接解压成同 base 名文件
+            // 单文件 gzip: 解压成同 base 名文件 (与 gzipToFile 同口径: 唯一临时件 + 改名就位)
             name.endsWith(".gz", true) -> {
                 val out = destDir + "/" + name.removeSuffix(".gz")
-                File(out.substringBeforeLast('/')).mkdirs()
-                File(out).writeBytes(gzipDecompress(File(archivePath).readBytes()))
+                if (!writeBytesAtomically(out, gzipDecompress(File(archivePath).readBytes()))) {
+                    throw NoStackTraceException("gzip 解压写入失败: $out")
+                }
             }
 
             // zip/cbz: 项目已有 NativeZipCodec
@@ -72,10 +75,19 @@ object NativeArchiveProvider : ArchiveProvider {
         return result
     }
 
-    /** gzip 解压到同目录临时 tar 文件 (okio native GzipSource)。 */
+    /**
+     * gzip 解压到同目录中间件 (okio native GzipSource), 解完由调用方删掉。
+     *
+     * 中间件名走整份写入的共享契约 ([atomicWriteTempPath]: 目标名 + 随机唯一串 + 契约后缀): 同名源被
+     * 两次解压时不会共用一条路径 (共用同名 .tar 时, 后写的那次会截断前一次正在读的中间件, 还会互相
+     * 删掉对方的那份)。中间件没有对外成品名, 不需要再改名就位。
+     */
     private fun gzipToFile(src: File): File {
-        val tmp = File(src.path + ".tar")
-        tmp.writeBytes(gzipDecompress(src.readBytes()))
+        val tmp = File(atomicWriteTempPath(src.path + ".tar"))
+        if (!FileUtilsCommon.writeBytes(tmp.path, gzipDecompress(src.readBytes()))) {
+            FileUtilsCommon.delete(tmp.path)
+            throw NoStackTraceException("gzip 解压写入失败: ${src.path}")
+        }
         return tmp
     }
 

@@ -30,19 +30,35 @@ fun deleteOrphanAtomicWriteTempFile(path: String, nowMillis: Long): Boolean {
 /**
  * 回收 [dirPath] 及其子目录下所有孤儿临时件。
  *
- * 递归是必要的: 章节正文/图片缓存的目标在 `book_cache/<书>/` 与 `book_cache/<书>/images/` 两层,
- * 只清顶层会漏掉绝大多数。
+ * 递归覆盖目标与临时件不同层的目录 (章节正文/图片缓存的目标在 `book_cache/<书>/` 与
+ * `book_cache/<书>/images/` 两层); 写入方落点就在目录本层时用
+ * [deleteOrphanAtomicWriteTempFilesInDir], 不扫与本次写入无关的子目录。
  *
  * @return 删除个数
  */
-fun deleteOrphanAtomicWriteTempFiles(dirPath: String): Int {
-    val now = systemCurrentTimeMillis()
+fun deleteOrphanAtomicWriteTempFiles(dirPath: String): Int =
+    deleteOrphanAtomicWriteTempFiles(dirPath, systemCurrentTimeMillis(), recursive = true)
+
+/**
+ * 只回收 [dirPath] 本层的孤儿临时件 (不递归)。
+ *
+ * 目标与临时件同目录的写入方 (单文件下载: 目标与临时件都在下载目录本层) 只会把临时件留在本层,
+ * 不扫子目录不遗漏本写入方的残留件。
+ *
+ * @return 删除个数
+ */
+fun deleteOrphanAtomicWriteTempFilesInDir(dirPath: String): Int =
+    deleteOrphanAtomicWriteTempFiles(dirPath, systemCurrentTimeMillis(), recursive = false)
+
+private fun deleteOrphanAtomicWriteTempFiles(dirPath: String, now: Long, recursive: Boolean): Int {
     var deleted = 0
     FileUtilsCommon.listFiles(dirPath).forEach { path ->
         if (deleteOrphanAtomicWriteTempFile(path, now)) deleted++
     }
-    FileUtilsCommon.listSubDirs(dirPath).forEach { child ->
-        deleted += deleteOrphanAtomicWriteTempFiles(child)
+    if (recursive) {
+        FileUtilsCommon.listSubDirs(dirPath).forEach { child ->
+            deleted += deleteOrphanAtomicWriteTempFiles(child, now, recursive = true)
+        }
     }
     return deleted
 }

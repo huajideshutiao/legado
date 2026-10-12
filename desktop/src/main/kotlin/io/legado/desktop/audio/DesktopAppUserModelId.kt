@@ -13,6 +13,8 @@ import com.sun.jna.ptr.PointerByReference
 import io.legado.app.constant.AppLog
 import io.legado.app.help.file.desktopAppRootDir
 import io.legado.app.ui.compose.platform.syncGetString
+import io.legado.app.utils.FileUtilsBase
+import io.legado.app.utils.atomicWriteTempPath
 import io.legado.desktop.audio.DesktopAppUserModelId.PKEY_APP_USER_MODEL_ID_PID
 import io.legado.desktop.audio.DesktopAppUserModelId.applyToWindow
 import io.legado.desktop.audio.DesktopAppUserModelId.ensureProcessAppId
@@ -298,14 +300,15 @@ internal object DesktopAppUserModelId {
         u32(22) // data offset
         out.write(pngBytes)
         ico.parentFile?.mkdirs()
-        // 先落临时文件再替换: 直写中断留下的半截 ICO 会被"存在即复用"短路永久固化
-        val tmp = File(ico.parentFile, "${ico.name}.tmp")
-        FileOutputStream(tmp).use { it.write(out.toByteArray()) }
-        java.nio.file.Files.move(
-            tmp.toPath(),
-            ico.toPath(),
-            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-        )
+        // 先落临时文件再替换: 直写中断留下的半截 ICO 会被"存在即复用"短路永久固化。
+        // 临时件名走共享契约 (随机唯一串): 两个进程各自生成图标时不共用同一条路径
+        val tmp = File(atomicWriteTempPath(ico.path))
+        try {
+            FileOutputStream(tmp).use { it.write(out.toByteArray()) }
+            FileUtilsBase.replaceFileAtomically(tmp, ico)
+        } finally {
+            tmp.delete()
+        }
         return ico.absolutePath
     }
 

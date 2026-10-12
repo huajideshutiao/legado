@@ -5,13 +5,12 @@ import androidx.lifecycle.viewModelScope
 import io.legado.app.base.BaseViewModel
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.help.writeTextAtomically
 import io.legado.app.ui.book.source.BookSourceSort
-import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
-import io.legado.app.utils.outputStream
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.writeToOutputStream
+import io.legado.app.utils.toJson
 import java.io.File
 
 /**
@@ -26,7 +25,7 @@ import java.io.File
  *   `Coroutine.async(scope) { AppDbProviders.get().bookSourceDao.xxx }` 完成实际 DAO 操作
  *   (替代原 `execute { appDb.bookSourceDao.xxx }`, 行为等价);
  * - **saveToFile (2 个重载)**: List<BookSource> 重载依赖 `context.filesDir` +
- *   `FileUtils.createFileWithReplace` + `GSON.writeToOutputStream` + 文件流, 留本端;
+ *   整份写入入口 + 序列化, 留本端;
  *   List<BookSourcePart> 重载的取数+排序+比例分流+危险 API 清理已下沉 commonMain
  *   [getExportBookSources], 本端只负责写文件 (`String.cnCompare` 已下沉 shared commonMain);
  * - **scope 注入**: `viewModelScope` (BaseViewModel 来自 AndroidViewModel) 传入 [shared]。
@@ -127,8 +126,8 @@ class BookSourceViewModel(application: Application) : BaseViewModel(application)
     /**
      * 导出书源到文件 (List<BookSource> 重载), 留 app 端。
      *
-     * 依赖 `context.filesDir` + `FileUtils.createFileWithReplace` +
-     * `GSON.writeToOutputStream` + 文件流, 不能下沉 commonMain。
+     * 依赖 `context.filesDir` + 整份写入入口
+     * ([io.legado.app.help.writeTextAtomically]), 不能下沉 commonMain。
      *
      * @param sources 待导出的书源列表 (已处理 enableDangerousApi=false)
      * @param success 导出成功回调, 参数为输出文件
@@ -136,12 +135,9 @@ class BookSourceViewModel(application: Application) : BaseViewModel(application)
     private fun saveToFile(sources: List<BookSource>, success: (file: File) -> Unit) {
         execute {
             val path = "${context.filesDir}/shareBookSource.json"
-            FileUtils.delete(path)
-            val file = FileUtils.createFileWithReplace(path)
-            file.outputStream().buffered().use {
-                GSON.writeToOutputStream(it, sources)
-            }
-            file
+            // 整份落盘: 分享/导出步骤读的是这个固定路径, 覆盖写被中断会拿到半截 JSON
+            check(writeTextAtomically(path, GSON.toJson(sources))) { "写入失败: $path" }
+            File(path)
         }.onSuccess {
             success.invoke(it)
         }.onError {

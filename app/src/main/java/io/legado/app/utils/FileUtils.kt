@@ -4,11 +4,15 @@ import android.net.Uri
 import android.util.Base64
 import android.webkit.MimeTypeMap
 import android.webkit.URLUtil
+import io.legado.app.App
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.fileNameFormat
+import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.copyToFileAtomically
+import io.legado.app.help.writeBytesAtomically
 import java.io.Closeable
 import java.io.File
-import java.io.FileInputStream
 import java.io.InputStream
 import java.util.regex.Pattern
 
@@ -245,7 +249,7 @@ object FileUtils {
      * @param imageData 图片URL或Base64数据
      * @param dirUri 目标目录Uri (content:// 或 file://)
      * @param fileName 保存的文件名，为空时自动生成时间戳文件名
-     * @return 保存成功返回true
+     * @return 写入是否成功 (目标未被触碰时的写失败如实返回 false)
      */
     fun saveImage(imageData: String, dirUri: Uri, fileName: String? = null): Boolean {
         val byteArray = urlOrBase64ToBytes(imageData) ?: return false
@@ -255,12 +259,7 @@ object FileUtils {
             }
             "${AppConst.fileNameFormat.format(System.currentTimeMillis())}$ext"
         }
-        val fileDoc = FileDoc.fromDir(dirUri)
-        val picFile = fileDoc.createFileIfNotExist(name)
-        picFile.openOutputStream().getOrThrow().use {
-            it.write(byteArray)
-        }
-        return true
+        return writeImageBytes(dirUri, name, byteArray)
     }
 
     /**
@@ -274,26 +273,51 @@ object FileUtils {
         val ext = getImageExtension(imageFile)
         val name =
             fileName ?: "${AppConst.fileNameFormat.format(System.currentTimeMillis())}$ext"
-        val fileDoc = FileDoc.fromDir(dirUri)
-        val picFile = fileDoc.createFileIfNotExist(name)
-        FileInputStream(imageFile).use { input ->
-            picFile.openOutputStream().getOrThrow().use { output ->
-                input.copyTo(output)
-            }
-        }
-        return true
+        return writeImageBytes(dirUri, name, imageFile.readBytes())
     }
 
+    /**
+     * 将图片输入流保存到指定目录 (流式写入, 不整份进内存)
+     * @param inputStream 图片输入流, 由本入口读取并关闭
+     * @param dirUri 目标目录URI（支持content://和file://）
+     * @param ext 文件扩展名（含点）
+     * @return 是否保存成功
+     */
     fun saveImage(inputStream: InputStream, dirUri: Uri, ext: String = ".jpg"): Boolean {
         val name = "${AppConst.fileNameFormat.format(System.currentTimeMillis())}$ext"
-        val fileDoc = FileDoc.fromDir(dirUri)
-        val picFile = fileDoc.createFileIfNotExist(name)
-        inputStream.use { input ->
-            picFile.openOutputStream().getOrThrow().use { output ->
-                input.copyTo(output)
-            }
+        return inputStream.use { writeImageStream(dirUri, name, it) }
+    }
+
+    /**
+     * 图片整份写入 [dirUri] 下的 [name]: content:// 目录走 SAF 临时文档 + 改名就位
+     * ([writeDocumentBytesAtomically], 目标名上的旧同名图先挪成契约过渡件, 就位失败时改回原样);
+     * file:// 目录走同目录唯一临时件 + 改名 ([writeBytesAtomically])。
+     * 就位成立时写入期间目标名上是完整的旧图或新图; 提供方不支持同目录就位时由
+     * [writeDocumentBytesAtomically] 直写回落, 写入被打断时目标名上可能是半截 (与不做就位处理同
+     * 一落点)。
+     */
+    private fun writeImageBytes(dirUri: Uri, name: String, bytes: ByteArray): Boolean {
+        if (dirUri.isContentScheme()) {
+            return writeDocumentBytesAtomically(App.instance, dirUri, name, bytes)
         }
-        return true
+        val dirPath = RealPathUtil.getPath(App.instance, dirUri) ?: return false
+        return writeBytesAtomically(File(dirPath, name).path, bytes)
+    }
+
+    /**
+     * 图片流式写入 [dirUri] 下的 [name] (不整份进内存), 落盘机制与 [writeImageBytes] 同一份:
+     * content:// 目录走 SAF 临时文档 + 改名就位, file:// 目录走同目录唯一临时件 + 改名。
+     */
+    private fun writeImageStream(dirUri: Uri, name: String, input: InputStream): Boolean {
+        if (dirUri.isContentScheme()) {
+            return copyToDocumentAtomically(App.instance, dirUri, name, input)
+        }
+        val dirPath = RealPathUtil.getPath(App.instance, dirUri) ?: return false
+        return runCatching {
+            copyToFileAtomically(File(dirPath, name).path, input)
+        }.onFailure {
+            AppLog.put("图片写入失败: $name\n${it.localizedMessage}", it)
+        }.isSuccess
     }
 
     /**
@@ -320,6 +344,14 @@ object FileUtils {
 
     /**
      * 将数据导出到指定目录（不带上传）
+     *
+     * content:// 目录走 SAF 临时文档 + 改名就位 ([writeDocumentBytesAtomically]): 目标名上已有
+     * 同名旧文档时先把它挪成契约过渡件, 就位成功后删过渡件, 失败则把过渡件改回目标名; file:// 目录
+     * 走同目录唯一临时件 + 改名 ([writeBytesAtomically])。就位成立时写入期间目标名上是完整的旧件或
+     * 新件; 提供方不支持同目录就位时直写回落, 写入被打断时目标名上可能是半截。导出目录是用户选定
+     * 目录, 没有孤儿临时件的回收方, 两条通道都在各自的每条退出路径上清掉中间件, 只有进程被强杀会
+     * 残留契约名可识别的临时件。
+     *
      * @param dirUri 目标目录Uri (content:// 或 file://)
      * @param fileName 保存的文件名
      * @param data 数据，支持 File/ByteArray/String/其他对象(自动JSON序列化)
@@ -333,19 +365,19 @@ object FileUtils {
             // GSON.toJson(data) 反射序列化 Any → toJsonElement().toString() 处理任意类型
             else -> data.toJsonElement().toString().toByteArray()
         }
-        return if (dirUri.isContentScheme()) {
+        if (dirUri.isContentScheme()) {
             val dirDoc = FileDoc.fromDir(dirUri)
-            dirDoc.find(fileName)?.delete()
-            val newDoc = dirDoc.createFileIfNotExist(fileName)
-            newDoc.openOutputStream().getOrThrow().use {
-                it.write(bytes)
+            check(writeDocumentBytesAtomically(App.instance, dirUri, fileName, bytes)) {
+                "导出文件失败: $fileName"
             }
-            newDoc.uri
-        } else {
-            val file = File(dirUri.path ?: dirUri.toString())
-            val newFile = createFileIfNotExist(file, fileName)
-            newFile.writeBytes(bytes)
-            Uri.fromFile(newFile)
+            // 保存后的文件 Uri = 目录里该名字对应的文档 (就位时它就是刚被改名就位的那份);
+            // 目录子项按显示名直接查 (FileDocIo 走一次子项查询, 不逐个 DocumentFile 探测)
+            return dirDoc.find(fileName)?.uri
+                ?: throw NoStackTraceException("导出文件失败: 目标目录里没有 $fileName")
         }
+        val file = File(dirUri.path ?: dirUri.toString())
+        val newFile = File(file, fileName)
+        check(writeBytesAtomically(newFile.path, bytes)) { "导出文件失败: $fileName" }
+        return Uri.fromFile(newFile)
     }
 }

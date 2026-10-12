@@ -88,8 +88,10 @@ import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.effectiveBookExportDir
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.copyToFileAtomically
 import io.legado.app.help.file.AndroidDirAuthorizations
 import io.legado.app.help.i18n.androidAppString
+import io.legado.app.help.writeTextAtomically
 import io.legado.app.lib.theme.MonetColorExtract
 import io.legado.app.model.BookCover
 import io.legado.app.model.CheckSource
@@ -142,7 +144,7 @@ import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.compress.ZipUtils
-import io.legado.app.utils.createFileIfNotExist
+import io.legado.app.utils.copyToDocumentAtomically
 import io.legado.app.utils.createFolderIfNotExist
 import io.legado.app.utils.delete
 import io.legado.app.utils.externalCache
@@ -152,11 +154,12 @@ import io.legado.app.utils.getClipText
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isPad
+import io.legado.app.utils.isTv
 import io.legado.app.utils.isUri
 import io.legado.app.utils.list
+import io.legado.app.utils.toJson
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.openInputStream
-import io.legado.app.utils.openOutputStream
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.printOnDebug
@@ -184,7 +187,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.File
-import java.io.FileOutputStream
+import java.io.InputStream
 
 /**
  * 澎湃 OS activity 转场插值器参数 (miui-services.jar
@@ -1173,6 +1176,9 @@ class AndroidPlatformCapabilities(
     // 对照 ChapterProvider.upLayout 的 appCtx.isPad（"平板/横屏双页" auto 分支）
     override fun isTablet(): Boolean = activity.isPad
 
+    // 对照原版 BaseReadBookActivity 的 isTv（阅读页首启引导的电视机型分支）
+    override fun isTelevision(): Boolean = activity.isTv
+
     // 对照原版 BaseActivity.isInMultiWindow: 多窗口下阅读页不避让状态栏、不进沉浸式布局
     override val isInMultiWindow: Boolean get() = activity.isInMultiWindow
 
@@ -1492,13 +1498,10 @@ class AndroidPlatformCapabilities(
     override fun exportAllUseBookSource() {
         Coroutine.async {
             val path = "${App.instance.filesDir}/shareBookSource.json"
-            FileUtils.delete(path)
-            val file = FileUtils.createFileWithReplace(path)
             val sources = appDb.bookDao.getAllUseBookSource()
-            file.outputStream().buffered().use {
-                GSON.writeToOutputStream(it, sources)
-            }
-            file
+            // 整份落盘: 导出步骤与书源恢复读的都是这个固定路径, 覆盖写被中断会拿到半截 JSON
+            check(writeTextAtomically(path, GSON.toJson(sources))) { "写入失败: $path" }
+            File(path)
         }.onSuccess { file ->
             activity.launchExportDir("bookSource.json", file, "application/json")
         }.onError {
@@ -1523,8 +1526,6 @@ class AndroidPlatformCapabilities(
         Coroutine.async {
             if (books.isEmpty()) throw NoStackTraceException("书籍不能为空")
             val path = "${App.instance.filesDir}/bookshelf.json"
-            FileUtils.delete(path)
-            val file = FileUtils.createFileWithReplace(path)
             // 对齐原 GSON 行为: prettyPrint + 2 空格缩进 + 不序列化 null 字段
             // 字段清单/映射下沉 shared commonMain Book.toShelfJsonMap (13 字段, 与 iOS/desktop/鸿蒙一致)
             val json = Json { prettyPrint = true; prettyPrintIndent = "  " }
@@ -1544,13 +1545,14 @@ class AndroidPlatformCapabilities(
                     })
                 }
             }
-            FileOutputStream(file).use { out ->
-                out.write(
-                    json.encodeToString(JsonArray.serializer(), jsonArray)
-                        .toByteArray(Charsets.UTF_8)
+            // 整份落盘: 导出步骤读的是这个固定路径, 覆盖写被中断会拿到半截 JSON
+            check(
+                writeTextAtomically(
+                    path,
+                    json.encodeToString(JsonArray.serializer(), jsonArray),
                 )
-            }
-            file
+            ) { "写入失败: $path" }
+            File(path)
         }.onSuccess { file ->
             activity.launchExportDir("bookshelf.json", file, "application/json")
         }.onError {
@@ -2001,6 +2003,25 @@ class AndroidPlatformCapabilities(
         }
     }
 
+    /**
+     * 把本地文件整份写进 [dirDoc] 下的 [fileName]: content:// 目录走 SAF 临时文档 + 改名就位
+     * ([copyToDocumentAtomically]), file:// 目录走同目录唯一临时件 + 改名 ([copyToFileAtomically])。
+     * 备份目录是用户可见目录, 没有孤儿临时件的回收方, 两条通道都在各自的每条退出路径上清掉中间件。
+     * 写不成时抛异常 (调用方的 onError 如实报失败)。SAF 目录里目标名上已有同名旧文档时由
+     * [copyToDocumentAtomically] 先把它挪成契约过渡件, 就位成功后删过渡件, 失败则改回目标名;
+     * 就位成立时目标名上是完整的旧件或新件, 提供方不支持同目录就位时直写回落, 目标名上可能出现半截。
+     */
+    private fun writeIntoDir(dirDoc: FileDoc, fileName: String, input: InputStream) {
+        val dir = dirDoc.asFile()
+        if (dir != null) {
+            copyToFileAtomically(File(dir, fileName).path, input)
+            return
+        }
+        check(copyToDocumentAtomically(App.instance, dirDoc.uri, fileName, input)) {
+            "写入备份目录失败: $fileName"
+        }
+    }
+
     private fun copyLogs(doc: FileDoc) {
         val cacheDir = App.instance.externalCache
         val logFiles = File(cacheDir, "logs")
@@ -2012,13 +2033,8 @@ class AndroidPlatformCapabilities(
         val zipFile = File(cacheDir, "logs.zip")
         ZipUtils.zipFiles(arrayListOf(logFiles, crashFiles, logcatFile), zipFile)
 
-        doc.find("logs.zip")?.delete()
-
         zipFile.inputStream().use { input ->
-            doc.createFileIfNotExist("logs.zip").openOutputStream().getOrNull()
-                ?.use {
-                    input.copyTo(it)
-                }
+            writeIntoDir(doc, "logs.zip", input)
         }
         zipFile.delete()
     }
@@ -2029,10 +2045,7 @@ class AndroidPlatformCapabilities(
         doc.find("heapDump")?.delete()
         val heapDumpDoc = doc.createFolderIfNotExist("heapDump")
         heapFile.openInputStream().getOrNull()?.use { input ->
-            heapDumpDoc.createFileIfNotExist(heapFile.name).openOutputStream().getOrNull()
-                ?.use {
-                    input.copyTo(it)
-                }
+            writeIntoDir(heapDumpDoc, heapFile.name, input)
         }
         return true
     }

@@ -14,6 +14,7 @@ import io.legado.app.constant.DirUsage
 import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.copyToFileAtomically
 import io.legado.app.help.file.AndroidDirAuthorizations
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.lib.permission.Permissions
@@ -39,7 +40,6 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
 
 /**
  * 文件关联导入的一次性透明壳。isShellHost 由添加方决定：为 true 时 finishActivity 会 finish 宿主
@@ -230,9 +230,9 @@ class FileAssociationFragment(private val isShellHost: Boolean = false) : Fragme
                             val name = fileDoc.name
                             val file = treeFile.getFile(name)
                             if (!file.exists() || fileDoc.lastModified > file.lastModified()) {
-                                FileOutputStream(file).use { oStream ->
-                                    inputStream.copyTo(oStream)
-                                }
+                                // 同名重存的是书籍保存目录里的书文件, 阅读页可能正在整读它:
+                                // 写同目录唯一临时件再原子改名, 读方只会拿到完整内容
+                                copyToFileAtomically(file.path, inputStream)
                             }
                             viewModel.importBook(Uri.fromFile(file))
                         }

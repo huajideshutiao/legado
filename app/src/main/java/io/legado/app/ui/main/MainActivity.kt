@@ -434,23 +434,29 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     /**
      * 保存图片到用户目录 (对照原版 BaseReadViewModel.saveImage):
      * 缓存文件存在 → 直接复制; 本地书 → 取原图流写入; 网络书缓存缺失 → 不处理 (原版行为)。
+     * 写入契约以 false 表示目标没有被写入, 只有 true 才提示保存成功。
      */
     private fun saveImage(src: String, uri: Uri) {
         Coroutine.async(context = Dispatchers.IO) {
-            val book = ActiveReadBookRegistry.current?.bookValue ?: return@async
+            val book = ActiveReadBookRegistry.current?.bookValue ?: return@async false
             val image = BookHelp.getImage(book, src)
-            if (image.exists()) {
-                FileUtils.saveImage(image, uri)
-            } else if (book.isLocal) {
-                FileBook.getImage(book, src)?.use { input ->
+            when {
+                image.exists() -> FileUtils.saveImage(image, uri)
+                book.isLocal -> FileBook.getImage(book, src)?.use { input ->
                     FileUtils.saveImage(input, uri, ".${BookHelp.getImageSuffix(src)}")
-                }
+                } ?: false
+                else -> false
             }
         }.onError {
             AppLog.put("保存图片出错\n${it.localizedMessage}", it)
             toastOnUi("保存图片出错\n${it.localizedMessage}")
-        }.onSuccess {
-            toastOnUi("保存图片成功")
+        }.onSuccess { saved ->
+            if (saved) {
+                toastOnUi("保存图片成功")
+            } else {
+                AppLog.put("保存图片失败: $src")
+                toastOnUi("保存图片出错")
+            }
         }
     }
 

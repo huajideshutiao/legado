@@ -4,31 +4,23 @@ import android.content.Context
 import android.net.Uri
 import androidx.core.net.toUri
 import io.legado.app.App
-import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
-import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.extension.MangaExtensionManager
 import io.legado.app.lib.theme.MonetColorExtract
 import io.legado.app.utils.FileDoc
-import io.legado.app.utils.createFileIfNotExist
-import io.legado.app.utils.delete
+import io.legado.app.utils.copyToDocumentAtomically
 import io.legado.app.utils.externalFiles
-import io.legado.app.utils.find
 import io.legado.app.utils.getFile
 import io.legado.app.utils.isContentScheme
-import io.legado.app.utils.openOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
-import java.util.concurrent.TimeUnit
 
 /**
  * 备份 (app 端薄壳)。
@@ -65,24 +57,19 @@ object Backup {
     }
 
     /**
-     * 复制备份 zip 到 SAF 目录 (content scheme 专用, 与原实现一致)。
+     * 复制备份 zip 到 SAF 目录 (content scheme 专用)。
+     *
+     * 目标名上已有同名旧文档时由 [copyToDocumentAtomically] 先把它挪成契约过渡件, 就位成功后删
+     * 过渡件, 失败则改回目标名 —— 不会旧件已清而新件没写成。备份包含图集与封面, zip 体积
+     * 可能很大, 按流写, 不整份读进内存; 写不成时抛异常 (调用方按失败上报), 提供方不做同目录就位
+     * 时由该入口按既有回落直写 (目标名上可能出现半截)。
      */
     @Throws(Exception::class)
     fun copyBackup(srcZipPath: String, uri: Uri, fileName: String) {
         val treeDoc = FileDoc.fromDir(uri)
-        treeDoc.find(fileName)?.delete()
-        val fileDoc = kotlin.runCatching {
-            treeDoc.createFileIfNotExist(fileName)
-        }.getOrElse {
-            throw NoStackTraceException("创建文件失败")
-        }
-        val outputS = fileDoc.openOutputStream().getOrElse {
-            if (it is NullPointerException) throw NoStackTraceException("打开OutputStream失败")
-            throw it
-        }
-        outputS.use {
-            FileInputStream(srcZipPath).use { inputS ->
-                inputS.copyTo(outputS)
+        FileInputStream(srcZipPath).use { inputS ->
+            if (!copyToDocumentAtomically(App.instance, treeDoc.uri, fileName, inputS)) {
+                throw NoStackTraceException("写入备份目录失败: $fileName")
             }
         }
     }

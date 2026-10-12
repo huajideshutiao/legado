@@ -10,6 +10,8 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.platform.sharedAppContext
+import io.legado.app.utils.FileUtilsBase
+import io.legado.app.utils.atomicWriteTempPath
 import io.legado.app.utils.isContentScheme
 import java.io.File
 
@@ -217,12 +219,14 @@ private fun copyToCache(context: Context, uri: Uri): File = synchronized(copyLoc
     val identity = documentIdentity(context, uri)
     val target = File(dir, "$name.${identity ?: "u${uri.hashCode()}"}")
     if (identity != null && target.isFile) return target
-    val temp = File(dir, "${target.name}.tmp")
+    // 临时件名走共享契约 (随机唯一串, 与本目录下其他整份写入同一套判定):
+    // 唯一串不与任何一次复制共用路径, 被强杀残留的那份也只是缓存目录里的可清点件
+    val temp = File(atomicWriteTempPath(target.path))
     try {
         context.contentResolver.openInputStream(uri)?.use { input ->
             temp.outputStream().use { output -> input.copyTo(output) }
         } ?: error("字体文件打不开: $uri")
-        check(temp.renameTo(target)) { "字体副本落盘失败: $target" }
+        FileUtilsBase.replaceFileAtomically(temp, target)
     } finally {
         temp.delete()
     }

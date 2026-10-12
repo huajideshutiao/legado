@@ -7,6 +7,7 @@ import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.storage.BackupFileOps
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.KS_JSON
@@ -373,6 +374,9 @@ class ReadBookConfigShared(private val prefs: PreferenceProvider) {
     /**
      * 导入 readConfig.zip（与 app 端 `import(ByteArray)` 一致）：
      * 解压到缓存目录 → 解析 readConfig.json → 字体/三套背景图落地到 `{files}/font`、`{files}/customImg/novelBg`。
+     *
+     * readConfig.zip 是缓存目录下的固定名 (导出流程也写这个路径): 整份写入 (同目录唯一临时件 + 改名就位),
+     * 解压方拿到的是完整的一份 zip, 不会读到写一半的那份。
      */
     fun import(byteArray: ByteArray): ReadStyleConfig {
         val sep = BackupFileOps.separator
@@ -380,8 +384,7 @@ class ReadBookConfigShared(private val prefs: PreferenceProvider) {
         val cacheBase = AppFilesDirs.get().externalCacheDir ?: AppFilesDirs.get().cacheDir
 
         val configZipPath = cacheBase + sep + "readConfig.zip"
-        BackupFileOps.delete(configZipPath)
-        check(FileUtilsCommon.writeBytes(configZipPath, byteArray)) { "写入 readConfig.zip 失败" }
+        check(writeBytesAtomically(configZipPath, byteArray)) { "写入 readConfig.zip 失败" }
 
         val configDir = cacheBase + sep + "readConfig"
         BackupFileOps.delete(configDir)
@@ -498,7 +501,8 @@ class ReadBookConfigShared(private val prefs: PreferenceProvider) {
      *
      * # 行为
      * 1. 读取图片字节, 计算 MD5 → fileName = `md5.suffix`
-     * 2. 复制到 `{externalFilesDir ?: filesDir}/customImg/novelBg/{fileName}` (已存在则跳过)
+     * 2. 复制到 `{externalFilesDir ?: filesDir}/customImg/novelBg/{fileName}` (已存在则跳过);
+     *    写入走整份落盘 (同目录唯一临时件 + 改名就位), 图集名上不会留下半截图被后续当成品复用
      * 3. 调用方负责 `durConfig.setCurBg(2, fileName)` + postConfig(BG)
      *
      * @return 背景图文件名 (md5.suffix, 相对引用由 [getBgPath] 拼接), 调用方用于 setCurBg
@@ -517,7 +521,7 @@ class ReadBookConfigShared(private val prefs: PreferenceProvider) {
         val bgPath = bgDir + sep + fileName
         if (!BackupFileOps.exists(bgPath)) {
             BackupFileOps.createFolderIfNotExist(bgDir)
-            check(FileUtilsCommon.writeBytes(bgPath, bytes)) { "写入背景图失败: $bgPath" }
+            check(writeBytesAtomically(bgPath, bytes)) { "写入背景图失败: $bgPath" }
         }
         return fileName
     }
@@ -1141,35 +1145,6 @@ data class ReadStyleConfig(
                 bgStr = bg
             }
         }
-    }
-
-    /**
-     * 一次性写入白天/夜间背景与文字颜色 (对照原版预设: 每套样式都有
-     * bgStr+textColor 与 bgStrNight+textColorNight 两套字段)。
-     *
-     * 与 [setCurTextColor] / [setCurBg] 只写当前日/夜/EInk 分支不同, 这里两套一起写并同步
-     * 各自的 Int 缓存, 保证切换日/夜主题后 [curTextColor] / [curBgColor] 不残留上一套颜色;
-     * 同时把日/夜背景类型置为 0 (纯色), 避免残留图片背景类型时 curBgColor 走 bgMeanColor 分支。
-     * (阅读配置面板预设切换用, 对照原版 ReadStyleDialog 切换主题整包替换配置)
-     */
-    fun setPresetColor(
-        bgStr: String,
-        bgStrNight: String,
-        textColorStr: String,
-        textColorStrNight: String,
-        textColor: Int,
-        textColorNight: Int,
-        bgMeanColor: Int,
-    ) {
-        this.bgStr = bgStr
-        this.bgStrNight = bgStrNight
-        this.textColorStr = textColorStr
-        this.textColorStrNight = textColorStrNight
-        this.textColor = textColor
-        textColorIntNight = textColorNight
-        this.bgMeanColor = bgMeanColor
-        bgType = 0
-        bgTypeNight = 0
     }
 
     /**
