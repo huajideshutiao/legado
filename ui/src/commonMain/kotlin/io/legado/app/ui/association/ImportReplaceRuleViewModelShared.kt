@@ -148,11 +148,9 @@ class ImportReplaceRuleViewModelShared(
      *
      * - **输入契约**: source 必须是纯 URL 或 JSON 文本; file:// 地址载荷由
      *   [DeepLinkImportTarget.startImport] 读出文本后传入, 本类不做 Uri 解析。
-     * - 调 [importAwait] 处理 isAbsUrl / isJsonArray / isJsonObject 分支;
+     * - 解析与比对在 [preImportAwait] 内完成, 比对结果经 [successState] 投递;
      * - `onError`: 推送 `_errorState.tryEmit("ImportError:${localizedMessage}")`
-     *   + `AppLog.put(...)` (替代 `errorLiveData.postValue(...)`, 行为等价);
-     * - `onSuccess`: 调 [comparisonSource] 比对本地已有替换规则 (与 app 端原
-     *   `onSuccess { comparisonSource() }` 一致)。
+     *   + `AppLog.put(...)` (替代 `errorLiveData.postValue(...)`, 行为等价)。
      *
      * 业务在 IO 跑, 回调在 mainDispatcher 跑 (与 BaseViewModel.execute 默认值一致)。
      *
@@ -160,13 +158,24 @@ class ImportReplaceRuleViewModelShared(
      */
     fun import(text: String) {
         Coroutine.async(scope = scope) {
-            importAwait(readImportPayload(text).trim())
+            preImportAwait(text)
         }.onError {
             _errorState.tryEmit("ImportError:${it.message}")
             AppLog.put("ImportError:${it.message}", it)
-        }.onSuccess {
-            comparisonSource()
         }
+    }
+
+    /**
+     * 解析载荷 → 与本地库比对, 算好 [defaultChecked] 并投递 [successState]。
+     *
+     * 手动导入 ([import]) 与规则订阅的每日自动更新共用这一段, 两处走同一份解析与同一份
+     * "需要导入"判据。载荷无法解析时抛异常 (调用方决定记日志还是提示)。
+     *
+     * @param text 纯文本 (URL / JSON) 或 file:// 载荷 (由本类入口读成文本)
+     */
+    suspend fun preImportAwait(text: String) {
+        importAwait(readImportPayload(text).trim())
+        comparisonSource()
     }
 
     /**
@@ -239,23 +248,18 @@ class ImportReplaceRuleViewModelShared(
      *
      * - 遍历 [allRules], 调 `appDb.replaceRuleDao.findById(it.id)` 查本地;
      * - defaultChecked: 本地不存在, 或本地已有但 [replaceRuleChanged] 判为有变化 (新增与更新都默认选);
-     * - `onSuccess` 推送 `_successState.tryEmit(allRules.size)` (与 app 端
-     *   `onSuccess { successLiveData.postValue(allRules.size) }` 一致, 注意原版
-     *   comparisonSource 是 onSuccess 才推送 successState, 与其他 VM 直接推送不同,
-     *   本类保留原版 onSuccess 嵌套结构)。
+     * - 推送 `_successState.tryEmit(allRules.size)` (与 app 端
+     *   `onSuccess { successLiveData.postValue(allRules.size) }` 一致)。
      *
-     * 业务在 IO 跑 (DAO 查询必须 IO), 与 BaseViewModel.execute 默认值一致。
+     * 由 [preImportAwait] 在 IO 上下文内调用 (DAO 查询必须 IO)。
      */
-    private fun comparisonSource() {
-        Coroutine.async(scope = scope) {
-            allRules.forEach {
-                val rule = appDb.replaceRuleDao.findById(it.id)
-                checkRules.add(rule)
-                // 本地已有且实质内容变了才算"需要导入"; 无变化的不默认勾选, 免得覆盖用户改过的同 id 规则
-                defaultChecked.add(rule == null || replaceRuleChanged(it, rule))
-            }
-        }.onSuccess {
-            _successState.tryEmit(allRules.size)
+    private suspend fun comparisonSource() {
+        allRules.forEach {
+            val rule = appDb.replaceRuleDao.findById(it.id)
+            checkRules.add(rule)
+            // 本地已有且实质内容变了才算"需要导入"; 无变化的不默认勾选, 免得覆盖用户改过的同 id 规则
+            defaultChecked.add(rule == null || replaceRuleChanged(it, rule))
         }
+        _successState.tryEmit(allRules.size)
     }
 }

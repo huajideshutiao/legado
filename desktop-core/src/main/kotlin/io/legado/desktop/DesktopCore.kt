@@ -45,6 +45,7 @@ import io.legado.app.model.manga.SharedMangaExtensionPlatform
 import io.legado.app.model.manga.SharedMangaSourceConfig
 import io.legado.app.ui.book.changecover.CoverStorageServiceProviders
 import io.legado.app.ui.book.manga.extension.MangaExtensionServiceProviders
+import io.legado.app.ui.association.registerUiRuleSubAutoUpdateHook
 import io.legado.app.ui.compose.platform.registerComposeStringProviders
 import io.legado.app.web.registerDesktopWebServerPlatform
 import io.legado.app.web.utils.registerComposeWebAssetSource
@@ -216,6 +217,8 @@ object DesktopCore {
         // 字符串通道 (syncGetString 与 appString, 同源同一份实现): 未注册时两者均 fallback
         // 返回 key 名, 故须先于任何取值调用; 桌面与 headless 两条入口共用本函数
         registerComposeStringProviders()
+        // 规则订阅每日自动更新的导入实现 (复用 :ui 的导入链, 见 RuleSubAutoUpdateHook)
+        registerUiRuleSubAutoUpdateHook()
         // 注入机器标识到 AndroidIdHolder (对照 app 端 JsEnginesAndroid 注入 ANDROID_ID)。
         // 默认值 "null" 只有 4 字符, BaseSource 登录信息 AES 密钥取前 16 字节会越界被吞,
         // 表现为桌面端书源登录信息无法持久化; 必须在任何 getLoginInfo/putLoginInfo 之前注入

@@ -173,6 +173,7 @@
     <string name="timeout_millisecond">超时毫秒数</string>
     <string name="respondTime">响应时间：%1$d ms</string>
     <string name="rule_subscription">规则订阅</string>
+    <string name="rule_sub_auto_update">每天自动更新</string>
     <string name="rss_sources">RSS</string>
     <string name="dict_rule">字典规则</string>
     <string name="enable_selection">启用所选</string>

@@ -173,6 +173,7 @@
     <string name="timeout_millisecond">Timed out milliseconds</string>
     <string name="respondTime">respondTime: %1$d ms</string>
     <string name="rule_subscription">Rule Subscription</string>
+    <string name="rule_sub_auto_update">Update daily</string>
     <string name="rss_sources">RSS</string>
     <string name="dict_rule">Dict rule</string>
     <string name="enable_selection">Enable selected</string>

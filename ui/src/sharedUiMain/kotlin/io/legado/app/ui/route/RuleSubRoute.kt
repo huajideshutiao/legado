@@ -1,12 +1,12 @@
 ﻿package io.legado.app.ui.route
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.DropdownMenuItem
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -17,18 +17,20 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import io.legado.app.data.entities.RuleSub
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.association.DeepLinkImportTarget
-import io.legado.app.ui.association.DeepLinkImportType
 import io.legado.app.ui.association.ImportTargetDialog
 import io.legado.app.ui.association.RuleSubScreen
 import io.legado.app.ui.association.RuleSubScreenModel
+import io.legado.app.ui.association.toDeepLinkImportTypeOrNull
 import io.legado.app.ui.association.RuleSubUiActions
 import io.legado.app.ui.association.RuleSubUiEvent
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppDropdownField
+import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
@@ -49,6 +51,7 @@ import legado.ui.generated.resources.name
 import legado.ui.generated.resources.non_null_name_url
 import legado.ui.generated.resources.ok
 import legado.ui.generated.resources.replace_rule
+import legado.ui.generated.resources.rule_sub_auto_update
 import legado.ui.generated.resources.rss_source
 import legado.ui.generated.resources.sure_del
 import legado.ui.generated.resources.tts
@@ -61,7 +64,7 @@ import org.jetbrains.compose.resources.stringResource
  *
  * 新增/编辑用 [AppAlertDialog] + customView (类型下拉 + 名称/URL 输入) 实现, 确认后 dispatch Save;
  * 删除用 [AppAlertDialog] 确认后 dispatch Delete;
- * 打开订阅按 [RuleSub.type] 映射到 [DeepLinkImportType], 经 [DeepLinkImportTarget] +
+ * 打开订阅按 [RuleSub.type] 映射到导入类型 (映射见 [toDeepLinkImportTypeOrNull]), 经 [DeepLinkImportTarget] +
  * [ImportTargetDialog] 触发下载解析并渲染勾选导入对话框 (对照 app 端 showDialogFragment(ImportXxxDialog))。
  */
 @Composable
@@ -104,17 +107,11 @@ fun RuleSubRoute(
                     }
                     return
                 }
-                val type = when (ruleSub.type) {
-                    0, 1 -> DeepLinkImportType.BOOK_SOURCE
-                    2 -> DeepLinkImportType.REPLACE_RULE
-                    3 -> DeepLinkImportType.TXT_TOC_RULE
-                    4 -> DeepLinkImportType.DICT_RULE
-                    5 -> DeepLinkImportType.HTTP_TTS
-                    else -> {
-                        // 对照 app 端: 未知类型 toastOnUi(R.string.error)
-                        scope.launch { Toasters.get().toast(getString(Res.string.error)) }
-                        return
-                    }
+                val type = ruleSub.type.toDeepLinkImportTypeOrNull()
+                if (type == null) {
+                    // 对照 app 端: 未知类型 toastOnUi(R.string.error)
+                    scope.launch { Toasters.get().toast(getString(Res.string.error)) }
+                    return
                 }
                 importTarget.value = DeepLinkImportTarget.of(type, scope)
                     ?.also { it.startImport(ruleSub.url) }
@@ -150,10 +147,11 @@ fun RuleSubRoute(
         RuleSubEditDialog(
             ruleSub = ruleSub,
             onDismiss = { pendingEdit.value = null },
-            onConfirm = { name, url, type ->
+            onConfirm = { name, url, type, autoUpdate ->
                 ruleSub.name = name
                 ruleSub.url = url
                 ruleSub.type = type
+                ruleSub.autoUpdate = autoUpdate
                 screenModel.dispatch(RuleSubUiEvent.Save(ruleSub))
                 pendingEdit.value = null
             },
@@ -183,20 +181,22 @@ fun RuleSubRoute(
 /**
  * 规则订阅编辑弹窗 (新增/编辑): 类型下拉 + 名称/URL 输入, 校验非空 + isAbsUrl 后回调 onConfirm。
  *
- * 对照 app 端 `RuleSubActivity.showEditDialog`: alert title (add/edit) + customView
- * (Row 类型下拉 + AppUnderlineTextField 名称 + AppUnderlineTextField URL) + okButton 校验 + cancelButton。
+ * 对照原版 `RuleSubActivity.showEditDialog`: alert title (add/edit) + customView
+ * (类型下拉与自动更新开关同排 + 名称/URL 输入) + okButton 校验 + cancelButton。
  */
 @Composable
 private fun RuleSubEditDialog(
     ruleSub: RuleSub,
     onDismiss: () -> Unit,
-    onConfirm: (name: String, url: String, type: Int) -> Unit,
+    onConfirm: (name: String, url: String, type: Int, autoUpdate: Boolean) -> Unit,
 ) {
     val colors = AppTheme.colors
     var type by remember { mutableStateOf(ruleSub.type.coerceIn(0, 5)) }
+    var autoUpdate by remember { mutableStateOf(ruleSub.autoUpdate) }
     var name by remember { mutableStateOf(ruleSub.name) }
     var url by remember { mutableStateOf(ruleSub.url) }
-    var expanded by remember { mutableStateOf(false) }
+    // 类型下拉选项 (对照原版 AppCompatSpinner + array/rule_type)
+    val ruleTypeOptions = (0..5).map { typeName(it) }
     // 校验失败提示 (对照 app 端 okButton 内 toastOnUi(R.string.non_null_name_url))
     val nonNullNameUrlMsg = stringResource(Res.string.non_null_name_url)
 
@@ -210,33 +210,42 @@ private fun RuleSubEditDialog(
                 Toasters.get().toast(nonNullNameUrlMsg)
                 return@AlertButton
             }
-            onConfirm(n, u, type)
+            onConfirm(n, u, type, autoUpdate)
             onDismiss()
         },
         cancelButton = AlertButton(stringResource(Res.string.cancel)) {},
     ) {
         Column(Modifier.padding(horizontal = DesignTokens.spacingDefault)) {
+            // 类型与自动更新同排: 类型靠左, 自动更新靠右; 开关身份 (角色 + 开/关状态)
+            // 由文字与开关这一段承担, 行尾开关只显示状态
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     stringResource(Res.string.book_type),
                     color = colors.accent,
                     modifier = Modifier.padding(end = DesignTokens.spacingDefault),
                 )
-                Box {
+                AppDropdownField(
+                    options = ruleTypeOptions,
+                    selectedIndex = type,
+                    onSelect = { type = it },
+                )
+                Spacer(Modifier.weight(1f))
+                // 热区只盖文字到开关这一段 (与类型下拉之间的留白不算)
+                Row(
+                    Modifier.toggleable(
+                        value = autoUpdate,
+                        role = Role.Switch,
+                        onValueChange = { autoUpdate = it },
+                    ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(
-                        typeName(type),
+                        stringResource(Res.string.rule_sub_auto_update),
                         color = colors.primaryText,
-                        modifier = Modifier
-                            .clickable { expanded = true }
-                            .padding(DesignTokens.spacingDefault),
+                        maxLines = 1,
                     )
-                    AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        (0..5).forEach { t ->
-                            DropdownMenuItem(
-                                onClick = { type = t; expanded = false },
-                            ) { Text(typeName(t), color = colors.primaryText) }
-                        }
-                    }
+                    Spacer(Modifier.width(DesignTokens.spacingDefault))
+                    AppSwitch(checked = autoUpdate, onCheckedChange = null)
                 }
             }
             AppUnderlineTextField(

@@ -16,6 +16,7 @@ data class RuleSub(
     var url: String = "",
     var type: Int = 0,
     var customOrder: Int = 0,
+    /** 是否每天自动更新一次 (距上次更新满一天才跑, 见 [io.legado.app.help.storage.RuleSubAutoUpdate])。 */
     var autoUpdate: Boolean = false,
     var update: Long = Clock.System.now().toEpochMilliseconds()
 )

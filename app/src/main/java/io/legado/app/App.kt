@@ -99,6 +99,7 @@ import io.legado.app.help.tvbox.TvBoxSniffPlatforms
 import io.legado.app.model.tvbox.TvBoxManager
 import io.legado.app.model.webBook.registerAndroidWebBookProviders
 import io.legado.app.service.WebService
+import io.legado.app.ui.association.registerUiRuleSubAutoUpdateHook
 import io.legado.app.ui.book.changesource.registerAndroidChangeBookSourcePlatform
 import io.legado.app.ui.book.manage.registerAndroidBookshelfManagePlatform
 import io.legado.app.ui.browser.configureWebViewStartUpMode
@@ -168,6 +169,8 @@ class App : Application() {
         // AppContextWrapper.wrap 已设置
         warmAppStringCache()
         registerComposeStringProviders()
+        // 规则订阅每日自动更新的导入实现 (复用 :ui 的导入链, 见 RuleSubAutoUpdateHook)
+        registerUiRuleSubAutoUpdateHook()
         registerAndroidAppLogHost()
         // 注册 ScreenInfoProvider (供 SystemUtils.screenWidthPx/screenHeightPx 委托读取),
         // 须在任何 SystemUtils 屏幕尺寸访问之前 (PDF 书渲染等)

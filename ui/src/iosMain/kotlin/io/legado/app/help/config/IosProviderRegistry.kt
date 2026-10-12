@@ -28,6 +28,7 @@ import io.legado.app.help.http.registerSharedCookieJarBridge
 import io.legado.app.help.media.registerIosMediaNotificationController
 import io.legado.app.help.notification.registerIosNotificationProgress
 import io.legado.app.help.registerComposeDefaultDataResourceProvider
+import io.legado.app.ui.association.registerUiRuleSubAutoUpdateHook
 import io.legado.app.ui.compose.platform.registerComposeStringProviders
 import io.legado.app.help.registerNativeDirectLinkUploadProviders
 import io.legado.app.help.registerNativeExploreKindsCacheProvider
@@ -122,6 +123,8 @@ fun registerIosProviders() {
     // 翻页边界提示、Toaster 按钮文案等; 未注册时两条通道均返回 key 名, 运行期可见为
     // "no_prev_page" 之类原始 key。零平台依赖顺序无关, 只须在任何取值调用之前)
     registerComposeStringProviders()
+    // 规则订阅每日自动更新的导入实现 (复用 :ui 的导入链, 见 RuleSubAutoUpdateHook)
+    registerUiRuleSubAutoUpdateHook()
 
     // 1.06 Toaster (须在 AppLog 宿主之前: AppLog.put(toast = true) 的 toast 出口走 Toasters,
     // 晚注册则初始化期的提示直接抛; IosToaster 只依赖 UIKit, 拿不到 vc 时 NSLog 兜底。

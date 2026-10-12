@@ -47,6 +47,7 @@ import io.legado.app.help.toast.registerOhosToaster
 import io.legado.app.help.tts.OhosHttpTtsPlayer
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.help.tts.registerOhosSystemTtsEngine
+import io.legado.app.ui.association.registerUiRuleSubAutoUpdateHook
 import io.legado.app.ui.compose.platform.registerComposeStringProviders
 import io.legado.app.help.ui.registerOhosOpenUrlProvider
 import io.legado.app.help.ui.registerNativeUserAgentProvider
@@ -169,6 +170,8 @@ fun registerOhosProviders() {
     // (EntryAbility 的 want.uri) 在本函数返回后即可能取串, 等首帧组合才注册会落到 key 名兜底。
     // 排在 1.06 Preference 之前与平台无关, 只须在任何取值调用之前)
     registerComposeStringProviders()
+    // 规则订阅每日自动更新的导入实现 (复用 :ui 的导入链, 见 RuleSubAutoUpdateHook)
+    registerUiRuleSubAutoUpdateHook()
 
     // 1.06 Preference provider (须在 AppLog 宿主之前: 宿主的 recordLog 门直读 PreferenceProviders,
     // 晚注册则这中间的 AppLog.put 全按 recordLog=false 走, 不落盘)

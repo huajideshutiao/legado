@@ -191,9 +191,9 @@ class ImportBookSourceViewModelShared(
      * - isJsonObject || isJsonArray: 走 [importFromJson] 本地 JSON 解析 (含 `sourceUrls` 多地址载荷);
      * - else: 抛 `NoStackTraceException("格式不对")` (替代 `context.getString(R.string.wrong_format)`,
      *   与 shared 端其他下沉 VM 文案一致)。
+     * - 解析与比对在 [preImportAwait] 内完成, 比对结果经 [successState] 投递;
      * - `onError`: 推送 `_errorState.tryEmit("ImportError:${localizedMessage}")`
-     *   + `AppLog.put(...)` (替代 `errorLiveData.postValue(...)`, 行为等价);
-     * - `onSuccess`: 调 [comparisonSource] 比对本地已有书源 (与 app 端原 `onSuccess { comparisonSource() }` 一致)。
+     *   + `AppLog.put(...)` (替代 `errorLiveData.postValue(...)`, 行为等价)。
      *
      * 业务在 IO 跑, 回调在 mainDispatcher 跑 (与 BaseViewModel.execute 默认值一致)。
      *
@@ -201,19 +201,30 @@ class ImportBookSourceViewModelShared(
      */
     fun importSource(text: String) {
         Coroutine.async(scope = scope) {
-            val mText = readImportPayload(text).trim()
-            when {
-                mText.isAbsUrl() -> importSourceUrl(mText)
-
-                mText.isJsonObject() || mText.isJsonArray() -> importFromJson(mText)
-                else -> throw NoStackTraceException("格式不对")
-            }
+            preImportAwait(text)
         }.onError {
             _errorState.tryEmit("ImportError:${it.message}")
             AppLog.put("ImportError:${it.message}", it)
-        }.onSuccess {
-            comparisonSource()
         }
+    }
+
+    /**
+     * 解析载荷 → 与本地库比对, 算好 [defaultChecked] 并投递 [successState]。
+     *
+     * 手动导入 ([importSource]) 与规则订阅的每日自动更新共用这一段, 两处走同一份解析与同一份
+     * "需要导入"判据。载荷无法解析时抛异常 (调用方决定记日志还是提示)。
+     *
+     * @param text 纯文本 (URL / JSON / sourceUrls JSON) 或 file:// 载荷 (由本类入口读成文本)
+     */
+    suspend fun preImportAwait(text: String) {
+        val mText = readImportPayload(text).trim()
+        when {
+            mText.isAbsUrl() -> importSourceUrl(mText)
+
+            mText.isJsonObject() || mText.isJsonArray() -> importFromJson(mText)
+            else -> throw NoStackTraceException("格式不对")
+        }
+        comparisonSource()
     }
 
     /**
@@ -340,18 +351,16 @@ class ImportBookSourceViewModelShared(
      * - updateSourceStatus: source != null 且本地 lastUpdateTime < 新源 lastUpdateTime (更新);
      * - 推送 `_successState.tryEmit(allSources.size)` (替代 `successLiveData.postValue(allSources.size)`)。
      *
-     * 业务在 IO 跑 (DAO 查询必须 IO), 与 BaseViewModel.execute 默认值一致。
+     * 由 [preImportAwait] 在 IO 上下文内调用 (DAO 查询必须 IO)。
      */
-    private fun comparisonSource() {
-        Coroutine.async(scope = scope) {
-            allSources.forEach {
-                val source = appDb.bookSourceDao.getBookSourcePart(it.bookSourceUrl)
-                checkSources.add(source)
-                defaultChecked.add(source == null || source.lastUpdateTime < it.lastUpdateTime)
-                newSourceStatus.add(source == null)
-                updateSourceStatus.add(source != null && source.lastUpdateTime < it.lastUpdateTime)
-            }
-            _successState.tryEmit(allSources.size)
+    private suspend fun comparisonSource() {
+        allSources.forEach {
+            val source = appDb.bookSourceDao.getBookSourcePart(it.bookSourceUrl)
+            checkSources.add(source)
+            defaultChecked.add(source == null || source.lastUpdateTime < it.lastUpdateTime)
+            newSourceStatus.add(source == null)
+            updateSourceStatus.add(source != null && source.lastUpdateTime < it.lastUpdateTime)
         }
+        _successState.tryEmit(allSources.size)
     }
 }

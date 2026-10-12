@@ -154,6 +154,11 @@ object BackupShared {
     suspend fun autoBackAwait(
         destinationPath: String? = PreferenceProviders.get().getStringOrNull(PreferKey.backupPath),
     ) {
+        // 规则订阅的每日更新挂在自动备份这批时机上 (退出阅读页 / 退出程序 / 退到后台), 节流各算各的:
+        // 订阅读自己的 RuleSub.update, 备份读 lastBackup, 互不推迟。
+        // 发起即返回不在这里等: 订阅地址失效时等网络超时会把每次退出都拖住;
+        // 挑选时已把该条订阅的下次尝试时间推到次日, 失败或中断都等次日时机再试, 不写半份数据。
+        RuleSubAutoUpdate.run()
         if (!shouldAutoBackup()) return
         autoBackMutex.withLock {
             if (!shouldAutoBackup()) return
