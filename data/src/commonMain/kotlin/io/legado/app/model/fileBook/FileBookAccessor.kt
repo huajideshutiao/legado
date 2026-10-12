@@ -23,7 +23,8 @@ import kotlin.concurrent.Volatile
  *
  * # 边界
  * 本接口只收平台文件原语 (文件读写/落点/权限/格式解析); 判型/阈值/解包/落库/合并/远端下载
- * 的跨端编排在 [FileBookRemoteImportShared], 由 [FileBook] 直接调, 不经本接口分发。
+ * 的跨端编排在 [FileBookRemoteImportShared] 与 [FileBookLocalImportShared], 由 [FileBook] 直接调,
+ * 不经本接口分发。
  *
  * 模式参考 [io.legado.app.help.book.BookHelpProviders] /
  * [io.legado.app.model.AudioPlayCommanders]。

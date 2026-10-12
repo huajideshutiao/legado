@@ -1,12 +1,10 @@
 package io.legado.desktop.model.fileBook
 
-import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
-import io.legado.app.exception.EmptyFileException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.LocalBookLocators
@@ -36,8 +34,8 @@ import io.legado.app.model.fileBook.CbzFile
 import io.legado.app.model.fileBook.EpubFile
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.fileBook.FileBookAccessor
+import io.legado.app.model.fileBook.FileBookLocalImportShared
 import io.legado.app.model.fileBook.FileBookProviders
-import io.legado.app.model.fileBook.FileBookRemoteImportShared
 import io.legado.app.model.fileBook.TextFile
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.InputStream
@@ -215,38 +213,26 @@ class DesktopFileBookAccessor(
         return codec.unArchive(archiveFile, destDir, filter)
     }
 
-    override fun importLocalFile(uriStr: String): Book {
+    /**
+     * 导入本地文件 (原 `FileBook.importLocalFile(FileDoc)`)。
+     *
+     * 判型 / 构造 Book / 落库在 [FileBookLocalImportShared] (四端唯一一份), 此处只取平台文件信息。
+     * 压缩包判据仍用本端解包能力 ([getArchiveFilesName], 解包器未注入时由其报错)。
+     */
+    override fun importLocalFile(uriStr: String): Book = runBlocking {
         val file = resolveLocalFile(uriStr)
-        val fileName = file.name
-        if (file.length() == 0L) throw EmptyFileException("Unexpected empty File")
-        val (name, author) = analyzeNameAuthor(fileName)
-        var type = BookType.text or BookType.local
-        when {
-            fileName.endsWith(".cbz", true) -> type = BookType.image or BookType.local
-            AppPattern.archiveFileRegex.matches(fileName) -> {
-                // 对齐 app 端: 压缩包内含书籍文件则解压导入, 否则按普通文件继续
-                val hasBookFile = getArchiveFilesName(file).any { FileBook.isBookFile(it) }
-                if (hasBookFile) {
-                    return importFromArchive(uriStr) { FileBook.isBookFile(it) }.firstOrNull()
-                        ?: throw NoStackTraceException(appString(AppStringKey.unsupport_archivefile_entry))
-                }
-            }
-
-            else -> {}
-        }
-        return importBook(
-            Book(
-                // 存储引用: 数据根下的文件 (WebDAV 下载/压缩包子书落 books/) 存相对引用,
-                // 外部任意的文件存 file: URI (与旧行为一致), 便携移动程序目录后均有效
-                bookUrl = desktopStoredLocalRef(file),
-                name = name,
-                author = author,
-                originName = fileName,
-                latestChapterTime = file.lastModified(),
-                order = runBlocking { AppDbProviders.get().bookDao.minOrder() } - 1,
-                origin = desktopStoredLocalRef(file),
-                type = type
-            )
+        FileBookLocalImportShared.importLocalFile(
+            accessor = this@DesktopFileBookAccessor,
+            ref = uriStr,
+            fileName = file.name,
+            size = file.length(),
+            lastModified = file.lastModified(),
+            // 存储引用: 数据根下的文件 (WebDAV 下载/压缩包子书落 books/) 存相对引用,
+            // 外部任意的文件存 file: URI (与旧行为一致), 便携移动程序目录后均有效
+            storedRef = desktopStoredLocalRef(file),
+            archiveHasBookFile = { ref ->
+                getArchiveFilesName(resolveLocalFile(ref)).any { FileBook.isBookFile(it) }
+            },
         )
     }
 
@@ -265,10 +251,6 @@ class DesktopFileBookAccessor(
             codec.getFilesName(archiveFile, null)
         }.getOrElse { emptyList() }
     }
-
-    /** 统一导入逻辑 (对齐 app 端 FileBookAccessorImpl.importBook, runBlocking 适配 suspend DAO)。 */
-    private fun importBook(book: Book): Book =
-        runBlocking { FileBookRemoteImportShared.importBook(book) }
 
     override fun deleteBook(book: Book, deleteOriginal: Boolean) {
         // 对齐 app 端 FileBook.deleteBook: 章节缓存与封面在应用私有区, 删不掉不影响用户的源文件,
@@ -401,7 +383,7 @@ class DesktopFileBookAccessor(
         return BookNameAuthorAnalyzer.analyzeNameAuthor(fileName, importFileNameJs)
     }
 
-    /** 获取合法的文件后缀 (对齐 app 端: 复用 [UrlUtil.getSuffix], 含 fileSuffixRegex 校验 + "ext" 兜底)。 */
+    /** 获取合法的文件后缀 (对齐 app 端: 复用 [UrlUtil.getSuffix], 含合法性校验 + "ext" 兜底)。 */
     override fun getUrlSuffix(name: String): String = UrlUtil.getSuffix(name)
 
     /** 解析 bookUrl 为 [File] (与 LocalEpubResource.jvm.kt 的 resolveLocalFile 逻辑一致)。 */

@@ -9,7 +9,6 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
-import io.legado.app.exception.EmptyFileException
 import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
@@ -178,39 +177,21 @@ object FileBookAccessorImpl : FileBookAccessor {
     /**
      * 导入本地文件 (原 `FileBook.importLocalFile(FileDoc)`)。
      *
-     * 原 importLocalFile(FileDoc) 私有重载, 保留完整逻辑供 [importLocalFile] (String)
-     * 与 app 端 [FileBookExtensions.importLocalFile] (FileDoc 重载) 复用。
+     * 判型 / 构造 Book / 落库在 [FileBookLocalImportShared] (四端唯一一份), 此处只取平台文件信息。
+     * 压缩包判据 [ArchiveUtils.getArchiveFilesName] 必须带 filter: 该原语 filter 为 null 时恒返回
+     * 空列表 (原版同款语义), 不传 filter 会让"压缩包含书籍文件"这条分支永远走不到。
      */
-    private fun importLocalFile(fileDoc: FileDoc): Book {
-        val (fileName, _, _, updateTime, _) = fileDoc.apply {
-            if (size == 0L) throw EmptyFileException("Unexpected empty File")
-        }
-        val (name, author) = analyzeNameAuthor(fileName)
-        var type = BookType.text or BookType.local
-        when {
-            fileName.endsWith(".cbz", true) -> type = BookType.image or BookType.local
-            AppPattern.archiveFileRegex.matches(fileName) -> {
-                val names = ArchiveUtils.getArchiveFilesName(fileDoc.uri)
-                val hasBookFile = names.any { isBookFile(it) }
-                if (hasBookFile) {
-                    return importFromArchive(fileDoc.uri.toString()) { isBookFile(it) }.firstOrNull()
-                        ?: throw NoStackTraceException(appString(AppStringKey.unsupport_archivefile_entry))
-                }
-            }
-
-            else -> {}
-        }
-        return importBook(
-            Book(
-                bookUrl = fileDoc.uri.toString(),
-                name = name,
-                author = author,
-                originName = fileName,
-                latestChapterTime = updateTime,
-                order = runBlocking { appDb.bookDao.minOrder() } - 1,
-                origin = fileDoc.uri.toString(),
-                type = type
-            )
+    private fun importLocalFile(fileDoc: FileDoc): Book = runBlocking {
+        FileBookLocalImportShared.importLocalFile(
+            accessor = this@FileBookAccessorImpl,
+            ref = fileDoc.uri.toString(),
+            fileName = fileDoc.name,
+            size = fileDoc.size,
+            lastModified = fileDoc.lastModified,
+            storedRef = fileDoc.uri.toString(),
+            archiveHasBookFile = { ref ->
+                ArchiveUtils.getArchiveFilesName(ref.toUri()) { isBookFile(it) }.isNotEmpty()
+            },
         )
     }
 
@@ -442,13 +423,6 @@ object FileBookAccessorImpl : FileBookAccessor {
     /** 判断是否为支持的书籍文件 (原 `FileBook.isBookFile`)。 */
     private fun isBookFile(fileName: String): Boolean =
         AppPattern.bookFileRegex.matches(fileName)
-
-    /**
-     * 统一核心导入逻辑 (旧书删旧缓存重建 / 新书上架), 编排下沉
-     * [FileBookRemoteImportShared.importBook]。
-     */
-    private fun importBook(book: Book): Book =
-        runBlocking { FileBookRemoteImportShared.importBook(book) }
 
 }
 

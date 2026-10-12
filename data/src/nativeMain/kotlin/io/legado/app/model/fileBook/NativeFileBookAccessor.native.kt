@@ -1,6 +1,5 @@
 package io.legado.app.model.fileBook
 
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
 import io.legado.app.constant.PreferKey
@@ -22,15 +21,14 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
-import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.ui.compose.platform.syncGetString
+import io.legado.app.utils.File
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.inputStream
 import io.legado.app.utils.toInputStream
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
-import io.legado.app.utils.File
 import okio.FileSystem
 import okio.IOException
 import okio.Path.Companion.toPath
@@ -59,9 +57,6 @@ class NativeFileBookAccessor : FileBookAccessor {
      * 拉起目录选择器。
      */
     private fun bookSaveDir(): String = requireBookSaveDir()
-
-    /** 合法文件后缀 (与 UrlUtil.fileSuffixRegex 一致, 该 regex 未下沉 commonMain 故此处内联)。 */
-    private val fileSuffixRegex = Regex("^[a-z\\d]+$", RegexOption.IGNORE_CASE)
 
     override fun getCoverPath(bookUrl: String): String {
         // 与 app 端 FileBookAccessorImpl.getCoverPath 一致: md516(bookUrl).jpg
@@ -138,58 +133,44 @@ class NativeFileBookAccessor : FileBookAccessor {
         return books
     }
 
-    override fun importLocalFile(uriStr: String): Book {
+    /**
+     * 导入本地文件 (原 `FileBook.importLocalFile(FileDoc)`)。
+     *
+     * 判型 / 构造 Book / 落库在 [FileBookLocalImportShared] (四端唯一一份), 此处只取平台文件信息
+     * 与压缩包能力 ([archiveHasBookFile])。
+     */
+    override fun importLocalFile(uriStr: String): Book = runBlocking {
         val file = resolveLocalFile(uriStr)
-        val fileName = file.name
-        if (file.length() == 0L) throw NoStackTraceException("Unexpected empty File")
-        val (name, author) = analyzeNameAuthor(fileName)
-        var type = BookType.text or BookType.local
-        when {
-            fileName.endsWith(".cbz", true) -> type = BookType.image or BookType.local
-            AppPattern.archiveFileRegex.matches(fileName) -> {
-                // zip 压缩包: 检查内含书籍文件, 有则解压导入第一个 (与 desktop 一致)
-                if (fileName.endsWith(".zip", true)) {
-                    val bytes = file.readBytes()
-                    val zip = RemoteZipCore(bytesRangedSource(bytes), fileName, bytes.size.toLong())
-                    try {
-                        val meta = zip.ensureMeta().values.firstOrNull {
-                            !it.entry.name.endsWith("/") && FileBook.isBookFile(it.entry.name)
-                        }
-                        if (meta != null) {
-                            val savedUri = saveBookFile(
-                                zip.readDecompressed(meta).toInputStream(),
-                                meta.entry.name.substringAfterLast('/')
-                            )
-                            return importLocalFile(savedUri)
-                        }
-                    } finally {
-                        zip.close()
-                    }
-                }
-                throw NoStackTraceException("iOS/鸿蒙端仅支持 zip/cbz 压缩包, 不支持 $fileName")
-            }
-        }
-        val bookUrl = "file://" + file.absolutePath
-        return importBook(
-            Book(
-                bookUrl = bookUrl,
-                name = name,
-                author = author,
-                originName = fileName,
-                latestChapterTime = file.lastModified(),
-                order = runBlocking { AppDbProviders.get().bookDao.minOrder() } - 1,
-                origin = bookUrl,
-                type = type
-            )
+        FileBookLocalImportShared.importLocalFile(
+            accessor = this@NativeFileBookAccessor,
+            ref = uriStr,
+            fileName = file.name,
+            size = file.length(),
+            lastModified = file.lastModified(),
+            storedRef = "file://" + file.absolutePath,
+            archiveHasBookFile = ::archiveHasBookFile,
         )
     }
 
     /**
-     * 统一导入逻辑 (对齐 app/桌面端: 编排在 [FileBookRemoteImportShared.importBook],
-     * runBlocking 适配 suspend DAO)。
+     * 压缩包内是否含书籍文件: native 端无 libarchive, 只有 zip 解包器, 其余压缩包格式在此报明确异常
+     * (不静默当作文本书导入)。cbz 已在判型里归为图片书, 不到此处。
      */
-    private fun importBook(book: Book): Book =
-        runBlocking { FileBookRemoteImportShared.importBook(book) }
+    private fun archiveHasBookFile(archiveRef: String): Boolean {
+        val archiveFile = resolveLocalFile(archiveRef)
+        if (!archiveFile.name.endsWith(".zip", true)) {
+            throw NoStackTraceException("iOS/鸿蒙端仅支持 zip/cbz 压缩包, 不支持 ${archiveFile.name}")
+        }
+        val bytes = archiveFile.readBytes()
+        val zip = RemoteZipCore(bytesRangedSource(bytes), archiveFile.name, bytes.size.toLong())
+        return try {
+            zip.ensureMeta().values.any {
+                !it.entry.name.endsWith("/") && FileBook.isBookFile(it.entry.name)
+            }
+        } finally {
+            zip.close()
+        }
+    }
 
     override fun deleteBook(book: Book, deleteOriginal: Boolean) {
         // 与 app/desktop 同一口径: 章节缓存与封面在应用私有区, 删不掉不影响用户的源文件,
@@ -318,20 +299,7 @@ class NativeFileBookAccessor : FileBookAccessor {
         return BookNameAuthorAnalyzer.analyzeNameAuthor(fileName, importFileNameJs)
     }
 
-    override fun getUrlSuffix(name: String): String {
-        // 对齐 UrlUtil.getSuffix 原版语义: 不带点 + 合法性校验 + "ext" 兜底
-        val suffix = CustomUrl(name).getUrl()
-            .substringAfterLast("/")
-            .substringBefore("?")
-            .substringBefore("#")
-            .substringAfterLast(".", "")
-        return if (suffix.length > 5 || !suffix.matches(fileSuffixRegex)) {
-            AppLog.put("Cannot find legal suffix:\n target: $name\n suffix: $suffix")
-            "ext"
-        } else {
-            suffix
-        }
-    }
+    override fun getUrlSuffix(name: String): String = io.legado.app.utils.getUrlSuffix(name, null)
 
     /** 解析 bookUrl 为 [File] (与 NativeLocalBookLocator.parseLocalPath 剥离规则一致);
      *  internal 供同模块 iOS 授权装饰器取文件路径包租约。 */
