@@ -116,12 +116,7 @@ fun PageKeyDialog(
         properties = AppDialogSizes.properties(),
     ) {
         AppDialogSurface(
-            modifier = Modifier.appDialogSize().padding(
-                start = DesignTokens.spacingDefault,
-                top = DesignTokens.spacingLg,
-                end = DesignTokens.spacingDefault,
-                bottom = DesignTokens.spacingDefault,
-            ),
+            modifier = Modifier.appDialogSize(),
         ) {
             Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(

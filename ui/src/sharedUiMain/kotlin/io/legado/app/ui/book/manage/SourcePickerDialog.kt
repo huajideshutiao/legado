@@ -90,12 +90,7 @@ fun SourcePickerDialog(
         properties = AppDialogSizes.properties(),
     ) {
         AppDialogSurface(
-            modifier = Modifier.appDialogSize(fullHeight = true).padding(
-                start = DesignTokens.spacingDefault,
-                top = DesignTokens.spacingLg,
-                end = DesignTokens.spacingDefault,
-                bottom = DesignTokens.spacingDefault,
-            ),
+            modifier = Modifier.appDialogSize(fullHeight = true),
         ) {
             Column(Modifier.fillMaxSize()) {
                 // 顶部标题栏: 返回箭头 + 标题 (与原版 Row + IconButton(ic_arrow_back) + Text(选择书源) 对齐)

@@ -97,12 +97,7 @@ fun EffectiveReplacesDialog(
     ) {
         AppDialogSurface(
             // 原版 isFullHeight = true, 高度固定 0.8 屏高
-            modifier = Modifier.appDialogSize(fullHeight = true).padding(
-                start = DesignTokens.spacingDefault,
-                top = DesignTokens.spacingLg,
-                end = DesignTokens.spacingDefault,
-                bottom = DesignTokens.spacingDefault,
-            ),
+            modifier = Modifier.appDialogSize(fullHeight = true),
         ) {
             Column(Modifier.fillMaxSize()) {
                 DialogTitleBar(
