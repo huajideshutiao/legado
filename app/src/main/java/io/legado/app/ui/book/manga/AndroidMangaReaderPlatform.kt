@@ -16,6 +16,7 @@ import io.legado.app.ui.book.manga.entities.MangaCellState
 import io.legado.app.ui.book.manga.render.MangaCoilImage
 import io.legado.app.ui.book.manga.render.preloadMangaImageAndroid
 import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.utils.writeDocumentBytesAtomically
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -72,6 +73,7 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
     }
 
     // 保存图片: 只导出已缓存的图 (对照原版 BaseReadViewModel.saveImage 的读取段), 落点走 SAF 单文件
+    // (写盘整份归位与回落条件见 [writeDocumentBytesAtomically])
     override suspend fun saveImage(
         url: String,
         book: Book?,
@@ -80,8 +82,7 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
         saveCachedMangaImage(url, book) { name, bytes ->
             val destPath = PlatformServiceProviders.get().files.saveFile(name)
                 ?: return@saveCachedMangaImage null
-            val uri = destPath.toUri()
-            App.instance.contentResolver.openOutputStream(uri)?.use { it.write(bytes) } != null
+            writeDocumentBytesAtomically(App.instance, destPath.toUri(), name, bytes)
         }
     }
 }

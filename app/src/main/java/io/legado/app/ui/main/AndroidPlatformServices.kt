@@ -56,18 +56,17 @@ import io.legado.app.utils.ActivityResultLauncherAwait
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.checkWrite
-import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.delete
 import io.legado.app.utils.displayName
 import io.legado.app.utils.find
 import io.legado.app.utils.getFile
 import io.legado.app.utils.hasPlayableScheme
 import io.legado.app.utils.list
-import io.legado.app.utils.openOutputStream
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.realScreenSize
 import io.legado.app.utils.share
 import io.legado.app.utils.toastOnUi
+import io.legado.app.utils.writeDocumentBytesAtomically
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -208,14 +207,13 @@ private class AndroidFilePickerService(
     }
 
     override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? = runBlocking {
-        // CreateDocument 选位置 → contentResolver 写入 (对照 master PhotoDialog 的 SAF 保存)
+        // CreateDocument 选位置 → 写入 (对照 master PhotoDialog 的 SAF 保存): 目标所在目录允许整份就位
+        // 时先写临时文档再改名, 否则直写 (见 writeDocumentBytesAtomically; 单文档授权通常只能直写)
         // 用户取消选择位置返回 null, 调用方静默; 仅写入失败返回 false
         val uri = withContext(Dispatchers.Main) { createDocumentPicker.launch(suggestedName) }
             ?: return@runBlocking null
         runCatching {
-            App.instance.contentResolver.openOutputStream(uri)
-                ?.use { it.write(bytes) } ?: return@runBlocking false
-            true
+            writeDocumentBytesAtomically(App.instance, uri, suggestedName, bytes)
         }.getOrDefault(false)
     }
 
@@ -242,12 +240,11 @@ private class AndroidFilePickerService(
     // SAF 权限按树 URI 授予、本身没有用途维度, 故选中后按 [usage] 登记用途, 供本地书文件访问校验
     override val supportsDirWrite: Boolean = true
 
-    // 写进已选目录 (对照 app 端 FileUtils.saveImage(dirUri): FileDoc 兼容 content:// 与 file://)
+    // 写进已选目录 (对照 app 端 FileUtils.saveImage(dirUri)): 目录允许整份就位时先写临时文档再改名,
+    // 否则直写 (见 writeDocumentBytesAtomically)
     override fun writeImageToDir(dir: String, fileName: String, bytes: ByteArray): Boolean =
         runCatching {
-            val picFile = FileDoc.fromDir(dir.toUri()).createFileIfNotExist(fileName)
-            picFile.openOutputStream().getOrThrow().use { it.write(bytes) }
-            true
+            writeDocumentBytesAtomically(App.instance, dir.toUri(), fileName, bytes)
         }.getOrDefault(false)
 
     override fun pickDirectory(usage: DirUsage): String? = runBlocking {
