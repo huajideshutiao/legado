@@ -31,7 +31,6 @@ import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.appDialogSize
-import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
@@ -45,6 +44,7 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 分组选择对话框。
@@ -155,7 +155,7 @@ fun GroupSelectDialog(
 }
 
 @Composable
-private fun RuleItemScope.GroupItem(
+private fun ReorderableCollectionItemScope.GroupItem(
     item: BookGroup,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,

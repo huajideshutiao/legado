@@ -30,7 +30,6 @@ import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.appDialogSize
-import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.launch
@@ -42,6 +41,7 @@ import legado.ui.generated.resources.ic_add
 import legado.ui.generated.resources.ok
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 书架分组管理对话框。
@@ -137,7 +137,7 @@ fun GroupManageDialog(
 }
 
 @Composable
-private fun RuleItemScope.GroupManageItem(
+private fun ReorderableCollectionItemScope.GroupManageItem(
     item: BookGroup,
     onShowChange: (Boolean) -> Unit,
     onEdit: () -> Unit,

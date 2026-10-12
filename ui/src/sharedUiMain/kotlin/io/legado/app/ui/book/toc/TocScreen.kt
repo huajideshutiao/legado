@@ -341,8 +341,8 @@ private fun ChapterListPage(state: TocUiState, actions: TocUiActions) {
         val collapsedSet = state.collapsedVolumes
         val countWords = state.countWords
         val durIndex = state.durChapterIndex
-        // 与发现页同款按容器宽度自动分列 (rememberResponsiveColumns(1): 400dp→1列,
-        // 600dp→2列…); 卷名行跨满整行, 窄屏单列时与原来完全一致
+        // 与发现页同款按容器宽度自动分列 (rememberResponsiveColumns(1): 400dp→1 列,
+        // 640dp→2 列, 1000dp→3 列…); 卷名行跨满整行, 窄屏单列时与原来完全一致
         FastScrollLazyVerticalGrid(
             columns = rememberResponsiveColumns(1),
             state = listState,

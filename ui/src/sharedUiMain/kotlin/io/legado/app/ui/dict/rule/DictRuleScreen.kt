@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
@@ -35,7 +35,6 @@ import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.component.dragSelectable
-import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
@@ -60,6 +59,7 @@ import legado.ui.generated.resources.sure_del
 import legado.ui.generated.resources.yes
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 字典规则管理 Screen (KMP 版, sharedUiMain 共享)。
@@ -171,7 +171,7 @@ fun DictRuleScreen(
 ) {
     val dictRules = state.dictRules
     val selectedSet = state.selected
-    val listState = rememberLazyListState()
+    val listState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
     // 单条删除待确认项 (对照原 confirmDelete 的 alert)
     val pendingDeleteRule = remember { mutableStateOf<DictRule?>(null) }
@@ -296,7 +296,7 @@ private fun DictRuleActions(actions: DictRuleUiActions) {
  * 长按空白把手区触发拖拽排序 (longPressDraggableHandle 来自 reorderable 库)。
  */
 @Composable
-private fun RuleItemScope.DictRuleItem(
+private fun ReorderableCollectionItemScope.DictRuleItem(
     item: DictRule,
     checked: Boolean,
     actions: DictRuleUiActions,

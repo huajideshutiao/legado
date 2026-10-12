@@ -375,14 +375,14 @@ private fun RecordList(
     // dateFormat 在列表层 remember 一次, 所有 RecordRow 共享 (对齐原 Activity 单成员实例行为)
     val dateFormat = remember { ThreadSafeDateFormat("yyyy-MM-dd HH:mm") }
     FastScrollLazyVerticalGrid(
-        // 与书架 LIST 档一致: 400dp→1 列, 800dp→2 列, 行内布局不变
+        // 与书架 LIST 档一致: 400dp→1 列, 640dp→2 列, 1000dp→3 列, 行内布局不变
         columns = rememberResponsiveColumns(1),
         state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = WindowInsets.navigationBars.asPaddingValues(),
     ) {
         // 顶部统计卡与热力图卡: 基于可用宽度自适应, 不做平台判断
-        // (与列表分列同一口径 rememberResponsiveColumns(1): 400dp→1列, 800dp→2列;
+        // (与列表分列同一口径 rememberResponsiveColumns(1): 400dp→1 列, 640dp→2 列;
         //  列数≥2 时同行并排等高 —— 两卡背景框顶/底对齐: 卡高由热力图内容 (按半宽推出)
         //  决定, SummaryCard 的 fillHeight 撑满行高, 12dp top padding 抵消 SummaryCard
         //  自带外边距与 HeatMapCard 无 top 外边距的差值)

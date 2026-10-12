@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
@@ -36,7 +36,6 @@ import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.component.dragSelectable
-import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
@@ -67,6 +66,7 @@ import legado.ui.generated.resources.to_bottom
 import legado.ui.generated.resources.to_top
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 源过滤规则列表 Screen (KMP 版, sharedUiMain 共享)。
@@ -171,7 +171,7 @@ fun SourceFilterRuleScreen(
 ) {
     val rules = state.rules
     val selected = state.selected
-    val listState = rememberLazyListState()
+    val listState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
     // 批量删除/单条删除/删除全部三个确认对话框的显示状态由本 Composable 持有,
     // 替代 app 端 alert 扩展 (commonMain 无 AlertDialog 依赖)
@@ -334,7 +334,7 @@ private fun SourceFilterRuleActions(
  * 长按空白把手区触发拖拽排序 (longPressDraggableHandle 来自 reorderable 库)。
  */
 @Composable
-private fun RuleItemScope.SourceFilterRuleItem(
+private fun ReorderableCollectionItemScope.SourceFilterRuleItem(
     item: SourceFilterRule,
     checked: Boolean,
     actions: SourceFilterRuleUiActions,

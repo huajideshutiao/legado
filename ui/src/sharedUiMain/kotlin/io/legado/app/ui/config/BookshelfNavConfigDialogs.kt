@@ -55,9 +55,6 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.reorderable.RuleItemScope
-import io.legado.app.ui.compose.reorderable.RuleReorderableItem
-import io.legado.app.ui.compose.reorderable.rememberReorderableListState
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.FlowBus
@@ -101,6 +98,9 @@ import legado.ui.generated.resources.sort
 import legado.ui.generated.resources.view
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
+import sh.calvin.reorderable.ReorderableCollectionItemScope
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 /**
  * 书架布局配置对话框 (shared Compose 重建, 对照 app 端 ThemeConfigHost.configBookshelf
@@ -460,11 +460,11 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
                     )
                     Spacer(Modifier.height(DesignTokens.spacingDefault))
                     // 复用 ReorderableLazyListState + LazyRow 实现跟手拖拽排序
-                    // vertical=false: 底栏是横向列表 (LazyRow), 方向显式声明 (ohos 手写实现不猜宽高比)
+                    // 底栏是横向列表 (LazyRow), 方向由库按布局自动判定
                     val navListState = rememberLazyListState()
                     val navReorderState =
-                        rememberReorderableListState(navListState, vertical = false) { from, to ->
-                            controller.move(from, to)
+                        rememberReorderableLazyListState(navListState) { from, to ->
+                            controller.move(from.index, to.index)
                         }
                     BoxWithConstraints(Modifier.fillMaxWidth()) {
                         val cellWidth = maxWidth / navItems.size
@@ -473,7 +473,7 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             items(navItems, key = { it.tag }) { item ->
-                                RuleReorderableItem(navReorderState, key = item.tag) {
+                                ReorderableItem(navReorderState, key = item.tag) {
                                     NavConfigItem(
                                         item = item,
                                         iconSize = iconSize.intValue,
@@ -675,7 +675,7 @@ private fun bottomNavIconKey(tag: String, enabled: Boolean): String = when (tag)
  * 用 longPressDraggableHandle 复用 ReorderableLazyListState 跟手拖拽。
  */
 @Composable
-private fun RuleItemScope.NavConfigItem(
+private fun ReorderableCollectionItemScope.NavConfigItem(
     item: BottomNavConfigItem,
     iconSize: Int,
     cellWidth: androidx.compose.ui.unit.Dp,

@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
@@ -37,7 +37,6 @@ import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.component.dragSelectable
-import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
@@ -64,6 +63,7 @@ import legado.ui.generated.resources.to_top
 import legado.ui.generated.resources.txt_toc_rule
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * TXT 目录规则管理 UI 状态 (KMP 版, commonMain 共享)。
@@ -150,7 +150,7 @@ interface TxtTocRuleUiActions {
 fun TxtTocRuleScreen(state: TxtTocRuleUiState, actions: TxtTocRuleUiActions) {
     val tocRules = state.tocRules
     val selected = state.selected
-    val listState = rememberLazyListState()
+    val listState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
     // 单条删除确认待处理项 (替代 app 端 alert(R.string.draw) { setMessage(...) })
     val pendingDeleteRule = remember { mutableStateOf<TxtTocRule?>(null) }
@@ -289,7 +289,7 @@ private fun TxtTocRuleActions(actions: TxtTocRuleUiActions) {
  * 当规则带示例时, 名称行下方显示 example 文案 (对照原 item_layout)。
  */
 @Composable
-private fun RuleItemScope.TxtTocRuleItem(
+private fun ReorderableCollectionItemScope.TxtTocRuleItem(
     item: TxtTocRule,
     checked: Boolean,
     actions: TxtTocRuleUiActions,

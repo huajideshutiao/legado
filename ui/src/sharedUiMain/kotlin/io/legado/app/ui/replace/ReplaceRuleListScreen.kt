@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
@@ -38,7 +38,6 @@ import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.component.dragSelectable
-import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
@@ -70,6 +69,7 @@ import legado.ui.generated.resources.to_bottom
 import legado.ui.generated.resources.to_top
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 替换规则列表 Screen (KMP 版, commonMain 共享)。
@@ -102,7 +102,7 @@ fun ReplaceRuleListScreen(
     val groups by viewModel.groups.collectAsState()
     val selected by viewModel.selected.collectAsState()
     val query by viewModel.query.collectAsState()
-    val listState = rememberLazyListState()
+    val listState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
     // 搜索框文本: 仅承载关键词语义, 分组筛选通过下拉单独触发并清空关键词
     var searchKey by remember { mutableStateOf("") }
@@ -306,7 +306,7 @@ private fun ReplaceRuleActions(
  * 长按空白把手区触发拖拽排序 (longPressDraggableHandle 来自 reorderable 库)。
  */
 @Composable
-private fun RuleItemScope.ReplaceRuleItem(
+private fun ReorderableCollectionItemScope.ReplaceRuleItem(
     item: ReplaceRule,
     checked: Boolean,
     viewModel: ReplaceRuleListViewModel,

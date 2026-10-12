@@ -67,7 +67,7 @@ import org.jetbrains.compose.resources.painterResource
  * 对照 activity_recycler_with_action_bar 布局结构。
  *
  * 列表按容器可用宽度自动分列 (与发现页/目录界面同款 rememberResponsiveColumns(1):
- * 400dp→1列, 600dp→2列…), 窄屏(≤400dp)单列渲染与原来完全一致。
+ * 400dp→1 列, 640dp→2 列, 1000dp→3 列…), 窄屏(≤400dp)单列渲染与原来完全一致。
  */
 @Composable
 fun ImportScaffold(

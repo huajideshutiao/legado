@@ -14,8 +14,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
@@ -28,6 +28,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -53,7 +54,8 @@ import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
-import io.legado.app.ui.compose.reorderable.RuleItemScope
+import io.legado.app.ui.compose.component.dragSelectable
+import io.legado.app.ui.compose.component.manageGridIndexMap
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.toStringArray
@@ -102,6 +104,7 @@ import legado.ui.generated.resources.to_bottom
 import legado.ui.generated.resources.to_top
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 书源列表 Screen (KMP 版, 替代 app 端 `io.legado.app.ui.book.source.manage.BookSourceScreen`)。
@@ -117,13 +120,13 @@ import org.jetbrains.compose.resources.stringResource
  *
  * UI 结构 (与 app 端一致):
  * - 顶部: AppTitleBar (返回 + 标题/搜索框 + 排序/分组/溢出菜单)
- * - 中部: RuleManageScaffold 的 LazyColumn (拖拽排序 + 按域名分组头 + 单项 checkbox/switch/编辑/更多)
+ * - 中部: RuleManageScaffold 的网格 (拖拽排序 + 按域名分组整行标题 + 单项 checkbox/switch/编辑/更多)
  * - 底部: SelectActionBar (全选/反选/删除/溢出批量操作) + 校验进度卡
  *
  * @param state      列表状态 (数据/选中/查询/排序/校验进度)
  * @param callbacks  事件回调 (查询/排序/选中/单项操作/批量操作/导航)
- * @param listState  外部传入的 LazyListState, 供 dragSelectable 边缘拖选复用
- * @param listModifier 施加于 LazyColumn 的 modifier (如 dragSelectable)
+ * @param listState  外部传入的网格状态, 供 dragSelectable 边缘拖选复用
+ * @param listModifier 施加于网格的 modifier (如 dragSelectable)
  */
 /** 校验终态文案判定 (对照原版 BookSourceAdapter.finalMessageRegex, 提到文件级避免逐行逐帧新建)。 */
 private val finalMessageRegex = Regex("成功|失败")
@@ -133,10 +136,11 @@ fun BookSourceListScreen(
     state: BookSourceListState,
     callbacks: BookSourceListCallbacks,
     modifier: Modifier = Modifier,
-    listState: LazyListState = rememberLazyListState(),
+    listState: LazyGridState = rememberLazyGridState(),
     listModifier: Modifier = Modifier,
 ) {
-    // 按域名分组时预计算各 host 组首项 url 集合, 避免 item 内 O(n) 回查 (对照 adapter.isItemHeader)
+    val checkState by Debug.checkState.collectAsState()
+    // 按域名分组时各 host 组首项 url 集合 (分组标题项由骨架插到这些项之前), 避免 item 内 O(n) 回查
     val headerUrls = remember(state.sources, state.groupSourcesByDomain) {
         if (!state.groupSourcesByDomain) emptySet()
         else buildSet {
@@ -150,20 +154,55 @@ fun BookSourceListScreen(
             }
         }
     }
-    val checkState by Debug.checkState.collectAsState()
     // 行首图标的加载闸门: 滚动中不发起请求, 滑停后放行。
     // 读取走快照观察 (不在组合期读), 滚动起停不给每一行添重组
     val isScrollIdle = remember(listState) { { !listState.isScrollInProgress } }
     // 手动排序且未按域名分组时才允许拖拽 (对照原 itemTouchCallback.isCanDrag)
     val canDrag = state.sort == BookSourceSort.Default && !state.groupSourcesByDomain
+    // 按域名分组: 分组标题占满整行 (对齐阅读记录页按日分组的分节形态), 不再画在条目内部;
+    // remember 稳定引用: 否则每次重组重建条目表
+    val headerOf = remember(state.groupSourcesByDomain, headerUrls, callbacks) {
+        { part: BookSourcePart ->
+            if (state.groupSourcesByDomain && headerUrls.contains(part.bookSourceUrl)) {
+                callbacks.getSourceHost(part.bookSourceUrl)
+            } else {
+                ""
+            }
+        }
+    }
+    // 网格下标 → 数据下标 (分组标题占一个网格下标): 边缘拖选与列表项按数据下标回传
+    val gridIndexMap = remember(state.sources, headerOf) {
+        manageGridIndexMap(state.sources, headerOf)
+    }
+    // 数据下标 → 选中态查询 (item 内部回调也用数据下标, 不走网格下标)
+    val isSelectedAt: (Int) -> Boolean = { index ->
+        state.sources.getOrNull(index)?.let { state.selected.contains(it.bookSourceUrl) } ?: false
+    }
+    val onSelectedAt: (Int, Boolean) -> Unit = { index, sel ->
+        state.sources.getOrNull(index)?.let { callbacks.onToggle(it, sel) }
+    }
     RuleManageScaffold(
         items = state.sources,
         itemKey = { it.bookSourceUrl },
         onMove = { from, to -> callbacks.onMove(from, to) },
         modifier = modifier,
         listState = listState,
-        listModifier = listModifier,
+        listModifier = listModifier.then(
+            // 网格下标 → 数据下标: 分组标题占一个网格下标, 直接拿网格下标会错位一行
+            Modifier.dragSelectable(
+                listState = listState,
+                autoScrollScope = rememberCoroutineScope(),
+                isSelected = { index ->
+                    isSelectedAt(gridIndexMap.getOrNull(index) ?: index)
+                },
+                onSelectedChanged = { index, sel ->
+                    val dataIndex = gridIndexMap.getOrNull(index) ?: index
+                    if (dataIndex >= 0) onSelectedAt(dataIndex, sel)
+                },
+            )
+        ),
         emptyText = stringResource(Res.string.empty),
+        headerOf = headerOf,
         titleBar = {
             AppTitleBar(
                 title = stringResource(Res.string.book_source),
@@ -199,14 +238,12 @@ fun BookSourceListScreen(
         },
     ) { item ->
         BookSourceItem(
-            groupSourcesByDomain = state.groupSourcesByDomain,
             sort = state.sort,
             callbacks = callbacks,
             item = item,
             checked = state.selected.contains(item.bookSourceUrl),
             iconUrl = item.bookSourceIcon.takeIf { state.showSourceIcon },
             isScrollIdle = isScrollIdle,
-            headerUrls = headerUrls,
             canDrag = canDrag,
             debugMsg = checkState.messages[item.bookSourceUrl].orEmpty(),
             isChecking = checkState.isChecking,
@@ -391,19 +428,17 @@ private fun MenuItem(text: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun RuleItemScope.BookSourceItem(
+private fun ReorderableCollectionItemScope.BookSourceItem(
     // 只收本行真正用到的稳定字段, 不收整个 state / checkState:
     // BookSourceListState 持有 List/Set (Compose 视为不稳定) 会让本行永不 skip;
     // checkState 每次 publishCheckState 换新身份, 收整个对象等于校验期每条 Debug.log
     // 都让全部可见行重组 (原版是 300ms 节流 + 只刷选中区间)
-    groupSourcesByDomain: Boolean,
     sort: BookSourceSort,
     callbacks: BookSourceListCallbacks,
     item: BookSourcePart,
     checked: Boolean,
     iconUrl: String?,
     isScrollIdle: () -> Boolean,
-    headerUrls: Set<String>,
     canDrag: Boolean,
     debugMsg: String,
     isChecking: Boolean,
@@ -442,16 +477,6 @@ private fun RuleItemScope.BookSourceItem(
             )
             .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
     ) {
-        // 按域名分组开启时, 每个 host 组首项上方显示 host 头 (对照 tv_host_text/AccentTextView 16sp)
-        if (groupSourcesByDomain && headerUrls.contains(item.bookSourceUrl)) {
-            Text(
-                text = callbacks.getSourceHost(item.bookSourceUrl),
-                color = colors.accent,
-                fontSize = 16.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
         // 按压整行触发切换选中, 子按钮 (Switch/Edit/More) 自身消费点击不冒泡
         Row(
             Modifier

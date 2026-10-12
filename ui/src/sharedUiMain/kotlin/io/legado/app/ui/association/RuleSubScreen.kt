@@ -31,7 +31,6 @@ import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
-import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
@@ -54,6 +53,7 @@ import legado.ui.generated.resources.tts
 import legado.ui.generated.resources.txt_toc_rule
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 // ===== state / actions =====
 
@@ -164,7 +164,7 @@ fun RuleSubScreen(
  * 仅将 viewModel 直调 / showEditDialog / openSubscription / delete 替换为外部回调。
  */
 @Composable
-private fun RuleItemScope.RuleSubItem(
+private fun ReorderableCollectionItemScope.RuleSubItem(
     item: RuleSub,
     onEdit: () -> Unit,
     onOpen: () -> Unit,

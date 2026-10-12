@@ -1,6 +1,6 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -9,7 +9,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.config.HelpVersion
@@ -33,7 +32,6 @@ import io.legado.app.ui.book.source.manage.BookSourceUiEvent
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.SelectAction
-import io.legado.app.ui.compose.component.dragSelectable
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
@@ -130,7 +128,7 @@ fun BookSourceManageRoute(
 
     val state by screenModel.state.collectAsState()
     val scope = rememberCoroutineScope()
-    val listState = rememberLazyListState()
+    val listState = rememberLazyGridState()
 
     // 搜索态下返回先清空关键字 (对照 app 端 finish(): query 非空时 setQuery("", true));
     // 非栈顶时不拦截, 栈内页面全程留在 Composition
@@ -382,19 +380,6 @@ fun BookSourceManageRoute(
         state = state,
         callbacks = callbacks,
         listState = listState,
-        listModifier = Modifier.dragSelectable(
-            listState = listState,
-            autoScrollScope = scope,
-            isSelected = { index ->
-                val st = screenModel.state.value
-                index < st.sources.size && st.selected.contains(st.sources[index].bookSourceUrl)
-            },
-            onSelectedChanged = { index, sel ->
-                screenModel.state.value.sources.getOrNull(index)?.let {
-                    screenModel.dispatch(BookSourceUiEvent.Toggle(it, sel))
-                }
-            },
-        ),
     )
 
     // 帮助对话框 (对照 app 端 help / showHelp("SourceMBookHelp"))

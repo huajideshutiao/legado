@@ -298,7 +298,6 @@ dependencies {
     implementation(libs.compose.activity)
     implementation(libs.compose.lifecycle.runtime)
 
-    implementation(libs.reorderable)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.recyclerview)
     implementation(libs.androidx.webkit)

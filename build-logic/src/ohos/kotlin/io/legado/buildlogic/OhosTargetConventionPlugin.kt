@@ -18,7 +18,9 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
  *    target —— 两者都不能进 commonMain (前者 ohos 解析失败, 后者 jvm/android 解析失败)。
  *    故 commonMain 统一声明标准 ksoup, 仅在 ohos 相关配置上用 dependencySubstitution
  *    替换为 :modules:ksoup-ohos, 其余平台照常解析标准 ksoup。
- * 3. 同理把 compose runtime 替换为 CPF fork 版: commonMain 声明官方构件 (jvm/android 变体
+ * 3. 同理把 reorderable 替换为本地重编模块 (上游无 ohosArm64 变体; 源码零平台专属 API,
+ *    CPF 工具链可直接重编), 见 :modules:reorderable-ohos。
+ * 4. 同理把 compose runtime 替换为 CPF fork 版: commonMain 声明官方构件 (jvm/android 变体
  *    齐全, 供 :data 的 AnimeFilterList @Stable 等跨端注解解析), 而 ohos 编译需要 fork 的
  *    ohosArm64 变体 —— 官方构件没有, fork 构件没有 jvm 变体, 两端各取所需。
  * * sharedLib 产物 (liblegado_shared.so) 由出口模块 :ui 配置, cinterop (quickjs/mbedtls,
@@ -46,6 +48,10 @@ class OhosTargetConventionPlugin : Plugin<Project> {
                             .using(project(":modules:epub4kmp-ohos"))
                         substitute(module("no.synth:kmp-zip-okio"))
                             .using(project(":modules:epub4kmp-ohos"))
+                        // 上游无 ohosArm64 变体, 用本仓模块重编同一份 commonMain 源码 (见
+                        // :modules:reorderable-ohos); 其余三端仍解析上游官方变体。
+                        substitute(module("sh.calvin.reorderable:reorderable"))
+                            .using(project(":modules:reorderable-ohos"))
                         substitute(module("org.jetbrains.compose.runtime:runtime"))
                             .using(module("org.jetbrains.compose.runtime:runtime:$cmpOhosVersion"))
                     }

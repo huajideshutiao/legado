@@ -3,7 +3,7 @@ package io.legado.app.ui.compose.component
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
@@ -37,17 +37,18 @@ private val MaxScrollVelocity = 20.dp
  * 语义严格对齐 ToggleAndReverse：锚点(起手 item)即时翻转为 !原状态，扫过的连续区间同步该翻转态，
  * 手指回退移出区间的 item 复位为锚点原状态。支持顶/底热区自动滚动并随滚动继续勾选。
  *
- * KMP 共享: 从 app/ui/compose/component 下沉到 shared/commonMain, app + desktop 直接复用。
+ * 容器是网格 (条目按容器宽度分列): 命中按"列 × 行"反查, 纵向扫过的整行都进选中区间
+ * (区间以网格下标计, 由调用方还原成数据下标)。
  *
- * @param listState        与列表共用的 LazyListState，用于坐标→item index 命中与自动滚动
+ * @param listState        与网格共用的 LazyGridState，用于坐标→item index 命中与自动滚动
  * @param autoScrollScope  驱动自动滚动的协程作用域(用 rememberCoroutineScope)
  * @param isSelected       查询某 index 当前是否已选(host 据 items[index] 主键查 Set)
  * @param onSelectedChanged 设置某 index 选中态(host 据 items[index] 主键写 Set)
- * @param handleWidth      触发拖选的左侧手柄列宽度
+ * @param handleWidth      触发拖选的列内左侧手柄宽度 (每列各一条, 位于该列复选框所在侧)
  */
 @Composable
 fun Modifier.dragSelectable(
-    listState: LazyListState,
+    listState: LazyGridState,
     autoScrollScope: CoroutineScope,
     isSelected: (index: Int) -> Boolean,
     onSelectedChanged: (index: Int, selected: Boolean) -> Unit,
@@ -64,9 +65,8 @@ fun Modifier.dragSelectable(
 
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
-            // 起点不在左侧手柄列则放行：交给复选框点按/长按拖拽排序
-            if (down.position.x > handlePx) return@awaitEachGesture
-            val startIndex = listState.itemIndexAtY(down.position.y) ?: return@awaitEachGesture
+            val startIndex = listState.itemIndexAt(down.position.x, down.position.y, handlePx)
+                ?: return@awaitEachGesture
 
             var activated = false
             var anchor = startIndex
@@ -74,6 +74,7 @@ fun Modifier.dragSelectable(
             var lastStart = startIndex
             var lastEnd = startIndex
             var pointerY = down.position.y
+            var pointerX = down.position.x
             var scrollVelocity = 0f
             var scrollJob: Job? = null
 
@@ -96,7 +97,7 @@ fun Modifier.dragSelectable(
             }
 
             fun updateFromPointer() {
-                listState.itemIndexAtY(pointerY)?.let { applyRange(it) }
+                listState.itemIndexAt(pointerX, pointerY, handlePx)?.let { applyRange(it) }
             }
 
             try {
@@ -108,6 +109,7 @@ fun Modifier.dragSelectable(
                         break
                     }
                     pointerY = change.position.y
+                    pointerX = change.position.x
                     if (!activated) {
                         if (abs(change.position.y - down.position.y) > viewConfiguration.touchSlop) {
                             activated = true
@@ -147,9 +149,23 @@ fun Modifier.dragSelectable(
     }
 }
 
-/** 命中当前可见区内包含纵坐标 y 的 item index，坐标系与 pointerInput 所在 LazyColumn 一致 */
-private fun LazyListState.itemIndexAtY(y: Float): Int? {
-    return layoutInfo.visibleItemsInfo.firstOrNull { item ->
-        y >= item.offset && y < item.offset + item.size
-    }?.index
+/**
+ * 命中 (x,y) 所在的网格条目 index；起点不在该列左侧的拖选手柄区内时返回 null (交给点按/长按拖拽)。
+ *
+ * 网格分列后每列各有一条复选框带, 故手柄区按列判定: x 落在命中条目所在格的左侧 [handlePx] 内即命中。
+ * 单列时格子左边为 0, 与分列前的"列表左侧手柄列"完全等价。
+ * 同一行有多个条目时取整行最左项作为区间端点 (纵向扫过的行整行进选中区间)。
+ */
+private fun LazyGridState.itemIndexAt(x: Float, y: Float, handlePx: Float): Int? {
+    val info = layoutInfo
+    val hit = info.visibleItemsInfo.firstOrNull { item ->
+        x >= item.offset.x && x < item.offset.x + item.size.width &&
+            y >= item.offset.y && y < item.offset.y + item.size.height
+    } ?: return null
+    if (x - hit.offset.x > handlePx) return null
+    val row = hit.row
+    if (row < 0) return hit.index
+    return info.visibleItemsInfo
+        .filter { it.row == row }
+        .minByOrNull { it.column }?.index
 }

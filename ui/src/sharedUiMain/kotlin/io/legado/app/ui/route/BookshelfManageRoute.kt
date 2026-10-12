@@ -1,6 +1,6 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -224,7 +224,7 @@ fun BookshelfManageRoute(
         }
     }
 
-    val listState = rememberLazyListState()
+    val listState = rememberLazyGridState()
 
     // 任务5: 分组名预计算 Map<groupId, String> (过滤 groupId>0, 对照原 groupName 语义),
     // 仅 groups 变化时重建; item 内 O(1) 直查/按位掩码过滤, 不再每 item 每次重组 O(分组数) 计算

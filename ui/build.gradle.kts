@@ -169,6 +169,10 @@ kotlin {
                 implementation("org.jetbrains.compose.material:material:$composeVersion")
                 implementation("org.jetbrains.compose.ui:ui:$composeVersion")
                 implementation(libs.compose.lifecycle.runtime.multiplatform)
+                // 规则管理列表骨架的拖拽排序: 上游库无 ohosArm64 变体, 声明为 api 并由
+                // OhosTargetConventionPlugin 在 ohos 配置上替换为 :modules:reorderable-ohos
+                // (本地用 CPF 工具链重编同一份源码); 其余三端解析上游官方变体。
+                api(libs.reorderable)
                 // JSON 树形展示 (vendored, 含长按取 JSONPath)。声明在本源集: JsonTree 的公开签名
                 // 引用 Compose 类型 (Modifier/PaddingValues/TextStyle 等), commonMain 无 Compose 依赖。
                 implementation(project(":modules:treeview"))
@@ -178,7 +182,6 @@ kotlin {
         val nonOhosUiMain = create("nonOhosUiMain") {
             dependsOn(sharedUiMain)
             dependencies {
-                implementation(libs.reorderable)
                 implementation(libs.coil3.compose)
                 implementation(libs.multiplatformMarkdown)
                 implementation(libs.multiplatformMarkdown.coil3)

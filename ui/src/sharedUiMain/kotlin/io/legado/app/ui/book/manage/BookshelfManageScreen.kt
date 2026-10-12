@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
@@ -43,7 +43,6 @@ import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.LocalSharedCoverBinding
@@ -73,6 +72,7 @@ import legado.ui.generated.resources.replace_purify
 import legado.ui.generated.resources.start
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 书架管理 Screen (KMP 版, 替代 app 端原 BookshelfManageScreen)。
@@ -89,8 +89,8 @@ import org.jetbrains.compose.resources.stringResource
  *
  * @param state      列表状态 (数据/查询/筛选/分组/导出开关等; 勾选/下载态已拆为独立参数)
  * @param callbacks  事件回调 (查询/选中/拖拽/单项操作/批量操作/导航)
- * @param listState  外部传入的 LazyListState, 供 dragSelectable 边缘拖选复用
- * @param listModifier 施加于 LazyColumn 的 modifier (如 dragSelectable)
+ * @param listState  外部传入的网格状态, 供 dragSelectable 边缘拖选复用
+ * @param listModifier 施加于网格的 modifier (如 dragSelectable)
  * @param coverSlot  封面渲染槽: 默认经 LocalBookCoverSlot 落到 SharedBookCover, 也可由调用方注入;
  *   接收 Book 与 Modifier, 内部应将 Modifier 应用到封面根节点以承袭父级尺寸约束
  * @param downloadRunning 下载服务运行中 (独立状态: 仅顶栏下载图标区域重组)
@@ -103,7 +103,7 @@ import org.jetbrains.compose.resources.stringResource
 fun BookshelfManageScreen(
     state: BookshelfManageState,
     callbacks: BookshelfManageCallbacks,
-    listState: LazyListState,
+    listState: LazyGridState,
     listModifier: Modifier,
     coverSlot: @Composable (Book, Modifier) -> Unit,
     // 平台下载运行中 (独立于 state: 仅顶栏下载图标区域重组, 不整页)
@@ -354,7 +354,7 @@ private fun CheckDropdownItem(text: String, checked: Boolean, onClick: () -> Uni
 
 /** 书籍条目(对照 item_arrange_book):复选框 + 封面 + 名/作者/来源/分组/缓存 + 下载 + 改分组 + 删除。 */
 @Composable
-private fun RuleItemScope.BookItem(
+private fun ReorderableCollectionItemScope.BookItem(
     state: BookshelfManageState,
     callbacks: BookshelfManageCallbacks,
     book: Book,

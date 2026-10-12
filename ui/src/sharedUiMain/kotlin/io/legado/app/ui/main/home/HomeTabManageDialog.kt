@@ -30,7 +30,6 @@ import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.appDialogSize
-import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.FlowBus
@@ -45,6 +44,7 @@ import legado.ui.generated.resources.ic_baseline_sort_24
 import legado.ui.generated.resources.sort
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 主页分组管理：item 点击进入该分组的展示项管理；编辑按钮改标题/删除；+ 添加分组；拖动排序。
@@ -140,7 +140,7 @@ fun HomeTabManageDialog(onDismiss: () -> Unit) {
  * 分组管理里操作按钮是"编辑", 展示项管理里是"删除" (原版两个 Adapter 共用该布局)。
  */
 @Composable
-internal fun RuleItemScope.HomeManageItem(
+internal fun ReorderableCollectionItemScope.HomeManageItem(
     title: String,
     desc: String,
     actionText: String,
