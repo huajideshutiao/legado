@@ -167,7 +167,7 @@ class EpubFile(var book: Book) {
         }
         val cachePath = getEpubCachePath(book.bookUrl)
         val cacheFile = File(cachePath)
-        // 缓存文件不存在时下载 (downloadTo 内部先全量下载再写文件, 失败不产生残缺文件)
+        // 缓存文件不存在时下载 (downloadTo 边下边写临时件、整份写完才就位, 失败不产生残缺文件)
         if (!cacheFile.exists()) {
             cacheFile.parentFile?.mkdirs()
             runBlockingInScope(EmptyCoroutineContext) {

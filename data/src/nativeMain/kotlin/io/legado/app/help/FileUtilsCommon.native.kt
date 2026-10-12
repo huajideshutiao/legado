@@ -4,7 +4,10 @@ import io.legado.app.exception.SecurityException
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.utils.File
 import io.legado.app.utils.InputStream
+import io.legado.app.utils.ensureParentDirectory
 import io.legado.app.utils.isAtomicWriteTempName
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * FileUtilsCommon 的 nativeMain actual (iOS / 鸿蒙 共用)。
@@ -89,28 +92,17 @@ actual object FileUtilsCommon {
     actual fun copyToFile(path: String, input: InputStream) {
         // expect InputStream 无 copyTo 扩展, 分块读后写文件; IO 异常直接上抛
         val file = File(path)
-        if (!file.exists()) {
-            file.parent?.let { File(it).mkdirs() }
-            file.createNewFile()
+        file.ensureParentDirectory()
+        // native File 无 outputStream (okio 封装), 用 okio sink 边读边写:
+        // 内存只有一块复用缓冲区, 与文件体积无关 (expect KDoc 的"分块, 不整块缓冲")
+        FileSystem.SYSTEM.write(file.path.toPath()) {
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buffer)
+                if (n <= 0) break
+                write(buffer, 0, n)
+            }
         }
-        // native File 无 outputStream (okio 封装), 只能分段读入后整块 writeBytes ——
-        // 这一端仍有全量内存峰值, 与 expect KDoc 承诺的"不整块缓冲"不符, 待 okio sink 接线后修正
-        val buffer = ByteArray(64 * 1024)
-        val chunks = ArrayList<ByteArray>()
-        while (true) {
-            val n = input.read(buffer)
-            if (n <= 0) break
-            // read 会覆写 buffer, 必须拷贝当前段
-            chunks.add(buffer.copyOfRange(0, n))
-        }
-        val total = chunks.sumOf { it.size }
-        val all = ByteArray(total)
-        var offset = 0
-        for (chunk in chunks) {
-            chunk.copyInto(all, offset)
-            offset += chunk.size
-        }
-        file.writeBytes(all)
     }
 
     actual fun delete(path: String, deleteRootDir: Boolean): Boolean {

@@ -33,6 +33,7 @@ import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.UrlUtil
+import io.legado.app.utils.atomicWriteTempPath
 import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.delete
 import io.legado.app.utils.externalFiles
@@ -353,14 +354,16 @@ object FileBookAccessorImpl : FileBookAccessor {
      * 但无法直写文件路径)。
      *
      * 两种保存位置的处理:
-     * - **非 SAF (文件路径)**: downloadTo 直写 `{defaultBookTreeDir}/{fileName}`, 失败时删净残缺文件;
+     * - **非 SAF (文件路径)**: downloadTo 落盘到 `{defaultBookTreeDir}/{fileName}` (写入期间是目标
+     *   同目录的临时件, 整份写完才就位, 失败时目标名上依旧是原有完整内容, 不会留下半截书);
      * - **SAF (`content://`)**: downloadTo 只能按文件路径写, 故先流式下到 `cacheDir/webDav` 下的
      *   临时文件, 再复用 [saveBookFile] (inputStream 重载) 的既有权通道拷进 SAF 文档
      *   (仍是流式, 内存有界; 临时文件无论成败都删)。
      * 返回引用形式与 [saveBookFile] (inputStream 重载) 完全一致 (content:// 或 file://)。
      *
-     * 异常口径: 保存位置不可用 (目录被删/无写权限) 仍报改动前文件路径分支的权限类提示
-     * (`SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e")`), 其余异常照旧透传。
+     * 异常口径: 保存位置不可用 (目录被删/无写权限) 按 `saveBookFile(inputStream)` 文件路径分支的
+     * 口径报权限类提示 (`SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e")`),
+     * 其余异常照旧透传。
      */
     @Throws(SecurityException::class)
     override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
@@ -369,26 +372,21 @@ object FileBookAccessorImpl : FileBookAccessor {
         )
         if (!treeUri.isContentScheme()) {
             val file = File(treeUri.path!!).getFile(fileName)
-            // 分辨"保存位置不可用"与网络/传输异常: 前者按改动前 `saveBookFile(inputStream)`
-            // 文件路径分支的口径给出权限类提示, 后者原样透传。append 模式探测只验"能否打开
-            // 目标文件写", 不截断已有文件; 与 downloadTo 随后自己打开的是同一个文件, 仍是流式。
+            // 分辨"保存位置不可用"与网络/传输异常: 前者按 `saveBookFile(inputStream)` 文件路径分支
+            // 的口径给出权限类提示, 后者原样透传。落盘要在目标目录里建临时件再改名,
+            // 所以探的是"能否在目标目录里建出临时件" (名字用共享契约生成, 探完即删);
+            // 探目标文件本身会在下载失败时留下 0 字节的同名文件。
+            val probe = File(atomicWriteTempPath(file.absolutePath))
             try {
-                FileOutputStream(file, true).close()
+                FileOutputStream(probe).close()
             } catch (e: Exception) {
                 throw SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e").apply {
                     addSuppressed(e)
                 }
+            } finally {
+                probe.delete()
             }
-            try {
-                webDav.downloadTo(file.absolutePath, true)
-            } catch (e: Throwable) {
-                // ⚠️ 这段删除是**对原版的偏离** (不是对齐原版): 原版 `FileBook.downloadRemoteBook`
-                // 走"先读满再整份写", 中途失败时目标文件不会被创建也不留半截, 所以原版没这段清理;
-                // 改成边下边写后中途失败会留下残缺文件, 不删干净的话它会被后续导入当成本地书读入
-                // (原版不存在这个缺陷)。不复刻原版: 留一份能被当书读入的半截文件比多一次 delete 更坏。
-                kotlin.runCatching { file.delete() }
-                throw e
-            }
+            webDav.downloadTo(file.absolutePath, true)
             return Uri.fromFile(file).toString()
         }
         // SAF: downloadTo 写不了 content:// 文档, 先流式下到缓存临时文件再交给 SAF 通道拷入

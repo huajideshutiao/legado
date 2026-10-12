@@ -41,6 +41,7 @@ import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.UrlUtil
+import io.legado.app.utils.atomicWriteTempPath
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -342,8 +343,11 @@ class DesktopFileBookAccessor(
      * desktop 无 SAF: 交给既有的 [WebDav.downloadTo] (savedPath, replaceExisting)
      * 边下边写有效书籍保存目录下的 `{fileName}` (用户在"书籍保存位置"选定),
      * 返回引用形式与
-     * [saveBookFile] (inputStream 重载) 一致 ([desktopStoredLocalRef]);
-     * 传输中途失败删净残缺文件 (不留半截书)。
+     * [saveBookFile] (inputStream 重载) 一致 ([desktopStoredLocalRef])。
+     *
+     * 传输中途失败 (含取消) 时目标名上不会留下半截书: downloadTo 边下边写的是目标同目录的
+     * 临时件 (共享整份写入契约), 整份写完才改名就位 —— 目标要么是原有的完整内容, 要么是
+     * 完整的新内容 (或不存在)。
      *
      * 异常口径与 app 端对齐: 保存位置未设置时抛
      * [io.legado.app.exception.InvalidBooksDirException]; 已设置但不可写 (目录被删/无写权限)
@@ -353,21 +357,19 @@ class DesktopFileBookAccessor(
     override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
         val file = File(bookSaveDir(), fileName)
         // 分辨"保存位置不可用"与网络/传输异常: 前者按 app 端文件路径分支的口径给出权限类提示,
-        // 后者原样透传。append 模式探测只验"能否打开目标文件写", 不截断已有文件;
-        // 与 downloadTo 随后自己打开的是同一个文件, 仍是流式, 不额外读入内存。
+        // 后者原样透传。落盘要在目标目录里建临时件再改名, 所以探的是"能否在目标目录里建出
+        // 临时件" (名字用共享契约生成, 探完即删); 探目标文件本身会在下载失败时留下 0 字节的同名文件。
+        val probe = File(atomicWriteTempPath(file.absolutePath))
         try {
-            FileOutputStream(file, true).close()
+            FileOutputStream(probe).close()
         } catch (e: Exception) {
             throw SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e").apply {
                 addSuppressed(e)
             }
+        } finally {
+            probe.delete()
         }
-        try {
-            webDav.downloadTo(file.absolutePath, true)
-        } catch (e: Throwable) {
-            kotlin.runCatching { file.delete() }
-            throw e
-        }
+        webDav.downloadTo(file.absolutePath, true)
         return desktopStoredLocalRef(file)
     }
 

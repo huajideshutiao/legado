@@ -4,6 +4,7 @@ import com.fleeksoft.ksoup.Ksoup
 import com.fleeksoft.ksoup.parser.Parser
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.copyToFileAtomically
 import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.http.newCallResponse
@@ -26,7 +27,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.intellij.lang.annotations.Language
 import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.net.MalformedURLException
@@ -311,6 +311,13 @@ actual open class WebDav actual constructor(
 
     /**
      * 下载到本地
+     *
+     * 落盘走共享整份写入契约 (见
+     * [io.legado.app.help.copyToFileAtomically]): 边下边写目标同目录的唯一临时件,
+     * 整份写完才原子改名就位 —— 写入期间目标名上要么不存在、要么是完整内容, 按目标路径
+     * 直读的一方 (存在性判断、路径直读) 不会拿到半截下载; 传输失败或取消时目标保持原有
+     * 完整内容 (或不存在), 临时件由契约清掉。父目录不存在时由契约建立。
+     *
      * @param savedPath       本地的完整路径，包括最后的文件名
      * @param replaceExisting 是否替换本地的同名文件
      */
@@ -321,9 +328,7 @@ actual open class WebDav actual constructor(
             return
         }
         downloadInputStream().use { byteStream ->
-            FileOutputStream(file).use {
-                byteStream.copyTo(it)
-            }
+            copyToFileAtomically(savedPath, byteStream)
         }
     }
 

@@ -2,7 +2,9 @@ package io.legado.desktop.media
 
 import io.legado.app.constant.AppLog
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.deleteOrphanAtomicWriteTempFiles
 import io.legado.app.help.file.desktopAppCacheDir
+import io.legado.app.utils.atomicWriteTempPath
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -226,12 +228,20 @@ object DesktopMediaRuntime {
         dir.parentFile?.mkdirs()
         // 版本目录同级只剩当前版本: 升级后旧版本那套 37 个文件不该继续占磁盘
         dir.parentFile?.listFiles()?.filter { it.isDirectory && it != dir }?.forEach { deleteTree(it) }
+        // 下载中间件落在本目录 (见下方名字契约), 而本目录没有目录清点方: 上次进度中断/强杀
+        // 留下的孤儿件由写入方在下次安装前回收
+        dir.parentFile?.let { deleteOrphanAtomicWriteTempFiles(it.path) }
 
         val client = OkHttpClient()
         val fileName = "mediamp-mpv-runtime-$platformSuffix-$version.jar"
         val url = "$MIRROR_BASE/org/openani/mediamp/mediamp-mpv-runtime-$platformSuffix/" +
             "$version/$fileName"
-        val jar = downloadWithRetry(client, url, File(dir.parentFile, "$fileName.part"), expectedSha1)
+        // 下载件不是成品 (校验通过后解包到版本目录, 用完即删), 但名字必须每次唯一: 桌面允许双击
+        // 起两个实例, 固定名会让两实例写同一条路径, 后写者截断先写者, 双方 SHA-1 都对不上。
+        // 名字按共享契约生成, 目录清点方也按同一个契约认定临时件 (见 [atomicWriteTempPath])。
+        val jar = downloadWithRetry(
+            client, url, File(atomicWriteTempPath(File(dir.parentFile, fileName).path)), expectedSha1
+        )
 
         val extracted = try {
             extractNatives(jar, dir)

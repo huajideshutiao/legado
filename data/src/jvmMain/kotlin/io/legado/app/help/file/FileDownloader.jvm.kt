@@ -1,14 +1,14 @@
 package io.legado.app.help.file
 
+import io.legado.app.help.copyToFileAtomically
+import io.legado.app.help.deleteOrphanAtomicWriteTempFilesInDir
 import io.legado.app.help.http.OkHttpClientProviders
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
-import java.nio.file.AtomicMoveNotSupportedException
-import java.nio.file.Files
-import java.nio.file.Path
 import java.nio.file.Paths
-import java.nio.file.StandardCopyOption
 
 /**
  * [FileDownloader] 的桌面 JVM actual 实现。
@@ -17,55 +17,41 @@ import java.nio.file.StandardCopyOption
  * OkHttpClient (与项目其他 OkHttp 调用一致, 复用连接池/超时/拦截器配置)。
  *
  * # 设计要点
- * - suspend 内部用 `kotlinx.coroutines.Dispatchers.IO` 阻塞式下载 (OkHttp 同步 execute)
- * - 目标目录不存在时自动创建 (Files.createDirectories)
- * - 临时文件下载 + 原子移动 (StandardCopyOption.ATOMIC_MOVE), 避免半下载文件被读
- * - 失败返回 false, 不抛异常 (与 Android 实现一致)
- *
- * 模式参考 `registerAndroidMediaNotificationProvider`。
+ * - suspend 内部整体切到 `kotlinx.coroutines.Dispatchers.IO`: OkHttp 同步 execute 与落盘都是阻塞调用,
+ *   而注册方的默认作用域是 `Dispatchers.Default` (见 `registerDesktopServiceLauncher`), 在 Default 上
+ *   阻塞会占满 CPU 并行度
+ * - 落盘走共享整份写入契约 [copyToFileAtomically]: 响应体分块流式写目标同目录的唯一临时件,
+ *   写完原子改名就位; 目标名上始终是完整内容 (不会出现半截下载), 写失败由契约清掉临时件,
+ *   下次成功下载覆盖同名文件。临时件名由共享契约生成, 目录清点方按名排除/回收
+ * - 下载目录是用户可见目录, 没有目录清点方, 故写入方自清: 每次下载前回收下载目录本层里已成孤儿
+ *   的临时件 ([deleteOrphanAtomicWriteTempFilesInDir]: 只认共享契约的临时件名且超过可回收时限,
+ *   正在写的那份不会被判成孤儿; 下载的目标与临时件都在本层, 不扫子目录)
+ * - 失败返回 false, 不抛异常 (与 native 实现一致)
  */
 class DesktopFileDownloader : FileDownloader {
 
-    override suspend fun download(url: String, destPath: String, fileName: String): Boolean {
-        return kotlin.runCatching {
-            val client = getOkHttpClient()
-            val request = Request.Builder().url(url).build()
-
-            // 确保目标目录存在
-            val destDir: Path = Paths.get(destPath)
-            if (!Files.exists(destDir)) {
-                Files.createDirectories(destDir)
-            }
-
-            // 临时文件 (".fileName.part"), 下载完成后原子移动到正式文件名
-            val targetPath: Path = destDir.resolve(fileName)
-            val tempPath: Path = destDir.resolve("$fileName.part")
-
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw IOException("Unexpected code ${response.code}")
-                }
-                response.body.byteStream().use { input ->
-                    Files.copy(input, tempPath, StandardCopyOption.REPLACE_EXISTING)
-                }
-            }
-
-            // 原子移动到正式文件名 (跨文件系统时退化为非原子 replace)
-            try {
-                Files.move(tempPath, targetPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-            } catch (_: AtomicMoveNotSupportedException) {
-                Files.move(tempPath, targetPath, StandardCopyOption.REPLACE_EXISTING)
-            }
-            true
-        }.getOrElse {
-            // 下载失败: 清理临时文件 (避免残留 .part 占用空间)
+    override suspend fun download(url: String, destPath: String, fileName: String): Boolean =
+        withContext(Dispatchers.IO) {
             kotlin.runCatching {
-                val tempPath = Paths.get(destPath, "$fileName.part")
-                Files.deleteIfExists(tempPath)
+                deleteOrphanAtomicWriteTempFilesInDir(destPath)
+                val request = Request.Builder().url(url).build()
+                // 目标目录不存在时由整份写入契约建立 (临时件与目标同目录)
+                val targetPath = Paths.get(destPath, fileName).toString()
+
+                getOkHttpClient().newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw IOException("Unexpected code ${response.code}")
+                    }
+                    response.body.byteStream().use { input ->
+                        copyToFileAtomically(targetPath, input)
+                    }
+                }
+                true
+            }.getOrElse {
+                // 写失败时临时件已由契约清掉, 目标保持原有完整内容 (或不存在)
+                false
             }
-            false
         }
-    }
 
     /**
      * 取全局 OkHttpClient (走 [OkHttpClientProviders], 与项目其他 OkHttp 调用一致)。
@@ -85,7 +71,7 @@ class DesktopFileDownloader : FileDownloader {
  *
  * 调用时机: desktop main(), 在任何 commonMain 代码调用 `FileDownloaders.get()` 之前。
  *
- * 模式参考 `registerAndroidMediaNotificationProvider`。
+ * 模式参考 `registerDesktopConfig` / `registerDesktopWebBookProviders`。
  */
 fun registerDesktopFileDownloader() {
     FileDownloaders.register(DesktopFileDownloader())

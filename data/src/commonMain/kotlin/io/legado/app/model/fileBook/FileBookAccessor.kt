@@ -130,7 +130,8 @@ interface FileBookAccessor {
      * "刷新远端更新") 使用 —— 该链路原先走 [saveBookFile] (inputStream 重载), 而 native 端
      * 的 inputStream 重载内部 `readFully()` 会把整份文件读进内存。
      *
-     * 契约: 传输中途失败必须删净残缺文件 (不留半截书, 否则会被后续导入当成本地书读入)。
+     * 契约: 落盘走目标同目录的唯一临时件 + 原子改名就位 ([io.legado.app.lib.webdav.WebDav.downloadTo]),
+     * 传输中途失败 (含取消) 时目标名上不会留下半截内容 (否则会被后续导入当成本地书读入)。
      *
      * @param webDav 已构造好的远端客户端 (含凭据)
      * @param fileName 保存文件名

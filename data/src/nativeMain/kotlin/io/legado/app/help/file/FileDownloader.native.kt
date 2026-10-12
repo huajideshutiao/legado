@@ -2,12 +2,13 @@ package io.legado.app.help.file
 
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
-import io.ktor.client.statement.bodyAsBytes
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.isSuccess
+import io.legado.app.help.copyToFileAtomically
+import io.legado.app.help.deleteOrphanAtomicWriteTempFilesInDir
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
-import io.legado.app.utils.File
 
 /**
  * [FileDownloader] 的 nativeMain 真实实现。
@@ -15,58 +16,39 @@ import io.legado.app.utils.File
  * 由 iosMain / ohosMain 共用 (nativeMain 中间源集下沉)。
  *
  * 用 Ktor HttpClient (引擎由各目标的依赖选择: iOS Darwin、鸿蒙 CIO) 下载到
- * [kotlin.io.File] (POSIX fs, Kotlin/Native 标准库支持):
- * - 目标目录不存在时自动创建 ([File.mkdirs], 与 NSFileManager.createDirectoryAtPath 等价)
- * - 用先写 `.tmp` 再 [File.renameTo] 实现原子写入, 避免半下载文件被读
- *   (替代原 iOS 端 `NSData.writeToFile(atomically=true)`, kotlin.io.File 无原生原子写)
- * - 失败返回 false, 不抛异常 (与 jvmAndAndroidMain 桌面实现一致)
+ * [io.legado.app.utils.File] (okio 文件面, POSIX fs):
+ * - 目标目录不存在时由整份写入契约建立 (临时件与目标同目录)
+ * - 落盘走共享整份写入契约的 native 入口 [copyToFileAtomically]: 响应体分块读、
+ *   分块写目标同目录的唯一临时件, 写完原子改名就位; 目标名上始终是完整内容 (不会出现半截下载),
+ *   写失败 (含取消) 由契约清掉临时件, 下次成功下载覆盖同名文件。
+ *   临时件名由共享契约生成, 目录清点方按名排除/回收
+ * - 下载目录是用户可见目录, 没有目录清点方, 故写入方自清: 每次下载前回收下载目录本层里已成孤儿
+ *   的临时件 ([deleteOrphanAtomicWriteTempFilesInDir]: 只认共享契约的临时件名且超过可回收时限,
+ *   正在写的那份不会被判成孤儿; 下载的目标与临时件都在本层, 不扫子目录)
+ * - 失败返回 false, 不抛异常 (与 [DesktopFileDownloader] 一致)
  *
  * # 设计要点
- * - suspend 内部用 [Dispatchers.IO] 执行下载
- * - 整文件 bytes 一次性写入 (与原 iOS bodyAsBytes + NSData.create / 鸿蒙 bodyAsBytes + writeBytes 行为等价)
+ * - suspend 内部整体切到 [Dispatchers.IO]: 落盘是阻塞式文件 IO, 而注册方的默认作用域是 `Dispatchers.Default`
+ *   (见 `registerIosServiceLauncher` / `registerOhosServiceLauncher`)
+ * - 分块流式写入, 内存峰值只有一块复用缓冲区, 与文件体积无关
  * - 路径分隔符恒为 "/" (POSIX 文件系统)
- *
- * # 下沉说明
- * 原 iosMain [IosFileDownloader] (NSFileManager + NSData.writeToFile atomically) 与
- * ohosMain [OhosFileDownloader] (kotlin.io.File + tmpFile + renameTo) 行为等价。
- * 按 nativeMain 下沉约束 (NSFileManager↔kotlin.io.File 差异统一用 kotlin.io.File),
- * 合并到 nativeMain, iOS/鸿蒙共用; 原子写统一用 tmpFile + renameTo (kotlin.io.File 无原子写 API)。
- *
- * 模式参考 `registerAndroidMediaNotificationProvider` / `DesktopFileDownloader`。
  */
 class NativeFileDownloader : FileDownloader {
 
     override suspend fun download(url: String, destPath: String, fileName: String): Boolean {
         return withContext(Dispatchers.IO) {
             runCatching {
-                // 确保目标目录存在 (mkdirs 递归创建, 与 Files.createDirectories / NSFileManager.createDirectoryAtPath 等价)
-                val destDir = File(destPath)
-                if (!destDir.exists()) {
-                    destDir.mkdirs()
-                }
-
-                // 全量 bodyAsBytes 装入内存; HttpClient 使用当前目标配置的引擎
+                deleteOrphanAtomicWriteTempFilesInDir(destPath)
                 val client = HttpClient()
                 try {
                     val response = client.get(url)
                     if (!response.status.isSuccess()) {
                         false
                     } else {
-                        val bytes = response.bodyAsBytes()
-
-                        // 原子写入: 先写 .tmp 再 renameTo 目标 (替代 NSData.writeToFile(atomically=true))
-                        // 失败路径: tmpFile 残留不污染目标文件, 下次成功下载会覆盖
-                        val targetPath = if (destPath.endsWith("/")) "$destPath$fileName" else "$destPath/$fileName"
-                        val targetFile = File(targetPath)
-                        val tmpFile = File("$targetPath.tmp")
-                        tmpFile.writeBytes(bytes)
-                        // renameTo 失败兜底: 删除 tmpFile 避免残留, 返回 false
-                        if (!tmpFile.renameTo(targetFile)) {
-                            tmpFile.delete()
-                            false
-                        } else {
-                            true
-                        }
+                        val targetPath =
+                            if (destPath.endsWith("/")) "$destPath$fileName" else "$destPath/$fileName"
+                        copyToFileAtomically(targetPath, response.bodyAsChannel())
+                        true
                     }
                 } finally {
                     client.close()

@@ -25,6 +25,7 @@ import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.utils.File
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.atomicWriteTempPath
 import io.legado.app.utils.inputStream
 import io.legado.app.utils.toInputStream
 import kotlinx.coroutines.currentCoroutineContext
@@ -220,18 +221,16 @@ class NativeFileBookAccessor : FileBookAccessor {
      * 流式保存 WebDav 远端书籍文件 ("下载到本地" / "刷新远端更新" 链路)。
      *
      * native 端无 SAF: 交给既有的 [WebDav.downloadTo] (savedPath, replaceExisting)
-     * 边下边写有效书籍保存目录下的 `{fileName}` (用户在"书籍保存位置"选定);
-     * 内部 mkdirs + okio 流式写, 见 WebDav.native.kt),
+     * 边下边写有效书籍保存目录下的 `{fileName}` (用户在"书籍保存位置"选定),
      * 不再经 [saveBookFile] (inputStream 重载) 的 `readFully()` 把整份文件读进内存 ——
      * 峰值内存与文件大小无关。
      *
      * replaceExisting=true: 保持 [saveBookFile] (inputStream 重载) 的覆盖写语义
      * (downloadTo 在 replaceExisting=false 且文件已存在时直接返回, 不覆盖)。
      *
-     * ⚠️ 失败时删净残缺文件是**对原版的偏离** (不是对齐原版): 原版 `FileBook.downloadRemoteBook`
-     * 走"先读满再整份写", 失败时目标文件不会被创建也不留半截, 所以原版没有这段清理; 改成边下边写后
-     * 中途失败会留下半个文件, 不删掉的话它会被后续导入当成本地书读进去 (原版不存在这个缺陷)。
-     * 之所以不复刻原版: 保留一份可被当书读入的半截文件比"多一次 delete"更坏。
+     * 传输中途失败 (含取消) 时目标名上不会留下半截书: downloadTo 边下边写的是目标同目录的
+     * 临时件 (共享整份写入契约), 整份写完才改名就位 —— 目标要么是原有的完整内容, 要么是
+     * 完整的新内容 (或不存在)。
      *
      * 异常口径与 app 端一致: 保存位置未设置时抛 [io.legado.app.exception.InvalidBooksDirException];
      * 已设置但写不进去 (目录被删/无写权限) 按 app 端文件路径分支的口径
@@ -244,25 +243,21 @@ class NativeFileBookAccessor : FileBookAccessor {
         val dir = bookSaveDir()
         val file = File("$dir/$fileName")
         // 分辨"保存位置不可用"与网络/传输异常: 前者按 app 端 FileBook.saveBookFile 文件路径分支的
-        // 口径给出权限类提示, 后者原样透传 (与 desktop 端同一口径)。append 模式探测只验
-        // "能否打开目标文件写", 不截断已有文件; native File 无 append 流, 直接用 okio
-        // appendingSink (mustExist=false, 目标不存在则新建), 与 downloadTo 随后自己打开的
-        // 是同一个文件, 仍是流式。
+        // 口径给出权限类提示, 后者原样透传 (与 desktop 端同一口径)。落盘要在目标目录里建临时件
+        // 再改名, 所以探的是"能否在目标目录里建出临时件" (名字用共享契约生成, 探完即删);
+        // 探目标文件本身会在下载失败时留下 0 字节的同名文件。
+        val probe = File(atomicWriteTempPath(file.path))
         try {
             File(dir).mkdirs()
-            FileSystem.SYSTEM.appendingSink(file.path.toPath()).close()
+            FileSystem.SYSTEM.write(probe.path.toPath()) { }
         } catch (e: Exception) {
             throw SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e").apply {
                 addSuppressed(e)
             }
+        } finally {
+            probe.delete()
         }
-        try {
-            webDav.downloadTo(file.path, true)
-        } catch (e: Throwable) {
-            // 对原版的偏离 (见方法 KDoc): 边下边写失败会留半截文件, 删掉它而不是留着被当书读入
-            runCatching { file.delete() }
-            throw e
-        }
+        webDav.downloadTo(file.path, true)
         return "file://" + file.absolutePath
     }
 
