@@ -8,12 +8,12 @@ import io.legado.app.utils.InputStream
  * # 背景
  * app 端 [io.legado.app.help.storage.Backup] 直接依赖 `java.io.File` +
  * `app.utils.FileUtils` + `app.utils.compress.ZipUtils`, 这些 API 在 commonMain
- * 不可见 (jvmAndAndroidMain 独占)。本 expect 把 Backup/Restore 用到的 7 个
- * 原子操作 (delete / createFolderIfNotExist / createFileIfNotExist / writeText /
+ * 不可见 (jvmAndAndroidMain 独占)。本 expect 把 Backup/Restore 用到的 8 个
+ * 文件操作 (delete / createFolderIfNotExist / createFileIfNotExist / writeText /
  * readText / exists / zipFiles / unZipToPath) 抽象为平台无关函数签名, 各 actual
  * 自行调用平台 SDK。
  *
- * - jvmAndAndroidMain actual: 委托 `FileUtilsBase` + `ZipUtils` (JDK 实现, 行为零变化)
+ * - jvmAndAndroidMain actual: 委托 `FileUtilsBase` + `ZipUtils` (JDK 实现)
  * - nativeMain actual (iOS/鸿蒙共用): `kotlin.io.File` + `NativeZipCodec` 真实实现
  *
  * # 路径约定
@@ -43,7 +43,12 @@ expect object BackupFileOps {
      */
     fun createFileIfNotExist(path: String): String
 
-    /** 写文本到文件 (覆盖写, 默认 UTF-8)。文件不存在则创建。 */
+    /**
+     * 写文本到文件 (整份落盘: 同目录临时件 + 改名就位, 默认 UTF-8)。文件不存在则创建。
+     *
+     * 写入期间读方按同一路径整读时, 只会看到完整的旧内容或完整的新内容 (不会拿到半截);
+     * 写入失败时目标保持原内容并抛异常。
+     */
     fun writeText(path: String, text: String)
 
     /** 读取文件文本 (默认 UTF-8)。文件不存在抛异常。 */
@@ -70,14 +75,14 @@ expect object BackupFileOps {
     fun listFiles(path: String): List<String>?
 
     /**
-     * 复制文件 (覆盖写, 父目录不存在则创建)。
+     * 复制文件 (整份复制替换目标, 父目录不存在则创建)。
      *
-     * 与 app 端 [io.legado.app.help.storage.Backup] 的 `copyBackup(File)` 纯文件复制
-     * 同语义 (FileInputStream → FileOutputStream → copyTo)。供各端路径备份复用,
-     * 不依赖 Android FileDoc / Uri (content scheme 由调用方先解析为本地路径)。
+     * 先复制到目标同目录的临时件再整份改名就位: 复制中断时目标保持原有完整内容 (不会留下
+     * 半截文件), 失败时抛异常。供各端路径备份复用, 不依赖 Android FileDoc / Uri
+     * (content scheme 由调用方先解析为本地路径)。
      *
      * @param srcPath 源文件路径
-     * @param destPath 目标文件路径 (父目录不存在则创建, 已存在则覆盖)
+     * @param destPath 目标文件路径 (父目录不存在则创建, 已存在则整份替换)
      */
     fun copyFile(srcPath: String, destPath: String)
 

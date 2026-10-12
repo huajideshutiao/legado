@@ -1,9 +1,11 @@
 package io.legado.app.help.storage
 
+import io.legado.app.help.writeTextAtomically
 import io.legado.app.utils.File
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.copyFileAtomically
 import okio.FileSystem
+import okio.IOException
 import okio.Path.Companion.toPath
 import okio.buffer
 
@@ -21,11 +23,11 @@ import okio.buffer
  * - [exists]: [File.exists]
  * - [createFolderIfNotExist]: [File.mkdirs] (递归创建)
  * - [createFileIfNotExist]: [File.parentFile]?.mkdirs() + [File.createNewFile]
- * - [writeText]: [File.writeText] (UTF-8)
+ * - [writeText]: 同目录临时件 + 整份改名就位 ([writeTextAtomically]; 与 JVM 端同一落盘机制:
+ *   写入中途失败时目标原内容照旧并抛错)
  * - [readText]: [File.readText] (UTF-8), 文件不存在抛 IllegalStateException
  * - [listFiles]: [File.listFiles]?.map { it.path } (目录不存在返回 null)
- * - [copyFile]: 同目录唯一临时件 + 整份改名就位 ([copyFileAtomically]; 与 JVM 端"覆盖即截断"不同:
- *   中途失败时目标原内容照旧)
+ * - [copyFile]: 同目录唯一临时件 + 整份改名就位 ([copyFileAtomically]; 中途失败时目标原内容照旧)
  * - [zipFiles]: [NativeZipCodec.zipFiles] (DEFLATE 固定 Huffman, 压不小/回读校验不过时回落 STORED,
  *   生成的 zip 可被 JVM/Android/桌面解压)
  * - [unZipToPath]: [NativeZipCodec.unZipToPath] (支持 STORED + DEFLATE, 可解压 JVM 端备份 zip)
@@ -36,7 +38,6 @@ import okio.buffer
  * 合并到 nativeMain, iOS/鸿蒙共用。
  *
  * - 路径分隔符: 恒为 "/" (POSIX, iOS/鸿蒙一致)
- * - 原子写: kotlin.io.File 无原子写 API, 直接 writeText/writeBytes (与 jvmMain Files.write 行为一致)
  * - zip: 用 [NativeZipCodec] (纯 Kotlin 实现, 移植自原 IosZipCodec/OhosZipCodec, 逻辑一致)
  *
  * 备份/恢复 zip 流程已打通 (BackupShared/RestoreShared 调用链可用)。
@@ -78,11 +79,11 @@ actual object BackupFileOps {
     }
 
     actual fun writeText(path: String, text: String) {
-        val file = File(path)
-        // 父目录不存在则递归创建 (与 jvmAndAndroidMain FileUtilsBase.createFileIfNotExist 行为对齐)
-        file.parentFile?.mkdirs()
-        // 直接 writeText (默认 UTF-8) (kotlin.io.File 无原子写 API, 与 JVM Files.write 行为一致)
-        file.writeText(text)
+        // 整份落盘 (同目录临时件 + 改名就位): 直接覆盖写会在写完之前把目标截断, 与此同时按同一
+        // 路径整读该文件的一方 (备份/恢复/配置读取) 会拿到半截内容; 失败保持目标原内容并如实上抛
+        if (!writeTextAtomically(path, text)) {
+            throw IOException("写入文件失败: $path")
+        }
     }
 
     actual fun readText(path: String): String {

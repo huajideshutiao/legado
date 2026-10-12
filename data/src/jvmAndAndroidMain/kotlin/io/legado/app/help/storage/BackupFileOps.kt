@@ -10,11 +10,13 @@ import io.legado.app.help.storage.BackupFileOps.readText
 import io.legado.app.help.storage.BackupFileOps.unZipToPath
 import io.legado.app.help.storage.BackupFileOps.writeText
 import io.legado.app.help.storage.BackupFileOps.zipFiles
+import io.legado.app.help.writeTextAtomically
 import io.legado.app.utils.FileUtilsBase
+import io.legado.app.utils.copyFileAtomically
 import io.legado.app.utils.compress.ZipUtils
 import java.io.File
 import java.io.FileInputStream
-import java.io.FileOutputStream
+import java.io.IOException
 import java.io.InputStream
 
 /**
@@ -29,10 +31,11 @@ import java.io.InputStream
  * - [exists] -> `File(path).exists()`
  * - [createFolderIfNotExist] -> `FileUtilsBase.createFolderIfNotExist(path)`
  * - [createFileIfNotExist] -> `FileUtilsBase.createFileIfNotExist(path).absolutePath`
- * - [writeText] -> `FileUtilsBase.createFileIfNotExist(path).writeText(text)`
+ * - [writeText] -> `FileUtilsBase.writeBytes` 写同目录临时件 + [FileUtilsBase.replaceFileAtomically]
+ *   就位 (整份落盘), 失败保持目标原内容并抛 [IOException]
  * - [readText] -> `File(path).readText()`
  * - [listFiles] -> `File(path).listFiles()?.map { it.absolutePath }`
- * - [copyFile] -> `FileUtilsBase.createFileIfNotExist(dest)` + FileInputStream/FileOutputStream/copyTo (与 app 端 copyBackup(File) 等价)
+ * - [copyFile] -> [copyFileAtomically] (同目录临时件 + 整份改名就位; 与 nativeMain actual 同语义)
  * - [zipFiles] -> `ZipUtils.zipFiles(paths.map { File(it) }, zipPath)`
  * - [unZipToPath] -> `ZipUtils.unZipToPath(File(zipPath), destDir)`
  *
@@ -60,7 +63,11 @@ actual object BackupFileOps {
     }
 
     actual fun writeText(path: String, text: String) {
-        FileUtilsBase.createFileIfNotExist(path).writeText(text)
+        // 整份落盘 (同目录临时件 + 改名就位): 直接覆盖写会在写完之前把目标截断, 与此同时按同一
+        // 路径整读该文件的一方 (备份/恢复/配置读取) 会拿到半截内容; 失败保持目标原内容并如实上抛
+        if (!writeTextAtomically(path, text)) {
+            throw IOException("写入文件失败: $path")
+        }
     }
 
     actual fun readText(path: String): String {
@@ -81,13 +88,9 @@ actual object BackupFileOps {
     }
 
     actual fun copyFile(srcPath: String, destPath: String) {
-        // 与 app 端 copyBackup(File) 等价: createFileIfNotExist + 流式 copyTo
-        val destFile = FileUtilsBase.createFileIfNotExist(destPath)
-        FileInputStream(File(srcPath)).use { inputS ->
-            FileOutputStream(destFile).use { outputS ->
-                inputS.copyTo(outputS)
-            }
-        }
+        // 整份复制替换目标 (共享实现): 直接往目标覆盖写, 复制中途被打断会留下半截目标
+        // (备份 zip 被截断即读不出的坏包), 失败时目标原内容照旧并抛错
+        copyFileAtomically(File(srcPath), File(destPath))
     }
 
     actual fun zipFiles(srcPaths: List<String>, zipPath: String): Boolean {
