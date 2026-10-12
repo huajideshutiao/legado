@@ -125,6 +125,22 @@ fun Modifier.sheetDragExclusion(): Modifier {
 val LocalSheetDismissRequest = staticCompositionLocalOf<(() -> Unit)?> { null }
 
 /**
+ * 动画进行中屏蔽本节点子树的指针输入: Initial 阶段消费全部事件。
+ *
+ * 对话框/弹层滑入滑出与缩放淡出 (进度 < 1) 期间, 内容里的点击手势收不到未消费的 down
+ * (down 被消费 awaitFirstDown 不成立, up 被消费即判手势取消), 动画途中的点击落在
+ * 正在离场的旧按钮上不会触发。
+ */
+internal fun Modifier.blockInputWhile(active: Boolean): Modifier = pointerInput(active) {
+    if (!active) return@pointerInput
+    awaitPointerEventScope {
+        while (true) {
+            awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+        }
+    }
+}
+
+/**
  * 在"当前独立窗口"内安装 per-window 文本菜单通道 (Android 新通道)。
  *
  * Compose CompositionLocal 跨 Dialog 窗口继承: Dialog 内长按文本时 framework 会用**本窗口**
@@ -258,7 +274,9 @@ fun AppDialog(
                 Modifier
                     .appDialogSize(sizing)
                     .directionKeyFocusNavigation(LocalFocusManager.current)
-                    .then(if (topInset > 0.dp) Modifier.padding(top = topInset) else Modifier),
+                    .then(if (topInset > 0.dp) Modifier.padding(top = topInset) else Modifier)
+                    // 进出场动画期间内容不派生输入 (渐入未稳/渐出途中的点击不生效)
+                    .blockInputWhile(p < 1f),
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
@@ -299,7 +317,7 @@ fun AppDialogSurface(
 /**
  * 贴底弹层统一面板容器：仅上两角 16dp (sheetShape) + 底栏色 (bottomBackground)
  * 收口于此, 形状与底色均不开放修改, 保证全仓弹层同一观感;
- * [AppBottomSheetDialog] 面板与铺满整屏的面板 (换源/换章节源/TXT 目录规则) 一律用它。
+ * [AppBottomSheetDialog] 面板一律用它 (含占满所属弹层区域的换源/换章节源/TXT 目录规则三处)。
  * 需要自己撑满容器且不带圆角的承载 (如半屏 WebView 的全屏态) 仍用 Surface 自行裁剪。
  */
 @Composable
@@ -652,6 +670,8 @@ fun AppBottomSheetDialog(
                         alpha = if (dialogSpec.enterFadeIn) p else 1f
                     }
                     .onGloballyPositioned { sheetCoordinates = it }
+                    // 进出场动画期间内容不派生输入 (面板滑出途中点按钮不触发)
+                    .blockInputWhile(p < 1f)
                     // 非滚动内容面板的拖拽路径: 内部无滚动消费位移时赢得竖直 slop,
                     // 面板跟随手指; 内部 Compose 滚动消费了位移则本检测自动让位
                     // (awaitVerticalTouchSlopOrCancellation 遇已消费的位置变化返回 null),
