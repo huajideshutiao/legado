@@ -6,6 +6,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.resolveImagePath
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.DesktopTrayNotifier
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.model.bakeCoverImageFile
 import io.legado.app.model.bakedImagePath
 import io.legado.app.model.deleteImageIfUnreferenced
@@ -91,21 +92,17 @@ private class DesktopFilePickerService : FilePickerService {
         // 保存对话框选位置 → 写文件 (对照 master PhotoDialog 的保存语义)
         // 用户取消选择位置返回 null, 调用方静默; 仅写文件失败返回 false
         val dest = FileDialogs.pickSaveFile(defaultName = suggestedName) ?: return null
-        return runCatching {
-            dest.parentFile?.mkdirs()
-            dest.writeBytes(bytes)
-            true
-        }.getOrDefault(false)
+        // 落盘整份归位: 用户选了同名文件时覆盖写会先把旧图截断, 写到一半被打断就留下半张图
+        return runCatching { writeBytesAtomically(dest.path, bytes) }.getOrDefault(false)
     }
 
     override val supportsDirWrite: Boolean = true
 
-    // 写进已选目录 (对照 app 端 FileUtils.saveImage(dirUri))
+    // 写进已选目录 (对照 app 端 FileUtils.saveImage(dirUri)); 落盘整份归位, 覆盖同名图时目标始终完整
     override fun writeImageToDir(dir: String, fileName: String, bytes: ByteArray): Boolean =
         runCatching {
             val destDir = File(dir).apply { mkdirs() }
-            File(destDir, fileName).writeBytes(bytes)
-            true
+            writeBytesAtomically(File(destDir, fileName).path, bytes)
         }.getOrDefault(false)
 
     // 桌面无沙盒: 选定目录是普通文件路径, 不产生系统授权, 用途无法强制 —— 本地书文件访问不做用途校验;

@@ -16,6 +16,7 @@ import io.legado.app.help.openURL
 import io.legado.app.help.service.IosCacheBookNotifications
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.topMostViewController
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.ui.root.BrowserService
 import io.legado.app.ui.root.CrashLogProvider
 import io.legado.app.ui.root.ExternalRequestService
@@ -35,7 +36,6 @@ import io.legado.app.ui.root.ShareService
 import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
 import io.legado.app.ui.root.WindowController
-import io.legado.app.utils.File
 import io.legado.app.utils.IosSecurityScopedStorage
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.runBlocking
@@ -81,6 +81,7 @@ import platform.UserNotifications.UNUserNotificationCenterDelegateProtocol
 import platform.darwin.NSObject
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
+import io.legado.app.utils.File
 
 // iOS 平台服务聚合: 文件选择/分享/浏览器走 UIKit, 权限走 Photos/AVCapture/UserNotifications,
 // 媒体走 AVPlayer, 通知走 UNUserNotificationCenter, 外部请求走 URL Scheme 解析
@@ -138,10 +139,8 @@ private object IosFilePickerService : FilePickerService {
 
     override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? {
         val path = saveFile(suggestedName) ?: return null
-        return runCatching {
-            File(path).writeBytes(bytes)
-            true
-        }.getOrDefault(false)
+        // 落盘整份归位: 覆盖写被打断会在用户可见的导出目录留下半张图
+        return writeBytesAtomically(path, bytes)
     }
 
     /**

@@ -9,6 +9,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.DownloadProgressRegistry
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.entities.MangaCellState
 import io.legado.app.ui.book.manga.render.MangaSkiaImage
@@ -16,7 +17,6 @@ import io.legado.app.ui.book.manga.render.mangaProgressText
 import io.legado.app.ui.book.manga.render.preloadMangaImage
 import io.legado.app.ui.book.read.IosReaderPlatformProvider
 import io.legado.app.ui.root.PlatformServiceProviders
-import io.legado.app.utils.File
 import kotlinx.coroutines.withContext
 
 // iOS 漫画阅读平台能力: 图片流复用 shared 提取器, 渲染走 Skia 三端共用的 MangaSkiaImage
@@ -61,6 +61,7 @@ object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
     }
 
     // 保存图片：只导出已缓存的图 (对照原版 BaseReadViewModel.saveImage 的读取段), 落点走沙盒导出目录。
+    // 落盘整份归位: 覆盖写被打断会在用户可见目录留下半张图
     override suspend fun saveImage(
         url: String,
         book: Book?,
@@ -69,8 +70,7 @@ object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
         saveCachedMangaImage(url, book) { name, bytes ->
             val destPath = PlatformServiceProviders.get().files.saveFile(name)
                 ?: return@saveCachedMangaImage null
-            File(destPath).writeBytes(bytes)
-            true
+            writeBytesAtomically(destPath, bytes)
         }
     }
 

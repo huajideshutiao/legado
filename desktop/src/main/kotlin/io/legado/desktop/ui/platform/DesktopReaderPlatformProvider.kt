@@ -21,6 +21,7 @@ import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.Toasters
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.ui.book.read.BaseReadMenuState
 import io.legado.app.ui.book.read.ReadAloudControls
 import io.legado.app.ui.book.read.ReadBookEvents
@@ -322,6 +323,9 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
      *
      * 保存只导出已看过的图 (对照原版 BaseReadViewModel.saveImage 的读取段), 不触发下载;
      * 建议名恒为 .jpg, 与实际格式不符时按魔数改名 (shared 统一 helper, 与漫画保存一致)。
+     *
+     * 落盘整份归位: 目标已存在时 (用户选了同名文件) 覆盖写会先把旧图截断, 写到一半被打断
+     * 就留下一张半截图。
      */
     private suspend fun writeImageBytes(
         src: String,
@@ -331,8 +335,7 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
     ): String? = try {
         val bytes = book?.let { BookImageDownloadShared.imageBytesToSave(it, src, chapter) }
             ?: return null
-        dest.parentFile?.mkdirs()
-        dest.writeBytes(bytes)
+        if (!writeBytesAtomically(dest.path, bytes)) error("保存图片失败: ${dest.path}")
         FileUtilsBase.fixImageExtension(dest).absolutePath
     } catch (e: Exception) {
         AppLog.put("保存图片出错\n${e.localizedMessage}", e)

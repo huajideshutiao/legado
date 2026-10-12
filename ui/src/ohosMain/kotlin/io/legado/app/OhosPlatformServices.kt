@@ -12,6 +12,7 @@ import io.legado.app.help.file.saveImageToAlbum
 import io.legado.app.help.log.NativeCrashLogs
 import io.legado.app.help.openURL
 import io.legado.app.help.toast.Toasters
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.ui.OhosPlatformCapabilities
 import io.legado.app.ui.percentDecode
@@ -406,7 +407,9 @@ private object OhosFilePickerService : FilePickerService {
      * 支持把图片字节写进选定目录 ([saveImageRememberingDir] 的"选一次目录后直写"分支)。
      *
      * 选定目录在沙盒外, 写入前必须先激活其持久化目录授权 ([OhosDirAuthorizations]),
-     * 否则重启后写入被拒 (对照 [OhosAuthorizedFileBookAccessor] 的书籍落盘同款处理)。
+     * 否则重启后写入被拒 (对照 [OhosAuthorizedFileBookAccessor] 的书籍落盘同款处理);
+     * 落盘走"同目录临时件 + 改名就位" (与备份 zip 写进用户选定目录同一机制:
+     * BackupFileOps.copyFile → copyFileAtomically), 覆盖同名图时目标始终完整。
      */
     override val supportsDirWrite: Boolean = true
 
@@ -414,8 +417,7 @@ private object OhosFilePickerService : FilePickerService {
         runCatching {
             OhosDirAuthorizations.ensureActivatedFor(dir, DirUsage.ImageSave)
             val destDir = File(dir).apply { mkdirs() }
-            File(destDir, fileName).writeBytes(bytes)
-            true
+            writeBytesAtomically(File(destDir, fileName).path, bytes)
         }.getOrDefault(false)
 
     /**
