@@ -297,10 +297,10 @@ fun AppDialogSurface(
 }
 
 /**
- * 半屏贴底弹层统一面板容器：仅上两角 16dp (sheetShape) + 底栏色 (bottomBackground)
- * 收口于此, 形状与底色均不开放修改, 保证全仓半屏弹层同一观感;
- * [AppBottomSheetDialog] 面板一律用它。全屏态需要去掉圆角的面板 (如半屏 WebView)
- * 仍用 Surface 自行裁剪。
+ * 贴底弹层统一面板容器：仅上两角 16dp (sheetShape) + 底栏色 (bottomBackground)
+ * 收口于此, 形状与底色均不开放修改, 保证全仓弹层同一观感;
+ * [AppBottomSheetDialog] 面板与铺满整屏的面板 (换源/换章节源/TXT 目录规则) 一律用它。
+ * 需要自己撑满容器且不带圆角的承载 (如半屏 WebView 的全屏态) 仍用 Surface 自行裁剪。
  */
 @Composable
 fun AppSheetSurface(
