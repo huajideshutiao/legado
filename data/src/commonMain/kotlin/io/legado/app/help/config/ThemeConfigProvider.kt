@@ -1,5 +1,6 @@
 package io.legado.app.help.config
 
+import io.legado.app.help.deleteOrphanAtomicWriteTempFiles
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.model.deleteImageIfUnreferenced
@@ -243,18 +244,18 @@ interface ThemeConfigProvider {
      * # 目录约定 (2026 图集化): 主题背景图统一落 `{文件根}/customImg` 图集目录,
      * 内容特征值命名 `<字节数>.<ext>` (见 FilePickerService.importBackgroundImage,
      * 启动图同规则), 故清理只删 customImg 下主干为纯数字的背景图/启动图文件, 封面图集 (covers 子目录)/启动图/阅读背景等其他图集文件不受影响
-     * (模糊派生物同在缓存根 customImg 目录, 不在此列)。
+     * (烘焙产物与封面烘焙产物同在缓存根 customImg 目录, 不参与纯数字清理)。
      *
      * # 平台差异
-     * - app 端: `ThemeConfigProviderImpl` 应 override 本方法, 调原 `ThemeConfig.clearBg()`
-     *   (含贴边亮度缓存清空);
-     *   app 端 `App.kt` 仍调原 `ThemeConfig.clearBg()` (object 方法), 不经此 default 实现
-     * - 桌面端: 用 default 实现, 走 [AppFilesDirs] + [BackupFileOps] 跨平台抽象;
+     * - 各端同一实现: 经 [AppFilesDirs] + [BackupFileOps] 跨平台抽象;
      *   桌面端 externalFilesDir 为 null, 回退到 filesDir (~/.legado/files);
-     *   无背景图导入 UI 时目录为空, 清理即空转
+     *   无背景图导入 UI 时目录为空, 清理即空转 (Android 端注册的 provider 未 override 本方法)
+     * - 调用点: 启动期缓存清理 ([io.legado.app.help.StartupMaintenanceShared.clearInvalidCacheIfDue]),
+     *   四端共用
      */
     fun clearBg() {
         val filesBase = AppFilesDirs.get().externalFilesDir ?: AppFilesDirs.get().filesDir
+        val cacheBase = AppFilesDirs.get().externalCacheDir ?: AppFilesDirs.get().cacheDir
         val sep = BackupFileOps.separator
 
         // 只处理内容特征值命名的背景图文件 (纯数字主干); 删除前经 deleteImageIfUnreferenced
@@ -267,6 +268,12 @@ interface ThemeConfigProvider {
                 deleteImageIfUnreferenced(filePath, withFile = true)
             }
         }
+
+        // 图集树与烘焙产物树都没有别的清点方 (图集只在用户选图时写入, 烘焙产物只在缺产物时写入):
+        // 整份写入被强杀留下的孤儿临时件在本次启动清点里一并回收 —— 只匹配临时件名
+        // ([io.legado.app.utils.ATOMIC_WRITE_TEMP_SUFFIX]), 图集原图与烘焙产物一律不动
+        deleteOrphanAtomicWriteTempFiles(coversDir)
+        deleteOrphanAtomicWriteTempFiles(cacheBase + sep + "customImg")
     }
 }
 

@@ -7,6 +7,7 @@ import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.tvbox.TvBoxConfig
 import io.legado.app.help.tvbox.TvBoxLocalProxy
 import io.legado.app.help.tvbox.TvBoxSite
+import io.legado.app.help.writeTextAtomically
 import io.legado.app.model.tvbox.TvBoxManager
 import io.legado.app.model.tvbox.TvBoxPluginSources
 import io.legado.app.model.tvbox.TvBoxSourceMapper
@@ -317,9 +318,11 @@ class JvmTvBoxPlatform : TvBoxService {
     private fun writeSources(sources: List<String>) {
         sourcesCache = sources
         runCatching {
-            val file = sourcesFile()
-            file.parentFile?.mkdirs()
-            file.writeText(GSON.encodeToString(sourcesSerializer, sources))
+            // 半写 JSON 被读方当作脏数据退化为空表 (用户配置的来源列表静默消失), 故整份落盘
+            writeTextAtomically(
+                sourcesFile().path,
+                GSON.encodeToString(sourcesSerializer, sources),
+            )
         }.onFailure { AppLog.put("TVBox 配置来源列表写入失败", it) }
     }
 

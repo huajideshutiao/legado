@@ -54,12 +54,15 @@ class NativeSourceCacheProvider : SourceCacheProvider {
      * 持久化根目录: `{AppFilesDirs.filesDir}/cache_manager/`。
      *
      * 启动时确保目录存在 (mkdirs 失败静默, 后续真实 I/O 时再报错更易定位;
-     * 与各端 BookStorage saveText 父目录创建行为对齐)。
+     * 与各端 BookStorage saveText 父目录创建行为对齐), 并在此清点回收整份写入被强杀留下的
+     * 孤儿临时件: 本 provider 没有 LRU 与目录清点, 不回收它们就永久占空间。
      */
     private val cacheRoot: String = run {
         val filesDir = AppFilesDirs.get().filesDir
         val root = if (filesDir.endsWith("/")) "${filesDir}cache_manager" else "$filesDir/cache_manager"
         runCatching { File(root).mkdirs() }
+        // 本 provider 无 LRU: 启动清点里回收整份写入被强杀留下的孤儿临时件 (不回收就永久占空间)
+        deleteOrphanAtomicWriteTempFiles(root)
         root
     }
 

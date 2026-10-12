@@ -3,10 +3,14 @@ package io.legado.app.help.extension
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.VirtualPluginSourcePrefix
 import io.legado.app.help.FileUtilsCommon
+import io.legado.app.help.deleteOrphanAtomicWriteTempFile
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.model.manga.MangaSourceMapper
 import io.legado.app.model.plugin.pluginInstalledOf
 import io.legado.app.utils.FileUtilsBase
+import io.legado.app.utils.atomicWriteTempPath
+import io.legado.app.utils.isAtomicWriteTempName
+import io.legado.app.utils.systemCurrentTimeMillis
 import java.io.File
 import java.io.RandomAccessFile
 
@@ -30,9 +34,6 @@ object PluginSourceIcons {
 
     /** 缓存目录名 (位于应用私有缓存目录下)。 */
     private const val CACHE_DIR_NAME = "pluginIcons"
-
-    /** 原子写的临时文件后缀 (与扩展安装落盘同一做法: 先写临时文件再改名)。 */
-    private const val TEMP_SUFFIX = ".part"
 
     /** PNG 文件签名 (PNG 规范 5.2 PNG file signature)。 */
     private val PNG_SIGNATURE = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
@@ -83,13 +84,20 @@ object PluginSourceIcons {
      * 清理缓存目录里已无插件引用的图标文件 (插件卸载或更新后的旧版本残留)。
      *
      * 由扩展装载流程在虚拟行同步后调用: 此刻的已装载集合就是唯一的活引用集合, 目录因此有界
-     * (每个已装载插件至多一个当前版本的文件)。
+     * (每个已装载插件至多一个当前版本的文件)。整份写入的临时件不是引用项: 已成孤儿的回收,
+     * 正在写的那份 (刚创建) 保留 —— 直接当残留删掉会让本次落盘白白失败。
      */
     fun prune() {
         val live = liveIconFileNames()
-        FileUtilsCommon.listFiles(iconCacheDir())
-            .filter { FileUtilsCommon.getName(it) !in live }
-            .forEach { FileUtilsCommon.delete(it) }
+        val now = systemCurrentTimeMillis()
+        FileUtilsCommon.listFiles(iconCacheDir()).forEach { path ->
+            val name = FileUtilsCommon.getName(path)
+            if (isAtomicWriteTempName(name)) {
+                deleteOrphanAtomicWriteTempFile(path, now)
+            } else if (name !in live) {
+                FileUtilsCommon.delete(path)
+            }
+        }
     }
 
     /**
@@ -126,15 +134,15 @@ object PluginSourceIcons {
         expected.indices.all { bytes[offset + it] == expected[it] }
 
     /**
-     * 图标缓存落盘: 先写同目录的 [TEMP_SUFFIX] 临时文件, 再用共享的文件原子替换
-     * ([FileUtilsBase.replaceFileAtomically]) 就位 —— 与扩展安装落盘同一实现。
+     * 图标缓存落盘: 先写同目录临时件 (名按共享契约 [atomicWriteTempPath] 生成, 两次落盘不共用
+     * 路径), 再用共享的文件原子替换 ([FileUtilsBase.replaceFileAtomically]) 就位。
      *
      * 走到这里的目标只可能是被判为损坏的旧缓存或不存在, 替换失败时旧缓存内容不变, 由调用方回落到
      * 书源名首字占位。
      */
     private fun writeIconAtomically(path: String, bytes: ByteArray): Boolean {
         val file = File(path)
-        val temp = File(file.parentFile, file.name + TEMP_SUFFIX)
+        val temp = File(atomicWriteTempPath(path))
         return try {
             file.parentFile?.mkdirs()
             temp.writeBytes(bytes)

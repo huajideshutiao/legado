@@ -5,6 +5,7 @@ import com.github.catvod.crawler.Spider
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.deleteOrphanAtomicWriteTempFiles
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.tvbox.TvBoxConfig
 import io.legado.app.help.tvbox.TvBoxCmsSpider
@@ -16,7 +17,8 @@ import io.legado.app.help.tvbox.TvBoxPlatforms
 import io.legado.app.model.webBook.PluginSourceDelegates
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.GSON
-import io.legado.app.utils.randomUUIDString
+import io.legado.app.utils.atomicWriteTempPath
+import io.legado.app.utils.isAtomicWriteTempName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -80,6 +82,9 @@ object TvBoxManager {
         Init.set(platform.appContext)
         inited = true
         registerDelegate()
+        // TVBox 数据目录 (config.json / config_url.txt / sites.json) 没有别的清点方:
+        // 整份写入被强杀留下的孤儿临时件在此既有初始化点上顺带回收
+        deleteOrphanAtomicWriteTempFiles(tvBoxDir().path)
         if (loadStarted.compareAndSet(false, true)) {
             loadJob = scope.launch { configLock.withLock { loadPersistedConfig() } }
         }
@@ -236,18 +241,16 @@ object TvBoxManager {
         }
     }
 
-    /** 落盘中间件名后缀: 落在目标同目录 (同一卷) 才能改名就位。 */
-    private const val TEMP_SUFFIX = ".tmp"
-
     /**
-     * 本次落盘的中间件: 目标名 + 随机唯一串 + [TEMP_SUFFIX], 落在目标同目录。
+     * 本次落盘的中间件: 目标名 + 随机唯一串 + 共享后缀, 落在目标同目录。
      *
-     * 唯一串取随机 UUID ([randomUUIDString]): 桌面连击双击会起两个实例, 两个实例各自的配置内容
-     * 不同, 共用同一路径的中间件会互相截断, 其中一份半截内容会被整份换上目标并成为下次冷启动读到
-     * 的配置; 时间戳类唯一串在同毫秒的两次落盘上会重名, 这里要的是两次落盘绝不共用同一份中间件。
+     * 名字由共享契约 [io.legado.app.utils.atomicWriteTempPath] 生成 —— 桌面连击双击会起两个实例,
+     * 两个实例各自的配置内容不同, 共用同一路径的中间件会互相截断, 其中一份半截内容会被整份换上目标
+     * 并成为下次冷启动读到的配置; 时间戳类唯一串在同毫秒的两次落盘上会重名, 这里要的是两次落盘
+     * 绝不共用同一份中间件。与目标名的对应关系靠"目标名 + '.'"前缀保留 (见 [deleteWithLeftovers])。
      */
     private fun tempFileFor(file: File): File =
-        File(file.parentFile, "${file.name}.${randomUUIDString()}$TEMP_SUFFIX")
+        File(atomicWriteTempPath(file.path))
 
     /**
      * 配置落盘走临时文件 + 共享的原子替换 ([FileUtilsBase.replaceFileAtomically]): 半写文件会让
@@ -279,7 +282,7 @@ object TvBoxManager {
         FileUtilsBase.deleteWithReplaceBackup(file)
         val tempPrefix = "${file.name}."
         file.parentFile?.listFiles()?.forEach {
-            if (it.name.startsWith(tempPrefix) && it.name.endsWith(TEMP_SUFFIX)) it.delete()
+            if (it.name.startsWith(tempPrefix) && isAtomicWriteTempName(it.name)) it.delete()
         }
     }
 
@@ -300,7 +303,8 @@ object TvBoxManager {
         runCatching {
             val file = File(tvBoxDir(), "sites.json")
             file.parentFile?.mkdirs()
-            file.writeText(GSON.encodeToString(disabledSitesSerializer, keys.toList()))
+            // 半写 JSON 被读方当作脏数据退化为空集 (用户已关的站点静默恢复), 故整份落盘
+            writeTextAtomically(file, GSON.encodeToString(disabledSitesSerializer, keys.toList()))
         }.onFailure { AppLog.put("TVBox 站点关闭集合写入失败", it) }
     }
 

@@ -1,9 +1,12 @@
 package io.legado.app.help.image
 
 import io.legado.app.help.FileUtilsCommon
+import io.legado.app.help.deleteOrphanAtomicWriteTempFile
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.writeBytesAtomically
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.isAtomicWriteTempName
+import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -148,6 +151,9 @@ internal object ImageBytesCache {
      *
      * 整段在 [mutex] 内: 计数与目录实际内容必须一致, 否则并发写盘会重复列目录/重复淘汰。
      * 代价可控 —— 列目录只在"已达上限或每 [DISK_COUNT_CALIBRATE_EVERY] 次写盘"时发生。
+     *
+     * 整份写入的临时件不是条目: 不计条数、不参与淘汰 (淘汰它是白扫一遍), 已成孤儿的那份
+     * 顺带回收 —— 目录没有别的清点入口, 只能在这里。
      */
     private suspend fun pruneIfDiskOverflow(dir: String) {
         mutex.withLock {
@@ -155,16 +161,25 @@ internal object ImageBytesCache {
             val known = diskFileCounts[dir]
             val dueCalibrate = putCount % DISK_COUNT_CALIBRATE_EVERY == 0
             if (known != null && known < MAX_DISK_FILES && !dueCalibrate) return@withLock
-            val files = FileUtilsCommon.listFiles(dir)
-            if (files.size <= MAX_DISK_FILES) {
-                diskFileCounts[dir] = files.size
+            val now = systemCurrentTimeMillis()
+            val entries = ArrayList<String>()
+            for (path in FileUtilsCommon.listFiles(dir)) {
+                if (isAtomicWriteTempName(FileUtilsCommon.getName(path))) {
+                    // 整份写入的临时件不是条目: 不计条数、不参与淘汰, 已成孤儿的顺带回收
+                    deleteOrphanAtomicWriteTempFile(path, now)
+                } else {
+                    entries.add(path)
+                }
+            }
+            if (entries.size <= MAX_DISK_FILES) {
+                diskFileCounts[dir] = entries.size
                 return@withLock
             }
-            val victims = files
+            val victims = entries
                 .sortedBy { FileUtilsCommon.lastModified(it) }
-                .take(files.size - DISK_PRUNE_KEEP_FILES)
+                .take(entries.size - DISK_PRUNE_KEEP_FILES)
             victims.forEach { FileUtilsCommon.delete(it) }
-            diskFileCounts[dir] = files.size - victims.size
+            diskFileCounts[dir] = entries.size - victims.size
         }
     }
 }

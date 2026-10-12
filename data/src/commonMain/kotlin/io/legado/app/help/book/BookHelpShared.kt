@@ -11,6 +11,7 @@ import io.legado.app.help.RuleBigDataProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.runBlockingInScope
+import io.legado.app.help.deleteOrphanAtomicWriteTempFiles
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.MD5Utils
@@ -147,7 +148,9 @@ object BookHelpShared {
      *
      * 总大小按 [rootPath] 下目录统计, 但只有含 [imageSubFolderName] 子目录的漫画缓存
      * 参与淘汰, 按最后修改时间由旧到新删除直到总大小收敛到 [maxSize] 以内。
-     * 统计并发 8 路 (与 app 版 onEachParallel(8) 一致)。
+     * 统计并发 8 路 (与 app 版 onEachParallel(8) 一致); 同一趟顺带回收章节/图片目录里的
+     * 孤儿临时件 (整份写入被强杀留下的, 名字契约见 [io.legado.app.utils.ATOMIC_WRITE_TEMP_SUFFIX]),
+     * 它们既不计入大小也不受淘汰管理, 不回收就永久占空间。
      *
      * [validFolderNames] 非空时只统计在架书目录 (与原版 `cacheFiles.filter { bookFolderNames.contains(it.name) }`
      * 对齐): 调用方先删失效目录, 但 FileUtilsCommon.delete 失败 (EBUSY 等) 时失效目录仍在,
@@ -168,6 +171,8 @@ object BookHelpShared {
             val mangaFolders = newConcurrentSet<String>()
             bookDirs.asFlow().onEachParallel(8) { dir ->
                 folderSizes[dir] = FileUtilsCommon.getDirSize(dir)
+                // 启动清点已在走这个目录, 孤儿临时件顺带回收, 不另起任务 (正在写的那份刚创建, 不受影响)
+                deleteOrphanAtomicWriteTempFiles(dir)
                 if (FileUtilsCommon.exist(FileUtilsCommon.getPath(dir, imageSubFolderName))) {
                     mangaFolders.add(dir)
                 }

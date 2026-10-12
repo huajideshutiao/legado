@@ -10,7 +10,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.storage.FilesJsonStore
 import io.legado.app.utils.FileUtilsBase
-import io.legado.app.utils.randomUUIDString
+import io.legado.app.utils.atomicWriteTempPath
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -106,18 +106,15 @@ class SharedPrefsStub internal constructor(private val name: String?) : SharedPr
             MessageDigest.getInstance("MD5").digest(text.toByteArray(Charsets.UTF_8))
                 .take(8).joinToString("") { "%02x".format(it) }
 
-        /** 落盘中间件名后缀: 落在目标同目录 (同一卷) 才能改名就位。 */
-        private const val TEMP_SUFFIX = ".tmp"
-
         /**
-         * 本次落盘的中间件: 目标名 + 随机唯一串 + [TEMP_SUFFIX], 落在目标同目录。
+         * 本次落盘的中间件: 目标名 + 随机唯一串 + 共享后缀, 落在目标同目录。
          *
-         * 唯一串取随机 UUID ([randomUUIDString]): 桌面允许双击起两个实例, 两实例的偏好快照内容
+         * 名字由共享契约 [atomicWriteTempPath] 生成 —— 桌面允许双击起两个实例, 两实例的偏好快照内容
          * 不同, 共用同一路径的中间件会互相截断, 拼出来的混内容会被整份换上并把该偏好桶的全部键
          * 一起带坏; 时间戳类唯一串在同毫秒的两次落盘上会重名, 这里要的是两次落盘绝不共用同一份中间件。
          */
         private fun tempFileFor(target: File): File =
-            File(target.parentFile, "${target.name}.${randomUUIDString()}$TEMP_SUFFIX")
+            File(atomicWriteTempPath(target.path))
 
         // 值带类型标签编码, 保 Int/Long/Boolean/Float/Set<String> 类型 (JSON 数字读回会丢整型)
         private fun encodeStore(store: Map<String, Any?>): String = buildJsonObject {

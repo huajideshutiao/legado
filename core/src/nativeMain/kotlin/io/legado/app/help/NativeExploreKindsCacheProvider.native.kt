@@ -17,6 +17,8 @@ class NativeExploreKindsCacheProvider : ExploreKindsCacheProvider {
         val cacheDir = AppFilesDirs.get().cacheDir
         val root = if (cacheDir.endsWith("/")) "${cacheDir}explore" else "$cacheDir/explore"
         runCatching { File(root).mkdirs() }
+        // 本 provider 无 LRU: 启动清点里回收整份写入被强杀留下的孤儿临时件 (不回收就永久占空间)
+        deleteOrphanAtomicWriteTempFiles(root)
         root
     }
 

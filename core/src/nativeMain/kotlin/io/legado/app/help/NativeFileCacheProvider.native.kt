@@ -44,7 +44,8 @@ class NativeFileCacheProvider : FileCacheProvider {
      * 缓存根目录: `{AppFilesDirs.cacheDir}/file_cache/`。
      *
      * 启动时确保目录存在 (mkdirs 失败静默, 后续真实 I/O 时再报错更易定位;
-     * 与 [NativeSourceCacheProvider] 的 cacheRoot 创建行为对齐)。
+     * 与 [NativeSourceCacheProvider] 的 cacheRoot 创建行为对齐), 并在此清点回收整份写入被强杀
+     * 留下的孤儿临时件: 本 provider 没有 LRU 与目录清点, 不回收它们就永久占空间。
      */
     private val cacheDir: String = resolveRoot(AppFilesDirs.get().cacheDir)
 
@@ -54,6 +55,7 @@ class NativeFileCacheProvider : FileCacheProvider {
     private fun resolveRoot(base: String): String {
         val root = if (base.endsWith("/")) "${base}file_cache" else "$base/file_cache"
         runCatching { File(root).mkdirs() }
+        deleteOrphanAtomicWriteTempFiles(root)
         return root
     }
 

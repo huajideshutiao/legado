@@ -14,7 +14,7 @@ import io.legado.app.lib.webdav.WebDav
 import io.legado.app.model.fileBook.RemoteZipWrapper
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.LogUtils
-import io.legado.app.utils.randomUUIDString
+import io.legado.app.utils.atomicWriteTempPath
 import okhttp3.Request
 import org.chromium.net.CronetEngine
 import org.chromium.net.CronetProvider
@@ -31,9 +31,7 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
         "https://maven.aliyun.com/repository/google/org/chromium/net/cronet-embedded/$soVersion/cronet-embedded-$soVersion.aar"
     private const val soName = "libcronet.$soVersion.so"
 
-    /** 落盘中间件名后缀: 落在目标同目录 (同一卷) 才能改名就位。 */
-    private const val TEMP_SUFFIX = ".tmp"
-
+    /** 中间件名每次唯一: 落于目标同目录 (见 [io.legado.app.utils.atomicWriteTempPath])。 */
     private val soFile: File
     private var cpuAbi: String? = null
 
@@ -104,7 +102,7 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
                 val downloadDir = File(App.instance.cacheDir, "so_download")
                 val downloadFile = File(downloadDir, soName)
                 // 中间件名每次唯一: 两次落盘绝不共用同一份, 谁也读不到对方写了一半的那份
-                val downloadFileTmp = File(downloadDir, randomUUIDString() + TEMP_SUFFIX)
+                val downloadFileTmp = File(atomicWriteTempPath(downloadFile.path))
                 try {
                     val result = if (downloadFile.exists()) true
                     else try {
@@ -139,7 +137,7 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
                     if (result && downloadFile.exists()) {
                         // 装载只看目标文件在不在: 半截 so 会被长期当成可用, 必须整份落到同目录临时文件再替换
                         soFile.parentFile?.mkdirs()
-                        val staged = File(soFile.parentFile, randomUUIDString() + TEMP_SUFFIX)
+                        val staged = File(atomicWriteTempPath(soFile.path))
                         try {
                             downloadFile.inputStream().use { input ->
                                 staged.outputStream().use { output -> input.copyTo(output) }

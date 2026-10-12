@@ -7,13 +7,13 @@ import com.googlecode.d2j.dex.Dex2jar
 import com.googlecode.d2j.reader.MultiDexFileReader
 import com.googlecode.dex2jar.tools.BaksmaliBaseDexExceptionHandler
 import io.legado.app.utils.FileUtilsBase
+import io.legado.app.utils.atomicWriteTempPath
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
-import java.util.concurrent.atomic.AtomicLong
 
 object DexJarConverter {
 
@@ -85,12 +85,10 @@ object DexJarConverter {
         }
     }
 
-    /** 进程内唯一临时名: 固定名在同产物并发/双开桌面实例时会被交叉写坏。 */
-    private val processId: Long by lazy { ProcessHandle.current().pid() }
-    private val tempSeq = AtomicLong()
-
+    /** 进程内唯一临时名: 固定名在同产物并发/双开桌面实例时会被交叉写坏 (随机唯一串见
+     *  [io.legado.app.utils.atomicWriteTempPath])。 */
     private fun newTempFile(dir: File, baseName: String): File =
-        File(dir, "$baseName.${processId}-${tempSeq.incrementAndGet()}.tmp")
+        File(atomicWriteTempPath(File(dir, baseName).path))
 
     private fun isDexFile(bytes: ByteArray): Boolean =
         bytes.size >= 4 && bytes[0] == 0x64.toByte() && bytes[1] == 0x65.toByte() &&
