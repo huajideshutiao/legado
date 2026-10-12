@@ -138,7 +138,7 @@ object SearchBookFilter {
         for (field in fields) {
             val text = field.extract(book) ?: continue
             if (text.isEmpty()) continue
-            // 经 [RuleRegexes]: 屏蔽规则模式串来自用户, native 端 `kotlin.text.Regex` 的编译与
+            // 经 [RuleRegexes]: 筛选规则模式串来自用户, native 端 `kotlin.text.Regex` 的编译与
             // 匹配都会递归, 病态规则可把线程栈写穿直接闪退且无法中止。
             // 只把超时当“未命中”: 编译失败意味着规则写错, 不可与“不匹配”混为一谈
             val matched = try {
@@ -202,6 +202,6 @@ object SearchBookFilter {
         return map
     }
 
-    /** 屏蔽规则的单次匹配上限 (毫秒), 与替换规则默认超时同口径。 */
+    /** 筛选规则的单次匹配上限 (毫秒), 与替换规则默认超时同口径。 */
     private const val FILTER_TIMEOUT = 3000L
 }

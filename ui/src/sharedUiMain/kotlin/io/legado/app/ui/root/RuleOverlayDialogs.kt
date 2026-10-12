@@ -49,7 +49,7 @@ import legado.ui.generated.resources.wrong_format
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 规则类 Overlay Dialog 的渲染实现 (字典规则 / TXT 目录规则 / 屏蔽规则的编辑、导入、导出、帮助)。
+ * 规则类 Overlay Dialog 的渲染实现 (字典规则 / TXT 目录规则 / 筛选规则的编辑、导入、导出、帮助)。
  *
  * 由 LegadoApp 的 DialogOverlayContent 按 key 分流调用。落库后各页 ScreenModel 订阅的
  * DAO flow 自动回推, 故无需经 overlayResults 回传结果。
@@ -125,7 +125,7 @@ internal fun TxtTocRuleEditDialogContent(overlay: AppOverlay.Dialog, navigator: 
     }
 }
 
-// 屏蔽规则编辑 (key="sourceFilterRuleEdit", payload=规则 id, null=新增)
+// 筛选规则编辑 (key="sourceFilterRuleEdit", payload=规则 id, null=新增)
 @Composable
 internal fun SourceFilterEditDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
     val scope = rememberCoroutineScope()
@@ -151,7 +151,7 @@ internal fun SourceFilterEditDialogContent(overlay: AppOverlay.Dialog, navigator
     }
 }
 
-// 屏蔽规则列表 (key="sourceFilterRuleList", payload=SearchScope 字符串)
+// 筛选规则列表 (key="sourceFilterRuleList", payload=SearchScope 字符串)
 @Composable
 internal fun SourceFilterRuleListDialogContent(
     overlay: AppOverlay.Dialog,

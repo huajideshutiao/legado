@@ -37,7 +37,7 @@ object RouteResults {
     // 替换规则编辑 (对齐 ReplaceEditActivity 回传 RESULT_OK)
     const val REPLACE_EDIT = "replace_edit"
 
-    // 搜索结果屏蔽规则 (对齐 SourceFilterRuleActivity 回传 RESULT_OK)
+    // 搜索结果筛选规则 (对齐 SourceFilterRuleActivity 回传 RESULT_OK)
     const val SOURCE_FILTER_RULE = "source_filter_rule"
 
     // 书籍信息编辑 (对齐 BookInfoEditActivity 回传 RESULT_OK)

@@ -602,7 +602,7 @@ class ImportThemeItemsVm(
     override fun itemJson(index: Int): String = GSON.toJson(vm.allSources[index])
 }
 
-/** 屏蔽规则适配器 (对照 app 端 ImportSourceFilterRuleDialog: pattern/fields/scope 比对)。 */
+/** 筛选规则适配器 (对照 app 端 ImportSourceFilterRuleDialog; 按 id 查本地, 内容变了算更新)。 */
 class ImportSourceFilterRuleItemsVm(
     private val vm: ImportSourceFilterRuleViewModelShared,
 ) : ImportItemsVm {

@@ -132,7 +132,7 @@
     <string name="add">Add</string>
     <string name="close">Close</string>
     <string name="source_filter_rule_manage">Manage all</string>
-    <string name="source_filter_rule_no_match">No block rules apply to this scope.</string>
+    <string name="source_filter_rule_no_match">No filter rules apply to this scope.</string>
     <string name="select_font">Select fonts</string>
     <string name="default_font">Default font</string>
     <string name="other_folder">Other folder</string>
@@ -242,7 +242,7 @@
     <string name="search_style_by_book">Group by book</string>
     <string name="search_style_by_source">Group by source</string>
     <string name="searchHistory">Search history</string>
-    <string name="source_filter_rule">Block rules</string>
+    <string name="source_filter_rule">Filter rules</string>
     <string name="start">Start</string>
     <string name="stop">Stop</string>
     <string name="refresh">Refresh</string>
@@ -970,7 +970,7 @@
     <string name="import_replace_rule">Import replace rules</string>
     <string name="import_dict_rule">Import dict rule</string>
     <string name="import_txt_toc_rule">Import txt directory rules</string>
-    <string name="import_source_filter_rule">Import block rules</string>
+    <string name="import_source_filter_rule">Import filter rules</string>
     <string name="import_theme">Import theme</string>
     <string name="select_new_source">Select new source</string>
     <string name="select_update_source">Select update source</string>
@@ -1133,12 +1133,12 @@
     <string name="export_txt_toc_rule_user_cancelled">Export TXT TOC rules: user cancelled the selection</string>
     <string name="export_txt_toc_rule_done_log">Export TXT TOC rules completed, %1$s in total -&gt; %2$s</string>
     <string name="export_txt_toc_rule_failed">Failed to export TXT TOC rules</string>
-    <string name="source_filter_rule_load_data_failed_log">Failed to load data in the block rule screen\n%1$s</string>
-    <string name="import_source_filter_rule_user_cancelled">Import block rules: user cancelled the selection</string>
-    <string name="export_source_filter_rule_no_selection">Export block rules: no rules selected</string>
-    <string name="export_source_filter_rule_user_cancelled">Export block rules: user cancelled the selection</string>
-    <string name="export_source_filter_rule_done_log">Export block rules completed, %1$s in total -&gt; %2$s</string>
-    <string name="export_source_filter_rule_failed">Failed to export block rules</string>
+    <string name="source_filter_rule_load_data_failed_log">Failed to load data in the filter rule screen\n%1$s</string>
+    <string name="import_source_filter_rule_user_cancelled">Import filter rules: user cancelled the selection</string>
+    <string name="export_source_filter_rule_no_selection">Export filter rules: no rules selected</string>
+    <string name="export_source_filter_rule_user_cancelled">Export filter rules: user cancelled the selection</string>
+    <string name="export_source_filter_rule_done_log">Export filter rules completed, %1$s in total -&gt; %2$s</string>
+    <string name="export_source_filter_rule_failed">Failed to export filter rules</string>
     <string name="mpv_not_found">mpv player not detected</string>
     <string name="mpv_install_guide">Video playback depends on mpv (https://mpv.io)\nWindows: winget install shinchiro.mpv or scoop install mpv,\nor download it from the official site and add the directory of mpv.exe to PATH,\nor specify the full path in the mpvPath config item</string>
     <string name="mpv_open_website">Open the mpv official website</string>
@@ -1312,7 +1312,7 @@
     <string name="share_layout">Shared layout</string>
     <string name="share_selected_source">Share selected sources</string>
     <string name="source_edit_max_line_summary">%s,Setting the number of rows less than the maximum number of rows that can be displayed on the screen makes it easier to slide to other fields for editing.</string>
-    <string name="source_filter_rule_delete_all_confirm">Delete all block rules?</string>
+    <string name="source_filter_rule_delete_all_confirm">Delete all filter rules?</string>
     <string name="source_filter_rule_empty">No rules. Tap + to add.</string>
     <string name="style_name">Style name:</string>
     <string name="sure_clear_search_history">Are you sure to clear all search history</string>

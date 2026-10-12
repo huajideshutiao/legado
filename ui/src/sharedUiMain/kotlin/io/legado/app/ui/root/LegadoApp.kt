@@ -891,7 +891,7 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
 
         "txtTocRuleExport" -> RuleExportDialogContent(overlay, navigator, "exportTxtTocRule.json")
 
-        // 屏蔽规则
+        // 筛选规则
         "sourceFilterRuleEdit" -> SourceFilterEditDialogContent(overlay, navigator)
         "sourceFilterRuleList" -> SourceFilterRuleListDialogContent(overlay, navigator)
         "sourceFilterRuleImportLocal" ->

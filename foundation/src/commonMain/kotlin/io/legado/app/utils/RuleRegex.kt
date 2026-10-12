@@ -5,7 +5,7 @@ import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.atomic
 
 /**
- * 规则正则的执行能力 (书源规则 / 替换规则 / TXT 目录规则 / 屏蔽规则的 `##正则##`、`:regex`、
+ * 规则正则的执行能力 (书源规则 / 替换规则 / TXT 目录规则 / 筛选规则的 `##正则##`、`:regex`、
  * 正文去重标题、JSONPath 的 `match()`)。
  *
  * # 为什么必须做成平台能力

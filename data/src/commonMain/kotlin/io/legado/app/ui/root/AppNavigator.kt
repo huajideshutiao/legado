@@ -170,7 +170,7 @@ class AppNavigator(
         val current = currentEntry
         if (current.route == route && current.resultKey == resultKey) return current.id
         // 任何新导航动作 (push 路由) 先自动关闭对话框类 overlay。对照原版:
-        // 新 Activity 全屏盖住后旧对话框不再与新页面叠放 (如原版屏蔽规则列表对话框跳
+        // 新 Activity 全屏盖住后旧对话框不再与新页面叠放 (如原版筛选规则列表对话框跳
         // SourceFilterRuleActivity 前先 dismiss 自己); 单页导航下路由渲染在 Overlay 之下,
         // 不关闭会被对话框遮住。Sheet 属半屏界面, 保留不关。
         // 例外: keepOnPush 对话框 (书源登录) 保留, 由内容自管挂起/恢复 (原版被盖住仍存活)。

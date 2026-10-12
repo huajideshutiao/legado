@@ -58,7 +58,7 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 展示当前 scope 下命中 (已启用且范围覆盖) 的屏蔽规则, 对照 app 端同名 DialogFragment 下沉。
+ * 展示当前 scope 下命中 (已启用且范围覆盖) 的筛选规则, 对照 app 端同名 DialogFragment 下沉。
  * 点击编辑 → 弹 [SourceFilterEditDialog]; 底部"管理全部" → [onManageAll] 跳规则管理页。
  *
  * @param scope SearchScope 字符串 (null/空 = 全部书源)

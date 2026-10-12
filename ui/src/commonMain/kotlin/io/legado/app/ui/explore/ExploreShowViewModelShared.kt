@@ -17,6 +17,7 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.source.SearchBookFilter
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.webBook.BookListPager
 import io.legado.app.model.webBook.ExploreOption
@@ -448,9 +449,11 @@ class ExploreShowViewModelShared(
             val prevSize = books.size
             val (items, filteredCount) = SearchBookFilter.apply(pageResult.books)
             if (filteredCount > 0) {
-                // 原 context.toastOnUi(context.getString(R.string.source_filter_rule_filtered_count, n))
-                // commonMain 无 R.string, 用硬编码中文 (与 SearchViewModel "已过滤 $n 本" 一致)
-                runCatching { Toasters.get().toast("已过滤 $filteredCount 本") }
+                runCatching {
+                    Toasters.get().toast(
+                        syncGetString("source_filter_rule_filtered_count", filteredCount)
+                    )
+                }
             }
             items.forEach { b -> books.getOrPut(b.bookUrl) { b } }
             // 兜底: 翻到第二页起, 去重后整体未增长则视为到底; 防止 hasMoreRule 缺失或配错时无限触底

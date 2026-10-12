@@ -880,9 +880,9 @@
     <string name="book_type_comic">漫畫</string>
     <string name="enable_dangerous_api_confirm">注意，允許未知來源的源使用高危API會造成無法預測的結果，最嚴重的情況下會導致軟體資料被清除、洩露，本機可存取檔案洩露等，請確保你審計程式碼並信任該源，否則請不要啟用。</string>
     <string name="resolution">解析度</string>
-    <string name="source_filter_rule">屏蔽規則</string>
-    <string name="source_filter_rule_empty">還沒有屏蔽規則，點右上角 + 新增</string>
-    <string name="source_filter_rule_no_match">當前範圍沒有命中的屏蔽規則</string>
+    <string name="source_filter_rule">篩選規則</string>
+    <string name="source_filter_rule_empty">還沒有篩選規則，點右上角 + 新增</string>
+    <string name="source_filter_rule_no_match">當前範圍沒有命中的篩選規則</string>
     <string name="source_filter_rule_manage">管理全部</string>
     <string name="source_filter_rule_name">名稱</string>
     <string name="source_filter_rule_pattern">正則表達式</string>
@@ -891,9 +891,9 @@
     <string name="source_filter_rule_scope_summary_all">全部書源</string>
     <string name="source_filter_rule_invalid_pattern">正則表達式無效</string>
     <string name="source_filter_rule_no_field">請至少選一個作用字段</string>
-    <string name="source_filter_rule_filtered_count">屏蔽了 %1$d 本</string>
-    <string name="source_filter_rule_delete_all_confirm">刪除全部屏蔽規則？</string>
-    <string name="import_source_filter_rule">匯入屏蔽規則</string>
+    <string name="source_filter_rule_filtered_count">篩除 %1$d 本</string>
+    <string name="source_filter_rule_delete_all_confirm">刪除全部篩選規則？</string>
+    <string name="import_source_filter_rule">匯入篩選規則</string>
     <string name="source_filter_field_name">書名</string>
     <string name="source_filter_field_author">作者</string>
     <string name="source_filter_field_intro">簡介</string>

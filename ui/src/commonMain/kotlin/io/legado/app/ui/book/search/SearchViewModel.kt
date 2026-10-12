@@ -12,6 +12,7 @@ import io.legado.app.help.book.incrementalFilter
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.PluginFilterSession
 import io.legado.app.model.webBook.SearchModel
@@ -297,8 +298,11 @@ class SearchViewModel {
             _isSearching.value = false
             _searchFinishEmpty.tryEmit(isEmpty)
             if (filteredCount > 0) {
-                // 原 R.string.source_filter_rule_filtered_count 文案
-                runCatching { Toasters.get().toast("已过滤 $filteredCount 本") }
+                runCatching {
+                    Toasters.get().toast(
+                        syncGetString("source_filter_rule_filtered_count", filteredCount)
+                    )
+                }
             }
         }
 

@@ -958,9 +958,9 @@
     <string name="book_info_horizontal_layout">寬屏書籍詳情佈局</string>
     <string name="book_info_horizontal_layout_summary">在詳情頁中左側放置封面，右側放置書籍信息</string>
     <string name="bookshelf_show_group_count">在分組上顯示書籍數量</string>
-    <string name="source_filter_rule">屏蔽規則</string>
+    <string name="source_filter_rule">篩選規則</string>
     <string name="source_filter_rule_empty">沒有規則。點擊+添加。</string>
-    <string name="source_filter_rule_no_match">沒有屏蔽規則適用於此範圍。</string>
+    <string name="source_filter_rule_no_match">沒有篩選規則適用於此範圍。</string>
     <string name="source_filter_rule_manage">管理全部</string>
     <string name="source_filter_rule_name">名稱</string>
     <string name="source_filter_rule_pattern">正則表達式模式</string>
@@ -970,8 +970,8 @@
     <string name="source_filter_rule_invalid_pattern">無效的正則表達式</string>
     <string name="source_filter_rule_no_field">請至少選擇一個字段</string>
     <string name="source_filter_rule_filtered_count">已過濾%1$d本書</string>
-    <string name="source_filter_rule_delete_all_confirm">刪除所有屏蔽規則？</string>
-    <string name="import_source_filter_rule">導入屏蔽規則</string>
+    <string name="source_filter_rule_delete_all_confirm">刪除所有篩選規則？</string>
+    <string name="import_source_filter_rule">導入篩選規則</string>
     <string name="source_filter_field_name">標題</string>
     <string name="source_filter_field_author">作者</string>
     <string name="source_filter_field_intro">簡介</string>

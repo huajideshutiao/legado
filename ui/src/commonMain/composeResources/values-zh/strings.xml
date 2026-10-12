@@ -132,7 +132,7 @@
     <string name="add">添加</string>
     <string name="close">关闭</string>
     <string name="source_filter_rule_manage">管理全部</string>
-    <string name="source_filter_rule_no_match">当前范围没有命中的屏蔽规则</string>
+    <string name="source_filter_rule_no_match">当前范围没有命中的筛选规则</string>
     <string name="select_font">选择字体</string>
     <string name="default_font">默认字体</string>
     <string name="other_folder">其它目录</string>
@@ -242,7 +242,7 @@
     <string name="search_style_by_book">按书聚簇</string>
     <string name="search_style_by_source">按源分类</string>
     <string name="searchHistory">搜索历史</string>
-    <string name="source_filter_rule">屏蔽规则</string>
+    <string name="source_filter_rule">筛选规则</string>
     <string name="start">开始</string>
     <string name="stop">停止</string>
     <string name="refresh">刷新</string>
@@ -764,8 +764,8 @@
     <string name="source_filter_rule_edit_name">规则名</string>
     <string name="source_filter_rule_edit_pattern">规则</string>
     <string name="source_filter_rule_edit_invalid_pattern">正则无效或为空</string>
-    <string name="source_filter_rule_edit_title_add">添加屏蔽规则</string>
-    <string name="source_filter_rule_edit_title_edit">屏蔽规则</string>
+    <string name="source_filter_rule_edit_title_add">添加筛选规则</string>
+    <string name="source_filter_rule_edit_title_edit">筛选规则</string>
     <string name="source_filter_rule_name">名称</string>
     <string name="source_filter_rule_pattern">正则表达式</string>
     <string name="source_filter_rule_fields">作用字段（任一命中则丢弃）</string>
@@ -973,7 +973,7 @@
     <string name="import_replace_rule">导入替换规则</string>
     <string name="import_dict_rule">导入字典规则</string>
     <string name="import_txt_toc_rule">导入 TXT 目录规则</string>
-    <string name="import_source_filter_rule">导入屏蔽规则</string>
+    <string name="import_source_filter_rule">导入筛选规则</string>
     <string name="import_theme">导入主题</string>
     <string name="select_new_source">选中新增源</string>
     <string name="select_update_source">选中更新源</string>
@@ -1174,7 +1174,7 @@
     <string name="export_txt_toc_rule_user_cancelled">导出 TXT 目录规则: 用户取消选择</string>
     <string name="export_txt_toc_rule_done_log">导出 TXT 目录规则完成, 共 %1$s 条 → %2$s</string>
     <string name="export_txt_toc_rule_failed">导出 TXT 目录规则失败</string>
-    <string name="source_filter_rule_load_data_failed_log">书源过滤规则界面获取数据失败
+    <string name="source_filter_rule_load_data_failed_log">筛选规则界面获取数据失败
 %1$s</string>
     <string name="import_source_filter_rule_user_cancelled">导入书源过滤规则: 用户取消选择</string>
     <string name="export_source_filter_rule_no_selection">导出书源过滤规则: 未选中任何规则</string>
@@ -1379,8 +1379,8 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="share_layout">共用布局</string>
     <string name="share_selected_source">分享选中源</string>
     <string name="source_edit_max_line_summary">%s,设置行数小于屏幕可显示的最大行数可以更方便的滑动到其他的字段进行编辑</string>
-    <string name="source_filter_rule_delete_all_confirm">删除全部屏蔽规则？</string>
-    <string name="source_filter_rule_empty">还没有屏蔽规则，点右上角 + 添加</string>
+    <string name="source_filter_rule_delete_all_confirm">删除全部筛选规则？</string>
+    <string name="source_filter_rule_empty">还没有筛选规则，点右上角 + 添加</string>
     <string name="style_name">样式名称：</string>
     <string name="sure_clear_search_history">是否确认清除所有搜索历史记录</string>
     <string name="system_tts">系统 TTS</string>
@@ -1721,7 +1721,7 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="beta_releaseA_version">共存版</string>
     <string name="read_aloud_read_phone_state_permission_rationale">阅读需要读取手机状态实现来电期间暂停朗读功能</string>
     <string name="sys_image_picker">系统图片选择器</string>
-    <string name="source_filter_rule_filtered_count">屏蔽了 %1$d 本</string>
+    <string name="source_filter_rule_filtered_count">筛除 %1$d 本</string>
     <string name="explore_style_normal">普通</string>
     <string name="home_source_invalid">书源无效</string>
     <string name="bottom_nav_items_order">底栏项目顺序</string>
