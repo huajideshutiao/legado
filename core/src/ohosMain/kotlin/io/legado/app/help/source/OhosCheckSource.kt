@@ -4,7 +4,6 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
-import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.CheckSourceRunner
 import io.legado.app.model.Debug
@@ -36,12 +35,12 @@ object OhosCheckSource {
     @Volatile
     private var lastProgress: Triple<String, Int, Int>? = null
 
-    fun start(selection: List<BookSourcePart>) {
+    /** 按书源 URL 启动校验 (共享对话框确认后走这条)。 */
+    fun startUrls(ids: List<String>) {
         if (checkJob?.isActive == true) {
             Toasters.get().toast("已有书源在校验,等完成后再试")
             return
         }
-        val ids = selection.map { it.bookSourceUrl }
         if (ids.isEmpty()) return
         checkJob = scope.launch {
             CheckSourceRunner.run(

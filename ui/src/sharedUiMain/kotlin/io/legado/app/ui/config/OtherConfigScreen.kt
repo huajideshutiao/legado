@@ -16,7 +16,6 @@ import legado.ui.generated.resources.bitmap_cache_size
 import legado.ui.generated.resources.book_info_delete_alert_summary
 import legado.ui.generated.resources.book_info_delete_alert_title
 import legado.ui.generated.resources.book_tree_uri_t
-import legado.ui.generated.resources.check_source_config
 import legado.ui.generated.resources.clear_cache
 import legado.ui.generated.resources.clear_cache_summary
 import legado.ui.generated.resources.clear_webview_data
@@ -82,7 +81,6 @@ import org.jetbrains.compose.resources.stringResource
 fun OtherConfigScreen(
     userAgentSummary: String,
     bookTreeUriSummary: String,
-    checkSourceSummary: String,
     bitmapCacheSummary: String,
     preDownloadSummary: String,
     webPortSummary: String,
@@ -90,7 +88,6 @@ fun OtherConfigScreen(
     onLocalPassword: () -> Unit,
     onUserAgent: () -> Unit,
     onBookTreeUri: () -> Unit,
-    onCheckSource: () -> Unit,
     onUploadRule: () -> Unit,
     onBitmapCacheSize: () -> Unit,
     onPreDownloadNum: () -> Unit,
@@ -145,7 +142,6 @@ fun OtherConfigScreen(
     val titlePublishLyric = stringResource(Res.string.publish_lyric)
     val summaryPublishLyric = stringResource(Res.string.publish_lyric_summary)
     val titleBookTree = stringResource(Res.string.book_tree_uri_t)
-    val titleCheckSource = stringResource(Res.string.check_source_config)
     val titleUploadRule = stringResource(Res.string.direct_link_upload_rule)
     val summaryUploadRule = stringResource(Res.string.direct_link_upload_rule_summary)
     val summaryCronet = stringResource(Res.string.pref_cronet_summary)
@@ -246,11 +242,6 @@ fun OtherConfigScreen(
                 title = titleBookTree,
                 summary = bookTreeUriSummary,
                 onClick = onBookTreeUri,
-            )
-            preference(
-                title = titleCheckSource,
-                summary = checkSourceSummary,
-                onClick = onCheckSource,
             )
             preference(
                 title = titleUploadRule,

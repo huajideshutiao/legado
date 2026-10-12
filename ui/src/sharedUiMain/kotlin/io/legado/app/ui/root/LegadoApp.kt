@@ -50,6 +50,7 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.showSourceLogin
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.AudioPlayShared
+import io.legado.app.model.CheckSourceShared
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.about.CRASH_NOTICE_OVERLAY_KEY
 import io.legado.app.ui.about.CrashLogItem
@@ -74,8 +75,10 @@ import io.legado.app.ui.book.read.readerAutoPageActive
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.browser.WebViewSheetContent
+import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppSelectorDialog
+import io.legado.app.ui.dialog.TextInputDialog
 import io.legado.app.ui.compose.component.directionKeyFocusNavigation
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
@@ -105,6 +108,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.loading
+import legado.ui.generated.resources.check_source_config
+import legado.ui.generated.resources.search_book_key
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -841,8 +846,12 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
         "bookshelf_layout" -> BookshelfLayoutOverlayDialogContent(overlay, navigator)
         "bottom_nav_config" -> BottomNavConfigOverlayDialogContent(overlay, navigator)
 
-        // 校验设置 (对照 app 端 CheckSourceConfig Fragment)
+        // 校验设置 (对照 app 端 CheckSourceConfig Fragment; 书源管理页"校验书源"对话框的中性钮入口)
         "check_source_config" -> CheckSourceConfigOverlayDialogContent(overlay, navigator)
+
+        // 校验书源 (对照 app 端 BookSourceActivity.checkSource: 关键词输入 + 校验设置中性钮)
+        // payload 为待校验源的 bookSourceUrl, 逗号分隔
+        "check_book_source" -> CheckBookSourceOverlayDialogContent(overlay, navigator)
 
         // 直链上传配置 (对照 app 端 DirectLinkUploadConfig Fragment)
         "direct_link_upload_config" -> DirectLinkUploadConfigOverlayDialogContent(
@@ -1218,6 +1227,36 @@ private fun BottomNavConfigOverlayDialogContent(
     navigator: AppNavigator,
 ) {
     BottomNavConfigDialog(
+        onDismiss = { navigator.dismissOverlay(overlay.key) },
+    )
+}
+
+// 校验书源对话框 (对照 app 端 BookSourceActivity.checkSource: 关键词输入 + 校验设置中性钮)。
+// 中性钮 dismissOnClick=false: 打开校验设置时本框不关 (与原版 getButton(BUTTON_NEUTRAL) 手动监听同语义)
+@Composable
+private fun CheckBookSourceOverlayDialogContent(
+    overlay: AppOverlay.Dialog,
+    navigator: AppNavigator,
+) {
+    val urls = remember(overlay.payload) {
+        overlay.payload.orEmpty().split(',').filter { it.isNotEmpty() }
+    }
+    TextInputDialog(
+        title = stringResource(Res.string.search_book_key),
+        hint = stringResource(Res.string.search_book_key),
+        initialValue = CheckSourceShared.keyword,
+        neutralButton = AlertButton(
+            text = stringResource(Res.string.check_source_config),
+            dismissOnClick = false,
+            onClick = {
+                navigator.showOverlay(AppOverlay.Dialog("check_source_config"))
+            },
+        ),
+        onConfirm = { keyword ->
+            keyword.takeIf { it.isNotEmpty() }?.let { CheckSourceShared.keyword = it }
+            navigator.dismissOverlay(overlay.key)
+            PlatformCapabilityProviders.get().startCheckBookSource(urls)
+        },
         onDismiss = { navigator.dismissOverlay(overlay.key) },
     )
 }

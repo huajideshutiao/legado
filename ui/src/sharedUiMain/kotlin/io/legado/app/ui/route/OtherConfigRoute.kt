@@ -17,7 +17,6 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.image.DecodedBitmapCache
 import io.legado.app.help.toast.Toasters
-import io.legado.app.model.CheckSourceShared
 import io.legado.app.ui.book.read.config.CustomPageKeyDialogHost
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
@@ -63,7 +62,7 @@ import org.jetbrains.compose.resources.stringResource
  * 点击型交互由 Route 直接执行：
  * - UA 编辑/图片缓存/预下载/Web 端口/线程数/自定义翻页按键: 用 shared 端 Compose 弹窗实现
  *   (对照 app 端 alert DSL / showNumberPicker / PageKeyDialog)
- * - 本地密码/SAF 选目录/CheckSourceConfig/DirectLinkUploadConfig: 通过 [PlatformCapabilityProviders] 注入
+ * - 本地密码/SAF 选目录/DirectLinkUploadConfig: 通过 [PlatformCapabilityProviders] 注入
  *   (对照 app 端 LocalConfig.password / HandleFileContract / showDialogFragment)
  * - 清缓存/收缩数据库: 下沉到 [ConfigActionsShared] (纯 Kotlin, 跨平台)
  * - 清 WebView 数据: 通过 [PlatformCapabilityProviders] 注入 (Android WebView 专属)
@@ -116,7 +115,7 @@ fun OtherConfigRoute(
     }
     val state by screenModel.state.collectAsState()
 
-    // 对照 app 端 init: 初始化 7 个动态 summary
+    // 对照 app 端 init: 初始化 6 个动态 summary
     LaunchedEffect(Unit) {
         if (state.userAgentSummary.isEmpty()) {
             screenModel.updateUserAgentSummary(UserAgentProviders.get())
@@ -125,9 +124,6 @@ fun OtherConfigRoute(
             screenModel.updateBookTreeUriSummary(
                 pref.getStringOrNull(PreferKey.defaultBookTreeUri) ?: bookTreeUriSStr
             )
-        }
-        if (state.checkSourceSummary.isEmpty()) {
-            screenModel.updateCheckSourceSummary(CheckSourceShared.summary)
         }
         if (state.bitmapCacheSummary.isEmpty()) {
             screenModel.updateBitmapCacheSummary(
@@ -159,7 +155,6 @@ fun OtherConfigRoute(
         OtherConfigScreen(
             userAgentSummary = state.userAgentSummary,
             bookTreeUriSummary = state.bookTreeUriSummary,
-            checkSourceSummary = state.checkSourceSummary,
             bitmapCacheSummary = state.bitmapCacheSummary,
             preDownloadSummary = state.preDownloadSummary,
             webPortSummary = state.webPortSummary,
@@ -172,11 +167,6 @@ fun OtherConfigRoute(
                         pref.putString(PreferKey.defaultBookTreeUri, uri)
                         screenModel.updateBookTreeUriSummary(uri)
                     }
-                }
-            },
-            onCheckSource = {
-                platform.showCheckSourceConfigDialog {
-                    screenModel.updateCheckSourceSummary(CheckSourceShared.summary)
                 }
             },
             onUploadRule = { platform.showDirectLinkUploadConfigDialog() },

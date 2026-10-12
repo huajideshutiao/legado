@@ -3,7 +3,6 @@ package io.legado.desktop.help.source
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.NotificationId
-import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.notification.DesktopTaskbar
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.CheckSourceRunner
@@ -42,12 +41,12 @@ object DesktopCheckSource {
     var lastProgress: Triple<String, Int, Int>? = null
         private set
 
-    fun start(selection: List<BookSourcePart>) {
+    /** 按书源 URL 启动校验 (共享对话框确认后走这条)。 */
+    fun startUrls(ids: List<String>) {
         if (checkJob?.isActive == true) {
             Toasters.get().toast("已有书源在校验,等完成后再试")
             return
         }
-        val ids = selection.map { it.bookSourceUrl }
         if (ids.isEmpty()) return
         checkJob = scope.launch {
             // 本轮占用进度位的本代次: 每帧进度都是一次取用, 收尾用本轮最后一次的取值释放 —— 上一轮

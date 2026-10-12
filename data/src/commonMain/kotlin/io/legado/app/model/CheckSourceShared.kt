@@ -8,8 +8,6 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.TocEmptyException
 import io.legado.app.help.source.SourceCacheProvider
 import io.legado.app.help.source.SourceCacheProviders
-import io.legado.app.help.i18n.AppStringKey
-import io.legado.app.help.i18n.appString
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.script.JsEngines
 import io.legado.app.model.webBook.WebBook
@@ -26,14 +24,12 @@ import kotlinx.coroutines.withTimeout
  *
  * 对照 app 端原 `io.legado.app.model.CheckSource` object:
  * - 全部 var 状态 (keyword/timeout/checkSearch/checkDiscovery/checkInfo/checkCategory/
- *   checkContent) + `putConfig()` + `summary`/`upSummary()` 仅依赖 CacheManager + appString,
- *   可以下沉 commonMain 供多端复用。
+ *   checkContent) + `putConfig()` 仅依赖 CacheManager, 可以下沉 commonMain 供多端复用。
  * - CacheManager 本身依赖 appDb.cacheDao + ACache + LruCache, 留 app 端; 但 shared commonMain
  *   已有 [SourceCacheProvider] 接口 (app 端 JsEnginesAndroid 注册时委托给 CacheManager),
  *   通过 `provider.get(key)` / `provider.put(key, value.toString())` 即可派生出
  *   `getLong`/`getBoolean`/`putLong`/`putBoolean`, 行为与原 `CacheManager.getLong/get/put`
  *   完全一致 (CacheManager.put 内部本就是 `value.toString()` 后插入 cacheDao)。
- * - `appString(AppStringKey.xxx)` 已在 shared commonMain (i18n/AppStrings.kt) 下沉。
  *
  * # 不下沉部分 (Android 特有)
  *
@@ -43,7 +39,7 @@ import kotlinx.coroutines.withTimeout
  *
  * # 状态同步
  *
- * app 端 CheckSource object 改为薄壳: var/get/set/putConfig/summary 全部委托给本 object,
+ * app 端 CheckSource object 改为薄壳: var/get/set/putConfig 全部委托给本 object,
  * start/stop/resume 保留。app 端调用方 `CheckSource.timeout` 等代码零改动。
  *
  * 模式参考 [io.legado.app.help.source.SourceHelp] (shared 下沉 + app 薄壳)。
@@ -106,9 +102,6 @@ object CheckSourceShared {
         }
     private var checkContentOverride: Boolean? = null
 
-    /** 配置摘要 (供 OtherConfigHost 显示)。 */
-    val summary: String get() = upSummary()
-
     /**
      * 持久化配置到 CacheManager (对应原 `CheckSource.putConfig()`)。
      *
@@ -122,26 +115,6 @@ object CheckSourceShared {
         cachePut("checkInfo", checkInfo)
         cachePut("checkCategory", checkCategory)
         cachePut("checkContent", checkContent)
-    }
-
-    /**
-     * 拼接校验项摘要 (对应原 `CheckSource.upSummary()`)。
-     *
-     * 行为与原完全一致: 按顺序拼接 search/discovery/source_tab_info/chapter_list/main_body,
-     * 最后格式化为 `(timeout秒) checkItem` 字符串。
-     */
-    private fun upSummary(): String {
-        var checkItem = ""
-        if (checkSearch) checkItem = "$checkItem ${appString(AppStringKey.search)}"
-        if (checkDiscovery) checkItem = "$checkItem ${appString(AppStringKey.discovery)}"
-        if (checkInfo) checkItem = "$checkItem ${appString(AppStringKey.source_tab_info)}"
-        if (checkCategory) checkItem = "$checkItem ${appString(AppStringKey.chapter_list)}"
-        if (checkContent) checkItem = "$checkItem ${appString(AppStringKey.main_body)}"
-        return appString(
-            AppStringKey.check_source_config_summary,
-            (timeout / 1000).toString(),
-            checkItem
-        )
     }
 
     // ---- CacheManager 派生访问 (通过 SourceCacheProvider 间接, 与原 CacheManager.getLong/get/put 等价) ----

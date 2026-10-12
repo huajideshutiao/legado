@@ -13,8 +13,8 @@ import io.legado.app.utils.startService
  * # 下沉说明
  *
  * 配置状态 (keyword/timeout/checkSearch/checkDiscovery/checkInfo/checkCategory/checkContent)
- * + `putConfig()` + `summary` 已下沉到 shared commonMain [CheckSourceShared], 本 object 仅保留
- * var/get/set/putConfig/summary 的委托 (保证 app 端调用方 `CheckSource.timeout` 等代码零改动)
+ * + `putConfig()` 已下沉到 shared commonMain [CheckSourceShared], 本 object 仅保留
+ * var/get/set/putConfig 的委托 (保证 app 端调用方 `CheckSource.timeout` 等代码零改动)
  * 与 Android 特有的 Service 启动入口 (start/stop/resume)。
  *
  * - `start/stop/resume`: 依赖 Android `Context.startService<CheckSourceService>` + IntentAction,
@@ -53,8 +53,6 @@ object CheckSource {
     var checkContent: Boolean
         get() = CheckSourceShared.checkContent
         set(value) { CheckSourceShared.checkContent = value }
-
-    val summary: String get() = CheckSourceShared.summary
 
     fun putConfig() = CheckSourceShared.putConfig()
 

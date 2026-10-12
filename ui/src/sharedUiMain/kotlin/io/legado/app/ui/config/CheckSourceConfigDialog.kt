@@ -17,8 +17,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.sp
-import io.legado.app.constant.PreferKey
-import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
@@ -185,7 +183,6 @@ fun CheckSourceConfigDialog(
                         CheckSource.checkCategory = checkCategory
                         CheckSource.checkContent = checkContent
                         CheckSource.putConfig()
-                        PreferenceProviders.get().putString(PreferKey.checkSource, CheckSource.summary)
                         onDismiss()
                     }
                 }

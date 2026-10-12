@@ -25,14 +25,6 @@ enum class AppStringKey {
     // SearchScope 显示 "全部书源"
     all_source,
 
-    // CheckSource 校验配置摘要
-    search,
-    discovery,
-    source_tab_info,
-    chapter_list,
-    main_body,
-    check_source_config_summary,
-
     // AudioPlay 加载占位标题
     data_loading,
 

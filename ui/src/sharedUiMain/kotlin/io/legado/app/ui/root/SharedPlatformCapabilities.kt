@@ -432,21 +432,7 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
         AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("bottom_nav_config"))
     }
 
-    // ===== 其它设置: 校验设置 / 直链上传配置 =====
-
-    /**
-     * 先同步入栈, 再等它从栈中移除后回调 [onDismiss]。
-     *
-     * 等"出现"再等"移除"会在对话框于协程被调度前就已关闭时永不满足, onDismiss 丢失且协程挂到宿主销毁。
-     */
-    override fun showCheckSourceConfigDialog(onDismiss: () -> Unit) {
-        val navigator = AppNavigatorProviders.get()
-        navigator.showOverlay(AppOverlay.Dialog("check_source_config"))
-        capabilityScope.launch {
-            navigator.overlays.first { list -> list.none { it.key == "check_source_config" } }
-            withContext(mainDispatcher) { onDismiss() }
-        }
-    }
+    // ===== 其它设置: 直链上传配置 =====
 
     override fun showDirectLinkUploadConfigDialog() {
         AppNavigatorProviders.get()

@@ -1310,7 +1310,6 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="unsupport_archivefile_entry">压缩文件内没有支持的文件</string>
     <string name="error_decode_bitmap">图片解码失败</string>
     <string name="error_image_url_empty">图片链接为空，检查替换净化规则</string>
-    <string name="check_source_config_summary">校验超时：%1$s秒\n校验项目：%2$s</string>
     <string name="data_loading">加载数据中…</string>
     <string name="toc_updateing">更新目录中</string>
     <string name="webdav_application_authorization_error">webDav应用验证失败</string>

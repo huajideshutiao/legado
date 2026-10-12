@@ -1243,7 +1243,6 @@
     <string name="unsupport_archivefile_entry">Cannot find supported files in archive</string>
     <string name="error_decode_bitmap">Fail to decode bitmap</string>
     <string name="error_image_url_empty">Image url is empty, check replacement rules</string>
-    <string name="check_source_config_summary">Check timeout: %1$ss\nCheck item:%2$s</string>
     <string name="data_loading">Loading…</string>
     <string name="toc_updateing">Updating Chapters</string>
     <string name="webdav_application_authorization_error">Fail to authorize WebDav application</string>

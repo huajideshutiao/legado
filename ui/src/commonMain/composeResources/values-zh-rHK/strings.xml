@@ -609,7 +609,6 @@
     <string name="timeout">超時</string>
     <string name="seconds">秒</string>
     <string name="less_than">小於</string>
-    <string name="check_source_config_summary">校驗超時：%1$s秒\n校驗項目：%2$s</string>
     <string name="record_debug_log">記錄除錯日誌</string>
     <string name="sub_dir">子資料夾</string>
     <string name="general">全域</string>

@@ -837,9 +837,13 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
         }
     }
 
+    // 关键词输入与校验设置中性钮走共享对话框 (与 Android 逐字一致; 平台侧只负责启动)
     override fun checkBookSource(selection: List<BookSourcePart>) {
-        if (selection.isEmpty()) return
-        OhosCheckSource.start(selection)
+        showCheckBookSourceDialog(selection)
+    }
+
+    override fun startCheckBookSource(urls: List<String>) {
+        OhosCheckSource.startUrls(urls)
     }
 
     // 校验中重进书源管理页 (对照 app 端 CheckSourceService 的 IntentAction.resume: 重发一次进度,

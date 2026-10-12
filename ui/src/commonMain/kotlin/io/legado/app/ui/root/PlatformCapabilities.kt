@@ -650,6 +650,29 @@ interface PlatformCapabilities {
     /** 校验选中书源 (对照 checkSource, 含 alert 输入关键词 + CheckSource.start) */
     fun checkBookSource(selection: List<BookSourcePart>) = unsupported("校验书源")
 
+    /**
+     * 弹"校验书源"对话框 (关键词输入 + 校验设置中性钮), 确认后调 [startCheckBookSource]。
+     *
+     * 各端共用同一个共享对话框 (overlay), 保证与 Android 逐字一致; 平台侧只需实现
+     * [startCheckBookSource] 这一个动作。Android 有自己的 alert 实现, 不调本方法。
+     */
+    fun showCheckBookSourceDialog(selection: List<BookSourcePart>) {
+        if (selection.isEmpty()) return
+        AppNavigatorProviders.get().showOverlay(
+            AppOverlay.Dialog(
+                key = "check_book_source",
+                payload = selection.joinToString(",") { it.bookSourceUrl },
+            )
+        )
+    }
+
+    /**
+     * 按书源 URL 启动校验 (各端平台实现: 桌面 [DesktopCheckSource] / iOS / 鸿蒙各自的 CheckSource 调度)。
+     *
+     * 关键词由对话框写回 [CheckSourceShared.keyword], 本方法只管启动。
+     */
+    fun startCheckBookSource(urls: List<String>) = unsupported("校验书源")
+
     // 书源编辑平台能力 (各端按需 override, 未实现端统一给出明确提示)
     // 对照 app 端 BookSourceEditActivity 同名方法
     /** 书源变量编辑 (对照 setSourceVariable, 先保存后弹 showSourceVariableDialog) */
@@ -737,9 +760,6 @@ interface PlatformCapabilities {
      * @param fileName 目标文件名 (调用方传 `book.originName`)
      */
     fun findBookFileInDir(dirUri: String, fileName: String): String? = null
-
-    /** 显示校验设置 Dialog (对照 app 端 showDialogFragment<CheckSourceConfig>), dismiss 后回调 onDismiss */
-    fun showCheckSourceConfigDialog(onDismiss: () -> Unit = {}) = unsupported("书源校验设置")
 
     /** 显示直链上传规则 Dialog (对照 app 端 showDialogFragment<DirectLinkUploadConfig>) */
     fun showDirectLinkUploadConfigDialog() = unsupported("直链上传配置")

@@ -602,7 +602,6 @@
     <string name="timeout">Hết giờ</string>
     <string name="seconds">giây</string>
     <string name="less_than">nhỏ hơn</string>
-    <string name="check_source_config_summary">Thời gian chờ xác minh: %1$s giây\nMục xác minh:%2$s</string>
     <string name="record_debug_log">Ghi nhật ký gỡ lỗi</string>
     <string name="sub_dir">Thư mục con</string>
     <string name="general">Toàn cục</string>

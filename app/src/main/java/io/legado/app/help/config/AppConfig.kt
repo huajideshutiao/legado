@@ -179,7 +179,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var systemTypefaces by intPref(PreferKey.systemTypefaces)
     var fontFolder by stringPref(PreferKey.fontFolder)
     var processText by boolPref(PreferKey.processText, true)
-    var checkSource by stringPref(PreferKey.checkSource)
 
     var readUrlInBrowser by boolPref(PreferKey.readUrlOpenInBrowser)
 

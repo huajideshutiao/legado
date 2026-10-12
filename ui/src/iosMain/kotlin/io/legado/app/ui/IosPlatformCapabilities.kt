@@ -991,9 +991,13 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
         }
     }
 
+    // 关键词输入与校验设置中性钮走共享对话框 (与 Android 逐字一致; 平台侧只负责启动)
     override fun checkBookSource(selection: List<BookSourcePart>) {
-        if (selection.isEmpty()) return
-        IosCheckSource.start(selection)
+        showCheckBookSourceDialog(selection)
+    }
+
+    override fun startCheckBookSource(urls: List<String>) {
+        IosCheckSource.startUrls(urls)
     }
 
     // 校验中重进书源管理页 (对照 app 端 CheckSourceService 的 IntentAction.resume: 重发一次进度,
@@ -1184,12 +1188,12 @@ private object IosCheckSource {
     @Volatile
     private var lastProgress: Triple<String, Int, Int>? = null
 
-    fun start(selection: List<BookSourcePart>) {
+    /** 按书源 URL 启动校验 (共享对话框确认后走这条)。 */
+    fun startUrls(ids: List<String>) {
         if (checkJob?.isActive == true) {
             Toasters.get().toast("已有书源在校验,等完成后再试")
             return
         }
-        val ids = selection.map { it.bookSourceUrl }
         if (ids.isEmpty()) return
         checkJob = scope.launch {
             CheckSourceRunner.run(

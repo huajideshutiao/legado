@@ -1046,9 +1046,13 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         }
     }
 
+    // 关键词输入与校验设置中性钮走共享对话框 (与 Android 逐字一致; 平台侧只负责启动)
     override fun checkBookSource(selection: List<BookSourcePart>) {
-        if (selection.isEmpty()) return
-        DesktopCheckSource.start(selection)
+        showCheckBookSourceDialog(selection)
+    }
+
+    override fun startCheckBookSource(urls: List<String>) {
+        DesktopCheckSource.startUrls(urls)
     }
 
     override fun cancelCheckSource() {
@@ -1093,18 +1097,6 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
             ?.mapNotNull { sub -> File(sub, fileName).takeIf { it.isFile } }
             ?.firstOrNull()
             ?.let { desktopStoredLocalRef(it) }
-    }
-
-    // 书源校验设置 / 直链上传配置: shared 已有对话框实现, 与 app 端同走 overlay
-    // onDismiss 契约同 app 端: 等 overlay 入栈再等其出栈
-    override fun showCheckSourceConfigDialog(onDismiss: () -> Unit) {
-        val navigator = AppNavigatorProviders.get()
-        scope.launch {
-            navigator.overlays.first { list -> list.any { it.key == "check_source_config" } }
-            navigator.overlays.first { list -> list.none { it.key == "check_source_config" } }
-            withContext(Dispatchers.Main) { onDismiss() }
-        }
-        navigator.showOverlay(AppOverlay.Dialog("check_source_config"))
     }
 
     /**

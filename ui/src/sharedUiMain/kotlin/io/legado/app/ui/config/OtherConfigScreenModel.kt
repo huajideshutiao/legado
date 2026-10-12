@@ -6,11 +6,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-/** 其它设置页的七个动态摘要。 */
+/** 其它设置页的六个动态摘要。 */
 data class OtherConfigUiState(
     val userAgentSummary: String = "",
     val bookTreeUriSummary: String = "",
-    val checkSourceSummary: String = "",
     val bitmapCacheSummary: String = "",
     val preDownloadSummary: String = "",
     val webPortSummary: String = "",
@@ -32,10 +31,6 @@ class OtherConfigScreenModel : ScreenModel {
 
     fun updateBookTreeUriSummary(summary: String) {
         _state.update { it.copy(bookTreeUriSummary = summary) }
-    }
-
-    fun updateCheckSourceSummary(summary: String) {
-        _state.update { it.copy(checkSourceSummary = summary) }
     }
 
     fun updateBitmapCacheSummary(summary: String) {
