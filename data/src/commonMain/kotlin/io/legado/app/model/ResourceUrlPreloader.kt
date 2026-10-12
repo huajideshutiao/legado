@@ -6,13 +6,13 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.coroutine.SingleJobSlot
 import io.legado.app.model.chapter.updateResourceUrl
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.plus
 
 /**
  * 音视频章节资源直链预解析器 (前后各一章)。
@@ -40,8 +40,14 @@ import kotlinx.coroutines.launch
  */
 class ResourceUrlPreloader(private val scope: CoroutineScope) {
 
-    /** 当前预解析轮次, 每轮只跑前后两章。 */
-    private var job: Job? = null
+    /**
+     * 当前预解析轮次, 每轮只跑前后两章。
+     *
+     * 每轮预解析都会抢占上一轮, 而调用方 (换章 / 停播 / 离开播放页) 与解析回调分属不同线程:
+     * 裸 Job 的"取消旧的 + 落新的"两次写会漏掉其中一轮, 留下无人能取消的协程, 它照样占
+     * 书源抢当前章的解析。
+     */
+    private val round = SingleJobSlot(scope + IoDispatcher)
 
     /**
      * 预解析 [centerIndex] 前后各一章的资源直链。
@@ -66,7 +72,7 @@ class ResourceUrlPreloader(private val scope: CoroutineScope) {
     ) {
         cancel()
         if (book.isLocal) return
-        job = scope.launch(IoDispatcher) {
+        round.restart {
             for (index in intArrayOf(centerIndex + 1, centerIndex - 1)) {
                 if (index < 0) continue
                 currentCoroutineContext().ensureActive()
@@ -103,7 +109,6 @@ class ResourceUrlPreloader(private val scope: CoroutineScope) {
 
     /** 作废当前轮次 (换章 / 停播 / 离开播放页)。 */
     fun cancel() {
-        job?.cancel()
-        job = null
+        round.cancel()
     }
 }

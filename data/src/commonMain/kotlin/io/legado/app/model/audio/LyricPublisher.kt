@@ -7,7 +7,9 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.model.Lrc
 import io.legado.app.utils.FlowBus
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
@@ -18,6 +20,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
 
@@ -52,7 +55,22 @@ object LyricPublisher {
     @Volatile
     private var sinks: List<LyricSink> = emptyList()
 
-    private var job: Job? = null
+    /**
+     * 发布协程槽: 宿主作用域随会话重建更换 (Android 会话随 Service 重建), 故槽不跨旧宿主复用;
+     * attach/detach 分属不同线程。
+     *
+     * 槽内是同一份协程引用: [attach] 先发布 (未启动) 再启动, [detach] 只要还取得到槽就一定
+     * 取消得到它。反序 (先启动再发布) 时并发 detach 取走的是旧槽, 已启动的发布协程再无人取消。
+     */
+    private val slot = atomic<Job?>(null)
+
+    /**
+     * 会话代号: [attach] 与 [detach] 都换代。
+     *
+     * 用来作废"已发布到槽、但还没启动"的那一轮 —— 这中间发生的 detach 或更晚的 attach
+     * 取不走它 (槽已被对方换掉或置空), 只能靠序号自认已失效。
+     */
+    private val epoch = atomic(0L)
 
     private var lastLrc: Lrc? = null
     private var lastPublishedIndex: Int = -1
@@ -65,17 +83,23 @@ object LyricPublisher {
 
     /** seek 后重算 (由 [AudioPlayManager.onSeekTo] 统一调用, 四端只此一处)。 */
     fun invalidate() {
-        AudioPlayShared.seekEpoch.value = AudioPlayShared.seekEpoch.value + 1
+        AudioPlayShared.seekEpoch.update { it + 1 }
     }
 
     /**
-     * 绑定播放会话, 由 [AudioPlayManager] 构造时调用 —— 宿主没有调用点, 也就没有"忘了调"。
+     * 绑定播放会话, 由 [AudioPlaySession.ensureRunning] 调用 —— 会话开启即发布, 无需宿主另行记得。
      *
      * @param positionMs 播放位置真源 (`AudioPlayManager.positionMs`, 已消化引擎 seek 异步)
      */
     fun attach(scope: CoroutineScope, positionMs: () -> Int) {
-        job?.cancel()
-        job = scope.launch {
+        // 先发布 (未启动) 再启动: 发布出去的槽就是本轮入口, detach 与更晚的 attach
+        // 从发布这一刻就能取到它去取消或取代
+        val mine = epoch.incrementAndGet()
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            // 入口自检: detach 可能发生在入槽之前 (这一轮没人取得到, 取消不了), 也可能发生在
+            // 入槽之后 (已被取消, 启动前被取消的协程本就不执行 body); 代号不符即自认失效,
+            // 一个字也不碰 sink
+            if (epoch.value != mine) return@launch
             combine(
                 AudioPlayShared.durLrc,
                 statusFlow(),
@@ -86,12 +110,25 @@ object LyricPublisher {
                 // 输入变了就重算: 换章 / 播放态 / 倍速 / 开关 / seek, 一律取消上一轮重入
                 .collectLatest { publishLoop(it, positionMs) }
         }
+        while (true) {
+            val previous = slot.value
+            // 取槽之后、发布之前再核对一次: detach / 更晚的 attach 已换代则不发布
+            if (epoch.value != mine) {
+                job.cancel()
+                return
+            }
+            if (slot.compareAndSet(previous, job)) {
+                previous?.cancel()
+                break
+            }
+        }
+        job.start()
     }
 
     /** 会话结束 (Service onDestroy)。 */
     fun detach() {
-        job?.cancel()
-        job = null
+        epoch.incrementAndGet()
+        slot.getAndSet(null)?.cancel()
         clear()
     }
 

@@ -1,6 +1,5 @@
 package io.legado.app.model
 
-import io.legado.app.model.AudioPlayCommanders.get
 import kotlin.concurrent.Volatile
 
 /**
@@ -17,9 +16,9 @@ import kotlin.concurrent.Volatile
  *   避免 commonMain 泄漏 Intent/extra 概念
  * - `requireRunning` 语义内化: 各方法实现内部判断是否需要 Service 运行
  *   (与 app 端 `sendAction(action, requireRunning = ...)` 行为对齐):
- *   - play/playNew/addTimer/loadPlayUrl: Service 未运行也会启动 (requireRunning=false)
+ *   - play/addTimer/loadPlayUrl: Service 未运行也会启动 (requireRunning=false)
  *   - stop/stopPlay/pause/resume/adjustSpeed/adjustProgress/setTimer: 仅 Service 运行时派发
- * - Android 实现见 `app/src/main/java/.../AudioPlayProvidersImpl.kt` 的 `AndroidAudioPlayCommander`,
+ * - Android 实现见 `app/src/main/java/.../AudioPlayProvidersImpl.kt` 的 `AudioPlayProvidersImpl`,
  *   内部走 `appCtx.startService<AudioPlayService>` + IntentAction + extras, 与原 `sendAction` 完全等价
  * - 桌面端实现可直接 launch 协程执行等价任务 (无 Service 概念)
  *
@@ -48,9 +47,6 @@ interface AudioPlayCommander {
 
     /** 派发 play 命令 (requireRunning=false, Service 未运行时启动) */
     fun play()
-
-    /** 派发 playNew 命令 (requireRunning=false, Service 未运行时启动) */
-    fun playNew()
 
     /** 派发 stop 命令 (requireRunning=true, 仅 Service 运行时派发) */
     fun stop()
@@ -86,7 +82,9 @@ interface AudioPlayCommander {
  * 宿主启动早期注册一次 (App.onCreate / desktop main), shared 内通过 [get] 获取。
  * 未注册时调用 [get] 抛 [IllegalStateException]。
  *
- * 安卓端调用 `registerAndroidAudioPlayCommander()` (见 app 模块 AudioPlayProvidersImpl.kt)。
+ * 各端注册入口: `registerAndroidAudioPlayProviders()` (app) /
+ * `registerDesktopAudioPlayProviders()` (desktop) / `registerIosAudioPlayCommanders()` (iOS) /
+ * `registerOhosAudioPlayCommanders()` (鸿蒙)。
  */
 object AudioPlayCommanders {
 
@@ -100,7 +98,7 @@ object AudioPlayCommanders {
 
     /** 获取已注册实现, 未注册抛出 IllegalStateException。 */
     fun get(): AudioPlayCommander =
-        impl ?: error("AudioPlayCommanders not registered; call registerAndroidAudioPlayCommander() first")
+        impl ?: error("AudioPlayCommanders not registered; call the host entry first (Android: registerAndroidAudioPlayProviders)")
 
     /**
      * 获取已注册实现, 未注册返回 null。
@@ -109,9 +107,4 @@ object AudioPlayCommanders {
      * 注册在后台 provider 链末尾, 未注册即"无音频会话"。命令派发仍用 [get] 保持严格语义。
      */
     fun getOrNull(): AudioPlayCommander? = impl
-
-    /** 仅测试场景: 清空注册 (生产代码勿调用)。 */
-    fun reset() {
-        impl = null
-    }
 }

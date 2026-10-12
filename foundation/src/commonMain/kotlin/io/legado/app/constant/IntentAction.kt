@@ -7,7 +7,6 @@ object IntentAction {
     const val playData = "playData"
     const val loadPlayUrl = "loadPlayUrl"
     const val lrc = "lrc"
-    const val playNew = "playNew"
     const val stop = "stop"
     const val resume = "resume"
     const val pause = "pause"

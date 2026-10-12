@@ -17,7 +17,7 @@ import io.legado.app.R
  *
  * # 平台差异
  * - Service 派发: AudioPlayShared 通过 [io.legado.app.model.AudioPlayCommander] 接口抽象,
- *   app 端注册 [AndroidAudioPlayCommander] 实现 (见 AudioPlayProvidersImpl.kt),
+ *   app 端注册 `AudioPlayProvidersImpl` 实现 (见 AudioPlayProvidersImpl.kt),
  *   内部走 `appCtx.startService<AudioPlayService>` + IntentAction + extras,
  *   与原 `sendAction` 完全等价
  * - Book 操作: 直接调 [io.legado.app.data.entities.Book] 的 `saveRead()` / `save()` 成员

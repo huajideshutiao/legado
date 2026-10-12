@@ -39,8 +39,6 @@ object AudioPlayProvidersImpl : AudioPlayCommander {
 
     override fun play() = sendAction(IntentAction.play, requireRunning = false)
 
-    override fun playNew() = sendAction(IntentAction.playNew, requireRunning = false)
-
     override fun stop() = sendAction(IntentAction.stop)
 
     override fun stopPlay() = sendAction(IntentAction.stopPlay)

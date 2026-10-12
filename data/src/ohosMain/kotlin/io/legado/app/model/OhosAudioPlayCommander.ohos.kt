@@ -5,11 +5,13 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.coroutine.SingleJobSlot
 import io.legado.app.help.http.KmpRequestBuilder
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.media.NowPlayingLyricSink
 import io.legado.app.help.media.SystemMediaControl
 import io.legado.app.help.storage.DataStorageProviders
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
@@ -28,11 +30,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
@@ -78,11 +78,18 @@ class OhosAudioPlayCommander : NowPlayingSessionHost() {
     /** 本章节是否已回退过预下载 (只退一次, 避免死循环) */
     @Volatile private var streamingFellBack = false
 
-    /** 流播 prepare 看门狗: 桥侧不认识 setSourceUrl 时不会有任何事件, 靠超时回退 */
-    private var streamWatchdog: Job? = null
+    /**
+     * 流播 prepare 看门狗槽: 桥侧不认识 setSourceUrl 时不会有任何事件, 靠超时回退。
+     */
+    private val streamWatchdog = SingleJobSlot(scope)
 
-    /** 流播回退预下载 Job: 换章或销毁时必须显式取消, 避免完成时将旧音频塞给新会话或已结束会话 */
-    private var downloadJob: Job? = null
+    /**
+     * 流播回退预下载槽: 换章或销毁时必须显式取消, 避免完成时将旧音频塞给新会话或已结束会话。
+     *
+     * 取消与重建分属不同线程 (会话命令线程 / 桥事件线程), 两次写的先后颠倒会留下无人能取消的
+     * 下载协程 —— 它照样把旧音频塞给新会话。
+     */
+    private val downloadJob = SingleJobSlot(scope)
 
     /** 直链解析 → 优先流播, 桥侧无响应/出错时回退整段预下载 (见 [fallbackToDownload])。 */
     override suspend fun startPlayback(url: String, positionMs: Int) {
@@ -114,8 +121,7 @@ class OhosAudioPlayCommander : NowPlayingSessionHost() {
     /** 流播已就绪, 撤看门狗。 */
     override fun onPlaybackReady() {
         streaming = false
-        streamWatchdog?.cancel()
-        streamWatchdog = null
+        streamWatchdog.cancel()
     }
 
     // ===== 流播 / 预下载回退 =====
@@ -130,8 +136,7 @@ class OhosAudioPlayCommander : NowPlayingSessionHost() {
         streaming = true
         avController.setStreamSource(mediaUrl, headers, startPosMs)
         // 旧版桥不认识 setSourceUrl 时既无 onReady 也无 onError, 靠超时回退
-        streamWatchdog?.cancel()
-        streamWatchdog = scope.launch {
+        streamWatchdog.restart {
             delay(STREAM_PREPARE_TIMEOUT_MS)
             if (streaming) fallbackToDownload("流播准备超时")
         }
@@ -142,10 +147,8 @@ class OhosAudioPlayCommander : NowPlayingSessionHost() {
     private fun clearStreamingState() {
         streaming = false
         streamingFellBack = false
-        streamWatchdog?.cancel()
-        streamWatchdog = null
-        downloadJob?.cancel()
-        downloadJob = null
+        streamWatchdog.cancel()
+        downloadJob.cancel()
         resolvedUrl = null
         resolvedHeaders = emptyMap()
     }
@@ -156,11 +159,9 @@ class OhosAudioPlayCommander : NowPlayingSessionHost() {
         val mediaUrl = resolvedUrl ?: return
         streamingFellBack = true
         streaming = false
-        streamWatchdog?.cancel()
-        streamWatchdog = null
+        streamWatchdog.cancel()
         AppLog.put("音频流播回退预下载: $reason")
-        downloadJob?.cancel()
-        downloadJob = scope.launch {
+        downloadJob.restart {
             try {
                 avController.stop()
                 val file = downloadToCache(mediaUrl, resolvedHeaders)
@@ -182,16 +183,32 @@ class OhosAudioPlayCommander : NowPlayingSessionHost() {
     // ===== 会话收尾 =====
 
     override fun onSessionEnd() {
-        downloadJob?.cancel()
-        downloadJob = null
+        downloadJob.cancel()
         avController.release()
         deleteCacheFile()
         clearStreamingState()
         SystemMediaControl.releaseAudio()
     }
 
-    // ===== 下载缓存 (桥仅支持本地 fd 源, 参考 OhosHttpTtsPlayer.downloadToTempFile) =====
+    // ===== 下载缓存 (桥仅支持本地 fd 源, 整份落盘契约同 OhosHttpTtsPlayer) =====
 
+    /**
+     * 整段下载音频并返回**完整**的缓存文件。
+     *
+     * 落盘走 [writeBytesAtomically] 的整份写入契约: 先写目标同目录的随机名临时件, 整份写完再改名
+     * 到 `<hash>.audio`, 之后才把路径交给播放器。半截文件字节数非空, 按"路径存在即可播"交给
+     * AVPlayer 会直接播到一半就断, 故最终名上不允许出现写了一半的内容。
+     *
+     * 最终名用不声称格式的 `.audio`: 直链音频的容器格式不定 (mp3/m4a/flac 皆有), 而桥侧按 fd
+     * 装源 (`MediaBridgeHandler.ets`: `player.url = 'fd://' + fd`), 不靠扩展名判格式。
+     *
+     * 内存口径: 这一端拿不到流 —— ArkTS 侧把 dataReceive 的分段拼成完整 ArrayBuffer 后才回送
+     * Kotlin (`HttpBridgeHandler.ets` 的 dataEnd → concatChunks), 响应体到 Kotlin 时已整份驻留,
+     * byteStream() 只是它的包装; 故落盘即整份写, 不为内存另加缓冲层。
+     *
+     * 写不进/改名失败抛异常, 由 [fallbackToDownload] 的既有失败路径收尾; 临时件由契约在写失败与
+     * 改名失败两条退出路径上删掉, 进程被强杀留下的那份随 [AUDIO_CACHE_DIR] 整目录回收。
+     */
     private suspend fun downloadToCache(url: String, headers: Map<String, String>): File =
         withContext(IoDispatcher) {
             val request = KmpRequestBuilder()
@@ -208,9 +225,11 @@ class OhosAudioPlayCommander : NowPlayingSessionHost() {
                 }
                 val cacheDir = File("${DataStorageProviders.get().chapterCacheDir}/$AUDIO_CACHE_DIR")
                 if (!cacheDir.exists()) cacheDir.mkdirs()
-                val tmpFile = File(cacheDir, "${url.hashCode() and 0x7FFFFFFF}.tmp")
-                tmpFile.writeBytes(response.body.bytes())
-                tmpFile
+                val cacheFile = File(cacheDir, "${url.hashCode() and 0x7FFFFFFF}$AUDIO_CACHE_SUFFIX")
+                check(writeBytesAtomically(cacheFile.path, response.body.bytes())) {
+                    "音频缓存写入失败: ${cacheFile.path}"
+                }
+                cacheFile
             } finally {
                 response.close()
             }
@@ -233,8 +252,17 @@ class OhosAudioPlayCommander : NowPlayingSessionHost() {
     }
 
     private companion object {
-        /** 音频缓存子目录 (位于 NativeBookStorage.defaultRootPath 下) */
+        /**
+         * 音频缓存子目录 (位于 NativeBookStorage.defaultRootPath 下)。
+         *
+         * 目录名不在书架缓存目录集合里, 每日启动清理
+         * ([io.legado.app.help.book.BookHelpShared.clearInvalidBookFolders]) 整目录删除, 强杀残留的
+         * 整份写入临时件随之回收 —— 不需要另写按时间清理的清理器。
+         */
         private const val AUDIO_CACHE_DIR = "audio_play_cache"
+
+        /** 缓存文件后缀: 直链音频格式不定, 用不声称格式的后缀 (桥按 fd 装源, 不按扩展名判格式) */
+        private const val AUDIO_CACHE_SUFFIX = ".audio"
 
         /** 流播 prepare 看门狗超时: 超时未 onReady/onError 视为桥不支持 setSourceUrl, 回退预下载 */
         private const val STREAM_PREPARE_TIMEOUT_MS = 15_000L
@@ -481,12 +509,10 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
 
             "onPlaying" -> {
                 playing = true
-                listener?.onIsPlayingChanged(true)
             }
 
             "onPaused" -> {
                 playing = false
-                listener?.onIsPlayingChanged(false)
             }
         }
     }

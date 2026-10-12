@@ -2,6 +2,7 @@ package io.legado.app.help.coroutine
 
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -13,10 +14,13 @@ import kotlinx.coroutines.launch
  * 覆盖协程槽, 让已被取消的协程复活且无人再取消它; @Volatile 只解决可见性, 解决不了复合写。
  *
  * 保证 (无锁, 抢占与发布都是 [atomic] 的 CAS):
- * - [restart] 一定取消调用时刻最新的协程; 被它取代的旧请求即使随后才启动, 其协程也会在发布时
- *   发现自己已作废并立即取消自己, 不会留下第二个活协程
+ * - [restart] 一定取消调用时刻最新的协程; 被它取代的旧请求即使随后才启动, 也不会留下第二个
+ *   活协程: 协程先入槽后启动, 启动前就被抢占的一代整份作废, block 一行都不执行
  * - [cancel] 一定落到调用时刻最新的协程上, 且此后旧请求的 [restart] 无法让协程绕过它复活
- * - 协程内可用拿到的世代号判断自己是否已被取代 ([generation] 只增不减)
+ *
+ * 世代号只在本类内部用 (标识当前已发布的快照), 不交给协程体: 被取代的一代要么从未启动过,
+ * 要么已被 [Job.cancel], 调用点无从也无需自检 —— 判断自己是否还该继续用 [isActive]
+ * 或挂起点上的 `ensureActive()`。
  */
 class SingleJobSlot(private val scope: CoroutineScope) {
 
@@ -25,17 +29,12 @@ class SingleJobSlot(private val scope: CoroutineScope) {
 
     private val slot = atomic(Slot(0L, null))
 
-    /** 当前世代号。 */
-    val generation: Long get() = slot.value.generation
-
     /** 当前协程是否仍在运行。 */
     val isActive: Boolean get() = slot.value.job?.isActive == true
 
-    /**
-     * 取消当前协程并启动 [block], 世代号作为参数交给它。
-     */
-    fun restart(block: suspend (generation: Long) -> Unit) {
-        launch(seize(), block)
+    /** 取消当前协程并启动 [block]。 */
+    fun restart(block: suspend () -> Unit) {
+        start(seize(), block)
     }
 
     /**
@@ -43,12 +42,12 @@ class SingleJobSlot(private val scope: CoroutineScope) {
      *
      * 用于长驻监听的补建: 重建会丢掉订阅切换间隙里的事件, 让等待中的状态再也等不到更新。
      */
-    fun restartIfInactive(block: suspend (generation: Long) -> Unit) {
+    fun restartIfInactive(block: suspend () -> Unit) {
         if (isActive) return
-        launch(seize(), block)
+        start(seize(), block)
     }
 
-    /** 取消当前协程并推进世代 (被取代的协程据此停止推进)。 */
+    /** 取消当前协程并推进世代: 抢在取消之前入槽的那一代会据此作废。 */
     fun cancel() {
         seize()
     }
@@ -66,17 +65,24 @@ class SingleJobSlot(private val scope: CoroutineScope) {
     }
 
     /**
-     * 启动协程并占坑; 占坑期间被更晚的请求抢占 (世代已变) 时取消自己 —— 同一个槽只留最新一代。
+     * 先建未启动的协程、入槽、再启动; 入槽与启动之间被更晚的请求抢占 (世代已变) 时
+     * 整份作废 —— 同一个槽只留最新一代, 且被取代的一代不会执行 body。
+     *
+     * 顺序反过来 (先启动后入槽) 时, 被取代的一代在 [Job.cancel] 之前已经跑起来了。
      */
-    private fun launch(generation: Long, block: suspend (Long) -> Unit) {
-        val job = scope.launch { block(generation) }
+    private fun start(generation: Long, block: suspend () -> Unit) {
+        val job = scope.launch(start = CoroutineStart.LAZY) { block() }
         while (true) {
             val cur = slot.value
             if (cur.generation != generation) {
+                // 未启动的 LAZY 协程 cancel 即完成, block 不会执行
                 job.cancel()
                 return
             }
-            if (slot.compareAndSet(cur, Slot(generation, job))) return
+            if (slot.compareAndSet(cur, Slot(generation, job))) {
+                job.start()
+                return
+            }
         }
     }
 }

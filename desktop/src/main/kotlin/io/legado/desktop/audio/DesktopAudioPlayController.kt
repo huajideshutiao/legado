@@ -8,6 +8,7 @@ import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.audio.AudioPlayAnalyzeRuleFactory
 import io.legado.app.model.audio.AudioPlayController
 import io.legado.app.model.audio.AudioPlayControllerListener
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.CoroutineContext
@@ -34,30 +35,25 @@ class DesktopAudioPlayController(private val player: DesktopAudioPlayer) :
     override var listener: AudioPlayControllerListener? = null
 
     /**
-     * 本轮装载是否已报过错。
+     * 一轮装载: 代次 / 起播位置 / 是否已交给引擎装载 / 本轮是否已报过错, 同一份不可变快照原子发布。
      *
-     * mediamp 对同一次 open 失败会同时 commit MediaStatus.Error **并** 让 setMediaData 抛出
-     * (AbstractMediampPlayer.runOpen 用的是同一个 PlaybackException), [DesktopAudioPlayer]
-     * 两条都接, 于是一次失败来两次 onError。上层的"首错静默重试一次"会被第二条顶掉,
-     * 表现为"报错了但播放照旧"(静默重试其实已经成功), 故在此收敛成一轮一次。
-     */
-    private var errorReported = false
-
-    /** 本会话的起播位置 (随装载一并交给引擎的开源契约)。 */
-    private var startPosMs = 0L
-
-    /**
-     * 装载代次: 每次 [setSource]/[prepare]/[stop] 自增。
+     * 四个值必须同源: [setSource] 写起播位置, [prepare] 在起播协程里连同就绪代次一起读, 引擎回调
+     * (mpv 主线程) 又要比对代次并翻转去重标志。逐字段读写会拿到上一轮的起播位置, 或让同一轮失败
+     * 上报两次 (两条回调都读到未置位) / 被静默一次 (读到了别人刚置的位)。
      *
-     * 用于丢弃已被顶掉的旧装载的迟到上报 (实测: stop() 下发后, 上一轮 prepare 仍可能跑完并
-     * 回调 onReady, 把共享播放状态写成 READY/PLAY, 界面据此跳过重新起播)。
+     * 去重本身是必需的: mediamp 对同一次 open 失败会同时 commit MediaStatus.Error **并** 让
+     * setMediaData 抛出 (AbstractMediampPlayer.runOpen 用的是同一个 PlaybackException),
+     * [DesktopAudioPlayer] 两条都接, 于是一次失败来两次 onError; 上层的"首错静默重试一次"会被
+     * 第二条顶掉, 表现为"报错了但播放照旧"(静默重试其实已经成功)。
      */
-    @Volatile
-    private var loadGeneration = 0
+    private data class LoadRound(
+        val generation: Long,
+        val startPositionMs: Long,
+        val prepared: Boolean,
+        val errorReported: Boolean,
+    )
 
-    /** 最后一轮"已装载完成、可上报 READY"的代次 (由 [prepare] 先落值, [onReady] 比对)。 */
-    @Volatile
-    private var readyGeneration = -1
+    private val load = AtomicReference(LoadRound(0L, 0L, prepared = false, errorReported = false))
 
     /**
      * 播放/暂停意图 (Media3 `playWhenReady` 语义)。
@@ -65,12 +61,26 @@ class DesktopAudioPlayController(private val player: DesktopAudioPlayer) :
      * 设值即下发 (引擎已创建时): 缓冲中按的暂停必须在引擎就绪前就落下去, 否则 mpv 会按
      * 打开时给的意图直接出声, 而界面显示已暂停。引擎未创建时只存值, 由 [prepare] 随
      * 装载一并交给 mediamp 的开源契约。
+     *
+     * 跨线程: 命令线程 (托盘/播控) 置值, 起播协程 (宿主线程池) 在 [prepare] 里读取交给引擎。
      */
+    @Volatile
     override var playWhenReady = false
         set(value) {
             field = value
             player.setPlayIntent(value)
         }
+
+    /**
+     * 整份发布一轮装载 (写侧 CAS 环), 返回发布出去的那一份 —— 装载要用同一份里的起播位置。
+     */
+    private fun publishLoadRound(transform: (LoadRound) -> LoadRound): LoadRound {
+        while (true) {
+            val current = load.get()
+            val next = transform(current)
+            if (load.compareAndSet(current, next)) return next
+        }
+    }
 
     init {
         player.listener = this
@@ -97,21 +107,21 @@ class DesktopAudioPlayController(private val player: DesktopAudioPlayer) :
     override val playbackState: Int
         get() = player.playbackState
 
-    /** 设置播放源 (直链 + 请求头), [startPosMs] 随装载一并生效。 */
+    /** 设置播放源 (直链 + 请求头), 起播位置随装载一并生效。 */
     fun setSource(url: String, headers: Map<String, String>, startPosMs: Long) {
-        loadGeneration++
-        this.startPosMs = startPosMs
+        // 推进代次: 上一轮的迟到回调 (onReady / onEndOfMedia / onError) 据此丢弃,
+        // 不会把已停下的播放写成 READY/PLAY, 也不会误触发自动换章
+        publishLoadRound { LoadRound(it.generation + 1, startPosMs, prepared = false, errorReported = false) }
         player.setUrl(url, headers)
     }
 
     override suspend fun prepare() {
-        errorReported = false
-        // 先落代次再装载: [DesktopAudioPlayer.prepare] 会在返回前同步回调 onReady,
-        // 那里拿本字段与 loadGeneration 比对
-        val generation = ++loadGeneration
-        readyGeneration = generation
+        // 起播位置与就绪代次必须同源: 并发换源时交给引擎的不能是上一轮的位置
+        val round = publishLoadRound {
+            it.copy(generation = it.generation + 1, prepared = true, errorReported = false)
+        }
         try {
-            withTimeout(PREPARE_TIMEOUT_MS) { player.prepare(playWhenReady, startPosMs) }
+            withTimeout(PREPARE_TIMEOUT_MS) { player.prepare(playWhenReady, round.startPositionMs) }
         } catch (e: TimeoutCancellationException) {
             // setMediaData 挂起即收掉加载态, 避免 LOADING 永久残留 (外层取消不是本异常, 会照常上抛)
             onError("prepare timeout")
@@ -123,7 +133,7 @@ class DesktopAudioPlayController(private val player: DesktopAudioPlayer) :
     override fun pause() = player.pause()
 
     override fun stop() {
-        loadGeneration++
+        publishLoadRound { it.copy(generation = it.generation + 1, prepared = false) }
         player.stop()
     }
 
@@ -137,21 +147,31 @@ class DesktopAudioPlayController(private val player: DesktopAudioPlayer) :
     // region DesktopAudioPlayer.Listener -> AudioPlayControllerListener 适配
 
     override fun onReady(durationMs: Long) {
-        errorReported = false
         // 本轮装载已被 stop()/新装载顶掉则不上报 (引擎已在跑新的一轮)
-        if (readyGeneration != loadGeneration) return
+        val current = load.get()
+        if (!current.prepared) return
+        // 就绪即复位去重标志: 每播成功一次给下一次失败一次机会
+        if (current.errorReported) {
+            publishLoadRound {
+                if (it.generation == current.generation) it.copy(errorReported = false) else it
+            }
+        }
         listener?.onPlaybackStateChanged(AudioPlayController.STATE_READY)
     }
 
     override fun onEndOfMedia() {
         // 本轮装载已被 stop()/新装载顶掉则不上报 (迟到 eof 不得误触发自动换章)
-        if (readyGeneration != loadGeneration) return
+        if (!load.get().prepared) return
         listener?.onPlaybackStateChanged(AudioPlayController.STATE_ENDED)
     }
 
     override fun onError(message: String?) {
-        if (errorReported) return
-        errorReported = true
+        // 同一轮只上报一次; 已被新一载顶掉的轮次 (或未进装载的轮次) 不算本轮的错
+        while (true) {
+            val current = load.get()
+            if (!current.prepared || current.errorReported) return
+            if (load.compareAndSet(current, current.copy(errorReported = true))) break
+        }
         listener?.onPlayerError(RuntimeException(message ?: "play error"))
     }
 

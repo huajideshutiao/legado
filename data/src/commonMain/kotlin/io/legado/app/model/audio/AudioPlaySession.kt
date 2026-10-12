@@ -3,6 +3,7 @@ package io.legado.app.model.audio
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
+import io.legado.app.help.coroutine.SingleJobSlot
 import io.legado.app.help.media.SleepTimer
 import io.legado.app.help.media.SystemMediaControl
 import io.legado.app.help.toast.Toasters
@@ -12,8 +13,6 @@ import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.utils.postEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
 
 /**
@@ -125,13 +124,27 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
     @Volatile
     private var position = 0
 
-    /** 当前起播任务 (新请求启动时取消前一个任务, 防止并发错乱)。 */
-    private var playJob: Job? = null
+    /**
+     * 当前起播任务槽: 新请求抢占旧请求, 停止/终结从同一处取消。
+     *
+     * 起播可被多个线程发起 (播控中心 / 托盘 / 阅读页 / 引擎回调里的自动续章), 裸 Job 的
+     * "取消旧的 + 落新的"是两次写 —— 先后顺序颠倒就会留下无人能取消的活协程, 它照样把
+     * 音放出来。
+     */
+    private val playSlot = SingleJobSlot(host.scope)
 
     private var sleepTimer: SleepTimer? = null
 
     /** 剩余定时分钟 (通知标题要显示)。 */
     val timerMinute: Int get() = sleepTimer?.minutes ?: 0
+
+    /**
+     * 起播环节领到的加载令牌: 引擎就绪 / 报错时凭它收位。
+     *
+     * 被更晚的起播取代时凭旧令牌收位落空, 新起播的转圈归它自己收。
+     */
+    @Volatile
+    private var playLoadingToken = 0L
 
     /** 播放出错后先静默重试一次再报错; 就绪即复位, 即"每播成功一次给一次机会"。 */
     private var hasRefreshedOnPlayError = false
@@ -154,14 +167,11 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
 
     override fun play() = start(playNew = false)
 
-    override fun playNew() = start(playNew = true)
-
     override fun stop() = endSession()
 
     override fun stopPlay() {
         if (!isRunning) return
-        playJob?.cancel()
-        playJob = null
+        playSlot.cancel()
         host.controller.stop()
         manager.cancelProgressJob()
         manager.cancelChapterLoad()
@@ -169,7 +179,7 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
         AudioPlayShared.status = Status.STOP
         AudioPlayShared.book?.save()
         postEvent(EventBus.AUDIO_STATE, Status.STOP)
-        postEvent(EventBus.AUDIO_LOADING, false)
+        manager.clearLoading()
         // 会话还活着 (切章也走这里), 只更新播放态不撤会话。
         // 刻意不动 isPaused 与阅读计时: ReadTimeRecorder 按 refCount 配对, 而切章后的起播不经
         // resume, 这里 end 掉就再无对应的 start; isPaused 置真则通知会在拉链接那几秒显示"已暂停"
@@ -178,11 +188,16 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
 
     override fun pause() {
         if (!isRunning) return
-        // 引擎调用抛了就吞掉: 状态已落, 会话照旧 (对照 app 原版 pause 的 catch + printOnDebug)
+        // 引擎暂停调用失败不改会话状态: 暂停意图已落 (isPaused / playWhenReady / 状态事件),
+        // 失败只记日志, 不把失败升级成会话终结
         runCatching {
             isPaused = true
             ReadTimeRecorder.end(ReadTimeRecorder.Source.AUDIO)
             manager.cancelProgressJob()
+            // 作废在途正文装载: 正文到手即触发起播, 不作废则用户按下暂停后音频会自己放出来
+            manager.cancelContentLoad()
+            // 在途的起播环节与本环一起收位: 只作废不收位就会一直转圈
+            manager.clearLoading()
             position = manager.positionMs
             AudioPlayShared.durChapterPos = position
             // 缓冲中按的暂停: 光调 pause() 不落 playWhenReady, 引擎缓冲完会自己起播
@@ -191,6 +206,8 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
             AudioPlayShared.status = Status.PAUSE
             postEvent(EventBus.AUDIO_STATE, Status.PAUSE)
             host.onSessionSync()
+        }.onFailure {
+            AppLog.put("暂停出错\n${it.message}", it)
         }
     }
 
@@ -198,29 +215,37 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
         if (!isRunning) return
         // 起播失败即终结会话 (对照 app 原版 resume 的 catch → stopSelf)
         runCatching {
-            // 直链还没解析过 (会话刚起或播完停在末章): 先补齐资源再起播
-            if (url.isEmpty()) {
+            // 先落播放意图再判直链 (顺序对照 app 原版 resume): 暂停作废了在途装载时直链为空,
+            // 这条补资源的早退路径同样要切到"在播"、并计入听书时长
+            isPaused = false
+            ReadTimeRecorder.start(ReadTimeRecorder.Source.AUDIO, AudioPlayShared.book?.name ?: "")
+            // 直链还没解析过 (会话刚起 / 播完停在末章 / 暂停作废了在途装载): 先补齐资源再起播
+            if (url.isEmpty() || AudioPlayShared.durPlayUrl.isEmpty()) {
                 AudioPlayShared.loadOrUpPlayUrl()
                 return
             }
-            isPaused = false
-            ReadTimeRecorder.start(ReadTimeRecorder.Source.AUDIO, AudioPlayShared.book?.name ?: "")
             host.controller.playWhenReady = true
             if (!host.controller.isPlaying) host.controller.play()
             manager.upPlayProgress()
             AudioPlayShared.status = Status.PLAY
             postEvent(EventBus.AUDIO_STATE, Status.PLAY)
             host.onSessionSync()
-        }.onFailure { endSession() }
+        }.onFailure {
+            AppLog.put("恢复播放出错\n${it.message}", it)
+            endSession()
+        }
     }
 
     override fun adjustSpeed(adjust: Float) {
         if (!isRunning) return
+        // 引擎变速调用失败不改会话状态: 倍速已落共享值, 失败只记日志
         runCatching {
             AudioPlayShared.playSpeed = adjust
             host.controller.setPlaybackSpeed(adjust)
             postEvent(EventBus.AUDIO_SPEED, adjust)
             host.onSessionSync()
+        }.onFailure {
+            AppLog.put("调整倍速出错\n${it.message}", it)
         }
     }
 
@@ -295,8 +320,7 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
     fun endSession() {
         if (!isRunning) return
         isRunning = false
-        playJob?.cancel()
-        playJob = null
+        playSlot.cancel()
         sleepTimer?.cancel()
         sleepTimer = null
         ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.AUDIO)
@@ -312,7 +336,7 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
         host.onSessionEnd()
         AudioPlayShared.status = Status.STOP
         postEvent(EventBus.AUDIO_STATE, Status.STOP)
-        postEvent(EventBus.AUDIO_LOADING, false)
+        manager.clearLoading()
     }
 
     // endregion
@@ -321,8 +345,7 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
 
     private fun start(playNew: Boolean) {
         ensureRunning()
-        playJob?.cancel()
-        playJob = host.scope.launch { runTriggerPlay(playNew) }
+        playSlot.restart { runTriggerPlay(playNew) }
     }
 
     /**
@@ -359,7 +382,9 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
         // 拉链接+缓冲窗口置 LOADING 而不是 STOP, 让 UI 能区分"没在播"和"正在启动"
         AudioPlayShared.status = Status.LOADING
         postEvent(EventBus.AUDIO_STATE, Status.LOADING)
-        postEvent(EventBus.AUDIO_LOADING, true)
+        // 本起播环节领走加载态: 被更晚的起播取代时旧令牌收位落空 (见 playLoadingToken)
+        val loading = manager.beginLoading()
+        playLoadingToken = loading
         host.controller.playWhenReady = true
         if (!host.onBeforeStart()) {
             // 焦点拒绝发生在完整 prepare 前；保留 URL/位置，resume 必须重新走 triggerPlay。
@@ -369,7 +394,7 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
             isPaused = true
             AudioPlayShared.status = Status.PAUSE
             postEvent(EventBus.AUDIO_STATE, Status.PAUSE)
-            postEvent(EventBus.AUDIO_LOADING, false)
+            manager.endLoading(loading)
             host.onSessionSync(positionMs = position.toLong())
             return
         }
@@ -408,7 +433,7 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
                 AudioPlayController.STATE_READY -> {
                     hasRefreshedOnPlayError = false
                     host.onPlaybackReady()
-                    postEvent(EventBus.AUDIO_LOADING, false)
+                    manager.endLoading(playLoadingToken)
                     // 倍速重设: AVPlayer 的 play() 会把 rate 打回 1, mpv 换引擎实例后也回 1x
                     host.controller.setPlaybackSpeed(playSpeed)
                     postEvent(EventBus.AUDIO_SPEED, playSpeed)
@@ -431,6 +456,12 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
                     manager.clearPendingSeek()
                     AudioPlayShared.playPositionChanged(host.controller.duration.toInt())
                     if (!AudioPlayShared.next()) {
+                        // 目录末尾播完: 位置归零 = 重播本章。留着末位会让下次起播 seek 到末尾后
+                        // 立刻结束 (表现为按播放没反应、多闪一次加载态)
+                        position = 0
+                        AudioPlayShared.playPositionChanged(0)
+                        AudioPlayShared.book?.durChapterPos = 0
+                        AudioPlayShared.saveRead()
                         isPaused = true
                         ReadTimeRecorder.end(ReadTimeRecorder.Source.AUDIO)
                         stopPlay()
@@ -455,7 +486,7 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
             // 用户可以再按播放重试
             AudioPlayShared.status = Status.STOP
             postEvent(EventBus.AUDIO_STATE, Status.STOP)
-            postEvent(EventBus.AUDIO_LOADING, false)
+            manager.endLoading(playLoadingToken)
             host.onSessionSync()
             val message = host.playerErrorMessage(error)
             AppLog.put(message, error)
@@ -500,6 +531,8 @@ abstract class NowPlayingSessionHost : AudioPlaySessionHost {
         SystemMediaControl.syncAudio(playbackRate = session.playSpeed, coverUrl = url)
 
     override fun toast(message: String) {
+        // 卸载/未注册提示通道时不能把异常抛回引擎回调; 提示发不出去也要落日志
         runCatching { Toasters.get().toast(message) }
+            .onFailure { AppLog.put("音频播放提示失败\n${it.message}", it) }
     }
 }

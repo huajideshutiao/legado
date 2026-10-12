@@ -75,10 +75,6 @@ class ExoPlayerAudioPlayController(
         listener?.onPlayerError(error)
     }
 
-    override fun onIsPlayingChanged(isPlaying: Boolean) {
-        listener?.onIsPlayingChanged(isPlaying)
-    }
-
     // endregion
 }
 

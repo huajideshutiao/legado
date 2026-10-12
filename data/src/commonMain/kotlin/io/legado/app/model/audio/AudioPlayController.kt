@@ -6,12 +6,13 @@ package io.legado.app.model.audio
  * 对标 [io.legado.app.help.tts.HttpTtsPlayer]: 仅描述"控制底层播放器 + 查询状态"所需
  * 的最小能力, 不暴露平台特定类型 (Media3 `Player` / ExoPlayer / AVPlayer)。
  *
- * # 各平台 actual 实现
- * - app: 包装 Media3 `ExoPlayer`, 见
- *   `app/src/main/java/io/legado/app/model/audio/ExoPlayerAudioPlayController.kt`
- * - desktop: `javax.sound.sampled` 直播 wav/pcm (待实现)
- * - ios: AVPlayer (待实现)
- * - ohos: 鸿蒙 AVPlayer (待实现)
+ * # 各平台实现
+ * - app: `ExoPlayerAudioPlayController`, 包装 Media3 `ExoPlayer`
+ *   (`app/src/main/java/io/legado/app/model/audio/`)
+ * - desktop: `DesktopAudioPlayController`, 包装 mediamp-mpv 的 `DesktopAudioPlayer`
+ *   (`desktop/src/main/kotlin/io/legado/desktop/audio/`)
+ * - ios: `IosAvAudioPlayController`, 包装 AVPlayer (`data/src/iosMain/`)
+ * - ohos: `OhosAvAudioPlayController`, 包装鸿蒙 AVPlayer (`data/src/ohosMain/`)
  *
  * # 设计原则
  * - 仅描述播放/暂停/seek/速率/状态查询, 不暴露 `setMediaItem` —— MediaItem 构造
@@ -97,9 +98,9 @@ interface AudioPlayController {
 /**
  * 音频播放状态回调 (KMP 版, 对标 Media3 `Player.Listener`)。
  *
- * 各平台 actual 负责把平台 listener 适配为此接口回调。
+ * 各平台实现把平台 listener 适配为本接口回调。
  * app 端 [ExoPlayerAudioPlayController] 实现 `Player.Listener`,
- * 在 `onPlaybackStateChanged` / `onPlayerError` / `onIsPlayingChanged` 中转发到本接口。
+ * 在 `onPlaybackStateChanged` / `onPlayerError` 中转发到本接口。
  */
 interface AudioPlayControllerListener {
 
@@ -108,7 +109,4 @@ interface AudioPlayControllerListener {
 
     /** 播放或网络出错, [error] 为平台原始异常 (Media3 `PlaybackException` 等)。 */
     fun onPlayerError(error: Throwable) {}
-
-    /** isPlaying 变化 (true 开始播放, false 暂停/缓冲/结束)。 */
-    fun onIsPlayingChanged(isPlaying: Boolean) {}
 }
