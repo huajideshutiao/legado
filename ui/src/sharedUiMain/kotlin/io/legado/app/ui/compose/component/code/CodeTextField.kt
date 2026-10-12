@@ -912,7 +912,6 @@ fun CodeTextField(
                         text = value.text.toString(),
                         innerTextField = fieldContent,
                         enabled = enabled,
-                        singleLine = false,
                         // 装饰盒仅用于测量/占位, 着色已在 BasicTextField 内生效
                         visualTransformation = VisualTransformation.None,
                         interactionSource = interactionSource,

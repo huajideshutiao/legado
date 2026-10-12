@@ -262,7 +262,6 @@ private fun <T : Any> AppTextFieldCore(
                     text = adapter.text(value),
                     innerTextField = innerTextField,
                     enabled = enabled,
-                    singleLine = singleLine,
                     visualTransformation = visualTransformation,
                     interactionSource = interactionSource,
                     isError = isError,
@@ -352,14 +351,16 @@ internal val AppFieldColors: TextFieldColors
     }
 
 /** 两个重载共享的装饰盒: label 浮动/占位符/图标排版走 M2 默认, 仅水平 contentPadding 收窄至 4dp。
- *  [contentPadding] 可覆写: CodeTextField 盒模式传入含 16dp 盒内边距的 padding */
+ *  [contentPadding] 可覆写: CodeTextField 盒模式传入含 16dp 盒内边距的 padding
+ *
+ *  垂直位置恒走固定顶距分支 (见下方 singleLine = false 说明), 与字段单行/多行无关 —— 单行语义
+ *  由 BasicTextField 的 lineLimits 决定, 装饰盒的 singleLine 只影响静止 label/正文的垂直落点。 */
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
 internal fun AppDecorationBox(
     text: String,
     innerTextField: @Composable () -> Unit,
     enabled: Boolean,
-    singleLine: Boolean,
     visualTransformation: VisualTransformation,
     interactionSource: InteractionSource,
     isError: Boolean,
@@ -389,7 +390,12 @@ internal fun AppDecorationBox(
         value = text,
         innerTextField = innerTextField,
         enabled = enabled,
-        singleLine = singleLine,
+        // singleLine = false: M2 单行分支把静止 label 按字段高度垂直居中, 下划线形态下会让
+        // label 停在字段中部 (距指示线 13dp, 原版 TextInputLayout boxBackgroundMode=none 为
+        // 7dp), 且无 label 时正文也一并居中 (距指示线 9dp) —— 同一表单里有无 label 的字段正文
+        // 落点相差 6dp。固定顶距分支让所有字段的静止 label 恒在 16dp (距指示线 10dp)、正文底恒
+        // 在字段底留白处 (距指示线 4dp), 与原版下划线形态及项目 CodeTextField 几何一致。
+        singleLine = false,
         visualTransformation = visualTransformation,
         interactionSource = interactionSource,
         isError = isError,
