@@ -36,8 +36,10 @@ let installed: boolean = false;
  * "无来电暂停" 的旧行为。
  *
  * # 网络 (netAvailable)
- * `@ohos.net.connection` 的 `on('netAvailable')` 只在有网时回调, 与 Android
+ * `@ohos.net.connection` 的 `netAvailable` 只在有网时回调, 与 Android
  * `NetworkCallback.onAvailable` 同语义 (不关心断开); Kotlin 侧据此重算 Web 服务地址。
+ * 该事件在 SDK 中挂在 `NetConnection` 实例上 (不是模块级函数), 故先用
+ * `createNetConnection()` 建一个实例再注册。
  */
 export function installSystemEventSources(): void {
   if (installed) {
@@ -51,7 +53,7 @@ export function installSystemEventSources(): void {
 /** 注册来电状态监听 (见 [installSystemEventSources] 的来电段说明)。 */
 function installCallStateObserver(): void {
   try {
-    observer.on('callStateChange', (info: call.CallStateInfo) => {
+    observer.on('callStateChange', (info: observer.CallStateInfo) => {
       let state: string;
       if (info.state === call.CallState.CALL_STATE_IDLE) {
         state = 'idle';
@@ -72,7 +74,9 @@ function installCallStateObserver(): void {
 /** 注册网络可用监听 (见 [installSystemEventSources] 的网络段说明)。 */
 function installNetworkObserver(): void {
   try {
-    connection.on('netAvailable', () => {
+    // netAvailable 挂在 NetConnection 实例上 (SDK: `NetConnection.on(type: 'netAvailable', ...)`),
+    // 不是模块级函数; 不传 netSpecifier 即监听默认网络。
+    connection.createNetConnection().on('netAvailable', () => {
       const payload: NetworkAvailableEvent = { type: 'networkAvailable' };
       emitPlatformEvent(payload);
     });

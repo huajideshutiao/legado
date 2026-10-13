@@ -136,19 +136,66 @@ mock 版本。
 不做分层图那中央 2/3 裁切而是整图显示, 前景层内容只占层空间中央一小块 —— 启动图要改
 观感须另出一张内容铺满的图, 不是改脚本缩放。
 
-### 5.1 字符串传递 (ArkTS ↔ Kotlin)
+### 5.1 桌面快捷方式 (静态声明)
+
+`entry/src/main/resources/base/profile/shortcuts_config.json` 三项对应 Android
+`app/src/main/java/io/legado/app/api/ShortCuts.kt` 的三项 (最近阅读 / 直接朗读 / 书架);
+Android 走 `ShortcutManagerCompat.setDynamicShortcuts` 动态注册, 鸿蒙只支持这份静态配置。
+
+**该文件必须是纯 JSON, 不能写注释**: 资源目录下的 JSON 由 restool 按严格 JSON 解析,
+行注释会让 `CompileResource` 直接失败 (Error 11203002)。同样约束适用于
+`resources/*/element/string.json` (要备注请用官方支持的 `comment` 字段)。
+
+字段依据: OpenHarmony docs `module-configuration-file.md`「表10 shortcuts标签说明」
+(`shortcutId` 不可缺省; `label`/`icon`/`visible`/`wants` 可缺省; icon 官方建议透明图层 450x450px)
+与「表11 wants标签说明」(`bundleName`/`moduleName`/`abilityName` 均可缺省)。
+
+- `label` 用 `$string` 资源索引 (schema 的 label pattern: `^[$]string:[0-9a-zA-Z_.]+`),
+  文案定义在 `entry/src/main/resources/*/element/string.json`。
+- `icon` 复用 AppScope 既有的 `app_icon_foreground` (`$media` 资源跨模块可见); 它是 288x288
+  的前景图层, 未达官方推荐的 450x450 (未新增图片资源, 如后续要按规范补齐再换)。
+- `bundleName` 缺省: 本工程实际包名由 `ohosApp/hvigorfile.ts` 的 appOpt 在构建期按 buildMode
+  覆盖 (debug → `shutiao.reader.debug`, release → `shutiao.reader.release`), 而这份 profile
+  里的字符串不参与该覆盖 —— 写死任一变体都会在另一个变体上指向不存在的包 (快捷方式失效)。
+  故缺省后由系统按当前应用包名解析。本机 SDK 与官方文档中未查证到 profile 文件里可用的
+  包名占位符 (搜 `${application.` 无命中)。**待真机验证**: 缺省 `bundleName` 后桌面快捷方式
+  在 debug 与 release 两个包上是否都能拉起。
+
+`wants.parameters` 由系统放进被拉起 Ability 的 `want.parameters` (本机 SDK 的 shortcut
+配置 schema 逐字: "parameters: Indicates the parameters for the target ability", 值只允许
+string), **不会**变成 `want.uri`。所以 route 值必须是**裸路由名** (与 Android 快捷方式 intent
+的 `route` extra、iOS 的 `UIApplicationShortcutItemUserInfo["route"]` 同一形制), 由
+`EntryAbility` 的 handleDeepLink 补上 `route:` 前缀投给 `legado.handleLaunchRequest`
+(前缀约定见 `ui/src/ohosMain` 的 `OhosLaunchRequests.ROUTE_PREFIX`, 与通知点击同一条链)。
+
+三项语义 (逐项对照原版):
+
+- `lastRead`: 原版 = 打开最近阅读书籍 (`ShortCuts.buildReadBookShortCutInfo` → MainActivity
+  路由 extra "last_read" → 共享 NavigateTo 表), 故这里带裸路由名 `last_read`。
+- `bookshelf`: 原版 = **不带任何 extra** 拉起主界面 (`buildBookShelfShortCutInfo` 的 intent
+  没有任何 extra) —— 故这里**不带 route**, 单纯拉起 EntryAbility 即落在主界面/书架。
+  与 iOS 端同款做法 (`iosApp/project.yml` 的 bookshelf 项刻意不带 route)。
+- `readAloud`: 原版 = **直接开始朗读** (`ShortCuts` 给 AssociationActivity 塞
+  `action=readAloud` → `AssociationActivity.initIntent` → `MediaButtonReceiver.readAloud`
+  (appCtx, false))。故这里带裸路由名 `read_aloud` —— 由共享层补出的
+  `HeadlessReadAloud.startFromShortcut()` 承接 (分支顺序逐条对照原版 readAloud 那份:
+  朗读在跑→暂停继续 / 有声书在跑→暂停继续 / 音频页在→交页面 / 阅读页在→交页面 /
+  都没有→从最近阅读的书无头准备正文并起朗读, **不打开阅读页**; 见 LegadoApp 的
+  NavigateTo "read_aloud" 分支)。
+
+### 5.2 字符串传递 (ArkTS ↔ Kotlin)
 
 - **ArkTS → C**: napi_get_value_string_utf8 拷贝到 napi 层 buf, 由 napi 层管理生命周期
 - **C → Kotlin**: Kotlin 端用 `input.toKString()` 拷贝为 Kotlin String (C 指针仍由 napi 层管理)
 - **Kotlin → C**: Kotlin 端用 `result.cstr.getPointer(nativeHeap)` 在 Kotlin/Native 堆上分配, 直到 module 卸载
 - **C → ArkTS**: napi_create_string_utf8 会拷贝走, Kotlin 端指针理论上可立即释放 (但当前简化为不释放, 避免悬挂指针)
 
-### 5.2 长期改进建议
+### 5.3 长期改进建议
 
 - **方案 A (推荐)**: Kotlin 端用 `memScope { ... }` 限定字符串生命周期到 napi 调用结束, 配合 napi_create_string_utf8 拷贝, 实现 zero-leak
 - **方案 B**: 引入 `kotlinx.cinterop.CValuesRef` + `napi_create_external_string` 显式管理外部内存
 
-### 5.3 异常处理
+### 5.4 异常处理
 
 - Kotlin 端抛出异常会跨 C ABI 边界丢失 (Kotlin/Native 默认 abort 进程)
 - 当前 napi 层用 try-catch 包装关键调用, 异常时返回 mock 字符串

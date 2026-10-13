@@ -33,7 +33,8 @@
  *
  * 三方应用更新时系统只采纳 template (systemLiveView 里的文案会被丢弃), 实况窗显示的文案只能放
  * downloadTemplate.data 的 title/fileName —— SDK 标注两者必填, 缺任一模板校验不过;
- * systemLiveView 只留 typeCode, 供"槽位 LIVE_VIEW + 系统实况窗内容类型"这条判定。
+ * systemLiveView 的 title/text 同样必填 (类型定义要求), 填同一份文案即可,
+ * typeCode 供"槽位 LIVE_VIEW + 系统实况窗内容类型"这条判定。
  *
  * 系统时限: 实况窗首次发布后 10 分钟没有一次更新就删通知停任务, 之后每次更新把时限重置为 15 分钟
  * (进度到 100 时为 30 分钟)。故本模块在保活期内心跳式重发模板 (进度没变也照发), 业务收尾时先写
@@ -465,10 +466,14 @@ async function publishTransferLiveView(template: TransferTemplate): Promise<void
     notificationSlotType: notificationManager.SlotType.LIVE_VIEW,
     content: {
       notificationContentType: notificationManager.ContentType.NOTIFICATION_CONTENT_SYSTEM_LIVE_VIEW,
-      // 槽位 LIVE_VIEW + 系统实况窗内容类型 = 平台判定"这是系统代理创建的实况窗"的凭据;
-      // 文案不进这里 (三方应用更新时 systemLiveView 的内容会被系统丢弃)
+      // 槽位 LIVE_VIEW + 系统实况窗内容类型 = 平台判定"这是系统代理创建的实况窗"的凭据。
+      // title/text 是 SDK 该类型的必填字段 (NotificationSystemLiveViewContent 继承
+      // NotificationBasicContent), 缺任一会校验不过; 实际显示仍由下方 template 决定
+      // (三方应用更新时系统不采纳 systemLiveView 里的文案)。
       systemLiveView: {
-        typeCode: LIVE_VIEW_TYPE_CODE_DATA_TRANSFER
+        typeCode: LIVE_VIEW_TYPE_CODE_DATA_TRANSFER,
+        title: template.title,
+        text: template.fileName
       }
     },
     template: {

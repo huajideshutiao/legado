@@ -4,8 +4,11 @@
       "name": "EntryAbility_label",
       "value": "閲讀"
     },
-    // 桌面快捷方式文案 (与 Android composeResources values-zh-rHK 的 bookshelf/last_read/read_aloud 一致)
-    { "name": "shortcut_bookshelf", "value": "書架" },
+    {
+      "name": "shortcut_bookshelf",
+      "value": "書架",
+      "comment": "本组三项桌面快捷方式文案须与 Android composeResources values-zh-rHK 的 bookshelf/last_read/read_aloud 逐字一致"
+    },
     { "name": "shortcut_last_read", "value": "最後閲讀" },
     { "name": "shortcut_read_aloud", "value": "朗讀" }
   ]

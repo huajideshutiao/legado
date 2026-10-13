@@ -747,7 +747,9 @@ function removeAudioRoutingMonitor(): void {
   routingMonitorInstalled = false;
   try {
     audio.getAudioManager().getRoutingManager()
-      .off('deviceChange', audio.DeviceFlag.OUTPUT_DEVICES_FLAG);
+      // off 只有 (type, callback?) 一个重载 (SDK: off(type: 'deviceChange', callback?: ...)),
+      // 不接受 on 那个 deviceFlag 参数。
+      .off('deviceChange');
   } catch (e) {
     console.error('[MediaBridge] remove audio deviceChange failed: ' + JSON.stringify(e));
   }
