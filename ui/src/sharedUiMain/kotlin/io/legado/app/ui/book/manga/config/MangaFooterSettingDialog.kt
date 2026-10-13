@@ -2,6 +2,7 @@ package io.legado.app.ui.book.manga.config
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,15 +19,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppCheckbox
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSwitch
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
@@ -94,133 +93,125 @@ fun MangaFooterSettingDialog(
         })
     }
 
-    AppDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
+        title = stringResource(Res.string.manga_footer_config),
+        contentPadding = PaddingValues(0.dp),
         properties = AppDialogSizes.properties(),
     ) {
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(),
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(DesignTokens.spacingLg)
         ) {
-            Column(Modifier.fillMaxWidth()) {
-                DialogTitleBar(
-                    title = stringResource(Res.string.manga_footer_config),
-                    onBack = onDismiss,
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(Res.string.manga_header_footer),
+                    color = colors.primaryText,
+                    modifier = Modifier.weight(1f),
                 )
-                Column(
+                AppSwitch(
+                    checked = showFooter,
+                    onCheckedChange = {
+                        showFooter = it
+                        upConfig { hideFooter = !it }
+                    },
+                )
+            }
+            if (showFooter) {
+                CheckRow(
+                    header = stringResource(Res.string.manga_header_chapter),
+                    checks = listOf(
+                        Triple(
+                            stringResource(Res.string.manga_check_chapter_label),
+                            chapterLabel
+                        ) {
+                            chapterLabel = it
+                            upConfig { hideChapterLabel = !it }
+                        },
+                        Triple(stringResource(Res.string.manga_check_chapter), chapter) {
+                            chapter = it
+                            upConfig { hideChapter = !it }
+                        },
+                        Triple(
+                            stringResource(Res.string.manga_check_chapter_name),
+                            chapterName
+                        ) {
+                            chapterName = it
+                            upConfig { hideChapterName = !it }
+                        },
+                    ),
+                )
+                CheckRow(
+                    header = stringResource(Res.string.manga_header_page),
+                    checks = listOf(
+                        Triple(
+                            stringResource(Res.string.manga_check_page_label),
+                            pageNumberLabel
+                        ) {
+                            pageNumberLabel = it
+                            upConfig { hidePageNumberLabel = !it }
+                        },
+                        Triple(
+                            stringResource(Res.string.manga_check_page_number),
+                            pageNumber
+                        ) {
+                            pageNumber = it
+                            upConfig { hidePageNumber = !it }
+                        },
+                    ),
+                )
+                CheckRow(
+                    header = stringResource(Res.string.manga_header_progress),
+                    checks = listOf(
+                        Triple(
+                            stringResource(Res.string.manga_check_progress_label),
+                            progressRatioLabel
+                        ) {
+                            progressRatioLabel = it
+                            upConfig { hideProgressRatioLabel = !it }
+                        },
+                        Triple(
+                            stringResource(Res.string.manga_check_progress),
+                            progressRatio
+                        ) {
+                            progressRatio = it
+                            upConfig { hideProgressRatio = !it }
+                        },
+                    ),
+                )
+                Row(
                     Modifier
                         .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        .padding(DesignTokens.spacingLg)
+                        .padding(top = DesignTokens.spacingDefault),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
+                    Text(
+                        text = stringResource(Res.string.manga_header_orientation),
+                        color = colors.primaryText,
+                        fontSize = 14.sp,
+                    )
+                    Spacer(Modifier.width(DesignTokens.spacingDefault))
+                    RadioItem(
+                        label = stringResource(Res.string.manga_radio_left),
+                        value = INFO_BAR_ALIGN_LEFT,
+                        selected = orientation == INFO_BAR_ALIGN_LEFT,
                     ) {
-                        Text(
-                            text = stringResource(Res.string.manga_header_footer),
-                            color = colors.primaryText,
-                            modifier = Modifier.weight(1f),
-                        )
-                        AppSwitch(
-                            checked = showFooter,
-                            onCheckedChange = {
-                                showFooter = it
-                                upConfig { hideFooter = !it }
-                            },
-                        )
+                        orientation = it
+                        upConfig { footerOrientation = it }
                     }
-                    if (showFooter) {
-                        CheckRow(
-                            header = stringResource(Res.string.manga_header_chapter),
-                            checks = listOf(
-                                Triple(
-                                    stringResource(Res.string.manga_check_chapter_label),
-                                    chapterLabel
-                                ) {
-                                    chapterLabel = it
-                                    upConfig { hideChapterLabel = !it }
-                                },
-                                Triple(stringResource(Res.string.manga_check_chapter), chapter) {
-                                    chapter = it
-                                    upConfig { hideChapter = !it }
-                                },
-                                Triple(
-                                    stringResource(Res.string.manga_check_chapter_name),
-                                    chapterName
-                                ) {
-                                    chapterName = it
-                                    upConfig { hideChapterName = !it }
-                                },
-                            ),
-                        )
-                        CheckRow(
-                            header = stringResource(Res.string.manga_header_page),
-                            checks = listOf(
-                                Triple(
-                                    stringResource(Res.string.manga_check_page_label),
-                                    pageNumberLabel
-                                ) {
-                                    pageNumberLabel = it
-                                    upConfig { hidePageNumberLabel = !it }
-                                },
-                                Triple(
-                                    stringResource(Res.string.manga_check_page_number),
-                                    pageNumber
-                                ) {
-                                    pageNumber = it
-                                    upConfig { hidePageNumber = !it }
-                                },
-                            ),
-                        )
-                        CheckRow(
-                            header = stringResource(Res.string.manga_header_progress),
-                            checks = listOf(
-                                Triple(
-                                    stringResource(Res.string.manga_check_progress_label),
-                                    progressRatioLabel
-                                ) {
-                                    progressRatioLabel = it
-                                    upConfig { hideProgressRatioLabel = !it }
-                                },
-                                Triple(
-                                    stringResource(Res.string.manga_check_progress),
-                                    progressRatio
-                                ) {
-                                    progressRatio = it
-                                    upConfig { hideProgressRatio = !it }
-                                },
-                            ),
-                        )
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(top = DesignTokens.spacingDefault),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = stringResource(Res.string.manga_header_orientation),
-                                color = colors.primaryText,
-                                fontSize = 14.sp,
-                            )
-                            Spacer(Modifier.width(DesignTokens.spacingDefault))
-                            RadioItem(
-                                label = stringResource(Res.string.manga_radio_left),
-                                value = INFO_BAR_ALIGN_LEFT,
-                                selected = orientation == INFO_BAR_ALIGN_LEFT,
-                            ) {
-                                orientation = it
-                                upConfig { footerOrientation = it }
-                            }
-                            Spacer(Modifier.width(DesignTokens.spacingMd))
-                            RadioItem(
-                                label = stringResource(Res.string.manga_radio_center),
-                                value = INFO_BAR_ALIGN_CENTER,
-                                selected = orientation == INFO_BAR_ALIGN_CENTER,
-                            ) {
-                                orientation = it
-                                upConfig { footerOrientation = it }
-                            }
-                        }
+                    Spacer(Modifier.width(DesignTokens.spacingMd))
+                    RadioItem(
+                        label = stringResource(Res.string.manga_radio_center),
+                        value = INFO_BAR_ALIGN_CENTER,
+                        selected = orientation == INFO_BAR_ALIGN_CENTER,
+                    ) {
+                        orientation = it
+                        upConfig { footerOrientation = it }
                     }
                 }
             }

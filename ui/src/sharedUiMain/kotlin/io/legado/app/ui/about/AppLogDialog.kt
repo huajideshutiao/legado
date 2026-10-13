@@ -6,6 +6,7 @@ package io.legado.app.ui.about
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,13 +21,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppTextButton
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.linkifyText
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -58,14 +57,15 @@ fun AppLogDialogContent(
     // 选中的堆栈日志 (非 null 时弹出堆栈对话框)
     var stackTraceItem by remember { mutableStateOf<Triple<Long, String, Throwable?>?>(null) }
 
-    Column(Modifier.fillMaxWidth()) {
-        DialogTitleBar(
-            title = stringResource(Res.string.log),
-            onBack = onDismiss,
-            actions = {
-                AppTextButton(text = stringResource(Res.string.clear), onClick = AppLog::clear)
-            },
-        )
+    AppDialogScaffold(
+        onDismissRequest = onDismiss,
+        title = stringResource(Res.string.log),
+        titleActions = {
+            AppTextButton(text = stringResource(Res.string.clear), onClick = AppLog::clear)
+        },
+        contentPadding = PaddingValues(0.dp),
+        properties = AppDialogSizes.properties(),
+    ) {
         SelectionContainer(
             Modifier
                 .weight(1f)
@@ -129,18 +129,7 @@ private fun LogItem(
 fun AppLogDialog(
     onDismiss: () -> Unit,
 ) {
-    val colors = AppTheme.colors
-    AppDialog(
-        onDismissRequest = onDismiss,
-        properties = AppDialogSizes.properties(),
-    ) {
-        // 圆角/底色收口在 AppDialogSurface, 尺寸走对话框统一口径 (项目其它对话框同款)
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(),
-        ) {
-            AppLogDialogContent(onDismiss)
-        }
-    }
+    AppLogDialogContent(onDismiss = onDismiss)
 }
 
 /**

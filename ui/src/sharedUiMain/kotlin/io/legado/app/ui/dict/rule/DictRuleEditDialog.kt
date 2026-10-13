@@ -7,10 +7,10 @@ package io.legado.app.ui.dict.rule
 //   "dict_rule_edit_copy_success" to "已复制"
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.DropdownMenuItem
@@ -25,11 +25,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.DictRule
 import io.legado.app.help.toast.Toasters
-import io.legado.app.ui.compose.component.AppDialogSurface
+import io.legado.app.ui.compose.component.AppDialogScaffold
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppUnderlineTextField
-import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -59,7 +60,7 @@ import org.jetbrains.compose.resources.stringResource
  * # 业务对齐 (对照 app 端原版)
  *
  * - 字段: 名称 (name) / URL 规则 (urlRule) / 显示规则 (showRule) 三个 EditEntity, 与原版完全一致;
- * - 标题栏右侧: 保存 (ic_save) + OverflowMenu (复制规则 / 粘贴规则);
+ * - 顶栏 (标准): 标题 + 保存 (ic_save) + OverflowMenu (复制规则 / 粘贴规则);
  * - 保存: 委托 [DictRuleEditViewModelShared.save] (delete 旧 + insert 新), 完成后回调 [onConfirm]
  *   + [onDismiss] (与 app 端 `viewModel.save(getDictRule()) { dismiss }` 等价,
  *   原 onFinally 在成功/失败均触发, 与 app 端一致);
@@ -143,79 +144,76 @@ fun DictRuleEditDialog(
         }
     }
 
-    AppDialogSurface(
-        modifier = Modifier.fillMaxWidth().padding(DesignTokens.spacingDefault),
-    ) {
-        Column(Modifier.fillMaxWidth()) {
-            DialogTitleBar(
-                title = titleText,
-                onBack = onDismiss,
-                actions = {
-                    IconButton(onClick = { save() }) {
-                        Icon(
-                            painter = painterResource(Res.drawable.ic_save),
-                            contentDescription = saveDescText,
-                        )
-                    }
-                    OverflowMenu { dismissMenu ->
-                        // 复制规则: 仅当调用方提供 clipTextSink 时渲染 (与 app 端 sendToClip 等价)
-                        if (clipTextSink != null) {
-                            DropdownMenuItem(
-                                onClick = {
-                                    dismissMenu()
-                                    // shared.copyRule 内部: GSON.toJson(rule) + clipTextSink(text)
-                                    shared.copyRule(getDictRule())
-                                    Toasters.get().toast(copySuccessText)
-                                },
-                            ) {
-                                Text(copyRuleText, color = colors.primaryText)
-                            }
-                        }
-                        DropdownMenuItem(
-                            onClick = {
-                                dismissMenu()
-                                shared.pasteRule { pasted ->
-                                    // 与 app 端 upRuleView 一致: 把粘贴的规则字段写回输入框
-                                    name = pasted.name
-                                    urlRule = pasted.urlRule
-                                    showRule = pasted.showRule
-                                }
-                            },
-                        ) {
-                            Text(pasteRuleText, color = colors.primaryText)
-                        }
-                    }
-                },
-            )
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-            ) {
-                AppUnderlineTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = nameLabelText,
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.heightIn(min = DesignTokens.spacingDefault))
-                AppUnderlineTextField(
-                    value = urlRule,
-                    onValueChange = { urlRule = it },
-                    label = urlRuleLabelText,
-                    singleLine = false,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.heightIn(min = DesignTokens.spacingDefault))
-                AppUnderlineTextField(
-                    value = showRule,
-                    onValueChange = { showRule = it },
-                    label = showRuleLabelText,
-                    singleLine = false,
-                    modifier = Modifier.fillMaxWidth(),
+    AppDialogScaffold(
+        onDismissRequest = onDismiss,
+        title = titleText,
+        titleActions = {
+            IconButton(onClick = { save() }) {
+                Icon(
+                    painter = painterResource(Res.drawable.ic_save),
+                    contentDescription = saveDescText,
                 )
             }
+            OverflowMenu { dismissMenu ->
+                // 复制规则: 仅当调用方提供 clipTextSink 时渲染 (与 app 端 sendToClip 等价)
+                if (clipTextSink != null) {
+                    DropdownMenuItem(
+                        onClick = {
+                            dismissMenu()
+                            // shared.copyRule 内部: GSON.toJson(rule) + clipTextSink(text)
+                            shared.copyRule(getDictRule())
+                            Toasters.get().toast(copySuccessText)
+                        },
+                    ) {
+                        Text(copyRuleText, color = colors.primaryText)
+                    }
+                }
+                DropdownMenuItem(
+                    onClick = {
+                        dismissMenu()
+                        shared.pasteRule { pasted ->
+                            // 与 app 端 upRuleView 一致: 把粘贴的规则字段写回输入框
+                            name = pasted.name
+                            urlRule = pasted.urlRule
+                            showRule = pasted.showRule
+                        }
+                    },
+                ) {
+                    Text(pasteRuleText, color = colors.primaryText)
+                }
+            }
+        },
+        contentPadding = PaddingValues(0.dp),
+        properties = AppDialogSizes.properties(),
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            AppUnderlineTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = nameLabelText,
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.heightIn(min = DesignTokens.spacingDefault))
+            AppUnderlineTextField(
+                value = urlRule,
+                onValueChange = { urlRule = it },
+                label = urlRuleLabelText,
+                singleLine = false,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.heightIn(min = DesignTokens.spacingDefault))
+            AppUnderlineTextField(
+                value = showRule,
+                onValueChange = { showRule = it },
+                label = showRuleLabelText,
+                singleLine = false,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

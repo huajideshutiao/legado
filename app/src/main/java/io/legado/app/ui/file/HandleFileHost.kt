@@ -8,7 +8,7 @@ import android.webkit.MimeTypeMap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -51,15 +51,13 @@ import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialogContent
 import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppSelectorList
 import io.legado.app.ui.compose.component.AppUnderlineTextField
-import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.book.import.ImportFileRow
 import io.legado.app.ui.compose.component.SelectActionBar
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
@@ -524,109 +522,102 @@ fun FilePickerHost(
         }
     }
 
-    AppDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
+        title = param.title
+            ?: if (viewModel.isSelectDir) rememberString("folder_chooser") else rememberString("file_chooser"),
+        titleActions = {
+            IconButton(onClick = { createFolderDialog = true }) {
+                Icon(
+                    painter = rememberPainter("ic_create_folder_outline"),
+                    contentDescription = rememberString("create_folder"),
+                    tint = colors.primaryText,
+                )
+            }
+        },
+        contentPadding = PaddingValues(0.dp),
         properties = AppDialogSizes.properties(),
     ) {
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(),
+        Text(
+            text = path,
+            color = colors.secondaryText,
+            fontSize = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(DesignTokens.spacingDefault),
+        )
+        Spacer(Modifier.height(2.dp)) // 对照静态 RefreshProgressBar 占位
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = false),
         ) {
-            Column {
-                DialogTitleBar(
-                    title = param.title
-                        ?: if (viewModel.isSelectDir) rememberString("folder_chooser") else rememberString("file_chooser"),
-                    actions = {
-                        IconButton(onClick = { createFolderDialog = true }) {
-                            Icon(
-                                painter = rememberPainter("ic_create_folder_outline"),
-                                contentDescription = rememberString("create_folder"),
-                                tint = colors.primaryText,
-                            )
-                        }
-                    },
-                )
-                Text(
-                    text = path,
-                    color = colors.secondaryText,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(DesignTokens.spacingDefault),
-                )
-                Spacer(Modifier.height(2.dp)) // 对照静态 RefreshProgressBar 占位
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f, fill = false),
-                ) {
-                    FastScrollLazyColumn(
-                        state = rememberLazyListState(),
-                        modifier = Modifier.fillMaxWidth(),
-                        // 目录/文件少时列表随内容收缩 (对照原版对话框的自适应高度)
-                        wrapContentHeight = true,
-                    ) {
-                        items(items, key = { it.file.toString() }) { item ->
-                            fun onItemClick(item: ImportBook) {
-                                when {
-                                    item.isUpDir -> {
-                                        if (viewModel.subDocs.isNotEmpty()) {
-                                            viewModel.subDocs.removeAt(viewModel.subDocs.lastIndex)
-                                            viewModel.upFiles(viewModel.lastDir)
-                                        }
-                                    }
-
-                                    item.isDir -> {
-                                        item.file.asFile()?.let {
-                                            viewModel.subDocs.add(it)
-                                            viewModel.upFiles(it)
-                                        }
-                                    }
-
-                                    else -> selected =
-                                        if (item in selected) selected - item else selected + item
+            FastScrollLazyColumn(
+                state = rememberLazyListState(),
+                modifier = Modifier.fillMaxWidth(),
+                // 目录/文件少时列表随内容收缩 (对照原版对话框的自适应高度)
+                wrapContentHeight = true,
+            ) {
+                items(items, key = { it.file.toString() }) { item ->
+                    fun onItemClick(item: ImportBook) {
+                        when {
+                            item.isUpDir -> {
+                                if (viewModel.subDocs.isNotEmpty()) {
+                                    viewModel.subDocs.removeAt(viewModel.subDocs.lastIndex)
+                                    viewModel.upFiles(viewModel.lastDir)
                                 }
                             }
 
-                            ImportFileRow(
-                                name = item.name,
-                                isDir = item.isDir,
-                                isUpDir = item.isUpDir,
-                                checkable = !item.isUpDir && !item.isDir,
-                                checked = selected.contains(item),
-                                onBookShelf = false,
-                                tag = item.name.substringAfterLast("."),
-                                size = item.size,
-                                lastModified = item.lastModified,
-                                onClick = { onItemClick(item) },
-                            )
+                            item.isDir -> {
+                                item.file.asFile()?.let {
+                                    viewModel.subDocs.add(it)
+                                    viewModel.upFiles(it)
+                                }
+                            }
+
+                            else -> selected =
+                                if (item in selected) selected - item else selected + item
                         }
                     }
-                    if (emptyVisible) {
-                        Text(
-                            text = rememberString("empty"),
-                            color = colors.secondaryText,
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .padding(DesignTokens.spacingLg),
-                        )
-                    }
+
+                    ImportFileRow(
+                        name = item.name,
+                        isDir = item.isDir,
+                        isUpDir = item.isUpDir,
+                        checkable = !item.isUpDir && !item.isDir,
+                        checked = selected.contains(item),
+                        onBookShelf = false,
+                        tag = item.name.substringAfterLast("."),
+                        size = item.size,
+                        lastModified = item.lastModified,
+                        onClick = { onItemClick(item) },
+                    )
                 }
-                SelectActionBar(
-                    selectCount = selected.size,
-                    allCount = items.count { !it.isUpDir && !it.isDir },
-                    onSelectAll = { all ->
-                        selected = if (all) items.filter { !it.isUpDir && !it.isDir }.toSet() else emptySet()
-                    },
-                    onRevertSelection = {
-                        selected = items.filter { !it.isUpDir && !it.isDir }.toSet() - selected
-                    },
-                    mainActionText = rememberString("confirm"),
-                    onMainAction = { onConfirm() },
+            }
+            if (emptyVisible) {
+                Text(
+                    text = rememberString("empty"),
+                    color = colors.secondaryText,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(DesignTokens.spacingLg),
                 )
             }
         }
+        SelectActionBar(
+            selectCount = selected.size,
+            allCount = items.count { !it.isUpDir && !it.isDir },
+            onSelectAll = { all ->
+                selected = if (all) items.filter { !it.isUpDir && !it.isDir }.toSet() else emptySet()
+            },
+            onRevertSelection = {
+                selected = items.filter { !it.isUpDir && !it.isDir }.toSet() - selected
+            },
+            mainActionText = rememberString("confirm"),
+            onMainAction = { onConfirm() },
+        )
     }
 
     if (createFolderDialog) {

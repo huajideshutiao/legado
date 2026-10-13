@@ -7,6 +7,7 @@
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -31,13 +32,10 @@ import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppUnderlineTextField
-import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
@@ -60,6 +58,9 @@ import org.jetbrains.compose.resources.stringResource
  *
  * 对照 app 端 KeyboardAssistsConfig: DAO flow 列表 + 拖拽排序 (落定按 serialNo 重排落库) +
  * 新增/编辑弹窗 (key/value 双输入, 编辑=删旧插新保持 serialNo, 新增=maxSerialNo+1)。
+ *
+ * 顶栏进标准壳体 ([AppDialogScaffold] 的 title/titleActions), 列表骨架 [RuleManageScaffold]
+ * 只承载列表本身, 无底栏。
  */
 @Composable
 internal fun KeyboardAssistsConfigOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
@@ -79,68 +80,62 @@ internal fun KeyboardAssistsConfigOverlayContent(overlay: AppOverlay.Dialog, nav
         }
     }
 
-    AppDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
+        title = stringResource(Res.string.assists_key_config),
+        titleActions = {
+            IconButton(onClick = {
+                editing = null
+                showEdit = true
+            }) {
+                Icon(
+                    painter = rememberPainter("ic_add"),
+                    contentDescription = stringResource(Res.string.add),
+                    tint = AppTheme.colors.primaryText,
+                )
+            }
+        },
         properties = AppDialogSizes.properties(),
+        contentPadding = PaddingValues(0.dp),
+        // 原 appDialogSize(fullHeight = true): 高度锁定 0.8 屏高
+        fullHeight = true,
     ) {
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(fullHeight = true),
-        ) {
-            RuleManageScaffold(
-                items = items,
-                itemKey = { "${it.type}#${it.key}" },
-                onMove = { from, to -> items.add(to, items.removeAt(from)) },
-                bottomPadding = rememberNavigationBarPaddingValues(),
-                titleBar = {
-                    DialogTitleBar(
-                        title = stringResource(Res.string.assists_key_config),
-                        onBack = onDismiss,
-                        actions = {
-                            IconButton(onClick = {
-                                editing = null
-                                showEdit = true
-                            }) {
-                                Icon(
-                                    painter = rememberPainter("ic_add"),
-                                    contentDescription = stringResource(Res.string.add),
-                                    tint = AppTheme.colors.primaryText,
-                                )
+        RuleManageScaffold(
+            items = items,
+            itemKey = { "${it.type}#${it.key}" },
+            onMove = { from, to -> items.add(to, items.removeAt(from)) },
+            bottomPadding = rememberNavigationBarPaddingValues(),
+        ) { item ->
+            val colors = AppTheme.colors
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        editing = item
+                        showEdit = true
+                    }
+                    .longPressDraggableHandle(onDragStopped = { persistOrder(items, scope) })
+                    .padding(DesignTokens.spacingLg),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    item.key,
+                    color = colors.primaryText,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    painter = rememberPainter("ic_clear_all"),
+                    contentDescription = stringResource(Res.string.delete),
+                    tint = colors.primaryText,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clickable {
+                            scope.launch(IoDispatcher) {
+                                AppDbProviders.get().keyboardAssistsDao.delete(item)
                             }
                         },
-                    )
-                },
-            ) { item ->
-                val colors = AppTheme.colors
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            editing = item
-                            showEdit = true
-                        }
-                        .longPressDraggableHandle(onDragStopped = { persistOrder(items, scope) })
-                        .padding(DesignTokens.spacingLg),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        item.key,
-                        color = colors.primaryText,
-                        maxLines = 1,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Icon(
-                        painter = rememberPainter("ic_clear_all"),
-                        contentDescription = stringResource(Res.string.delete),
-                        tint = colors.primaryText,
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clickable {
-                                scope.launch(IoDispatcher) {
-                                    AppDbProviders.get().keyboardAssistsDao.delete(item)
-                                }
-                            },
-                    )
-                }
+                )
             }
         }
     }

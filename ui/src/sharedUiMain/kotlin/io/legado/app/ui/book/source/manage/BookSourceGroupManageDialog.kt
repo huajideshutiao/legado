@@ -2,7 +2,7 @@
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -23,20 +23,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.AppDbProviders
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
-import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppUnderlineTextField
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.add
+import legado.ui.generated.resources.add_group
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.delete
 import legado.ui.generated.resources.edit
+import legado.ui.generated.resources.group_edit
 import legado.ui.generated.resources.group_manage
 import legado.ui.generated.resources.group_name
 import legado.ui.generated.resources.ic_add
@@ -52,6 +52,9 @@ import org.jetbrains.compose.resources.stringResource
  * [BookSourceViewModelShared] (addGroup/upGroup/delGroup 已下沉 commonMain),
  * 分组列表订阅 `bookSourceDao.flowGroups()` (live Flow, DB 变更自动刷新)。
  *
+ * 新建/改名按原版是独立 alert 子弹窗 (标题"添加分组"/"编辑分组" + 输入框 + 确定/取消),
+ * 不带顶栏与返回箭头; 列表态才是带顶栏的主弹窗。
+ *
  * 与书架分组 ([BookGroup]) 无关, 勿与 book/group/GroupManageDialog 混用。
  *
  * @param onDismiss 关闭回调
@@ -65,99 +68,81 @@ fun BookSourceGroupManageDialog(onDismiss: () -> Unit) {
     LaunchedEffect(Unit) {
         AppDbProviders.get().bookSourceDao.flowGroups().collect { groups = it }
     }
-    // null=列表态, (null, "")=新建, (oldName, value)=编辑
+    // null=无编辑弹窗, (null, "")=新建, (oldName, value)=改名
     var editing by remember { mutableStateOf<Pair<String?, String>?>(null) }
 
-    AppDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
+        title = stringResource(Res.string.group_manage),
         properties = AppDialogSizes.properties(),
-    ) {
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(),
-        ) {
-            Column {
-                DialogTitleBar(
-                    title = stringResource(Res.string.group_manage),
-                    onBack = onDismiss,
-                    actions = {
-                        IconButton(onClick = { editing = null to "" }) {
-                            Icon(
-                                painter = painterResource(Res.drawable.ic_add),
-                                contentDescription = stringResource(Res.string.add),
-                                tint = colors.primaryText,
-                            )
-                        }
-                    },
+        titleActions = {
+            IconButton(onClick = { editing = null to "" }) {
+                Icon(
+                    painter = painterResource(Res.drawable.ic_add),
+                    contentDescription = stringResource(Res.string.add),
+                    tint = colors.primaryText,
                 )
-                if (editing != null) {
-                    Column(
-                        Modifier.padding(
-                            start = DesignTokens.spacingDefault,
-                            top = DesignTokens.spacingLg,
-                            end = DesignTokens.spacingDefault,
-                            bottom = DesignTokens.spacingDefault,
-                        )
-                    ) {
-                        AppUnderlineTextField(
-                            value = editing!!.second,
-                            onValueChange = { editing = editing!!.first to it },
-                            label = stringResource(Res.string.group_name),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Row(
-                            Modifier.fillMaxWidth().padding(top = DesignTokens.spacingDefault),
-                            horizontalArrangement = Arrangement.End,
-                        ) {
-                            AppTextButton(text = stringResource(Res.string.cancel)) {
-                                editing = null
-                            }
-                            AppTextButton(
-                                text = stringResource(Res.string.ok),
-                                enabled = editing!!.second.isNotBlank(),
-                            ) {
-                                val (old, new) = editing!!
-                                val name = new.trim()
-                                // 对照 app 端 addGroup: 新分组名给所有未分组书源 (空串时 app 端不调用)
-                                if (old == null) viewModel.addGroup(name)
-                                else viewModel.upGroup(old, name)
-                                editing = null
-                            }
-                        }
-                    }
-                } else {
-                    LazyColumn(Modifier.heightIn(max = AppDialogSizes.textAreaMaxHeight())) {
-                        items(items = groups, key = { it }) { group ->
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingMd),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Text(
-                                    text = group,
-                                    color = colors.primaryText,
-                                    fontSize = 16.sp,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Text(
-                                    text = stringResource(Res.string.edit),
-                                    color = colors.secondaryText,
-                                    fontSize = 14.sp,
-                                    modifier = Modifier.clickable { editing = group to group }
-                                        .padding(DesignTokens.spacingDefault),
-                                )
-                                Text(
-                                    text = stringResource(Res.string.delete),
-                                    color = colors.secondaryText,
-                                    fontSize = 14.sp,
-                                    modifier = Modifier.clickable { viewModel.delGroup(group) }
-                                        .padding(DesignTokens.spacingDefault),
-                                )
-                            }
-                        }
-                    }
+            }
+        },
+        contentPadding = PaddingValues(0.dp),
+    ) {
+        LazyColumn(Modifier.heightIn(max = AppDialogSizes.textAreaMaxHeight())) {
+            items(items = groups, key = { it }) { group ->
+                Row(
+                    Modifier.fillMaxWidth()
+                        .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingMd),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = group,
+                        color = colors.primaryText,
+                        fontSize = 16.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = stringResource(Res.string.edit),
+                        color = colors.secondaryText,
+                        fontSize = 14.sp,
+                        modifier = Modifier.clickable { editing = group to group }
+                            .padding(DesignTokens.spacingDefault),
+                    )
+                    Text(
+                        text = stringResource(Res.string.delete),
+                        color = colors.secondaryText,
+                        fontSize = 14.sp,
+                        modifier = Modifier.clickable { viewModel.delGroup(group) }
+                            .padding(DesignTokens.spacingDefault),
+                    )
                 }
             }
+        }
+    }
+
+    // 新建/改名子弹窗 (对照原版 addGroup/editGroup 的 alert: 标题 + 输入框 + 确定/取消, 无顶栏)
+    editing?.let { (old, value) ->
+        AppAlertDialog(
+            onDismissRequest = { editing = null },
+            title = stringResource(
+                if (old == null) Res.string.add_group else Res.string.group_edit
+            ),
+            okButton = AlertButton(
+                text = stringResource(Res.string.ok),
+                enabled = value.isNotBlank(),
+            ) {
+                val name = value.trim()
+                // 对照 app 端 addGroup: 新分组名给所有未分组书源 (空串时 app 端不调用)
+                if (old == null) viewModel.addGroup(name) else viewModel.upGroup(old, name)
+                editing = null
+            },
+            cancelButton = AlertButton(text = stringResource(Res.string.cancel)) { editing = null },
+        ) {
+            AppUnderlineTextField(
+                value = value,
+                onValueChange = { editing = old to it },
+                label = stringResource(Res.string.group_name),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

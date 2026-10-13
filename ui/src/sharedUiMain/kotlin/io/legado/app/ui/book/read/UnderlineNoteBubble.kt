@@ -269,10 +269,7 @@ private fun UnderlineBubbleCard(
                 onLineStyleChange = onLineStyleChange,
                 modifier = Modifier.fillMaxWidth(),
                 trailing = {
-                    AppTextButton(
-                        text = stringResource(Res.string.delete),
-                        color = DesignTokens.arcoBlue6,
-                    ) { onDelete() }
+                    AppTextButton(text = stringResource(Res.string.delete)) { onDelete() }
                 },
             )
         }

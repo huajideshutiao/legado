@@ -2,7 +2,7 @@
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -28,16 +28,13 @@ import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.storage.BackupFileOps
-import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.association.ImportReplaceRuleItemsDialog
 import io.legado.app.ui.association.ImportReplaceRuleViewModelShared
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
-import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppUnderlineTextField
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.replace.ReplaceRuleListScreen
@@ -58,9 +55,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.add
+import legado.ui.generated.resources.add_group
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.delete
 import legado.ui.generated.resources.edit
+import legado.ui.generated.resources.group_edit
 import legado.ui.generated.resources.group_manage
 import legado.ui.generated.resources.group_name
 import legado.ui.generated.resources.ic_add
@@ -218,97 +217,80 @@ private fun ReplaceGroupManageDialog(
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    // null=列表态, (null, "")=新建, (oldName, value)=编辑
+    // null=无编辑弹窗, (null, "")=新建, (oldName, value)=改名
     var editing by remember { mutableStateOf<Pair<String?, String>?>(null) }
 
-    AppDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
+        title = stringResource(Res.string.group_manage),
         properties = AppDialogSizes.properties(),
-    ) {
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(),
-        ) {
-            Column {
-                DialogTitleBar(
-                    title = stringResource(Res.string.group_manage),
-                    onBack = onDismiss,
-                    actions = {
-                        IconButton(onClick = { editing = null to "" }) {
-                            Icon(
-                                painter = painterResource(Res.drawable.ic_add),
-                                contentDescription = stringResource(Res.string.add),
-                                tint = colors.primaryText,
-                            )
-                        }
-                    },
+        titleActions = {
+            IconButton(onClick = { editing = null to "" }) {
+                Icon(
+                    painter = painterResource(Res.drawable.ic_add),
+                    contentDescription = stringResource(Res.string.add),
+                    tint = colors.primaryText,
                 )
-                if (editing != null) {
-                    Column(
-                        Modifier.padding(
-                            start = DesignTokens.spacingDefault,
-                            top = DesignTokens.spacingLg,
-                            end = DesignTokens.spacingDefault,
-                            bottom = DesignTokens.spacingDefault,
-                        )
-                    ) {
-                        AppUnderlineTextField(
-                            value = editing!!.second,
-                            onValueChange = { editing = editing!!.first to it },
-                            label = stringResource(Res.string.group_name),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Row(
-                            Modifier.fillMaxWidth().padding(top = DesignTokens.spacingDefault),
-                            horizontalArrangement = Arrangement.End,
-                        ) {
-                            AppTextButton(text = stringResource(Res.string.cancel)) {
-                                editing = null
-                            }
-                            AppTextButton(
-                                text = stringResource(Res.string.ok),
-                                enabled = editing!!.second.isNotBlank(),
-                            ) {
-                                val (old, new) = editing!!
-                                val name = new.trim()
-                                if (old == null) onAddGroup(name) else onRenameGroup(old, name)
-                                editing = null
-                            }
-                        }
-                    }
-                } else {
-                    LazyColumn(Modifier.heightIn(max = AppDialogSizes.textAreaMaxHeight())) {
-                        items(items = groups, key = { it }) { group ->
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingMd),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Text(
-                                    text = group,
-                                    color = colors.primaryText,
-                                    fontSize = 16.sp,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Text(
-                                    text = stringResource(Res.string.edit),
-                                    color = colors.secondaryText,
-                                    fontSize = 14.sp,
-                                    modifier = Modifier.clickable { editing = group to group }
-                                        .padding(DesignTokens.spacingDefault),
-                                )
-                                Text(
-                                    text = stringResource(Res.string.delete),
-                                    color = colors.secondaryText,
-                                    fontSize = 14.sp,
-                                    modifier = Modifier.clickable { onDeleteGroup(group) }
-                                        .padding(DesignTokens.spacingDefault),
-                                )
-                            }
-                        }
-                    }
+            }
+        },
+        contentPadding = PaddingValues(0.dp),
+    ) {
+        LazyColumn(Modifier.heightIn(max = AppDialogSizes.textAreaMaxHeight())) {
+            items(items = groups, key = { it }) { group ->
+                Row(
+                    Modifier.fillMaxWidth()
+                        .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingMd),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = group,
+                        color = colors.primaryText,
+                        fontSize = 16.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = stringResource(Res.string.edit),
+                        color = colors.secondaryText,
+                        fontSize = 14.sp,
+                        modifier = Modifier.clickable { editing = group to group }
+                            .padding(DesignTokens.spacingDefault),
+                    )
+                    Text(
+                        text = stringResource(Res.string.delete),
+                        color = colors.secondaryText,
+                        fontSize = 14.sp,
+                        modifier = Modifier.clickable { onDeleteGroup(group) }
+                            .padding(DesignTokens.spacingDefault),
+                    )
                 }
             }
+        }
+    }
+
+    // 新建/改名子弹窗 (对照原版 addGroup/editGroup 的 alert: 标题 + 输入框 + 确定/取消, 无顶栏)
+    editing?.let { (old, value) ->
+        AppAlertDialog(
+            onDismissRequest = { editing = null },
+            title = stringResource(
+                if (old == null) Res.string.add_group else Res.string.group_edit
+            ),
+            okButton = AlertButton(
+                text = stringResource(Res.string.ok),
+                enabled = value.isNotBlank(),
+            ) {
+                val name = value.trim()
+                if (old == null) onAddGroup(name) else onRenameGroup(old, name)
+                editing = null
+            },
+            cancelButton = AlertButton(text = stringResource(Res.string.cancel)) { editing = null },
+        ) {
+            AppUnderlineTextField(
+                value = value,
+                onValueChange = { editing = old to it },
+                label = stringResource(Res.string.group_name),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

@@ -29,6 +29,10 @@ import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.source.SourceLoginDialog
 import io.legado.app.ui.book.source.SourceLoginFormState
+import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppDialogSurface
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.decodeStringMapOrNull
@@ -123,7 +127,7 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
     // ===== 挂起: 不渲染 UI 窗口 (新路由可见) =====
     // 注意: 挂起 return 必须位于全部状态声明之后 —— return 之前已声明的节点
     // (源解析状态 / loginFormState / 信号收集) 在挂起期间保持存活, 恢复后原样呈现;
-    // return 之后的 UI 节点 (EditDialogHost/表单) 挂起时移出组合, 恢复时重建。
+    // return 之后的 UI 节点 (加载占位/表单) 挂起时移出组合, 恢复时重建。
     if (suspended) return
 
     // 源解析完成但拿不到可登录内容 (源不在库 / loginUrl、loginUi 双空):
@@ -158,24 +162,27 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
         return
     }
 
-    // 统一居中对话框外壳: 加载占位 / 表单登录 共用同一
-    // EditDialogHost (AppDialog + appDialogSize 居中卡片), 全端"表单登录=对话框"。
-    EditDialogHost(onDismiss = { navigator.dismissOverlay(overlay.key) }) {
-        when {
-            // 源还没解析出来: 对话框内加载占位, 先不建任何登录内容
-            loading -> LoginLoadingPlaceholder()
-
-            // 表单登录: 对照原版 BaseSource.showLoginDialog 的
-            // showDialogFragment<SourceLoginDialog> 分支。
-            else -> SourceLoginDialog(
-                source = formSource!!,
-                onDismiss = { navigator.dismissOverlay(overlay.key) },
-                onOpenUrl = { PlatformCapabilityProviders.get().openExternalUrl(it) },
-                book = book,
-                chapter = chapter,
-                formState = loginFormState,
-            )
+    // 表单登录: 对照原版 BaseSource.showLoginDialog 的 showDialogFragment<SourceLoginDialog> 分支。
+    // SourceLoginDialog 自带窗口 (AppDialogScaffold), 不再包外壳 (两层窗口会叠两份背景暗化)。
+    when {
+        // 源还没解析出来: 对话框内加载占位, 先不建任何登录内容
+        loading -> AppDialog(
+            onDismissRequest = { navigator.dismissOverlay(overlay.key) },
+            properties = AppDialogSizes.properties(),
+        ) {
+            AppDialogSurface(modifier = Modifier.appDialogSize()) {
+                LoginLoadingPlaceholder()
+            }
         }
+
+        else -> SourceLoginDialog(
+            source = formSource!!,
+            onDismiss = { navigator.dismissOverlay(overlay.key) },
+            onOpenUrl = { PlatformCapabilityProviders.get().openExternalUrl(it) },
+            book = book,
+            chapter = chapter,
+            formState = loginFormState,
+        )
     }
 }
 

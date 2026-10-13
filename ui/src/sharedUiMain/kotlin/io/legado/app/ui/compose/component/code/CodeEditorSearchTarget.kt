@@ -7,7 +7,7 @@ import androidx.compose.ui.text.TextRange
  * 匹配区间写入 [searchHighlight], 由聚焦字段的 CodeTextField 叠加渲染
  * (全量黄底 + 当前命中强调色, 对齐原版 BackgroundColorSpan 高亮); 同时移动选区定位。
  *
- * 共享件: BookSourceEditScreen / CodeDialogContent / JsEditScreen 的 KeyboardToolbar 共用
+ * 共享件: BookSourceEditScreen / CodeDialog / JsEditScreen 的 KeyboardToolbar 共用
  * (原版三者都是 CodeView 自带查找替换, 下沉后收为同一适配器)。
  */
 class CodeEditorSearchTarget(

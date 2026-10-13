@@ -1,6 +1,6 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -9,7 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.HttpTTS
@@ -23,12 +23,8 @@ import io.legado.app.help.tts.OneShotTts
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.read.config.ReadAloudConfigScreen
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
-import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.FileFilter
@@ -55,8 +51,10 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * 朗读设置对话框形态 (公共对话框基类: 0.9 宽居中 + fillet 底色 + shapeDefault 8dp 圆角 +
- * DialogTitleBar 标题栏; 2026-10-11 用户拍板偏离原版 BasePrefDialogFragment 的
+ * 标准顶栏; 2026-10-11 用户拍板偏离原版 BasePrefDialogFragment 的
  * 无圆角/无标题形态, 对齐其他对话框)。由朗读控制面板"设置"按钮弹起。
+ *
+ * 顶栏进标准壳体 ([AppDialogScaffold] 的 title), 无底栏; 正文 = 设置条目列表。
  *
  * 暂无对应 ScreenModel, 电话暂停开关/朗读引擎摘要等状态用 remember { mutableStateOf } 暂存,
  * 待宿主下沉后替换为 ScreenModel 统一管理。
@@ -68,25 +66,15 @@ import org.jetbrains.compose.resources.stringResource
 fun ReadAloudConfigDialogHost(
     onDismiss: () -> Unit,
 ) {
-    AppDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
+        title = stringResource(Res.string.aloud_config),
         properties = AppDialogSizes.properties(),
+        contentPadding = PaddingValues(0.dp),
     ) {
-        AppTheme {
-            AppDialogSurface(
-                modifier = Modifier.appDialogSize(),
-            ) {
-                Column {
-                    DialogTitleBar(
-                        title = stringResource(Res.string.aloud_config),
-                        onBack = onDismiss,
-                    )
-                    ReadAloudConfigContent(
-                        onSysTtsConfig = { PlatformCapabilityProviders.get().openTtsSettings() },
-                    )
-                }
-            }
-        }
+        ReadAloudConfigContent(
+            onSysTtsConfig = { PlatformCapabilityProviders.get().openTtsSettings() },
+        )
     }
 }
 

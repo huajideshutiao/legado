@@ -101,7 +101,9 @@ internal fun AppDropdownAnchor(
     var expanded by remember { mutableStateOf(false) }
     Box(modifier.clickable(enabled = enabled) { expanded = true }) {
         Row(
-            Modifier.padding(horizontal = DesignTokens.spacingXs, vertical = DesignTokens.spacingXs),
+            Modifier
+                .align(Alignment.CenterEnd)
+                .padding(horizontal = DesignTokens.spacingXs, vertical = DesignTokens.spacingXs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             leading?.invoke(this)

@@ -3,27 +3,24 @@ package io.legado.app.ui.about
 // 更新对话框 (四端唯一实现, 原 app 端 UpdateDialog 原命令式对话框基类(已删除) 下沉)。
 // 经 AppOverlay key="updateDialog" 渲染，payload=IntentData key 携带 UpdateCheckInfo。
 // 对照原版 UpdateDialog: 标题=新版本号, 操作区=下载按钮 (原版唯一的 menu_download),
-// 正文 MarkdownContentSelectable (multiplatformMarkdown, 与 MdDocDialog 同一渲染路径)。
+// 正文 MarkdownContentSelectable (multiplatformMarkdown, 与帮助文档同一渲染路径)。
 
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import io.legado.app.help.IntentData
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.update.UpdateCheckInfo
 import io.legado.app.model.Download
 import io.legado.app.ui.compose.MarkdownContentSelectable
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppTextButton
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
-import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
@@ -59,49 +56,41 @@ internal fun UpdateDialogOverlayContent(overlay: AppOverlay.Dialog, navigator: A
         }
         return
     }
-    AppDialog(
+    AppDialogScaffold(
         onDismissRequest = { navigator.dismissOverlay(overlay.key) },
+        title = updateInfo.versionName,
         properties = AppDialogSizes.properties(),
-    ) {
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(),
-        ) {
-            Column(Modifier.fillMaxWidth()) {
-                DialogTitleBar(
-                    title = updateInfo.versionName,
-                    onBack = { navigator.dismissOverlay(overlay.key) },
-                    actions = {
-                        // 对照原版 menu_download: url/name 非空才下载 (无本平台资产时不显示)
-                        if (updateInfo.hasAsset) {
-                            val downloadStartText = stringResource(Res.string.download_start)
-                            AppTextButton(text = stringResource(Res.string.action_download)) {
-                                Download.start(updateInfo.downloadUrl, updateInfo.fileName)
-                                Toasters.get().toast(downloadStartText)
-                            }
-                        }
-                        if (updateInfo.landingUrl.isNotBlank()) {
-                            AppTextButton(text = stringResource(Res.string.open_in_browser)) {
-                                PlatformServiceProviders.get().browser
-                                    .openUrl(updateInfo.landingUrl)
-                            }
-                        }
-                    },
-                )
-                MarkdownContentSelectable(
-                    content = updateInfo.releaseNote,
-                    // 滚动由 MarkdownContent 内部分支承担 (短文档 Column 自带 / 长文档 LazyColumn 虚拟化)
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f, fill = false)
-                        // 不留上边距: 顶栏底色 (bottomBackground) 与对话框底色 (fillet) 同值,
-                        // 正文上边距会被视觉并入顶栏, 顶栏显得偏高; 左右/底取 arco_spacing_default
-                        .padding(
-                            start = DesignTokens.spacingDefault,
-                            end = DesignTokens.spacingDefault,
-                            bottom = DesignTokens.spacingDefault,
-                        )
-                )
+        titleActions = {
+            // 对照原版 menu_download: url/name 非空才下载 (无本平台资产时不显示)
+            if (updateInfo.hasAsset) {
+                val downloadStartText = stringResource(Res.string.download_start)
+                AppTextButton(text = stringResource(Res.string.action_download)) {
+                    Download.start(updateInfo.downloadUrl, updateInfo.fileName)
+                    Toasters.get().toast(downloadStartText)
+                }
             }
-        }
+            if (updateInfo.landingUrl.isNotBlank()) {
+                AppTextButton(text = stringResource(Res.string.open_in_browser)) {
+                    PlatformServiceProviders.get().browser
+                        .openUrl(updateInfo.landingUrl)
+                }
+            }
+        },
+        contentPadding = PaddingValues(0.dp),
+    ) {
+        MarkdownContentSelectable(
+            content = updateInfo.releaseNote,
+            // 滚动由 MarkdownContent 内部分支承担 (短文档 Column 自带 / 长文档 LazyColumn 虚拟化)
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = false)
+                // 不留上边距: 顶栏底色 (bottomBackground) 与对话框底色 (fillet) 同值,
+                // 正文上边距会被视觉并入顶栏, 顶栏显得偏高; 左右/底取 arco_spacing_default
+                .padding(
+                    start = DesignTokens.spacingDefault,
+                    end = DesignTokens.spacingDefault,
+                    bottom = DesignTokens.spacingDefault,
+                )
+        )
     }
 }

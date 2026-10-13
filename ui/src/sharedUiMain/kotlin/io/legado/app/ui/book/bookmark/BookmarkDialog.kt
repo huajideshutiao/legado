@@ -5,7 +5,7 @@
 //   "bookmark_note" to "备注内容"
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -22,13 +22,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Bookmark
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppUnderlineTextField
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
@@ -74,63 +71,51 @@ fun BookmarkDialog(
     var bookText by remember { mutableStateOf(bookmark.bookText) }
     var content by remember { mutableStateOf(bookmark.content) }
 
-    AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(),
-        ) {
-            Column(Modifier.fillMaxWidth()) {
-                DialogTitleBar(
-                    title = titleText,
-                    onBack = onDismiss,
-                )
-
-                // 章节名 (只读展示, 对齐 app 端原版)
-                Text(
-                    text = bookmark.chapterName,
-                    color = colors.primaryText,
-                    fontSize = 16.sp,
-                    modifier = Modifier.padding(horizontal = DesignTokens.spacingDefault),
-                )
-
-                // 可滚动编辑区: 原文 + 备注
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 400.dp)
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = DesignTokens.spacingDefault),
-                ) {
-                    AppUnderlineTextField(
-                        value = bookText,
-                        onValueChange = { bookText = it },
-                        label = contentLabel,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    AppUnderlineTextField(
-                        value = content,
-                        onValueChange = { content = it },
-                        label = noteLabel,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-
-                // 底部按钮栏: 删除(可选) | 弹性间距 | 取消 | 确定
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = DesignTokens.spacingDefault),
-                ) {
-                    if (showDelete && onDelete != null) {
-                        AppTextButton(text = deleteText, color = DesignTokens.arcoBlue6) { onDelete() }
-                    }
-                    Spacer(Modifier.weight(1f))
-                    AppTextButton(text = cancelText, color = colors.secondaryText) { onDismiss() }
-                    AppTextButton(text = okText, color = DesignTokens.arcoBlue6) {
-                        // 回传新实例: 原地改字段后引用不变, 调用方 state 判定未变不重组
-                        onConfirm(bookmark.copy(bookText = bookText, content = content))
-                    }
-                }
+    AppDialogScaffold(
+        onDismissRequest = onDismiss,
+        title = titleText,
+        properties = AppDialogSizes.properties(),
+        contentPadding = PaddingValues(0.dp),
+        bottomBar = {
+            if (showDelete && onDelete != null) {
+                AppTextButton(text = deleteText) { onDelete() }
             }
+            Spacer(Modifier.weight(1f))
+            AppTextButton(text = cancelText, color = colors.secondaryText) { onDismiss() }
+            AppTextButton(text = okText) {
+                // 回传新实例: 原地改字段后引用不变, 调用方 state 判定未变不重组
+                onConfirm(bookmark.copy(bookText = bookText, content = content))
+            }
+        },
+    ) {
+        // 章节名 (只读展示, 对齐 app 端原版)
+        Text(
+            text = bookmark.chapterName,
+            color = colors.primaryText,
+            fontSize = 16.sp,
+            modifier = Modifier.padding(horizontal = DesignTokens.spacingDefault),
+        )
+
+        // 可滚动编辑区: 原文 + 备注
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = 400.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = DesignTokens.spacingDefault),
+        ) {
+            AppUnderlineTextField(
+                value = bookText,
+                onValueChange = { bookText = it },
+                label = contentLabel,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            AppUnderlineTextField(
+                value = content,
+                onValueChange = { content = it },
+                label = noteLabel,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

@@ -1,7 +1,6 @@
 package io.legado.app.ui.config
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,15 +15,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppCheckbox
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppNumberField
 import io.legado.app.ui.compose.component.AppTextButton
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
@@ -51,7 +48,7 @@ import io.legado.app.model.CheckSourceShared as CheckSource
  * 复选框联动逐条对齐：搜索/发现至少留一；详情关联章节/正文级联禁用；
  * 确定时校验超时值后写 CheckSource + prefs。
  *
- * 外壳走 [AppDialog] + [Surface] + [appDialogSize] (项目统一对话框底座): 少了它
+ * 外壳走 [AppDialogScaffold] 全高弹窗 (项目统一对话框底座): 少了它
  * 内容会被平铺进 Overlay 的 Box 里 —— 撑满窗口、无背景、贴着窗口顶, 不像对话框。
  *
  * @param onDismiss 关闭回调
@@ -75,117 +72,109 @@ fun CheckSourceConfigDialog(
     val lessThanStr = stringResource(Res.string.less_than)
     val secondsStr = stringResource(Res.string.seconds)
 
-    AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(),
+    AppDialogScaffold(
+        onDismissRequest = onDismiss,
+        title = stringResource(Res.string.check_source_config),
+        properties = AppDialogSizes.properties(),
+        contentPadding = PaddingValues(0.dp),
+        bottomBar = {
+            AppTextButton(
+                text = stringResource(Res.string.cancel),
+                color = AppTheme.colors.secondaryText,
+            ) {
+                onDismiss()
+            }
+            AppTextButton(text = stringResource(Res.string.ok)) {
+                val text = timeoutText
+                val minTimeout = 0L
+                when {
+                    text.isBlank() -> {
+                        onToast("$timeoutStr$cannotEmptyStr")
+                        return@AppTextButton
+                    }
+
+                    text.toLong() <= minTimeout -> {
+                        onToast("$timeoutStr$lessThanStr${minTimeout}$secondsStr")
+                        return@AppTextButton
+                    }
+
+                    else -> CheckSource.timeout = text.toLong() * 1000
+                }
+                CheckSource.checkSearch = checkSearch
+                CheckSource.checkDiscovery = checkDiscovery
+                CheckSource.checkInfo = checkInfo
+                CheckSource.checkCategory = checkCategory
+                CheckSource.checkContent = checkContent
+                CheckSource.putConfig()
+                onDismiss()
+            }
+        },
+    ) {
+        AppNumberField(
+            value = timeoutText,
+            onValueChange = { timeoutText = it },
+            label = stringResource(Res.string.check_source_timeout),
+            maxLength = 9,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = DesignTokens.spacingDefault)
+                .padding(top = DesignTokens.spacingDefault),
+        )
+        Text(
+            text = stringResource(Res.string.check_source_item),
+            color = AppTheme.colors.accent,
+            fontSize = 14.sp,
+            modifier = Modifier.padding(start = DesignTokens.spacingDefault, top = DesignTokens.spacingDefault),
+        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = DesignTokens.spacingDefault),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.fillMaxWidth()) {
-                DialogTitleBar(
-                    title = stringResource(Res.string.check_source_config),
-                    onBack = onDismiss,
-                )
-                AppNumberField(
-                    value = timeoutText,
-                    onValueChange = { timeoutText = it },
-                    label = stringResource(Res.string.check_source_timeout),
-                    maxLength = 9,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = DesignTokens.spacingDefault)
-                        .padding(top = DesignTokens.spacingDefault),
-                )
-                Text(
-                    text = stringResource(Res.string.check_source_item),
-                    color = AppTheme.colors.accent,
-                    fontSize = 14.sp,
-                    modifier = Modifier.padding(start = DesignTokens.spacingDefault, top = DesignTokens.spacingDefault),
-                )
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = DesignTokens.spacingDefault),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    CheckItem(
-                        text = stringResource(Res.string.search),
-                        checked = checkSearch,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        checkSearch = it
-                        if (!checkSearch && !checkDiscovery) checkDiscovery = true
-                    }
-                    CheckItem(
-                        text = stringResource(Res.string.discovery),
-                        checked = checkDiscovery,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        checkDiscovery = it
-                        if (!checkSearch && !checkDiscovery) checkSearch = true
-                    }
-                    CheckItem(
-                        text = stringResource(Res.string.source_tab_info),
-                        checked = checkInfo,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        checkInfo = it
-                        if (!checkInfo) {
-                            checkCategory = false
-                            checkContent = false
-                        }
-                    }
-                    CheckItem(
-                        text = stringResource(Res.string.chapter_list),
-                        checked = checkCategory,
-                        enabled = checkInfo,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        checkCategory = it
-                        if (!checkCategory) checkContent = false
-                    }
-                    CheckItem(
-                        text = stringResource(Res.string.main_body),
-                        checked = checkContent,
-                        enabled = checkCategory,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        checkContent = it
-                    }
+            CheckItem(
+                text = stringResource(Res.string.search),
+                checked = checkSearch,
+                modifier = Modifier.weight(1f),
+            ) {
+                checkSearch = it
+                if (!checkSearch && !checkDiscovery) checkDiscovery = true
+            }
+            CheckItem(
+                text = stringResource(Res.string.discovery),
+                checked = checkDiscovery,
+                modifier = Modifier.weight(1f),
+            ) {
+                checkDiscovery = it
+                if (!checkSearch && !checkDiscovery) checkSearch = true
+            }
+            CheckItem(
+                text = stringResource(Res.string.source_tab_info),
+                checked = checkInfo,
+                modifier = Modifier.weight(1f),
+            ) {
+                checkInfo = it
+                if (!checkInfo) {
+                    checkCategory = false
+                    checkContent = false
                 }
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = DesignTokens.spacingDefault),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    AppTextButton(text = stringResource(Res.string.cancel)) {
-                        onDismiss()
-                    }
-                    AppTextButton(text = stringResource(Res.string.ok)) {
-                        val text = timeoutText
-                        val minTimeout = 0L
-                        when {
-                            text.isBlank() -> {
-                                onToast("$timeoutStr$cannotEmptyStr")
-                                return@AppTextButton
-                            }
-
-                            text.toLong() <= minTimeout -> {
-                                onToast("$timeoutStr$lessThanStr${minTimeout}$secondsStr")
-                                return@AppTextButton
-                            }
-
-                            else -> CheckSource.timeout = text.toLong() * 1000
-                        }
-                        CheckSource.checkSearch = checkSearch
-                        CheckSource.checkDiscovery = checkDiscovery
-                        CheckSource.checkInfo = checkInfo
-                        CheckSource.checkCategory = checkCategory
-                        CheckSource.checkContent = checkContent
-                        CheckSource.putConfig()
-                        onDismiss()
-                    }
-                }
+            }
+            CheckItem(
+                text = stringResource(Res.string.chapter_list),
+                checked = checkCategory,
+                enabled = checkInfo,
+                modifier = Modifier.weight(1f),
+            ) {
+                checkCategory = it
+                if (!checkCategory) checkContent = false
+            }
+            CheckItem(
+                text = stringResource(Res.string.main_body),
+                checked = checkContent,
+                enabled = checkCategory,
+                modifier = Modifier.weight(1f),
+            ) {
+                checkContent = it
             }
         }
     }

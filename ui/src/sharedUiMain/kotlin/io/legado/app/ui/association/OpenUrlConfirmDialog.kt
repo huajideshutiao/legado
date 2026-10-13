@@ -7,12 +7,9 @@ package io.legado.app.ui.association
 // 对照 app 端 OpenUrlConfirmDialog: 标题"跳转确认" + 副标题 sourceTag, 溢出菜单=禁用/删除书源,
 // 确定=打开链接 (经 PlatformCapabilities.openExternalUrl, Android 端实现带 mimeType 分支)。
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
@@ -33,13 +30,10 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppTextButton
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -88,54 +82,42 @@ internal fun OpenUrlConfirmOverlayContent(overlay: AppOverlay.Dialog, navigator:
     var pendingDelete by remember(overlay.key) { mutableStateOf(false) }
     val onDismiss: () -> Unit = { navigator.dismissOverlay(overlay.key) }
 
-    AppDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
+        title = "跳转确认",
+        subtitle = payload.sourceTag,
         properties = AppDialogSizes.properties(),
+        titleActions = {
+            OverflowMenu(
+                onDisableSource = {
+                    payload.sourceKey?.let { key ->
+                        scope.launch(IoDispatcher) {
+                            SourceHelp.enableSource(key, payload.sourceType, false)
+                        }
+                    }
+                    onDismiss()
+                },
+                onDeleteSource = { pendingDelete = true },
+            )
+        },
+        contentPadding = PaddingValues(0.dp),
+        bottomBar = {
+            AppTextButton(
+                text = stringResource(Res.string.cancel),
+                color = AppTheme.colors.secondaryText,
+                onClick = onDismiss,
+            )
+            AppTextButton(text = stringResource(Res.string.ok), onClick = {
+                PlatformCapabilityProviders.get().openExternalUrl(payload.url, payload.mimeType)
+                onDismiss()
+            })
+        },
     ) {
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(),
-        ) {
-            Column(Modifier.fillMaxWidth()) {
-                DialogTitleBar(
-                    title = "跳转确认",
-                    subtitle = payload.sourceTag,
-                    actions = {
-                        OverflowMenu(
-                            onDisableSource = {
-                                payload.sourceKey?.let { key ->
-                                    scope.launch(IoDispatcher) {
-                                        SourceHelp.enableSource(key, payload.sourceType, false)
-                                    }
-                                }
-                                onDismiss()
-                            },
-                            onDeleteSource = { pendingDelete = true },
-                        )
-                    },
-                )
-                Text(
-                    text = "${payload.sourceTag} 正在请求跳转链接/应用，是否跳转？",
-                    color = AppTheme.colors.primaryText,
-                    modifier = Modifier.padding(DesignTokens.spacingLg),
-                )
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = DesignTokens.spacingDefault),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    AppTextButton(
-                        text = stringResource(Res.string.cancel),
-                        color = AppTheme.colors.secondaryText,
-                        onClick = onDismiss,
-                    )
-                    AppTextButton(text = stringResource(Res.string.ok), onClick = {
-                        PlatformCapabilityProviders.get().openExternalUrl(payload.url, payload.mimeType)
-                        onDismiss()
-                    })
-                }
-            }
-        }
+        Text(
+            text = "${payload.sourceTag} 正在请求跳转链接/应用，是否跳转？",
+            color = AppTheme.colors.primaryText,
+            modifier = Modifier.padding(DesignTokens.spacingLg),
+        )
     }
 
     if (pendingDelete) {

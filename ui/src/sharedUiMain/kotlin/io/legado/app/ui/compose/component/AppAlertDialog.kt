@@ -16,6 +16,7 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
@@ -92,6 +93,7 @@ fun AppAlertDialogContent(
     AppDialogSurface(
         modifier = modifier,
     ) {
+        // 壳体四边 8dp 是标题/正文/按钮共用的那一层留白; 标题与正文里的 8dp 是内容分块留白
         Column(Modifier.padding(DesignTokens.spacingDefault)) {
             title?.let {
                 Text(
@@ -133,7 +135,8 @@ fun AppAlertDialogContent(
                     }
                     Spacer(Modifier.weight(1f))
                     cancelButton?.let {
-                        AlertTextButton(it, onDismissRequest)
+                        // 取消键次级文字色: 全仓对话框统一"取消灰、确定强调色"
+                        AlertTextButton(it, onDismissRequest, colors.secondaryText)
                     }
                     okButton?.let {
                         AlertTextButton(it, onDismissRequest)
@@ -190,8 +193,12 @@ fun AppSelectorList(items: List<String>, onItemClick: (index: Int) -> Unit) {
 }
 
 @Composable
-private fun AlertTextButton(button: AlertButton, onDismissRequest: () -> Unit) {
-    AppTextButton(text = button.text, enabled = button.enabled) {
+private fun AlertTextButton(
+    button: AlertButton,
+    onDismissRequest: () -> Unit,
+    color: Color = AppTheme.colors.accent,
+) {
+    AppTextButton(text = button.text, enabled = button.enabled, color = color) {
         button.onClick?.invoke()
         if (button.dismissOnClick) onDismissRequest()
     }

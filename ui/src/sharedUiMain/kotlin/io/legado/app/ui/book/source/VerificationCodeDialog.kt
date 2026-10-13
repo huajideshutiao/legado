@@ -3,8 +3,6 @@
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -31,7 +29,10 @@ import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -108,119 +109,107 @@ fun VerificationCodeDialog(
         )
     }
 
-    AppAlertDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
-        title = null,
-        content = {
-            Column(Modifier.fillMaxWidth().padding(horizontal = DesignTokens.spacingDefault)) {
-                // 工具栏: 标题 + 源名 + 溢出菜单 (禁用源/删除源, 对照 app 端 VerificationCodeDialog;
-                // 确认仍走底部 okButton)
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = DesignTokens.spacingMd, vertical = DesignTokens.spacingXs),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(Res.string.verification_code),
-                            color = colors.primaryText,
-                            fontSize = 18.sp,
-                        )
-                        Text(
-                            text = source.getTag(),
-                            color = colors.secondaryText,
-                            fontSize = 13.sp,
-                        )
-                    }
-                    var showMenu by remember { mutableStateOf(false) }
-                    Box {
-                        IconButton(onClick = { showMenu = true }) {
-                            Icon(
-                                painter = painterResource(Res.drawable.ic_more_vert),
-                                contentDescription = stringResource(Res.string.more_menu),
-                                tint = colors.primaryText,
-                            )
-                        }
-                        AppDropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false }) {
-                            DropdownMenuItem(
-                                onClick = {
-                                    showMenu = false
-                                    // 对照 app 端: SourceHelp.enableSource(key, type, false) 后关对话框
-                                    scope.launch {
-                                        SourceHelp.enableSource(
-                                            source.getKey(),
-                                            source.getSourceType(),
-                                            false,
-                                        )
-                                    }
-                                    onDismiss()
-                                },
-                            ) { Text(stringResource(Res.string.disable_source)) }
-                            DropdownMenuItem(
-                                onClick = {
-                                    showMenu = false
-                                    showDeleteConfirm = true
-                                },
-                            ) { Text(stringResource(Res.string.delete_source)) }
-                        }
-                    }
+        title = stringResource(Res.string.verification_code),
+        subtitle = source.getTag(),
+        titleActions = {
+            var showMenu by remember { mutableStateOf(false) }
+            Box {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(
+                        painter = painterResource(Res.drawable.ic_more_vert),
+                        contentDescription = stringResource(Res.string.more_menu),
+                        tint = colors.primaryText,
+                    )
                 }
-                when (val state = imageState) {
-                    CaptchaImageState.Loading -> Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 100.dp, max = 200.dp)
-                            .padding(vertical = DesignTokens.spacingDefault),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator()
-                        Text(
-                            text = stringResource(Res.string.loading),
-                            color = colors.secondaryText,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(top = 56.dp),
-                        )
-                    }
-
-                    is CaptchaImageState.Success -> Image(
-                        bitmap = state.bitmap,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 100.dp, max = 200.dp)
-                            .padding(vertical = DesignTokens.spacingDefault)
-                            // 点图放大 (对照原版 setOnClickListener → PhotoDialog): 全屏大图 overlay
-                            .clickable {
-                                AppNavigatorProviders.get().showOverlay(
-                                    AppOverlay.Dialog(
-                                        key = "photo",
-                                        payload = url,
-                                        sourceOrigin = (source as? BookSource)?.bookSourceUrl,
-                                    )
+                AppDropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem(
+                        onClick = {
+                            showMenu = false
+                            // 对照 app 端: SourceHelp.enableSource(key, type, false) 后关对话框
+                            scope.launch {
+                                SourceHelp.enableSource(
+                                    source.getKey(),
+                                    source.getSourceType(),
+                                    false,
                                 )
-                            },
-                    )
-
-                    CaptchaImageState.Error -> Text(
-                        text = stringResource(Res.string.captcha_load_failed_hint) + "\n" + url,
-                        color = colors.secondaryText,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(vertical = DesignTokens.spacingDefault),
-                    )
+                            }
+                            onDismiss()
+                        },
+                    ) { Text(stringResource(Res.string.disable_source)) }
+                    DropdownMenuItem(
+                        onClick = {
+                            showMenu = false
+                            showDeleteConfirm = true
+                        },
+                    ) { Text(stringResource(Res.string.delete_source)) }
                 }
-                AppUnderlineTextField(
-                    value = code,
-                    onValueChange = { code = it },
-                    label = stringResource(Res.string.verification_code),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
             }
         },
-        okButton = AlertButton(text = stringResource(Res.string.ok)) { onConfirm(code) },
-        cancelButton = AlertButton(text = stringResource(Res.string.cancel)) { onDismiss() },
-    )
+        bottomBar = {
+            AppTextButton(
+                text = stringResource(Res.string.cancel),
+                color = colors.secondaryText,
+            ) { onDismiss() }
+            AppTextButton(text = stringResource(Res.string.ok)) { onConfirm(code) }
+        },
+        properties = AppDialogSizes.properties(),
+    ) {
+        // 正文不叠水平内边距: 四周 8dp 由对话框正文槽独占
+        when (val state = imageState) {
+            CaptchaImageState.Loading -> Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 100.dp, max = 200.dp)
+                    .padding(vertical = DesignTokens.spacingDefault),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+                Text(
+                    text = stringResource(Res.string.loading),
+                    color = colors.secondaryText,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(top = 56.dp),
+                )
+            }
+
+            is CaptchaImageState.Success -> Image(
+                bitmap = state.bitmap,
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 100.dp, max = 200.dp)
+                    .padding(vertical = DesignTokens.spacingDefault)
+                    // 点图放大 (对照原版 setOnClickListener → PhotoDialog): 全屏大图 overlay
+                    .clickable {
+                        AppNavigatorProviders.get().showOverlay(
+                            AppOverlay.Dialog(
+                                key = "photo",
+                                payload = url,
+                                sourceOrigin = (source as? BookSource)?.bookSourceUrl,
+                            )
+                        )
+                    },
+            )
+
+            CaptchaImageState.Error -> Text(
+                text = stringResource(Res.string.captcha_load_failed_hint) + "\n" + url,
+                color = colors.secondaryText,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(vertical = DesignTokens.spacingDefault),
+            )
+        }
+        AppUnderlineTextField(
+            value = code,
+            onValueChange = { code = it },
+            label = stringResource(Res.string.verification_code),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
 
     // 删除源确认 (对照 app 端溢出菜单 → alert(draw) { sure_del + 源名; noButton; yesButton { deleteSource } })
     if (showDeleteConfirm) {

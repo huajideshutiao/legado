@@ -1,5 +1,6 @@
 package io.legado.app.ui.main.home
 
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.runtime.Composable
@@ -8,16 +9,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.HomeSection
 import io.legado.app.help.HomeTabHelpShared
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
-import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.postEvent
@@ -37,6 +35,9 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 管理某个分组（tabTitle）下的展示项。列表、拖序、增删全部限定在该 tab 内。
  * 下沉自 app 端同名 DialogFragment (原用 dialog_recycler_view + HomeSectionManageAdapter)。
+ *
+ * 顶栏进标准壳体 ([AppDialogScaffold] 的 title/titleActions), 列表骨架 [RuleManageScaffold]
+ * 只承载列表本身, 无底栏。
  */
 @Composable
 fun HomeSectionManageDialog(
@@ -75,60 +76,53 @@ fun HomeSectionManageDialog(
     )
     val deleteText = stringResource(Res.string.delete)
 
-    AppDialog(
+    // 全高型: 顶栏 (标题 + 新增) 进标准壳体, 列表骨架只承载列表, 无底栏
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
-        properties = AppDialogSizes.properties(),
-    ) {
-        // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
-        // 全高型: 高度锁定 0.8 屏高
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(fullHeight = true),
-        ) {
-            RuleManageScaffold(
-                items = sections,
-                itemKey = { it.id },
-                onMove = { from, to ->
-                    sections = sections.toMutableList().apply { add(to, removeAt(from)) }
-                },
-                emptyText = stringResource(Res.string.home_manage_empty),
-                titleBar = {
-                    DialogTitleBar(
-                        title = stringResource(Res.string.home_manage_for_tab, tabTitle),
-                        onBack = onDismiss,
-                        actions = {
-                            IconButton(onClick = { addingSection = true }) {
-                                Icon(
-                                    painter = painterResource(Res.drawable.ic_add),
-                                    contentDescription = stringResource(Res.string.home_add_section),
-                                    tint = colors.primaryText,
-                                )
-                            }
-                        },
-                    )
-                },
-            ) { item ->
-                HomeManageItem(
-                    title = item.title,
-                    desc = "${styleNames.getOrElse(item.style) { styleNames[0] }} · ${item.sourceName}",
-                    actionText = deleteText,
-                    onClick = { editingSection = item },
-                    onAction = {
-                        HomeTabHelpShared.removeSection(tabTitle, item.id)
-                        postEvent(
-                            EventBus.HOME_SECTION,
-                            HomeSectionEvent(HomeSectionEvent.REMOVE, tabTitle, item)
-                        )
-                        upData()
-                    },
-                    onPersistOrder = {
-                        HomeTabHelpShared.saveSectionsOrder(tabTitle, sections)
-                        postEvent(
-                            EventBus.HOME_SECTION,
-                            HomeSectionEvent(HomeSectionEvent.REORDER, tabTitle)
-                        )
-                    },
+        title = stringResource(Res.string.home_manage_for_tab, tabTitle),
+        titleActions = {
+            IconButton(onClick = { addingSection = true }) {
+                Icon(
+                    painter = painterResource(Res.drawable.ic_add),
+                    contentDescription = stringResource(Res.string.home_add_section),
+                    tint = colors.primaryText,
                 )
             }
+        },
+        properties = AppDialogSizes.properties(),
+        contentPadding = PaddingValues(0.dp),
+        // 原 appDialogSize(fullHeight = true): 高度锁定 0.8 屏高
+        fullHeight = true,
+    ) {
+        RuleManageScaffold(
+            items = sections,
+            itemKey = { it.id },
+            onMove = { from, to ->
+                sections = sections.toMutableList().apply { add(to, removeAt(from)) }
+            },
+            emptyText = stringResource(Res.string.home_manage_empty),
+        ) { item ->
+            HomeManageItem(
+                title = item.title,
+                desc = "${styleNames.getOrElse(item.style) { styleNames[0] }} · ${item.sourceName}",
+                actionText = deleteText,
+                onClick = { editingSection = item },
+                onAction = {
+                    HomeTabHelpShared.removeSection(tabTitle, item.id)
+                    postEvent(
+                        EventBus.HOME_SECTION,
+                        HomeSectionEvent(HomeSectionEvent.REMOVE, tabTitle, item)
+                    )
+                    upData()
+                },
+                onPersistOrder = {
+                    HomeTabHelpShared.saveSectionsOrder(tabTitle, sections)
+                    postEvent(
+                        EventBus.HOME_SECTION,
+                        HomeSectionEvent(HomeSectionEvent.REORDER, tabTitle)
+                    )
+                },
+            )
         }
     }
 

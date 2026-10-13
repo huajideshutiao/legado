@@ -55,7 +55,7 @@ object AppDialogSizes {
     }
 
     /**
-     * M2 AlertDialog 正文滚动区高度上限: 全高 0.8 锚点高 - 标题/按钮/间距 (约 180dp),
+     * 对话框内列表/长正文滚动区高度上限: 全高 0.8 锚点高 - 标题/按钮/间距 (约 180dp),
      * 保证按钮行不被裁切; 下限 120dp 防极矮窗口下 heightIn 取负。
      */
     @Composable

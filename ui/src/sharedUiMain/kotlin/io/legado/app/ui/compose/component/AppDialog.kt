@@ -11,6 +11,12 @@ import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -49,6 +55,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -63,6 +70,7 @@ import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
 import io.legado.app.ui.compose.theme.AppTextMenuState
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalAppTextMenuState
 import io.legado.app.ui.compose.theme.ProvidePlatformTextMenu
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -312,6 +320,92 @@ fun AppDialogSurface(
         color = color,
         content = content,
     )
+}
+
+/**
+ * 标准对话框壳 (顶栏 + 正文 + 底栏三槽), 居中对话框一律用它, 三处尺寸口径在此收口:
+ *
+ * - **标准顶栏** ([DialogTitleBar]): 返回箭头 + 标题 + 右侧动作, 56dp 行; 调用方不再各写标题行;
+ * - **正文**: 默认四边 8dp 内边距; 正文以 `weight(1f, fill = false)` 占剩余空间,
+ *   长内容需自带滚动 (weight + 内部滚动才能让底栏恒可见, 不要靠外部把整个壳撑高);
+ * - **标准底栏** ([AppDialogBar]): 左右 8dp, 纵向 8dp 由本壳给 (正文与按钮之间、按钮与对话框边之间),
+ *   按钮一律 [AppTextButton]。不需要按钮的对话框传 `bottomBar = null`。
+ *
+ * 视觉与既有手写壳体一致: fillet 底色 + 8dp 圆角, 宽度 0.9 锚点 (上限 800dp),
+ * 高度按内容自适应并封顶 0.8 锚点 (长列表型传 `fullHeight = true` 固定全高)。
+ *
+ * @param title          顶栏标题
+ * @param subtitle       顶栏副标题 (可空)
+ * @param titleContent   顶栏标题槽覆盖 (如筛选输入框)；非空时替掉返回箭头旁的标题文本
+ * @param onBack         顶栏返回箭头动作, 缺省关闭对话框
+ * @param titleActions   顶栏右侧动作槽 (IconButton / AppTextButton)
+ * @param bottomBar      底栏按钮槽; null = 不排底栏。需要左侧按钮时在槽内用 `Spacer(Modifier.weight(1f))`
+ * @param contentPadding 正文内边距 (默认四边 8dp; 正文自带分块留白的弹窗传 [PaddingValues] 收窄)
+ * @param fullHeight      true = 高度固定 0.8 锚点 (长列表型); false = 按内容自适应并封顶 0.8
+ * @param properties      窗口属性 (默认 [AppDialogSizes.properties]; 点外部不关闭等语义在此传)
+ */
+@Composable
+fun AppDialogScaffold(
+    onDismissRequest: () -> Unit,
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    titleClickable: Boolean = false,
+    onTitleClick: (() -> Unit)? = null,
+    /** 顶栏返回箭头动作, 缺省 = 关闭对话框 (筛选态等需“箭头退子状态而非关窗”时覆盖) */
+    onBack: () -> Unit = onDismissRequest,
+    titleContent: (@Composable RowScope.() -> Unit)? = null,
+    titleActions: @Composable RowScope.() -> Unit = {},
+    bottomBar: (@Composable RowScope.() -> Unit)? = null,
+    contentPadding: PaddingValues = PaddingValues(DesignTokens.spacingDefault),
+    fullHeight: Boolean = false,
+    properties: DialogProperties = AppDialogSizes.properties(),
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    AppDialog(onDismissRequest = onDismissRequest, properties = properties) {
+        AppDialogSurface(
+            modifier = modifier.appDialogSize(fullHeight = fullHeight),
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                DialogTitleBar(
+                    title = title,
+                    subtitle = subtitle,
+                    onBack = onBack,
+                    titleClickable = titleClickable,
+                    onTitleClick = onTitleClick,
+                    titleContent = titleContent,
+                    actions = titleActions,
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
+                        // 有底栏时正文不再留底边距: 8dp 由底栏自身给 (两边都给就是 16dp)
+                        .padding(
+                            if (bottomBar == null) {
+                                contentPadding
+                            } else {
+                                val layoutDirection = LocalLayoutDirection.current
+                                PaddingValues(
+                                    start = contentPadding.calculateStartPadding(layoutDirection),
+                                    top = contentPadding.calculateTopPadding(),
+                                    end = contentPadding.calculateEndPadding(layoutDirection),
+                                    bottom = 0.dp,
+                                )
+                            },
+                        ),
+                    content = content,
+                )
+                if (bottomBar != null) {
+                    Box(
+                        Modifier.padding(DesignTokens.spacingDefault),
+                    ) {
+                        AppDialogBar(actions = bottomBar)
+                    }
+                }
+            }
+        }
+    }
 }
 
 /**

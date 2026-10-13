@@ -2,6 +2,7 @@ package io.legado.app.ui.main.home
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,12 +25,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.EventBus
 import io.legado.app.help.HomeTabHelpShared
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
-import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.FlowBus
@@ -49,6 +47,9 @@ import sh.calvin.reorderable.ReorderableCollectionItemScope
 /**
  * 主页分组管理：item 点击进入该分组的展示项管理；编辑按钮改标题/删除；+ 添加分组；拖动排序。
  * 下沉自 app 端同名 DialogFragment (原用 dialog_recycler_view + HomeTabManageAdapter)。
+ *
+ * 顶栏进标准壳体 ([AppDialogScaffold] 的 title/titleActions), 列表骨架 [RuleManageScaffold]
+ * 只承载列表本身, 无底栏。
  */
 @Composable
 fun HomeTabManageDialog(onDismiss: () -> Unit) {
@@ -71,52 +72,45 @@ fun HomeTabManageDialog(onDismiss: () -> Unit) {
         }
     }
 
-    AppDialog(
+    // 全高型: 顶栏 (标题 + 新增) 进标准壳体, 列表骨架只承载列表, 无底栏
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
-        properties = AppDialogSizes.properties(),
-    ) {
-        // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
-        // 全高型: 高度锁定 0.8 屏高
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(fullHeight = true),
-        ) {
-            RuleManageScaffold(
-                items = tabs,
-                itemKey = { it.title },
-                onMove = { from, to ->
-                    tabs = tabs.toMutableList().apply { add(to, removeAt(from)) }
-                },
-                titleBar = {
-                    DialogTitleBar(
-                        title = stringResource(Res.string.home_tab_manage),
-                        onBack = onDismiss,
-                        actions = {
-                            IconButton(onClick = { addingTab = true }) {
-                                Icon(
-                                    painter = painterResource(Res.drawable.ic_add),
-                                    contentDescription = stringResource(Res.string.home_tab_add),
-                                    tint = colors.primaryText,
-                                )
-                            }
-                        },
-                    )
-                },
-            ) { item ->
-                HomeManageItem(
-                    title = item.title,
-                    desc = stringResource(
-                        Res.string.home_tab_section_count,
-                        item.sections.size,
-                    ),
-                    actionText = stringResource(Res.string.edit),
-                    onClick = { openSectionsOf = item.title },
-                    onAction = { editingTab = item.title },
-                    onPersistOrder = {
-                        HomeTabHelpShared.saveTabsOrder(tabs)
-                        postEvent(EventBus.HOME_TAB, HomeTabEvent(HomeTabEvent.REORDER))
-                    },
+        title = stringResource(Res.string.home_tab_manage),
+        titleActions = {
+            IconButton(onClick = { addingTab = true }) {
+                Icon(
+                    painter = painterResource(Res.drawable.ic_add),
+                    contentDescription = stringResource(Res.string.home_tab_add),
+                    tint = colors.primaryText,
                 )
             }
+        },
+        properties = AppDialogSizes.properties(),
+        contentPadding = PaddingValues(0.dp),
+        // 原 appDialogSize(fullHeight = true): 高度锁定 0.8 屏高
+        fullHeight = true,
+    ) {
+        RuleManageScaffold(
+            items = tabs,
+            itemKey = { it.title },
+            onMove = { from, to ->
+                tabs = tabs.toMutableList().apply { add(to, removeAt(from)) }
+            },
+        ) { item ->
+            HomeManageItem(
+                title = item.title,
+                desc = stringResource(
+                    Res.string.home_tab_section_count,
+                    item.sections.size,
+                ),
+                actionText = stringResource(Res.string.edit),
+                onClick = { openSectionsOf = item.title },
+                onAction = { editingTab = item.title },
+                onPersistOrder = {
+                    HomeTabHelpShared.saveTabsOrder(tabs)
+                    postEvent(EventBus.HOME_TAB, HomeTabEvent(HomeTabEvent.REORDER))
+                },
+            )
         }
     }
 

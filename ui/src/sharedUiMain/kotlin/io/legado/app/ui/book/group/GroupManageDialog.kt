@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.group
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,14 +23,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.toast.Toasters
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextButton
-import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.launch
@@ -62,76 +60,60 @@ fun GroupManageDialog(
     val scope = rememberCoroutineScope()
     var displayGroups by remember(groups) { mutableStateOf(groups) }
 
-    AppDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
-        properties = AppDialogSizes.properties(),
-    ) {
-        // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
-        // 全高型: 高度锁定 0.8 屏高
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(fullHeight = true),
-        ) {
-            RuleManageScaffold(
-                items = displayGroups,
-                itemKey = { it.groupId },
-                onMove = { from, to ->
-                    displayGroups = displayGroups.toMutableList().apply {
-                        add(to, removeAt(from))
+        title = stringResource(Res.string.group_manage),
+        titleActions = {
+            IconButton(onClick = {
+                scope.launch {
+                    if (canAddGroup()) {
+                        onAddGroup()
+                    } else {
+                        Toasters.get().toast("分组已达上限(64个)")
                     }
-                },
-                titleBar = {
-                    DialogTitleBar(
-                        title = stringResource(Res.string.group_manage),
-                        onBack = onDismiss,
-                        actions = {
-                            IconButton(onClick = {
-                                scope.launch {
-                                    if (canAddGroup()) {
-                                        onAddGroup()
-                                    } else {
-                                        Toasters.get().toast("分组已达上限(64个)")
-                                    }
-                                }
-                            }) {
-                                Icon(
-                                    painter = painterResource(Res.drawable.ic_add),
-                                    contentDescription = stringResource(Res.string.group_add),
-                                    tint = colors.primaryText,
-                                )
-                            }
-                        },
-                    )
-                },
-                actionBar = {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = DesignTokens.spacingDefault),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Spacer(Modifier.weight(1f))
-                        AppTextButton(text = stringResource(Res.string.ok), onClick = onDismiss)
-                    }
-                },
-            ) { item ->
-                GroupManageItem(
-                    item = item,
-                    onShowChange = { show ->
-                        displayGroups = displayGroups.map { group ->
-                            if (group.groupId == item.groupId) group.copy(show = show) else group
-                        }
-                        onUpdateGroup(item.copy(show = show))
-                    },
-                    onEdit = { onEditGroup(item) },
-                    onPersistOrder = {
-                        val ordered = displayGroups.mapIndexed { index, group ->
-                            group.copy(order = index + 1)
-                        }
-                        displayGroups = ordered
-                        onPersistOrder(ordered)
-                    },
+                }
+            }) {
+                Icon(
+                    painter = painterResource(Res.drawable.ic_add),
+                    contentDescription = stringResource(Res.string.group_add),
+                    tint = colors.primaryText,
                 )
             }
+        },
+        bottomBar = {
+            Spacer(Modifier.weight(1f))
+            AppTextButton(text = stringResource(Res.string.ok), onClick = onDismiss)
+        },
+        contentPadding = PaddingValues(0.dp),
+        fullHeight = true,
+        properties = AppDialogSizes.properties(),
+    ) {
+        RuleManageScaffold(
+            items = displayGroups,
+            itemKey = { it.groupId },
+            onMove = { from, to ->
+                displayGroups = displayGroups.toMutableList().apply {
+                    add(to, removeAt(from))
+                }
+            },
+        ) { item ->
+            GroupManageItem(
+                item = item,
+                onShowChange = { show ->
+                    displayGroups = displayGroups.map { group ->
+                        if (group.groupId == item.groupId) group.copy(show = show) else group
+                    }
+                    onUpdateGroup(item.copy(show = show))
+                },
+                onEdit = { onEditGroup(item) },
+                onPersistOrder = {
+                    val ordered = displayGroups.mapIndexed { index, group ->
+                        group.copy(order = index + 1)
+                    }
+                    displayGroups = ordered
+                    onPersistOrder(ordered)
+                },
+            )
         }
     }
 }

@@ -6,7 +6,7 @@ package io.legado.app.ui.book.read.config
 //   ic_save (已存在 shared drawable)
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -16,13 +16,11 @@ import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import io.legado.app.ui.compose.component.AppDialog
+import androidx.compose.ui.unit.dp
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
-import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.FormEditFields
 import io.legado.app.ui.compose.component.OverflowMenu
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.text.EditEntity
 import legado.ui.generated.resources.Res
@@ -37,7 +35,7 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * HttpTTS 编辑对话框内容 (KMP 共享, app + desktop 复用)。
+ * HttpTTS 编辑对话框 (KMP 共享, app + desktop 复用)。
  *
  * 对应 app 端 `io.legado.app.ui.book.read.config.HttpTtsEditDialog` (原命令式对话框基类(已删除))
  * 的 `Content()`, 去掉对 Android Fragment / ViewModel / toastOnUi / alert / sendToClip /
@@ -65,7 +63,7 @@ import org.jetbrains.compose.resources.stringResource
  *
  * @param editEntities 表单字段列表 (调用方负责从 HttpTTS 构建 + 从字段收集回 HttpTTS)
  * @param hasLogin 当前表单是否有登录入口 (每次菜单展开时求值, 对齐书源编辑 onMenuOpened 语义)
- * @param onBack 返回按钮 (app: dismissAllowingStateLoss)
+ * @param onBack 返回按钮 (app: dismissAllowingStateLoss), 同时是窗口/点击外部/返回键的关闭路径
  * @param onSave 保存按钮 (app: viewModel.save(dataFromView()) { toastOnUi("保存成功") })
  * @param onLogin 登录菜单 (调用方先保存再弹登录)
  * @param onTestSpeak 测试菜单 (试听当前表单内容, 不落库)
@@ -74,7 +72,7 @@ import org.jetbrains.compose.resources.stringResource
  * @param onShowHelp 帮助菜单 (app: showHelp("httpTTSHelp"))
  */
 @Composable
-fun HttpTtsEditDialogContent(
+fun HttpTtsEditDialog(
     editEntities: List<EditEntity>,
     hasLogin: () -> Boolean,
     onBack: () -> Unit,
@@ -94,38 +92,38 @@ fun HttpTtsEditDialogContent(
     val pasteSourceText = stringResource(Res.string.paste_source)
     val helpText = stringResource(Res.string.help)
 
-    Column(Modifier.fillMaxWidth()) {
-        DialogTitleBar(
-            title = "",
-            onBack = onBack,
-            actions = {
-                IconButton(onClick = onSave) {
-                    Icon(
-                        painter = painterResource(Res.drawable.ic_save),
-                        contentDescription = saveDescText,
-                        tint = colors.primaryText,
-                    )
+    AppDialogScaffold(
+        onDismissRequest = onBack,
+        title = "",
+        titleActions = {
+            IconButton(onClick = onSave) {
+                Icon(
+                    painter = painterResource(Res.drawable.ic_save),
+                    contentDescription = saveDescText,
+                    tint = colors.primaryText,
+                )
+            }
+            OverflowMenu { dismissMenu ->
+                @Composable
+                fun item(text: String, onClick: () -> Unit) {
+                    DropdownMenuItem(
+                        onClick = { dismissMenu(); onClick() },
+                    ) { Text(text, color = colors.primaryText) }
                 }
-                OverflowMenu { dismissMenu ->
-                    // 与原版一致的 local @Composable item helper (text 改为预解析 String)
-                    @Composable
-                    fun item(text: String, onClick: () -> Unit) {
-                        DropdownMenuItem(
-                            onClick = { dismissMenu(); onClick() },
-                        ) { Text(text, color = colors.primaryText) }
-                    }
-                    // 登录项显隐对齐书源编辑界面: 无登录入口不显示
-                    // (DropdownMenu content 在展开时新组合, 每次展开重新求值 hasLogin)
-                    if (hasLogin()) {
-                        item(loginText) { onLogin() }
-                    }
-                    item(testText) { onTestSpeak() }
-                    item(copySourceText) { onCopySource() }
-                    item(pasteSourceText) { onPasteSource() }
-                    item(helpText) { onShowHelp() }
+                // 登录项显隐对齐书源编辑界面: 无登录入口不显示
+                // (DropdownMenu content 在展开时新组合, 每次展开重新求值 hasLogin)
+                if (hasLogin()) {
+                    item(loginText) { onLogin() }
                 }
-            },
-        )
+                item(testText) { onTestSpeak() }
+                item(copySourceText) { onCopySource() }
+                item(pasteSourceText) { onPasteSource() }
+                item(helpText) { onShowHelp() }
+            }
+        },
+        contentPadding = PaddingValues(0.dp),
+        properties = AppDialogSizes.properties(),
+    ) {
         Column(
             Modifier
                 .fillMaxWidth()
@@ -133,48 +131,6 @@ fun HttpTtsEditDialogContent(
                 .verticalScroll(rememberScrollState()),
         ) {
             FormEditFields(editEntities)
-        }
-    }
-}
-
-/**
- * HttpTTS 编辑对话框 (带 Dialog 窗口, 供桌面 / iOS / 鸿蒙端直接使用)。
- *
- * app 端使用 [HttpTtsEditDialogContent] 嵌入自身 DialogFragment, 不调用本函数 (避免双层窗口)。
- *
- * @see HttpTtsEditDialogContent
- */
-@Composable
-fun HttpTtsEditDialog(
-    editEntities: List<EditEntity>,
-    hasLogin: () -> Boolean,
-    onBack: () -> Unit,
-    onSave: () -> Unit,
-    onLogin: () -> Unit,
-    onTestSpeak: () -> Unit,
-    onCopySource: () -> Unit,
-    onPasteSource: () -> Unit,
-    onShowHelp: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AppDialog(
-        onDismissRequest = onDismiss,
-        properties = AppDialogSizes.properties(),
-    ) {
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(),
-        ) {
-            HttpTtsEditDialogContent(
-                editEntities = editEntities,
-                hasLogin = hasLogin,
-                onBack = onBack,
-                onSave = onSave,
-                onLogin = onLogin,
-                onTestSpeak = onTestSpeak,
-                onCopySource = onCopySource,
-                onPasteSource = onPasteSource,
-                onShowHelp = onShowHelp,
-            )
         }
     }
 }

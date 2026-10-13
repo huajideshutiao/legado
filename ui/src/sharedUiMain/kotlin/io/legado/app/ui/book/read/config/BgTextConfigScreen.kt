@@ -33,7 +33,7 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDetailSeekBar
 import io.legado.app.ui.compose.component.AppSelectorDialog
-import io.legado.app.ui.compose.component.AppSwitch
+import io.legado.app.ui.compose.component.AppSwitchRow
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.StrokeTextChip
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -266,14 +266,14 @@ fun BgTextConfigScreen(
             )
         }
         // 暗色状态栏图标开关（对照原版 setCurStatusIconDark + upSystemUiVisibility）
-        SwitchRow(darkStatusIconStr, darkStatusIcon) {
+        AppSwitchRow(darkStatusIconStr, darkStatusIcon) {
             darkStatusIcon = it
             controller.setCurStatusIconDark(it)
             actions.onPostConfig(listOf(ReadConfigChange.SYSTEM_UI))
         }
         // 下划线开关（图片书籍不显示）
         if (!isImageBook) {
-            SwitchRow(textUnderlineStr, underline) {
+            AppSwitchRow(textUnderlineStr, underline) {
                 underline = it
                 controller.setUnderline(it)
                 actions.onPostConfig(
@@ -457,24 +457,6 @@ fun BgTextConfigScreen(
                 )
             },
         )
-    }
-}
-
-/**
- * 开关行：标签 + Switch（复刻 app 端 SwitchRow，宽高对齐 height=40dp）。
- */
-@Composable
-private fun SwitchRow(
-    label: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().height(DesignTokens.viewHeightLarge),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, color = AppTheme.colors.primaryText, modifier = Modifier.weight(1f))
-        AppSwitch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

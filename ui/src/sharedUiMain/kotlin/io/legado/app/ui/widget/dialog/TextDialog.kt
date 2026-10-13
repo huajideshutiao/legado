@@ -1,12 +1,9 @@
 package io.legado.app.ui.widget.dialog
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -14,17 +11,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.ui.compose.MarkdownContentSelectable
 import io.legado.app.ui.compose.SelectableText
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppTextButton
-import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.code.TreePane
 import io.legado.app.ui.compose.component.code.rememberTreePaneState
 import io.legado.app.ui.compose.component.code.treeKindOf
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -42,10 +38,13 @@ private const val MAX_TEXT_LENGTH = 32 * 1024
 /**
  * 通用文本展示对话框 (四端唯一入口, 日志堆栈详情 / 崩溃日志内容 / 书源源码 / 分类错误详情共用)。
  *
- * 布局 = AppDialog + Surface(fullHeight) + Column(DialogTitleBar 带返回 / 正文 weight(1f) / 按钮行钉底)。
+ * 布局 = [AppDialogScaffold] 全高 (标准顶栏 / 正文 weight(1f) / 底栏钉底)。
  * 对齐原版 `BaseDialogFragment(R.layout.dialog_text_view)` + `isFullHeight = true` + `setupTitleBar`:
  * 原版日志堆栈详情与崩溃日志内容查看本就是同一个 TextDialog, 故此处只保留一份实现。
  * 按钮行: 复制靠左, 取消/确定靠右 (同 AppAlertDialogContent 的 contextual 槽位布局)。
+ *
+ * 原版 `TextDialog.Mode.MD` (内置文档/帮助文档) 同一实体: 传 [markdown] = true 并关 [showActionBar]
+ * —— 原版 dialog_text_view.xml 只有标题栏与可滚动正文, 无按钮行。
  *
  * 不用 M2 AlertDialog: 其 BaselineLayout 在 CMP 桌面按"未钳制的标题+正文高"汇报, 长文本时
  * 对话框超 Surface 封顶, 滚动视口 > 可视区, 滚动错位 (内容下移/顶部空白/按钮被推出屏幕外,
@@ -59,6 +58,10 @@ private const val MAX_TEXT_LENGTH = 32 * 1024
  * @param allowTree 正文形如 JSON/HTML (treeKindOf 首尾字符配对预判) 时是否提供树形视图切换 (书源调试的
  * 源码就是原始响应体, 可能是 JSON 也可能是 HTML; 默认关, 仅源码查看处开启)。两种树按内容
  * 互斥分派, 不并存
+ * @param showActionBar 是否排底栏操作行 (复制/树视图/取消/确定)。内置文档与帮助文档按原版
+ * `dialog_text_view.xml` 的形制传 false —— 原版该弹窗只有标题栏与可滚动正文, 关闭靠返回箭头/
+ * 点外部/返回键; 日志堆栈与源码查看保持 true
+ * @param markdown 正文按 Markdown 渲染 (对齐原版 TextDialog.Mode.MD, 内置文档/帮助文档走此路)
  */
 @Composable
 fun TextDialog(
@@ -66,6 +69,8 @@ fun TextDialog(
     content: String,
     onDismiss: () -> Unit,
     allowTree: Boolean = false,
+    showActionBar: Boolean = true,
+    markdown: Boolean = false,
 ) {
     val colors = AppTheme.colors
     val okText = stringResource(Res.string.ok)
@@ -78,7 +83,7 @@ fun TextDialog(
     // 按钮, 不做合法性解析。非法 JSON 的误判切树由树区错误文本兜底; ksoup 对任意输入
     // 几乎不抛错, 误判的 HTML 会渲染成规范化后的树而非报错, 属可接受的展示
     val treeKind = remember(allowTree, content) {
-        if (allowTree) treeKindOf(content) else null
+        if (allowTree && !markdown) treeKindOf(content) else null
     }
     var treeMode by remember { mutableStateOf(false) }
     // 聚焦状态: 条目菜单"查看"把树就地聚焦到该节点, 面包屑逐级退回 (不新开窗口, 故无叠层);
@@ -89,76 +94,83 @@ fun TextDialog(
         if (treeKind == null) treeMode = false
     }
 
-    AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(fullHeight = true),
-        ) {
-            Column(Modifier.fillMaxWidth()) {
-                DialogTitleBar(
-                    title = title,
-                    onBack = onDismiss,
-                )
-                // 正文区: weight 占标题栏与按钮行之间的剩余空间 (视口恒定), 超长内部滚动
-                val displayText = if (content.length >= MAX_TEXT_LENGTH) {
-                    content.take(MAX_TEXT_LENGTH) + "\n\n" + tooLargeText
-                } else {
-                    content
-                }
-                if (treeMode && treeKind != null) {
-                    // 首尾配对预判可能误判非法 JSON/HTML: 树解析失败时树区改显错误文本, 不留空白
-                    TreePane(
-                        content = content,
-                        kind = treeKind,
-                        rootLabel = title,
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                        treeModifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(horizontal = DesignTokens.spacingDefault),
-                        state = treeState,
-                    )
-                } else {
-                    SelectableText(
-                        text = displayText,
-                        color = colors.secondaryText,
-                        fontSize = 15.sp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .padding(horizontal = DesignTokens.spacingDefault),
-                    )
-                }
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = DesignTokens.spacingDefault),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                ) {
-                    AppTextButton(text = copyText) {
-                        // 复制当前所见: 树模式下取聚焦节点 (JSON 子树/原始值, HTML outerHtml),
-                        // 其余取整份正文
-                        val toCopy = if (treeMode && treeKind != null) {
-                            treeState.copyText ?: content
-                        } else {
-                            content
-                        }
-                        PlatformCapabilityProviders.get().copyToClipboard(toCopy)
+    AppDialogScaffold(
+        onDismissRequest = onDismiss,
+        title = title,
+        properties = AppDialogSizes.properties(),
+        // Markdown 正文的四边留白由正文槽给 (8dp); 日志/源码等形态正文自带水平 8dp,
+        // 槽内边距取 0 免得叠成 16dp
+        contentPadding = if (markdown) {
+            PaddingValues(DesignTokens.spacingDefault)
+        } else {
+            PaddingValues(0.dp)
+        },
+        fullHeight = true,
+        bottomBar = if (showActionBar) {
+            {
+                AppTextButton(text = copyText) {
+                    // 复制当前所见: 树模式下取聚焦节点 (JSON 子树/原始值, HTML outerHtml),
+                    // 其余取整份正文
+                    val toCopy = if (treeMode && treeKind != null) {
+                        treeState.copyText ?: content
+                    } else {
+                        content
                     }
-                    if (treeKind != null || treeMode) {
-                        AppTextButton(
-                            text = if (treeMode) sourceText else treeViewText,
-                            color = colors.accent,
-                        ) {
-                            // 切回文本视图时同时回到未进树状态: 文本区显示整份正文, 复制也按整份
-                            // 正文取值, 否则会出现"屏幕是全文、复制到的却是聚焦子树"; 解析错误
-                            // 一并清掉, 下次进树重新解析
-                            treeState.reset()
-                            treeMode = !treeMode
-                        }
-                    }
-                    Spacer(Modifier.weight(1f))
-                    AppTextButton(text = cancelText, color = colors.secondaryText) { onDismiss() }
-                    AppTextButton(text = okText) { onDismiss() }
+                    PlatformCapabilityProviders.get().copyToClipboard(toCopy)
                 }
+                if (treeKind != null || treeMode) {
+                    AppTextButton(
+                        text = if (treeMode) sourceText else treeViewText,
+                        color = colors.accent,
+                    ) {
+                        // 切回文本视图时同时回到未进树状态: 文本区显示整份正文, 复制也按整份
+                        // 正文取值, 否则会出现"屏幕是全文、复制到的却是聚焦子树"; 解析错误
+                        // 一并清掉, 下次进树重新解析
+                        treeState.reset()
+                        treeMode = !treeMode
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                AppTextButton(text = cancelText, color = colors.secondaryText) { onDismiss() }
+                AppTextButton(text = okText) { onDismiss() }
             }
+        } else null,
+    ) {
+        // 正文区: weight 占顶栏与底栏之间的剩余空间 (视口恒定), 超长内部滚动
+        val displayText = if (content.length >= MAX_TEXT_LENGTH) {
+            content.take(MAX_TEXT_LENGTH) + "\n\n" + tooLargeText
+        } else {
+            content
+        }
+        if (markdown) {
+            // 四边留白由正文槽的 8dp 独占, 正文根不再叠一层 (叠了比标题多缩进)
+            MarkdownContentSelectable(
+                content = content,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            )
+        } else if (treeMode && treeKind != null) {
+            // 首尾配对预判可能误判非法 JSON/HTML: 树解析失败时树区改显错误文本, 不留空白
+            TreePane(
+                content = content,
+                kind = treeKind,
+                rootLabel = title,
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                treeModifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = DesignTokens.spacingDefault),
+                state = treeState,
+            )
+        } else {
+            SelectableText(
+                text = displayText,
+                color = colors.secondaryText,
+                fontSize = 15.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = DesignTokens.spacingDefault),
+            )
         }
     }
 }

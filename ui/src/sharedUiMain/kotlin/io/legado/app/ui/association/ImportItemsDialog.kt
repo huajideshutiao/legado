@@ -36,6 +36,7 @@ import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSwitch
+import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -210,14 +211,11 @@ fun ImportBookSourceItemsDialog(
                 val name = stringResource(Res.string.diy_edit_source_group_title, group)
                 if (isAddGroup) "+$name" else name
             }
-            Text(
+            AppTextButton(
                 text = groupTitle,
-                color = AppTheme.colors.primaryText,
-                modifier = Modifier
-                    .align(Alignment.CenterVertically)
-                    .clickable { showGroupDialog = true }
-                    .padding(horizontal = DesignTokens.spacingDefault),
-            )
+                color = AppTheme.colors.secondaryText,
+                modifier = Modifier.align(Alignment.CenterVertically),
+            ) { showGroupDialog = true }
             Box {
                 IconButton(onClick = { showMenu = true }) {
                     Icon(
@@ -326,14 +324,11 @@ fun ImportReplaceRuleItemsDialog(
                 val name = stringResource(Res.string.diy_edit_source_group_title, group)
                 if (isAddGroup) "+$name" else name
             }
-            Text(
+            AppTextButton(
                 text = groupTitle,
-                color = AppTheme.colors.primaryText,
-                modifier = Modifier
-                    .align(Alignment.CenterVertically)
-                    .clickable { showGroupDialog = true }
-                    .padding(horizontal = DesignTokens.spacingDefault),
-            )
+                color = AppTheme.colors.secondaryText,
+                modifier = Modifier.align(Alignment.CenterVertically),
+            ) { showGroupDialog = true }
         },
     )
     if (showGroupDialog) {

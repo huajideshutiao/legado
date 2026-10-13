@@ -1,7 +1,6 @@
 package io.legado.app.ui.route
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,7 +16,6 @@ import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
-import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -43,10 +41,12 @@ import io.legado.app.ui.book.toc.rule.TxtTocRuleUiEvent
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
+import io.legado.app.ui.compose.component.AppDialogBar
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSwitch
+import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.theme.AppTheme
@@ -345,25 +345,19 @@ private fun TxtTocRuleDialogContent(
                 }
             }
         }
-        // 底部按钮 (对照原版 bottomLayout tvCancel/tvOk)
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(Res.string.cancel), color = colors.primaryText)
+        AppDialogBar(modifier = Modifier.padding(horizontal = DesignTokens.spacingDefault)) {
+            AppTextButton(
+                text = stringResource(Res.string.cancel),
+                color = colors.secondaryText,
+            ) {
+                onDismiss()
             }
-            TextButton(onClick = {
-                val name = selectedName ?: return@TextButton
+            AppTextButton(text = stringResource(Res.string.ok)) {
+                val name = selectedName ?: return@AppTextButton
                 val rule = tocRules?.firstOrNull { it.name == name }
                 if (rule != null) {
                     onTocRegexResult(rule.rule)
                 }
-            }) {
-                Text(stringResource(Res.string.ok), color = colors.primaryText)
             }
         }
     }

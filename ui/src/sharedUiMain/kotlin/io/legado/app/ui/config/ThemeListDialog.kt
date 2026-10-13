@@ -2,6 +2,7 @@ package io.legado.app.ui.config
 
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,16 +21,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import io.legado.app.constant.EventBus
 import io.legado.app.help.config.ThemeConfigData
 import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.component.AppDialog
-import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -52,11 +50,14 @@ import org.jetbrains.compose.resources.stringResource
  * 对照 app 端 `io.legado.app.ui.config.ThemeListDialog` 的 Content,
  * 去掉对 原命令式对话框基类(已删除) / FragmentResult / getClipText / alert DSL 的依赖,
  * 改为纯 @Composable + 回调形式:
- * - 标题栏: 返回 + "主题列表" + 新建/剪贴板导入按钮
+ * - 外壳: [AppDialogScaffold] (全高), 标准顶栏 (返回 + "主题列表" + 新建/剪贴板导入)
  * - 列表: LazyColumn, 行=主题名, 点击应用, 长按编辑, 非内置项有分享/删除按钮
  *
  * 数据通过 [ThemeConfigProviders] 获取 (内置 + 自定义列表);
  * 增删改后自增 [dataVersion] 触发重组重取。
+ *
+ * 壳 ([AppDialogScaffold] 全高) 与列表必须同一函数内构建: 顶栏的 "剪贴板导入" 要读写
+ * 同一份 [dataVersion]/provider 状态, 拆成两层会让顶栏动作与列表状态脱钩。
  *
  * @param onDismiss 关闭回调
  * @param onEditConfig 编辑自定义主题 (configIndex: 自定义列表中的索引)
@@ -66,28 +67,6 @@ import org.jetbrains.compose.resources.stringResource
  */
 @Composable
 fun ThemeListDialog(
-    onDismiss: () -> Unit,
-    onEditConfig: (configIndex: Int) -> Unit,
-    onNewConfig: (isNight: Boolean) -> Unit,
-    onImportFromClip: () -> String?,
-    onShare: (json: String) -> Unit,
-) {
-    AppDialog(
-        onDismissRequest = onDismiss,
-        properties = AppDialogSizes.properties(),
-    ) {
-        ThemeListDialogContent(
-            onDismiss = onDismiss,
-            onEditConfig = onEditConfig,
-            onNewConfig = onNewConfig,
-            onImportFromClip = onImportFromClip,
-            onShare = onShare,
-        )
-    }
-}
-
-@Composable
-private fun ThemeListDialogContent(
     onDismiss: () -> Unit,
     onEditConfig: (configIndex: Int) -> Unit,
     onNewConfig: (isNight: Boolean) -> Unit,
@@ -112,41 +91,40 @@ private fun ThemeListDialogContent(
     val items = builtins + customs
     val builtinCount = builtins.size
 
-    // 圆角/底色对齐 原命令式对话框基类(已删除).filletBackground + alert DSL AppAlertDialogContent
-    // (AppDialog 窗口本身无背景, 不包 Surface 会整窗透明, 如实测主题列表背景丢失)
-    AppDialogSurface(
-        modifier = Modifier.appDialogSize(fullHeight = true),
+    // 全高型: 顶栏 + 列表在标准壳体正文槽, 无底栏; 底色/圆角由壳体自带
+    AppDialogScaffold(
+        onDismissRequest = onDismiss,
+        title = stringResource(Res.string.theme_list),
+        titleActions = {
+            IconButton(onClick = { onNewConfig(false) }) {
+                Icon(
+                    painter = rememberPainter("ic_add"),
+                    contentDescription = stringResource(Res.string.add),
+                    tint = colors.primaryText,
+                )
+            }
+            IconButton(onClick = {
+                val clipText = onImportFromClip()
+                if (clipText != null) {
+                    val config = parseThemeConfig(clipText)
+                    if (config != null) {
+                        provider.addConfig(config)
+                        dataVersion++
+                    }
+                }
+            }) {
+                Icon(
+                    painter = rememberPainter("ic_copy"),
+                    contentDescription = "剪贴板导入",
+                    tint = colors.primaryText,
+                )
+            }
+        },
+        contentPadding = PaddingValues(0.dp),
+        // 原 appDialogSize(fullHeight = true): 高度锁定 0.8 屏高
+        fullHeight = true,
     ) {
         Column(Modifier.fillMaxSize()) {
-            DialogTitleBar(
-                title = stringResource(Res.string.theme_list),
-                onBack = onDismiss,
-                actions = {
-                    IconButton(onClick = { onNewConfig(false) }) {
-                        Icon(
-                            painter = rememberPainter("ic_add"),
-                            contentDescription = stringResource(Res.string.add),
-                            tint = colors.primaryText,
-                        )
-                    }
-                    IconButton(onClick = {
-                        val clipText = onImportFromClip()
-                        if (clipText != null) {
-                            val config = parseThemeConfig(clipText)
-                            if (config != null) {
-                                provider.addConfig(config)
-                                dataVersion++
-                            }
-                        }
-                    }) {
-                        Icon(
-                            painter = rememberPainter("ic_copy"),
-                            contentDescription = "剪贴板导入",
-                            tint = colors.primaryText,
-                        )
-                    }
-                },
-            )
             LazyColumn(
                 Modifier
                     .fillMaxWidth()

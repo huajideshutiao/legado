@@ -11,11 +11,9 @@
 package io.legado.app.ui.book.read
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,14 +25,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.ReplaceRule
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppTextButton
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
@@ -91,81 +87,66 @@ fun EffectiveReplacesDialog(
 ) {
     val colors = AppTheme.colors
 
-    AppDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
+        title = stringResource(Res.string.effective_replaces),
+        titleActions = {
+            // 右上角"+"按钮 (与原版 IconButton + ic_add 对齐)
+            IconButton(onClick = onAddRule) {
+                Icon(
+                    painter = painterResource(Res.drawable.ic_add),
+                    contentDescription = stringResource(Res.string.add),
+                    tint = colors.primaryText,
+                )
+            }
+        },
+        bottomBar = {
+            AppTextButton(
+                text = stringResource(Res.string.close),
+                color = colors.secondaryText,
+                onClick = onDismiss,
+            )
+            Spacer(Modifier.weight(1f))
+            AppTextButton(
+                text = stringResource(Res.string.source_filter_rule_manage),
+                onClick = onManageAll,
+            )
+        },
+        contentPadding = PaddingValues(0.dp),
+        // 原版 isFullHeight = true, 高度固定 0.8 屏高
+        fullHeight = true,
         properties = AppDialogSizes.properties(),
     ) {
-        AppDialogSurface(
-            // 原版 isFullHeight = true, 高度固定 0.8 屏高
-            modifier = Modifier.appDialogSize(fullHeight = true),
+        // 命中规则列表 (与原版 LazyColumn + itemsIndexed 对齐; 全高对话框下撑满剩余高度)
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f),
         ) {
-            Column(Modifier.fillMaxSize()) {
-                DialogTitleBar(
-                    title = stringResource(Res.string.effective_replaces),
-                    onBack = onDismiss,
-                    actions = {
-                        // 右上角"+"按钮 (与原版 IconButton + ic_add 对齐)
-                        IconButton(onClick = onAddRule) {
-                            Icon(
-                                painter = painterResource(Res.drawable.ic_add),
-                                contentDescription = stringResource(Res.string.add),
-                                tint = colors.primaryText,
-                            )
-                        }
-                    },
+            LazyColumn(Modifier.fillMaxWidth()) {
+                // key 用主键 id, 繁简转换占位项 id=0 与真实规则 (时间戳 id) 不冲突
+                itemsIndexed(items, key = { _, item -> item.id }) { _, item ->
+                    Text(
+                        text = item.name,
+                        color = colors.primaryText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onItemClick(item) }
+                            .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
+                    )
+                }
+            }
+            // 空列表占位 (与原版 empty 分支对齐)
+            if (items.isEmpty()) {
+                Text(
+                    text = stringResource(Res.string.empty),
+                    color = colors.secondaryText,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(DesignTokens.spacingLg),
                 )
-
-                // 命中规则列表 (与原版 LazyColumn + itemsIndexed 对齐; 全高对话框下撑满剩余高度)
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                ) {
-                    LazyColumn(Modifier.fillMaxWidth()) {
-                        // key 用主键 id, 繁简转换占位项 id=0 与真实规则 (时间戳 id) 不冲突
-                        itemsIndexed(items, key = { _, item -> item.id }) { _, item ->
-                            Text(
-                                text = item.name,
-                                color = colors.primaryText,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onItemClick(item) }
-                                    .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
-                            )
-                        }
-                    }
-                    // 空列表占位 (与原版 empty 分支对齐)
-                    if (items.isEmpty()) {
-                        Text(
-                            text = stringResource(Res.string.empty),
-                            color = colors.secondaryText,
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .padding(DesignTokens.spacingLg),
-                        )
-                    }
-                }
-
-                // 底部按钮栏 (与原版 Row + 关闭 + 管理全部 对齐)
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = DesignTokens.spacingDefault),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    AppTextButton(
-                        text = stringResource(Res.string.close),
-                        color = colors.secondaryText,
-                        onClick = onDismiss,
-                    )
-                    AppTextButton(
-                        text = stringResource(Res.string.source_filter_rule_manage),
-                        onClick = onManageAll,
-                    )
-                }
             }
         }
     }

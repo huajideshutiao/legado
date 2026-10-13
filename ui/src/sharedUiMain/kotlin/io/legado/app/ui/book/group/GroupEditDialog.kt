@@ -4,6 +4,7 @@ package io.legado.app.ui.book.group
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -31,14 +32,11 @@ import io.legado.app.ui.bookshelf.SharedGroupCover
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppCheckbox
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppDropdownField
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppUnderlineTextField
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -150,112 +148,97 @@ fun GroupEditDialog(
         stringResource(Res.string.book_sort_author),
     )
 
-    AppDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
+        title = rememberString(titleKey),
+        bottomBar = {
+            val showDelete = !isNew &&
+                (editingGroup.groupId > 0L || editingGroup.groupId == Long.MIN_VALUE)
+            if (showDelete) {
+                AppTextButton(text = stringResource(Res.string.delete)) {
+                    showDeleteDialog = true
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            AppTextButton(
+                text = stringResource(Res.string.cancel),
+                color = colors.secondaryText,
+                onClick = onDismiss,
+            )
+            AppTextButton(text = stringResource(Res.string.ok)) {
+                if (groupName.isEmpty()) {
+                    Toasters.get().toast("分组名称不能为空")
+                } else {
+                    editingGroup.groupName = groupName
+                    editingGroup.bookSort = bookSort
+                    editingGroup.enableRefresh = enableRefresh
+                    editingGroup.cover = cover
+                    onConfirm(editingGroup)
+                }
+            }
+        },
+        contentPadding = PaddingValues(0.dp),
         properties = AppDialogSizes.properties(),
     ) {
-        // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(),
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingLg),
         ) {
-            Column(Modifier.fillMaxWidth()) {
-                DialogTitleBar(
-                    title = rememberString(titleKey),
-                    onBack = onDismiss,
+            // 封面区恒显示 (对照原版 ivCover: 新分组为占位, 编辑态显示 cover)
+            Box(
+                Modifier
+                    .width(110.dp)
+                    .aspectRatio(3f / 4f)
+                    .clickable {
+                        scope.launch { pickCover()?.let { cover = it } }
+                    },
+            ) {
+                if (coverSlot != null) {
+                    coverSlot(cover, Modifier.fillMaxSize())
+                } else {
+                    // 与书架分组条目同款渲染 (3:4, 默认封面链); tick 恒 0 (对话框无配置变更重载)
+                    groupCoverSlot(
+                        remember(cover) { editingGroup.copy(cover = cover) },
+                        Modifier.fillMaxSize(),
+                        false,
+                        0,
+                    )
+                }
+            }
+            Column(
+                Modifier
+                    .weight(1f)
+                    .padding(start = DesignTokens.spacingDefault),
+            ) {
+                AppUnderlineTextField(
+                    value = groupName,
+                    onValueChange = { groupName = it },
+                    label = stringResource(Res.string.group_name),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                SortRow(
+                    bookSort = bookSort,
+                    sortEntries = sortEntries,
+                    onSortSelected = { bookSort = it },
                 )
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingLg),
-                ) {
-                    // 封面区恒显示 (对照原版 ivCover: 新分组为占位, 编辑态显示 cover)
-                    Box(
-                        Modifier
-                            .width(110.dp)
-                            .aspectRatio(3f / 4f)
-                            .clickable {
-                                scope.launch { pickCover()?.let { cover = it } }
-                            },
-                    ) {
-                        if (coverSlot != null) {
-                            coverSlot(cover, Modifier.fillMaxSize())
-                        } else {
-                            // 与书架分组条目同款渲染 (3:4, 默认封面链); tick 恒 0 (对话框无配置变更重载)
-                            groupCoverSlot(
-                                remember(cover) { editingGroup.copy(cover = cover) },
-                                Modifier.fillMaxSize(),
-                                false,
-                                0,
-                            )
-                        }
-                    }
-                    Column(
-                        Modifier
-                            .weight(1f)
-                            .padding(start = DesignTokens.spacingDefault),
-                    ) {
-                        AppUnderlineTextField(
-                            value = groupName,
-                            onValueChange = { groupName = it },
-                            label = stringResource(Res.string.group_name),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        SortRow(
-                            bookSort = bookSort,
-                            sortEntries = sortEntries,
-                            onSortSelected = { bookSort = it },
-                        )
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(top = DesignTokens.spacingDefault)
-                                .clickable { enableRefresh = !enableRefresh },
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            AppCheckbox(
-                                checked = enableRefresh,
-                                onCheckedChange = { enableRefresh = it },
-                            )
-                            Text(
-                                text = stringResource(Res.string.allow_drop_down_refresh),
-                                color = colors.primaryText,
-                                fontSize = 14.sp,
-                            )
-                        }
-                    }
-                }
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            start = DesignTokens.spacingDefault,
-                            top = DesignTokens.spacingXs,
-                            end = DesignTokens.spacingDefault,
-                            bottom = DesignTokens.spacingDefault,
-                        ),
+                        .padding(top = DesignTokens.spacingDefault)
+                        .clickable { enableRefresh = !enableRefresh },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    val showDelete = !isNew &&
-                        (editingGroup.groupId > 0L || editingGroup.groupId == Long.MIN_VALUE)
-                    if (showDelete) {
-                        AppTextButton(text = stringResource(Res.string.delete)) {
-                            showDeleteDialog = true
-                        }
-                    }
-                    Spacer(Modifier.weight(1f))
-                    AppTextButton(text = stringResource(Res.string.cancel), onClick = onDismiss)
-                    AppTextButton(text = stringResource(Res.string.ok)) {
-                        if (groupName.isEmpty()) {
-                            Toasters.get().toast("分组名称不能为空")
-                        } else {
-                            editingGroup.groupName = groupName
-                            editingGroup.bookSort = bookSort
-                            editingGroup.enableRefresh = enableRefresh
-                            editingGroup.cover = cover
-                            onConfirm(editingGroup)
-                        }
-                    }
+                    AppCheckbox(
+                        checked = enableRefresh,
+                        onCheckedChange = { enableRefresh = it },
+                    )
+                    Text(
+                        text = stringResource(Res.string.allow_drop_down_refresh),
+                        color = colors.primaryText,
+                        fontSize = 14.sp,
+                    )
                 }
             }
         }

@@ -5,7 +5,7 @@ package io.legado.app.ui.about
 //   "clear" to "清空"
 
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,12 +18,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import io.legado.app.ui.compose.component.AppDialog
+import androidx.compose.ui.unit.dp
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppTextButton
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.widget.dialog.TextDialog
@@ -66,14 +64,15 @@ fun CrashLogsDialogContent(
     // 选中的日志文件内容 (非 null 时弹出内容对话框)
     var fileContent by remember { mutableStateOf<Pair<String, String>?>(null) }
 
-    Column(Modifier.fillMaxWidth()) {
-        DialogTitleBar(
-            title = stringResource(Res.string.crash_log),
-            onBack = onDismiss,
-            actions = {
-                AppTextButton(text = stringResource(Res.string.clear)) { onClear() }
-            },
-        )
+    AppDialogScaffold(
+        onDismissRequest = onDismiss,
+        title = stringResource(Res.string.crash_log),
+        titleActions = {
+            AppTextButton(text = stringResource(Res.string.clear)) { onClear() }
+        },
+        contentPadding = PaddingValues(0.dp),
+        properties = AppDialogSizes.properties(),
+    ) {
         LazyColumn(
             Modifier
                 .weight(1f)
@@ -127,13 +126,11 @@ fun CrashLogsDialog(
     onReadFile: (CrashLogItem, (String) -> Unit) -> Unit,
     onShare: (CrashLogItem) -> Unit,
 ) {
-    val colors = AppTheme.colors
-    AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
-        // 圆角/底色对齐 原命令式对话框基类(已删除).filletBackground + alert DSL AppAlertDialogContent
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(),
-        ) {
-            CrashLogsDialogContent(logs, onDismiss, onClear, onReadFile, onShare)
-        }
-    }
+    CrashLogsDialogContent(
+        logs = logs,
+        onDismiss = onDismiss,
+        onClear = onClear,
+        onReadFile = onReadFile,
+        onShare = onShare,
+    )
 }

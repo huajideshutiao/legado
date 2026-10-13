@@ -31,8 +31,9 @@ import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
-import io.legado.app.ui.widget.dialog.MdDocDialog
+import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.ui.widget.dialog.rememberBuiltInDocContent
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -57,8 +58,8 @@ import org.jetbrains.compose.resources.stringResource
  * 通过 [ScreenModelStore] 复用 [AboutScreenModel], 渲染 [AboutScreen]。
  *
  * 检查更新与内置文档 (许可证/免责声明/隐私政策) 四端同一条链, 无平台分支:
- * 前者 [AboutScreenModel.checkUpdate] → AppUpdateManager, 后者 [MdDocDialog] 读
- * composeResources。真正平台专属的只剩崩溃日志/保存日志/堆转储, 经
+ * 前者 [AboutScreenModel.checkUpdate] → AppUpdateManager, 后者读 composeResources 后
+ * 交 [TextDialog] 渲染。真正平台专属的只剩崩溃日志/保存日志/堆转储, 经
  * [PlatformCapabilityProviders] 委托各端实现。
  *
  * 页面外壳对照原版 activity_about.xml 自上而下: TitleBar (menu_share_it → 分享按钮)
@@ -148,7 +149,7 @@ fun AboutRoute(
         }
 
         // 显示 MD 文件: 四端同一条通道 (内置文档在 shared composeResources files/,
-        // 经 Res.readBytes 通用读取)
+        // 经 rememberBuiltInDocContent 读取后交 TextDialog 渲染)
         override fun onShowMdFile(title: String, fileName: String) {
             mdDoc = title to fileName
         }
@@ -194,7 +195,13 @@ fun AboutRoute(
 
     // 隐私政策/许可证/免责声明 (对照原版 AboutFragment.showMdFile: 读内置 md 后弹 MD 对话框)
     mdDoc?.let { (title, path) ->
-        MdDocDialog(title = title, assetPath = path, onDismiss = { mdDoc = null })
+        TextDialog(
+            title = title,
+            content = rememberBuiltInDocContent(path),
+            onDismiss = { mdDoc = null },
+            markdown = true,
+            showActionBar = false,
+        )
     }
 }
 

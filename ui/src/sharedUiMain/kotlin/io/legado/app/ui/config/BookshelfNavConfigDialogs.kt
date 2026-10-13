@@ -4,11 +4,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -42,17 +42,14 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.config.AppConfigConstants
 import io.legado.app.help.config.AppConfigRanges
 import io.legado.app.help.config.PreferenceProviders
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppDropdownField
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSlider
-import io.legado.app.ui.compose.component.AppSwitch
+import io.legado.app.ui.compose.component.AppSwitchRow
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppTextField
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
@@ -149,268 +146,267 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
         Res.string.bookshelf_px_3, Res.string.bookshelf_px_4, Res.string.bookshelf_px_5,
     )
 
-    AppDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
-        properties = AppDialogSizes.properties(),
-    ) {
-        // 圆角/底色对齐 alert DSL AppAlertDialogContent (AppDialog 窗口无背景)
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(),
-        ) {
-            Column(Modifier.fillMaxWidth()) {
-                DialogTitleBar(
-                    title = stringResource(Res.string.bookshelf_layout),
-                    onBack = onDismiss,
-                )
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f, fill = false)
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault),
-                ) {
-                    AppDropdownField(
-                        label = stringResource(Res.string.group_style),
-                        options = groupStyles,
-                        selectedIndex = groupStyle.intValue,
-                        onSelect = { groupStyle.intValue = it },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    AppDropdownField(
-                        label = stringResource(Res.string.explore_style),
-                        options = itemStyles,
-                        selectedIndex = if (isVideo.value) 1 else 0,
-                        onSelect = { isVideo.value = it == 1 },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    ConfigSwitchRow(stringResource(Res.string.show_unread), showUnread.value) {
-                        showUnread.value = it
-                    }
-                    ConfigSwitchRow(
-                        stringResource(Res.string.bookshelf_show_group_count),
-                        showGroupCount.value,
-                    ) {
-                        showGroupCount.value = it
-                    }
-                    ConfigSwitchRow(
-                        stringResource(Res.string.fixed_width_mode),
-                        fixedWidthMode.value
-                    ) {
-                        fixedWidthMode.value = it
-                    }
-                    // 视图小节 (对照原版 tv_layout_title)
-                    Text(
-                        stringResource(Res.string.view),
-                        color = colors.accent,
-                        fontSize = 16.sp,
-                        modifier = Modifier.padding(top = DesignTokens.spacingMd, bottom = DesignTokens.spacingXs),
-                    )
-                    // 列数 (对照原版 sb_column_count 0..6, 固定宽模式隐藏)
-                    if (!fixedWidthMode.value) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                stringResource(Res.string.column_count),
-                                color = colors.primaryText,
-                                modifier = Modifier.padding(end = DesignTokens.spacingDefault),
-                            )
-                            AppSlider(
-                                value = selectedCols.intValue,
-                                max = 6,
-                                onValueChange = { selectedCols.intValue = it },
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(
-                                selectedCols.intValue.toString(),
-                                color = colors.primaryText,
-                                fontSize = 16.sp,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                                modifier = Modifier.padding(start = DesignTokens.spacingXs),
-                            )
-                        }
-                    }
-                    // 列表模式专属项 (对照原版 updateListOnlyVisibility)
-                    val isList = !fixedWidthMode.value && selectedCols.intValue <= 1
-                    if (isList) {
-                        ConfigSwitchRow(
-                            stringResource(Res.string.bookshelf_list_show_kind),
-                            showKind.value,
-                        ) {
-                            showKind.value = it
-                        }
-                        ConfigSwitchRow(
-                            stringResource(Res.string.bookshelf_list_show_intro),
-                            showIntro.value,
-                        ) {
-                            showIntro.value = it
-                        }
-                        // 简介行数 1..5 (对照原版 tv_intro_lines_minus/plus, 未开简介降透明度)
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .alpha(if (showIntro.value) 1f else 0.4f),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                stringResource(Res.string.bookshelf_list_intro_lines),
-                                color = colors.primaryText,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(
-                                "-",
-                                color = colors.primaryText,
-                                fontSize = 18.sp,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clickable { if (introLines.intValue > 1) introLines.intValue-- },
-                            )
-                            Text(
-                                introLines.intValue.toString(),
-                                color = colors.primaryText,
-                                fontSize = 16.sp,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.size(32.dp),
-                            )
-                            Text(
-                                "+",
-                                color = colors.primaryText,
-                                fontSize = 18.sp,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clickable { if (introLines.intValue < 5) introLines.intValue++ },
-                            )
-                        }
-                        ConfigSwitchRow(
-                            stringResource(Res.string.show_last_update_time),
-                            showLastUpdateTime.value,
-                        ) {
-                            showLastUpdateTime.value = it
-                        }
-                    }
-                    // 固定宽模式: 网格宽度 dp (对照原版 ll_fixed_width / et_grid_width)
-                    if (fixedWidthMode.value) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                stringResource(Res.string.grid_width_dp),
-                                color = colors.primaryText
-                            )
-                            AppTextField(
-                                value = gridWidthText.value,
-                                onValueChange = {
-                                    gridWidthText.value = it.filter { c -> c.isDigit() }
-                                },
-                                singleLine = true,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text("dp", color = colors.primaryText)
-                        }
-                    }
-                    // 排序小节 (对照原版 rg_sort 6 项单选)
-                    Text(
-                        stringResource(Res.string.sort),
-                        color = colors.accent,
-                        fontSize = 16.sp,
-                        modifier = Modifier.padding(top = DesignTokens.spacingMd, bottom = DesignTokens.spacingXs),
-                    )
-                    Column(Modifier.selectableGroup()) {
-                        sortLabelRes.forEachIndexed { i, res ->
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .selectable(
-                                        selected = bookshelfSort.intValue == i,
-                                        role = Role.RadioButton,
-                                        onClick = { bookshelfSort.intValue = i },
-                                    )
-                                    .padding(vertical = DesignTokens.spacingXs),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                AppRadioButton(
-                                    selected = bookshelfSort.intValue == i,
-                                    onClick = null
-                                )
-                                Text(
-                                    stringResource(res),
-                                    color = colors.primaryText,
-                                    fontSize = 15.sp,
-                                )
-                            }
-                        }
-                    }
+        title = stringResource(Res.string.bookshelf_layout),
+        bottomBar = {
+            Spacer(Modifier.weight(1f))
+            AppTextButton(
+                text = stringResource(Res.string.cancel),
+                color = colors.secondaryText,
+                onClick = onDismiss,
+            )
+            Spacer(Modifier.width(DesignTokens.spacingDefault))
+            AppTextButton(text = stringResource(Res.string.ok)) {
+                onDismiss()
+                var notifyMain = false
+                var recreate = false
+                if (appConfig.bookGroupStyle != groupStyle.intValue) {
+                    prefs.putInt(PreferKey.bookGroupStyle, groupStyle.intValue)
+                    notifyMain = true
                 }
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Spacer(Modifier.weight(1f))
-                AppTextButton(text = stringResource(Res.string.cancel), onClick = onDismiss)
-                Spacer(Modifier.width(DesignTokens.spacingDefault))
-                AppTextButton(text = stringResource(Res.string.ok)) {
-                    onDismiss()
-                    var notifyMain = false
-                    var recreate = false
-                    if (appConfig.bookGroupStyle != groupStyle.intValue) {
-                        prefs.putInt(PreferKey.bookGroupStyle, groupStyle.intValue)
-                        notifyMain = true
-                    }
-                    if (appConfig.showUnread != showUnread.value) {
-                        prefs.putBoolean(PreferKey.showUnread, showUnread.value)
-                        FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
-                    }
-                    if (appConfig.showLastUpdateTime != showLastUpdateTime.value) {
-                        prefs.putBoolean(PreferKey.showLastUpdateTime, showLastUpdateTime.value)
-                        FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
-                    }
-                    if (appConfig.bookshelfShowGroupCount != showGroupCount.value) {
-                        prefs.putBoolean(PreferKey.bookshelfShowGroupCount, showGroupCount.value)
-                        FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
-                    }
-                    if (appConfig.bookshelfListShowKind != showKind.value) {
-                        prefs.putBoolean(PreferKey.bookshelfListShowKind, showKind.value)
-                        FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
-                    }
-                    if (appConfig.bookshelfListShowIntro != showIntro.value) {
-                        prefs.putBoolean(PreferKey.bookshelfListShowIntro, showIntro.value)
-                        FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
-                    }
-                    if (appConfig.bookshelfListIntroLines != introLines.intValue) {
-                        prefs.putInt(PreferKey.bookshelfListIntroLines, introLines.intValue)
-                        FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
-                    }
-                    if (appConfig.bookshelfSort != bookshelfSort.intValue) {
-                        prefs.putInt(PreferKey.bookshelfSort, bookshelfSort.intValue)
-                        FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
-                    }
-                    // 对照原版 makeLayoutStyle: 视频置 EXPLORE_STYLE_VIDEO_FLAG, 列数取低 3 位
-                    val newLayout =
-                        (if (isVideo.value) BookSource.EXPLORE_STYLE_VIDEO_FLAG else 0) or
-                            (selectedCols.intValue and BookSource.EXPLORE_STYLE_COLS_MASK)
-                    val newGridWidth = gridWidthText.value.toIntOrNull() ?: 120
-                    if (appConfig.bookshelfLayout != newLayout ||
-                        appConfig.bookshelfFixedWidthMode != fixedWidthMode.value ||
-                        appConfig.bookshelfGridWidth != newGridWidth
-                    ) {
-                        prefs.putInt(PreferKey.bookshelfLayout, newLayout)
-                        prefs.putBoolean(PreferKey.bookshelfFixedWidthMode, fixedWidthMode.value)
-                        prefs.putInt(PreferKey.bookshelfGridWidth, newGridWidth)
-                        recreate = true
-                    }
-                    if (recreate) {
-                        eventBus.emitRecreate()
-                    } else if (notifyMain) {
-                        FlowBus.with(EventBus.NOTIFY_MAIN).tryEmit("")
-                    }
+                if (appConfig.showUnread != showUnread.value) {
+                    prefs.putBoolean(PreferKey.showUnread, showUnread.value)
+                    FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
+                }
+                if (appConfig.showLastUpdateTime != showLastUpdateTime.value) {
+                    prefs.putBoolean(PreferKey.showLastUpdateTime, showLastUpdateTime.value)
+                    FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
+                }
+                if (appConfig.bookshelfShowGroupCount != showGroupCount.value) {
+                    prefs.putBoolean(PreferKey.bookshelfShowGroupCount, showGroupCount.value)
+                    FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
+                }
+                if (appConfig.bookshelfListShowKind != showKind.value) {
+                    prefs.putBoolean(PreferKey.bookshelfListShowKind, showKind.value)
+                    FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
+                }
+                if (appConfig.bookshelfListShowIntro != showIntro.value) {
+                    prefs.putBoolean(PreferKey.bookshelfListShowIntro, showIntro.value)
+                    FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
+                }
+                if (appConfig.bookshelfListIntroLines != introLines.intValue) {
+                    prefs.putInt(PreferKey.bookshelfListIntroLines, introLines.intValue)
+                    FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
+                }
+                if (appConfig.bookshelfSort != bookshelfSort.intValue) {
+                    prefs.putInt(PreferKey.bookshelfSort, bookshelfSort.intValue)
+                    FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
+                }
+                // 对照原版 makeLayoutStyle: 视频置 EXPLORE_STYLE_VIDEO_FLAG, 列数取低 3 位
+                val newLayout =
+                    (if (isVideo.value) BookSource.EXPLORE_STYLE_VIDEO_FLAG else 0) or
+                        (selectedCols.intValue and BookSource.EXPLORE_STYLE_COLS_MASK)
+                val newGridWidth = gridWidthText.value.toIntOrNull() ?: 120
+                if (appConfig.bookshelfLayout != newLayout ||
+                    appConfig.bookshelfFixedWidthMode != fixedWidthMode.value ||
+                    appConfig.bookshelfGridWidth != newGridWidth
+                ) {
+                    prefs.putInt(PreferKey.bookshelfLayout, newLayout)
+                    prefs.putBoolean(PreferKey.bookshelfFixedWidthMode, fixedWidthMode.value)
+                    prefs.putInt(PreferKey.bookshelfGridWidth, newGridWidth)
+                    recreate = true
+                }
+                if (recreate) {
+                    eventBus.emitRecreate()
+                } else if (notifyMain) {
+                    FlowBus.with(EventBus.NOTIFY_MAIN).tryEmit("")
                 }
             }
+        },
+        contentPadding = PaddingValues(0.dp),
+        properties = AppDialogSizes.properties(),
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault),
+        ) {
+            AppDropdownField(
+                label = stringResource(Res.string.group_style),
+                options = groupStyles,
+                selectedIndex = groupStyle.intValue,
+                onSelect = { groupStyle.intValue = it },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            AppDropdownField(
+                label = stringResource(Res.string.explore_style),
+                options = itemStyles,
+                selectedIndex = if (isVideo.value) 1 else 0,
+                onSelect = { isVideo.value = it == 1 },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            AppSwitchRow(
+                label = stringResource(Res.string.show_unread),
+                checked = showUnread.value,
+                minHeight = DesignTokens.viewHeightXl,
+            ) {
+                showUnread.value = it
+            }
+            AppSwitchRow(
+                label = stringResource(Res.string.bookshelf_show_group_count),
+                checked = showGroupCount.value,
+                minHeight = DesignTokens.viewHeightXl,
+            ) {
+                showGroupCount.value = it
+            }
+            AppSwitchRow(
+                label = stringResource(Res.string.fixed_width_mode),
+                checked = fixedWidthMode.value,
+                minHeight = DesignTokens.viewHeightXl,
+            ) {
+                fixedWidthMode.value = it
+            }
+            // 视图小节 (对照原版 tv_layout_title)
+            Text(
+                stringResource(Res.string.view),
+                color = colors.accent,
+                fontSize = 16.sp,
+                modifier = Modifier.padding(top = DesignTokens.spacingMd, bottom = DesignTokens.spacingXs),
+            )
+            // 列数 (对照原版 sb_column_count 0..6, 固定宽模式隐藏)
+            if (!fixedWidthMode.value) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        stringResource(Res.string.column_count),
+                        color = colors.primaryText,
+                        modifier = Modifier.padding(end = DesignTokens.spacingDefault),
+                    )
+                    AppSlider(
+                        value = selectedCols.intValue,
+                        max = 6,
+                        onValueChange = { selectedCols.intValue = it },
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        selectedCols.intValue.toString(),
+                        color = colors.primaryText,
+                        fontSize = 16.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        modifier = Modifier.padding(start = DesignTokens.spacingXs),
+                    )
+                }
+            }
+            // 列表模式专属项 (对照原版 updateListOnlyVisibility)
+            val isList = !fixedWidthMode.value && selectedCols.intValue <= 1
+            if (isList) {
+                AppSwitchRow(
+                    label = stringResource(Res.string.bookshelf_list_show_kind),
+                    checked = showKind.value,
+                    minHeight = DesignTokens.viewHeightXl,
+                ) {
+                    showKind.value = it
+                }
+                AppSwitchRow(
+                    label = stringResource(Res.string.bookshelf_list_show_intro),
+                    checked = showIntro.value,
+                    minHeight = DesignTokens.viewHeightXl,
+                ) {
+                    showIntro.value = it
+                }
+                // 简介行数 1..5 (对照原版 tv_intro_lines_minus/plus, 未开简介降透明度)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .alpha(if (showIntro.value) 1f else 0.4f),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        stringResource(Res.string.bookshelf_list_intro_lines),
+                        color = colors.primaryText,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        "-",
+                        color = colors.primaryText,
+                        fontSize = 18.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clickable { if (introLines.intValue > 1) introLines.intValue-- },
+                    )
+                    Text(
+                        introLines.intValue.toString(),
+                        color = colors.primaryText,
+                        fontSize = 16.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.size(32.dp),
+                    )
+                    Text(
+                        "+",
+                        color = colors.primaryText,
+                        fontSize = 18.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clickable { if (introLines.intValue < 5) introLines.intValue++ },
+                    )
+                }
+                AppSwitchRow(
+                    label = stringResource(Res.string.show_last_update_time),
+                    checked = showLastUpdateTime.value,
+                    minHeight = DesignTokens.viewHeightXl,
+                ) {
+                    showLastUpdateTime.value = it
+                }
+            }
+            // 固定宽模式: 网格宽度 dp (对照原版 ll_fixed_width / et_grid_width)
+            if (fixedWidthMode.value) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        stringResource(Res.string.grid_width_dp),
+                        color = colors.primaryText
+                    )
+                    AppTextField(
+                        value = gridWidthText.value,
+                        onValueChange = {
+                            gridWidthText.value = it.filter { c -> c.isDigit() }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text("dp", color = colors.primaryText)
+                }
+            }
+            // 排序小节 (对照原版 rg_sort 6 项单选)
+            Text(
+                stringResource(Res.string.sort),
+                color = colors.accent,
+                fontSize = 16.sp,
+                modifier = Modifier.padding(top = DesignTokens.spacingMd, bottom = DesignTokens.spacingXs),
+            )
+            Column(Modifier.selectableGroup()) {
+                sortLabelRes.forEachIndexed { i, res ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = bookshelfSort.intValue == i,
+                                role = Role.RadioButton,
+                                onClick = { bookshelfSort.intValue = i },
+                            )
+                            .padding(vertical = DesignTokens.spacingXs),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AppRadioButton(
+                            selected = bookshelfSort.intValue == i,
+                            onClick = null
+                        )
+                        Text(
+                            stringResource(res),
+                            color = colors.primaryText,
+                            fontSize = 15.sp,
+                        )
+                    }
+                }
             }
         }
     }
@@ -433,142 +429,132 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
     val colors = AppTheme.colors
     val eventBus = LocalEventBusProvider.current
 
-    AppDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
+        title = stringResource(Res.string.bottom_nav_config),
+        bottomBar = {
+            AppTextButton(text = stringResource(Res.string.reset)) {
+                controller.reset()
+            }
+            Spacer(Modifier.weight(1f))
+            AppTextButton(
+                text = stringResource(Res.string.cancel),
+                color = colors.secondaryText,
+                onClick = onDismiss,
+            )
+            Spacer(Modifier.width(DesignTokens.spacingDefault))
+            AppTextButton(text = stringResource(Res.string.ok)) {
+                onDismiss()
+                if (controller.save()) eventBus.emitRecreate()
+            }
+        },
+        contentPadding = PaddingValues(0.dp),
         properties = AppDialogSizes.properties(),
     ) {
-        // 圆角/底色对齐 alert DSL AppAlertDialogContent (AppDialog 窗口无背景)
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(),
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault),
         ) {
-            Column(Modifier.fillMaxWidth()) {
-                DialogTitleBar(
-                    title = stringResource(Res.string.bottom_nav_config),
-                    onBack = onDismiss,
-                )
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f, fill = false)
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault),
+            Text(
+                stringResource(Res.string.bottom_bar_items_order),
+                color = colors.primaryText,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            )
+            Spacer(Modifier.height(DesignTokens.spacingDefault))
+            // 复用 ReorderableLazyListState + LazyRow 实现跟手拖拽排序
+            // 底栏是横向列表 (LazyRow), 方向由库按布局自动判定
+            val navListState = rememberLazyListState()
+            val navReorderState =
+                rememberReorderableLazyListState(navListState) { from, to ->
+                    controller.move(from.index, to.index)
+                }
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val cellWidth = maxWidth / navItems.size
+                LazyRow(
+                    state = navListState,
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(
-                        stringResource(Res.string.bottom_bar_items_order),
-                        color = colors.primaryText,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                    )
-                    Spacer(Modifier.height(DesignTokens.spacingDefault))
-                    // 复用 ReorderableLazyListState + LazyRow 实现跟手拖拽排序
-                    // 底栏是横向列表 (LazyRow), 方向由库按布局自动判定
-                    val navListState = rememberLazyListState()
-                    val navReorderState =
-                        rememberReorderableLazyListState(navListState) { from, to ->
-                            controller.move(from.index, to.index)
-                        }
-                    BoxWithConstraints(Modifier.fillMaxWidth()) {
-                        val cellWidth = maxWidth / navItems.size
-                        LazyRow(
-                            state = navListState,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            items(navItems, key = { it.tag }) { item ->
-                                ReorderableItem(navReorderState, key = item.tag) {
-                                    NavConfigItem(
-                                        item = item,
-                                        iconSize = iconSize.intValue,
-                                        cellWidth = cellWidth,
-                                        onToggle = { controller.toggle(item.tag) },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(DesignTokens.spacingDefault))
-                    // 高度滑条 (对照 sb_height: 36..80)
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            stringResource(Res.string.bottom_bar_height),
-                            color = colors.primaryText,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text("${height.intValue}dp", color = colors.primaryText)
-                    }
-                    AppSlider(
-                        value = height.intValue - AppConfigRanges.bottomBarHeight.first,
-                        max = AppConfigRanges.bottomBarHeight.last - AppConfigRanges.bottomBarHeight.first,
-                        onValueChange = {
-                            height.intValue = it + AppConfigRanges.bottomBarHeight.first
-                        },
-                    )
-                    // 图标大小滑条 (对照 sb_icon: 18..36)
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            stringResource(Res.string.bottom_bar_icon_size),
-                            color = colors.primaryText,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text("${iconSize.intValue}dp", color = colors.primaryText)
-                    }
-                    AppSlider(
-                        value = iconSize.intValue - AppConfigRanges.bottomBarIconSize.first,
-                        max = AppConfigRanges.bottomBarIconSize.last - AppConfigRanges.bottomBarIconSize.first,
-                        onValueChange = {
-                            iconSize.intValue = it + AppConfigRanges.bottomBarIconSize.first
-                        },
-                    )
-                    // 标签模式单选 (对照 rg_label_mode: 0=隐藏 1=常显 2=仅选中 3=自动)
-                    Text(
-                        stringResource(Res.string.bottom_bar_label_mode),
-                        color = colors.primaryText,
-                        modifier = Modifier.padding(top = DesignTokens.spacingXs),
-                    )
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .selectableGroup(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        val labelRes = listOf(
-                            Res.string.bottom_bar_label_unlabeled,
-                            Res.string.bottom_bar_label_labeled,
-                            Res.string.bottom_bar_label_selected,
-                            Res.string.bottom_bar_label_auto,
-                        )
-                        labelRes.forEachIndexed { i, res ->
-                            Row(
-                                Modifier
-                                    .selectable(
-                                        selected = labelMode.intValue == i,
-                                        onClick = { labelMode.intValue = i },
-                                    )
-                                    .padding(horizontal = DesignTokens.spacingXs, vertical = DesignTokens.spacingXs),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                AppRadioButton(selected = labelMode.intValue == i, onClick = null)
-                                Text(stringResource(res), color = colors.primaryText)
-                            }
+                    items(navItems, key = { it.tag }) { item ->
+                        ReorderableItem(navReorderState, key = item.tag) {
+                            NavConfigItem(
+                                item = item,
+                                iconSize = iconSize.intValue,
+                                cellWidth = cellWidth,
+                                onToggle = { controller.toggle(item.tag) },
+                            )
                         }
                     }
                 }
+            }
+            Spacer(Modifier.height(DesignTokens.spacingDefault))
+            // 高度滑条 (对照 sb_height: 36..80)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(Res.string.bottom_bar_height),
+                    color = colors.primaryText,
+                    modifier = Modifier.weight(1f),
+                )
+                Text("${height.intValue}dp", color = colors.primaryText)
+            }
+            AppSlider(
+                value = height.intValue - AppConfigRanges.bottomBarHeight.first,
+                max = AppConfigRanges.bottomBarHeight.last - AppConfigRanges.bottomBarHeight.first,
+                onValueChange = {
+                    height.intValue = it + AppConfigRanges.bottomBarHeight.first
+                },
+            )
+            // 图标大小滑条 (对照 sb_icon: 18..36)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(Res.string.bottom_bar_icon_size),
+                    color = colors.primaryText,
+                    modifier = Modifier.weight(1f),
+                )
+                Text("${iconSize.intValue}dp", color = colors.primaryText)
+            }
+            AppSlider(
+                value = iconSize.intValue - AppConfigRanges.bottomBarIconSize.first,
+                max = AppConfigRanges.bottomBarIconSize.last - AppConfigRanges.bottomBarIconSize.first,
+                onValueChange = {
+                    iconSize.intValue = it + AppConfigRanges.bottomBarIconSize.first
+                },
+            )
+            // 标签模式单选 (对照 rg_label_mode: 0=隐藏 1=常显 2=仅选中 3=自动)
+            Text(
+                stringResource(Res.string.bottom_bar_label_mode),
+                color = colors.primaryText,
+                modifier = Modifier.padding(top = DesignTokens.spacingXs),
+            )
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault),
+                    .horizontalScroll(rememberScrollState())
+                    .selectableGroup(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AppTextButton(text = stringResource(Res.string.reset)) {
-                    controller.reset()
+                val labelRes = listOf(
+                    Res.string.bottom_bar_label_unlabeled,
+                    Res.string.bottom_bar_label_labeled,
+                    Res.string.bottom_bar_label_selected,
+                    Res.string.bottom_bar_label_auto,
+                )
+                labelRes.forEachIndexed { i, res ->
+                    Row(
+                        Modifier
+                            .selectable(
+                                selected = labelMode.intValue == i,
+                                onClick = { labelMode.intValue = i },
+                            )
+                            .padding(horizontal = DesignTokens.spacingXs, vertical = DesignTokens.spacingXs),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AppRadioButton(selected = labelMode.intValue == i, onClick = null)
+                        Text(stringResource(res), color = colors.primaryText)
+                    }
                 }
-                Spacer(Modifier.weight(1f))
-                AppTextButton(text = stringResource(Res.string.cancel), onClick = onDismiss)
-                Spacer(Modifier.width(DesignTokens.spacingDefault))
-                AppTextButton(text = stringResource(Res.string.ok)) {
-                    onDismiss()
-                    if (controller.save()) eventBus.emitRecreate()
-                }
-            }
             }
         }
     }
@@ -702,23 +688,5 @@ private fun ReorderableCollectionItemScope.NavConfigItem(
             color = tint,
             fontSize = 12.sp,
         )
-    }
-}
-
-/** 标签 + 开关行 (对照原版 SwitchCompat 行) */
-@Composable
-private fun ConfigSwitchRow(
-    label: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = DesignTokens.viewHeightXl),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, color = AppTheme.colors.primaryText, modifier = Modifier.weight(1f))
-        AppSwitch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

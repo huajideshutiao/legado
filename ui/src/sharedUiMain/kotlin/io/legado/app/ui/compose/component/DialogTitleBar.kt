@@ -27,6 +27,8 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * Dialog 通用标题栏，复刻 dialog_title_bar：底栏色背景 + 返回箭头(dismiss) + 标题 + 右侧菜单槽。
+ *
+ * @param titleContent 覆盖标题区 (如筛选输入框)；为空则显示 [title]/[subtitle] 文本。
  */
 @Composable
 fun DialogTitleBar(
@@ -36,6 +38,7 @@ fun DialogTitleBar(
     onBack: (() -> Unit)? = null,
     titleClickable: Boolean = false,
     onTitleClick: (() -> Unit)? = null,
+    titleContent: (@Composable RowScope.() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val colors = AppTheme.colors
@@ -58,32 +61,38 @@ fun DialogTitleBar(
         } else {
             Spacer(Modifier.width(DesignTokens.spacingLg))
         }
-        Column(
-            Modifier
-                .weight(1f)
-                .let { mod ->
-                    if (titleClickable && onTitleClick != null) {
-                        mod.clickable(onClick = onTitleClick)
-                    } else {
-                        mod
+        if (titleContent != null) {
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                titleContent()
+            }
+        } else {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .let { mod ->
+                        if (titleClickable && onTitleClick != null) {
+                            mod.clickable(onClick = onTitleClick)
+                        } else {
+                            mod
+                        }
                     }
-                }
-        ) {
-            Text(
-                text = title,
-                color = colors.primaryText,
-                fontSize = 20.sp, // ToolbarTitle
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (!subtitle.isNullOrEmpty()) {
+            ) {
                 Text(
-                    text = subtitle,
-                    color = colors.secondaryText,
-                    fontSize = 16.sp, // Toolbar.Subtitle(Subhead)
+                    text = title,
+                    color = colors.primaryText,
+                    fontSize = 20.sp, // ToolbarTitle
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (!subtitle.isNullOrEmpty()) {
+                    Text(
+                        text = subtitle,
+                        color = colors.secondaryText,
+                        fontSize = 16.sp, // Toolbar.Subtitle(Subhead)
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
         actions()

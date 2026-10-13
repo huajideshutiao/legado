@@ -1,7 +1,6 @@
 ﻿package io.legado.app.ui.book.filter
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,11 +29,11 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.search.SearchScopeDialog
 import io.legado.app.ui.compose.component.AppCheckbox
-import io.legado.app.ui.compose.component.AppDialogSurface
+import io.legado.app.ui.compose.component.AppDialogScaffold
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppUnderlineTextField
-import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.RuleRegexes
@@ -76,6 +75,9 @@ private val fieldLabels = listOf(
  * 去掉 Fragment / Bundle / appDb / toastOnUi 依赖, 改为纯 @Composable + 回调:
  * - 调用方传入 [rule] (null=新增, 对应 app 端到达端按 id 重查的结果), [onConfirm] / [onDismiss];
  * - 作用范围仍复用 [SearchScopeDialog] (已下沉), 与 app 端 showDialogFragment<SearchScopeDialog>() 等价。
+ *
+ * 外壳走标准 [AppDialogScaffold]: 顶栏 (返回 + 标题) / 正文 (四周 8dp) / 底栏 (取消 + 确认),
+ * 与其余编辑对话框同一形制。
  *
  * @param rule 待编辑规则 (null=新增)
  * @param defaultScope 新增时的默认作用范围, 对照 app 端 ARG_DEFAULT_SCOPE (仅规则列表弹窗传入)
@@ -153,55 +155,65 @@ fun SourceFilterEditDialog(
         onDismiss()
     }
 
-    AppDialogSurface(
-        modifier = Modifier.fillMaxWidth().padding(DesignTokens.spacingDefault),
+    AppDialogScaffold(
+        onDismissRequest = onDismiss,
+        title = titleText,
+        properties = AppDialogSizes.properties(),
+        bottomBar = {
+            AppTextButton(
+                text = cancelText,
+                color = colors.secondaryText,
+            ) { onDismiss() }
+            Spacer(Modifier.width(DesignTokens.spacingXs))
+            // 不传 color: AppTextButton 默认取当前主题强调色 (对照原版 AccentTextView)
+            AppTextButton(text = okText) { confirm() }
+        },
     ) {
-        Column(Modifier.fillMaxWidth()) {
-            DialogTitleBar(
-                title = titleText,
-                onBack = onDismiss,
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            AppUnderlineTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = nameLabel,
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
             )
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .weight(1f, fill = false)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = DesignTokens.spacingDefault),
+            AppUnderlineTextField(
+                value = pattern,
+                onValueChange = { pattern = it },
+                label = patternLabel,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                text = fieldsLabel,
+                color = colors.secondaryText,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(top = DesignTokens.spacingMd),
+            )
+            FieldChecks(
+                fields = fields,
+                onToggle = { field ->
+                    fields = if (field in fields) fields - field else fields + field
+                },
+            )
+            // 作用范围与启用并排各占半行宽 (垂直居中: 启用行 48dp 高于作用范围行的 40dp 下限)
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                AppUnderlineTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = nameLabel,
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                AppUnderlineTextField(
-                    value = pattern,
-                    onValueChange = { pattern = it },
-                    label = patternLabel,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text(
-                    text = fieldsLabel,
-                    color = colors.secondaryText,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(top = DesignTokens.spacingMd),
-                )
-                FieldChecks(
-                    fields = fields,
-                    onToggle = { field ->
-                        fields = if (field in fields) fields - field else fields + field
-                    },
-                )
                 ScopeRow(
                     scope = scope,
                     label = scopeLabel,
                     summaryAll = scopeSummaryAll,
                     onClick = { showScopeDialog = true },
+                    modifier = Modifier.weight(1f),
                 )
                 Row(
                     Modifier
-                        .fillMaxWidth()
+                        .weight(1f)
                         .height(DesignTokens.viewHeightXl)
                         .clickable { enabled = !enabled },
                     verticalAlignment = Alignment.CenterVertically,
@@ -214,23 +226,6 @@ fun SourceFilterEditDialog(
                     )
                     AppSwitch(checked = enabled, onCheckedChange = { enabled = it })
                 }
-            }
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = DesignTokens.spacingDefault),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                AppTextButton(
-                    text = cancelText,
-                    color = colors.secondaryText,
-                ) { onDismiss() }
-                Spacer(Modifier.width(DesignTokens.spacingXs))
-                AppTextButton(
-                    text = okText,
-                    color = DesignTokens.arcoBlue6,
-                ) { confirm() }
             }
         }
     }
@@ -287,10 +282,11 @@ private fun ScopeRow(
     label: String,
     summaryAll: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = AppTheme.colors
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = DesignTokens.viewHeightLarge)
             .clickable(onClick = onClick)
@@ -317,7 +313,7 @@ private fun ScopeRow(
             contentDescription = label,
             tint = colors.secondaryText,
             modifier = Modifier
-                .padding(start = DesignTokens.spacingDefault)
+                .padding(start = DesignTokens.spacingDefault, end = DesignTokens.spacingDefault)
                 .size(24.dp),
         )
     }

@@ -35,19 +35,14 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 import io.legado.app.constant.ThreadSafeDateFormat
 import io.legado.app.data.entities.Bookmark
-import io.legado.app.ui.compose.component.AppDialog
-import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
-import io.legado.app.ui.compose.component.AppTextButton
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.launch
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.save_image_as
-import legado.ui.generated.resources.share
 import org.jetbrains.compose.resources.stringResource
 
 /** 导出位图宽度下限: 低于此宽度(如桌面 1x 密度)按倍率放大录制, 预览显示尺寸不变 */
@@ -198,6 +193,8 @@ fun BookmarkShareCard(
  * 的截图模式) 交 [BookmarkExporter.exportImage] 编码 PNG + 平台保存。
  *
  * 保存成功后关闭对话框; 失败/取消留对话框由用户重试或退出 (结果提示在 exportImage 内)。
+ *
+ * 无顶栏无返回箭头: 只有卡片预览与底部按钮行 (关闭靠取消/点外部/返回键)。
  */
 @Composable
 fun BookmarkShareCardDialog(
@@ -205,7 +202,6 @@ fun BookmarkShareCardDialog(
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    val titleText = stringResource(Res.string.share)
     val saveText = stringResource(Res.string.save_image_as)
     val cancelText = stringResource(Res.string.cancel)
     // 截图层: 卡片每次重绘都重录, 保存时取最近一次录制 (预览即所得)
@@ -213,70 +209,55 @@ fun BookmarkShareCardDialog(
     val scope = rememberCoroutineScope()
     var exporting by remember { mutableStateOf(false) }
 
-    AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(),
+    AppAlertDialog(
+        onDismissRequest = onDismiss,
+        // 不传 title: 本弹窗只展示卡片本身, 标题由卡片内容承担 (原版无对应弹窗)
+        okButton = AlertButton(
+            text = saveText,
+            // 导出是异步的, 成败由导出结果决定是否关闭 (失败/取消留对话框重试)
+            dismissOnClick = false,
+            enabled = !exporting,
         ) {
-            Column(Modifier.fillMaxWidth()) {
-                DialogTitleBar(title = titleText, onBack = onDismiss)
-
-                // 卡片预览: 超出可用高度转内部滚动
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f, fill = false)
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingMd),
-                ) {
-                    BookmarkShareCard(
-                        bookmark = bookmark,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .drawWithContent {
-                            val exportScale = max(1f, MinExportWidthPx / size.width)
-                            layer.record(
-                                size = IntSize(
-                                    (size.width * exportScale).roundToInt(),
-                                    (size.height * exportScale).roundToInt(),
-                                ),
-                            ) {
-                                scale(exportScale, Offset.Zero) { this@drawWithContent.drawContent() }
-                            }
-                            scale(1f / exportScale, Offset.Zero) { drawLayer(layer) }
-                        },
-                    )
-                }
-
-                // 底部按钮栏: 弹性间距 | 取消 | 保存
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = DesignTokens.spacingDefault)
-                        .padding(bottom = DesignTokens.spacingMd),
-                ) {
-                    Spacer(Modifier.weight(1f))
-                    AppTextButton(text = cancelText, color = colors.secondaryText) { onDismiss() }
-                    AppTextButton(
-                        text = saveText,
-                        color = DesignTokens.arcoBlue6,
-                        enabled = !exporting,
-                    ) {
-                        // 卡片尚未完成首帧绘制时 layer 为空, 直接忽略本次点击
-                        if (layer.size.width == 0 || layer.size.height == 0) return@AppTextButton
-                        exporting = true
-                        scope.launch {
-                            try {
-                                val image = layer.toImageBitmap()
-                                if (BookmarkExporter.exportImage(bookmark, image)) {
-                                    onDismiss()
-                                }
-                            } finally {
-                                exporting = false
-                            }
-                        }
+            // 卡片尚未完成首帧绘制时 layer 为空, 直接忽略本次点击
+            if (layer.size.width == 0 || layer.size.height == 0) return@AlertButton
+            exporting = true
+            scope.launch {
+                try {
+                    val image = layer.toImageBitmap()
+                    if (BookmarkExporter.exportImage(bookmark, image)) {
+                        onDismiss()
                     }
+                } finally {
+                    exporting = false
                 }
             }
+        },
+        cancelButton = AlertButton(text = cancelText, onClick = onDismiss),
+    ) {
+        // 卡片预览: 超出可用高度转内部滚动 (高度上限由 AppAlertDialog 的正文槽给出)
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingMd),
+        ) {
+            BookmarkShareCard(
+                bookmark = bookmark,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .drawWithContent {
+                    val exportScale = max(1f, MinExportWidthPx / size.width)
+                    layer.record(
+                        size = IntSize(
+                            (size.width * exportScale).roundToInt(),
+                            (size.height * exportScale).roundToInt(),
+                        ),
+                    ) {
+                        scale(exportScale, Offset.Zero) { this@drawWithContent.drawContent() }
+                    }
+                    scale(1f / exportScale, Offset.Zero) { drawLayer(layer) }
+                },
+            )
         }
     }
 }

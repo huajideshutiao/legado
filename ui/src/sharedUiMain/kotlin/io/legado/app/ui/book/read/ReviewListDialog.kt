@@ -384,13 +384,15 @@ private fun TitleBarRow(
         // minWidth = 整行宽会把槽内容 (关闭钮的 size / 排序入口的整块点击区) 强制撑满整行,
         // 两槽各占整行后标题可用宽被夹成 0、居中落在关闭钮正中 (表现为排序跑最左、
         // 关闭图标在画面中央、标题消失)。
-        val slotConstraints = constraints.copy(minWidth = 0)
+        // 最小高同理必须归零: 继承 48dp 顶栏最小高的文本会以 48dp 占位而字形画在盒顶, 只水平居中。
+        val slotConstraints = constraints.copy(minWidth = 0, minHeight = 0)
         val leadingPlaceable = measurables[0].measure(slotConstraints)
         val trailingPlaceable = measurables[2].measure(slotConstraints)
         val slot = maxOf(leadingPlaceable.width, trailingPlaceable.width)
         val titlePlaceable = measurables[1].measure(
             constraints.copy(
                 minWidth = 0,
+                minHeight = 0,
                 maxWidth = (constraints.maxWidth - 2 * slot).coerceAtLeast(0),
             )
         )

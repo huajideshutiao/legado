@@ -5,7 +5,7 @@
 //   "login_header" / "copy" / "success"
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -41,13 +41,14 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownAnchor
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppSingleChoiceMenu
-import io.legado.app.ui.compose.component.AppSwitch
+import io.legado.app.ui.compose.component.AppSwitchRow
 import io.legado.app.ui.compose.component.AppUnderlineTextField
-import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.GridPackLayout
 import io.legado.app.ui.compose.component.toGridPackSpec
 import io.legado.app.ui.compose.theme.AppTheme
@@ -98,7 +99,8 @@ class SourceLoginFormState {
  * 书源登录对话框 (KMP 共享, app + desktop + iOS 复用)。
  *
  * 严格复刻 app 端 `io.legado.app.ui.login.SourceLoginDialog` 的 UI 结构与交互逻辑:
- * - 顶部 DialogTitleBar: 登录标题 + 确认按钮(ic_check) + 溢出菜单(查看/删除登录头 + 日志)
+ * - 外壳: [AppDialogScaffold] (居中卡片, 高度自适应封顶 0.8 屏高), 顶栏 = 登录标题 + 确认按钮(ic_check)
+ *   + 溢出菜单(查看/删除登录头 + 日志) 经壳的 titleActions; 无底栏 (确认在顶栏)。
  * - GridPackLayout(columnCount=12, rowUnitMinHeight=60dp) 承载 loginUi 各行
  * - 行类型: text/password/select/toggle/button, padding 与原 view 对齐
  * - 确认: loginData 空则 removeLoginInfo + 关闭; 否则 putLoginInfo + 执行 login() JS
@@ -247,11 +249,10 @@ fun SourceLoginDialog(
         }
     }
 
-    Column(Modifier.fillMaxWidth()) {
-        DialogTitleBar(
-            title = titleText,
-            onBack = onDismiss
-        ) {
+    AppDialogScaffold(
+        onDismissRequest = onDismiss,
+        title = titleText,
+        titleActions = {
             IconButton(onClick = { login(getLoginData()) }) {
                 Icon(
                     painter = painterResource(Res.drawable.ic_check),
@@ -298,7 +299,10 @@ fun SourceLoginDialog(
                     }
                 }
             }
-        }
+        },
+        contentPadding = PaddingValues(0.dp),
+        properties = AppDialogSizes.properties(),
+    ) {
         LoginForm(rows, loginData) { handleButtonClick(it) }
     }
 
@@ -359,7 +363,6 @@ private fun LoginRow(
     loginData: MutableMap<String, String>,
     onButtonClick: (RowUi) -> Unit,
 ) {
-    val colors = AppTheme.colors
     when (rowUi.type) {
         // 外围间距由 AppTextField 组件统一 (左右下各 4dp), 调用点不再叠加
         RowUi.Type.text -> AppUnderlineTextField(
@@ -382,18 +385,13 @@ private fun LoginRow(
         // 原 select/toggle 行: setPadding(space.default)=8dp
         RowUi.Type.select -> SelectRow(rowUi, modifier.padding(DesignTokens.spacingDefault), loginData, onButtonClick)
 
-        RowUi.Type.toggle -> Row(
-            modifier.padding(DesignTokens.spacingDefault),
-            verticalAlignment = Alignment.CenterVertically
+        RowUi.Type.toggle -> AppSwitchRow(
+            label = rowUi.name,
+            checked = loginData[rowUi.name] == "true",
+            modifier = modifier,
         ) {
-            Text(rowUi.name, color = colors.primaryText, modifier = Modifier.weight(1f))
-            AppSwitch(
-                checked = loginData[rowUi.name] == "true",
-                onCheckedChange = {
-                    loginData[rowUi.name] = it.toString()
-                    onButtonClick(rowUi)
-                }
-            )
+            loginData[rowUi.name] = it.toString()
+            onButtonClick(rowUi)
         }
 
         // 原 button 行: item_fillet_text, 内边距走组件基础样式

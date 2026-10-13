@@ -74,6 +74,13 @@ object AppTheme {
         val buttonShape: RoundedCornerShape = shapeDefault
         val sheetShape: RoundedCornerShape = RoundedCornerShape(topStart = radiusLg, topEnd = radiusLg)
 
+        /**
+         * 文字按钮最小宽 (对齐 M2 ButtonDefaults.MinWidth, 窄文案不被压到比规范更窄)。
+         * 高度不设下限: 视觉高度由内容决定 (14sp 一行 + 上下各 8dp = 32dp),
+         * 对话框顶/底栏等需要更高触摸目标的行由行自身高度提供。
+         */
+        val buttonMinWidth: Dp = 64.dp
+
         // 对话框尺寸占锚点 (桌面=主窗口, 移动端=屏幕) 的比例; 消费方见 AppDialogSizes。
         // 高度 0.8 为全局统一值, 新弹窗一律取这里而非自行乘系数
         const val dialogWidthFraction: Float = 0.9f

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -24,6 +25,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialogContent
@@ -393,9 +397,27 @@ object AlertDialogRequests {
     }
 }
 
-/** alert DSL 请求的渲染宿主 (挂主界面 Content 尾部)。 */
+/**
+ * alert DSL 请求的渲染宿主 (挂各 Activity Content 尾部: 主界面 / 权限页 / 透明壳)。
+ *
+ * 只在当前界面处于前台时渲染。请求队列是进程级共享的, 各界面各挂一份宿主, 缺此前台判据时
+ * 同一请求会被多份宿主同时画成多个窗口; 判据必须取 RESUMED: 权限页与透明壳都是半透明窗口,
+ * 其下层界面只走 ON_PAUSE 不走 ON_STOP, 按 STARTED 判据时下层仍算前台而照旧重复。
+ */
 @Composable
 fun ComposeAlertDialogHost() {
+    if (AlertDialogRequests.pending.isEmpty()) return
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var resumed by remember { mutableStateOf(false) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            resumed = event == Lifecycle.Event.ON_RESUME
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        resumed = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    if (!resumed) return
     // 在队请求逐条渲染, 各成独立窗口 (与旧机制每请求一窗一致); 关闭只走句柄出队
     AlertDialogRequests.pending.forEach { pending ->
         AppDialog(

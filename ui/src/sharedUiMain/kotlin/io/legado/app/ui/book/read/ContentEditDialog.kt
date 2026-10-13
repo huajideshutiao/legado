@@ -5,14 +5,11 @@ package io.legado.app.ui.book.read
 //   "content_edit_copy_all" to "复制全部",
 //   "content_edit_copy_success" to "已复制"
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.CircularProgressIndicator
@@ -21,7 +18,6 @@ import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.LocalTextStyle
 import androidx.compose.material.Text
-import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,16 +27,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
 import io.legado.app.help.toast.Toasters
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
+import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppTextField
-import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.CancellationException
@@ -219,134 +214,115 @@ fun ContentEditDialog(
     // 原版 ContentEditDialog: BaseDialogFragment + isFullHeight=true (窗口 0.9 宽 × 0.8 屏高居中,
     // filletBackground 8dp 圆角, 带 dim); dialog_content_edit.xml 根 match_parent 全高, 标题栏 + 正文 weight 撑满;
     // 无底部按钮栏, 外部取消/返回仅关闭不保存 (2026-08 变更: 顶部保存按钮负责落库)
-    AppDialog(
+    AppDialogScaffold(
+        // 返回箭头/外部点击/系统返回直接关闭不保存 (2026-08 变更: 原 onCancel 自动保存改为关闭不保存)
         onDismissRequest = { onDismiss() },
-        properties = AppDialogSizes.properties(),
-    ) {
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(fullHeight = true),
-        ) {
-            Column(Modifier.fillMaxWidth()) {
-                DialogTitleBar(
-                    title = titleState,
-                    // 返回键直接关闭不保存 (2026-08 变更: 原 onCancel 自动保存改为关闭不保存)
-                    onBack = { onDismiss() },
-                    titleClickable = onRenameChapter != null,
-                    onTitleClick = {
-                        titleEditState = titleState
-                        showTitleEdit = true
-                    },
-                    actions = {
-                        IconButton(onClick = { save() }) {
-                            Icon(
-                                painter = painterResource(Res.drawable.ic_save),
-                                contentDescription = saveDescText,
-                                // 普通按钮色 (与返回箭头一致), 不主题色着色 (2026-08 变更)
-                                tint = colors.primaryText,
-                            )
-                        }
-                        OverflowMenu { dismissMenu ->
-                            // 重置: 仅当调用方提供 onReset 时渲染 (依赖 ContentEditViewModel.reset, 调用方注入);
-                            // 点击后重拉正文更新输入框 + 刷新阅读器 (对照原版 menu_reset → initContent(reset=true))
-                            if (onReset != null) {
-                                DropdownMenuItem(
-                                    onClick = {
-                                        dismissMenu()
-                                        resetContent()
-                                    },
-                                ) {
-                                    Text(resetText, color = colors.primaryText)
-                                }
-                            }
-                            // 复制全部: 仅当调用方提供 clipTextSink 时渲染 (与 app 端 sendToClip 等价)
-                            if (clipTextSink != null) {
-                                DropdownMenuItem(
-                                    onClick = {
-                                        dismissMenu()
-                                        // 与 app 端 sendToClip("$title\n${contentView?.text}") 等价
-                                        clipTextSink("$titleState\n$contentState")
-                                        Toasters.get().toast(copySuccessText)
-                                    },
-                                ) {
-                                    Text(copyAllText, color = colors.primaryText)
-                                }
-                            }
-                        }
-                    },
+        title = titleState,
+        titleClickable = onRenameChapter != null,
+        onTitleClick = {
+            titleEditState = titleState
+            showTitleEdit = true
+        },
+        titleActions = {
+            IconButton(onClick = { save() }) {
+                Icon(
+                    painter = painterResource(Res.drawable.ic_save),
+                    contentDescription = saveDescText,
+                    // 普通按钮色 (与返回箭头一致), 不主题色着色 (2026-08 变更)
+                    tint = colors.primaryText,
                 )
-                // 正文区: weight(1f) 撑满剩余空间 (原版 FrameLayout weight=1, 空内容时整区可点击聚焦),
-                // verticalScroll 承载超高内容 (2026-08 变更: 输入框随内容增高, 超高时正文区滚动);
-                // 内边距: 顶 12dp (XML content_view padding), 左右/底 arco_spacing_default
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(
-                            start = DesignTokens.spacingDefault,
-                            top = DesignTokens.spacingMd,
-                            end = DesignTokens.spacingDefault,
-                            bottom = DesignTokens.spacingDefault,
-                        ),
-                ) {
-                    // 输入框不限制行数与最大高度 (对齐原版 EditText 无 maxLines): wrap content
-                    // 随内容自然增高, 不再固定高度内部滚动 (2026-08 变更: 正文区滚动替代输入框内部滚动)
-                    AppTextField(
-                        value = contentState,
-                        onValueChange = { contentState = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        textStyle = LocalTextStyle.current.copy(
-                            color = colors.primaryText,
-                            fontSize = 16.sp,
-                        ),
-                    )
-                    // 加载中居中转圈覆盖输入框 (对齐原版 rlLoading CircularProgressIndicator)
-                    if (loading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.align(Alignment.Center),
-                        )
+            }
+            OverflowMenu { dismissMenu ->
+                // 重置: 仅当调用方提供 onReset 时渲染 (依赖 ContentEditViewModel.reset, 调用方注入);
+                // 点击后重拉正文更新输入框 + 刷新阅读器 (对照原版 menu_reset → initContent(reset=true))
+                if (onReset != null) {
+                    DropdownMenuItem(
+                        onClick = {
+                            dismissMenu()
+                            resetContent()
+                        },
+                    ) {
+                        Text(resetText, color = colors.primaryText)
                     }
                 }
+                // 复制全部: 仅当调用方提供 clipTextSink 时渲染 (与 app 端 sendToClip 等价)
+                if (clipTextSink != null) {
+                    DropdownMenuItem(
+                        onClick = {
+                            dismissMenu()
+                            // 与 app 端 sendToClip("$title\n${contentView?.text}") 等价
+                            clipTextSink("$titleState\n$contentState")
+                            Toasters.get().toast(copySuccessText)
+                        },
+                    ) {
+                        Text(copyAllText, color = colors.primaryText)
+                    }
+                }
+            }
+        },
+        contentPadding = PaddingValues(0.dp),
+        fullHeight = true,
+        properties = AppDialogSizes.properties(),
+    ) {
+        // 正文区: weight(1f) 撑满剩余空间 (原版 FrameLayout weight=1, 空内容时整区可点击聚焦),
+        // verticalScroll 承载超高内容 (2026-08 变更: 输入框随内容增高, 超高时正文区滚动);
+        // 内边距: 顶不留白 (输入框自带的 16dp 顶留白即顶栏下方唯一间隔), 左右/底 arco_spacing_default
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    start = DesignTokens.spacingDefault,
+                    top = 0.dp,
+                    end = DesignTokens.spacingDefault,
+                    bottom = DesignTokens.spacingDefault,
+                ),
+        ) {
+            // 输入框不限制行数与最大高度 (对齐原版 EditText 无 maxLines): wrap content
+            // 随内容自然增高, 不再固定高度内部滚动 (2026-08 变更: 正文区滚动替代输入框内部滚动)
+            AppTextField(
+                value = contentState,
+                onValueChange = { contentState = it },
+                modifier = Modifier.fillMaxWidth(),
+                textStyle = LocalTextStyle.current.copy(
+                    color = colors.primaryText,
+                    fontSize = 16.sp,
+                ),
+            )
+            // 加载中居中转圈覆盖输入框 (对齐原版 rlLoading CircularProgressIndicator)
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.Center),
+                )
             }
         }
     }
     // 标题编辑子对话框 (对照原版 editTitle: alert + 单行输入, 确认后回调调用方落库 + 刷新)
     if (showTitleEdit && onRenameChapter != null) {
-        AppDialog(
+        AppDialogScaffold(
             onDismissRequest = { showTitleEdit = false },
+            title = editText,
+            modifier = Modifier.padding(DesignTokens.spacingDefault),
+            bottomBar = {
+                AppTextButton(text = cancelText, color = colors.secondaryText) {
+                    showTitleEdit = false
+                }
+                Spacer(Modifier.weight(1f))
+                AppTextButton(text = okText) {
+                    showTitleEdit = false
+                    titleState = titleEditState
+                    onRenameChapter(titleEditState)
+                }
+            },
+            contentPadding = PaddingValues(0.dp),
             properties = AppDialogSizes.properties(),
         ) {
-            AppDialogSurface(
-                modifier = Modifier.appDialogSize().padding(DesignTokens.spacingDefault),
-            ) {
-                Column(Modifier.fillMaxWidth()) {
-                    DialogTitleBar(title = editText, onBack = { showTitleEdit = false })
-                    AppTextField(
-                        value = titleEditState,
-                        onValueChange = { titleEditState = it },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = DesignTokens.spacingDefault),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        TextButton(onClick = { showTitleEdit = false }) {
-                            Text(cancelText, color = colors.secondaryText)
-                        }
-                        Spacer(Modifier.width(DesignTokens.spacingXs))
-                        TextButton(onClick = {
-                            showTitleEdit = false
-                            titleState = titleEditState
-                            onRenameChapter(titleEditState)
-                        }) {
-                            Text(okText, color = DesignTokens.arcoBlue6)
-                        }
-                    }
-                }
-            }
+            AppTextField(
+                value = titleEditState,
+                onValueChange = { titleEditState = it },
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

@@ -7,11 +7,10 @@
 package io.legado.app.ui.book.read.config
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.DropdownMenuItem
@@ -28,14 +27,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.HttpTTS
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
 import io.legado.app.ui.compose.component.AppRadioButton
-import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.OverflowMenu
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
@@ -114,81 +110,72 @@ fun SpeakEngineDialog(
     var selected by remember(selectedEngineUrl) { mutableStateOf(selectedEngineUrl) }
     val colors = AppTheme.colors
 
-    AppDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
+        title = stringResource(Res.string.speak_engine),
+        titleActions = {
+            // 右上角"+"按钮 (与原版 IconButton + ic_add 对齐)
+            // 参数 null: 表示新增 (与行"编辑"按钮的非 null 参数区分)
+            IconButton(onClick = { onEditEngines(null) }) {
+                Icon(
+                    painter = painterResource(Res.drawable.ic_add),
+                    contentDescription = stringResource(Res.string.add),
+                    tint = colors.primaryText,
+                )
+            }
+            // 三点菜单: 导入导出族 (对应原版 speak_engine 菜单的导入导出项)
+            OverflowMenu { dismiss ->
+                @Composable
+                fun item(text: String, onClick: () -> Unit) {
+                    DropdownMenuItem(
+                        onClick = { dismiss(); onClick() },
+                    ) { Text(text, color = AppTheme.colors.primaryText) }
+                }
+                item(stringResource(Res.string.import_local)) { onImportLocal() }
+                item(stringResource(Res.string.import_on_line)) { onImportOnline() }
+                item(stringResource(Res.string.import_default_rule)) { onImportDefault() }
+                item(stringResource(Res.string.export)) { onExport() }
+            }
+        },
+        contentPadding = PaddingValues(0.dp),
         properties = AppDialogSizes.properties(),
     ) {
-        AppDialogSurface(
-            modifier = Modifier.appDialogSize(),
+        // 引擎列表 (与原版 LazyColumn + sysDefault item + items 对齐;
+        // 内容自适应: 项少随内容收缩, 超出封顶 0.8 锚点高后内部滚动)
+        FastScrollLazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            wrapContentHeight = true,
         ) {
-            Column(Modifier.fillMaxWidth()) {
-                DialogTitleBar(
-                    title = stringResource(Res.string.speak_engine),
-                    onBack = onDismiss,
-                    actions = {
-                        // 右上角"+"按钮 (与原版 IconButton + ic_add 对齐)
-                        // 参数 null: 表示新增 (与行"编辑"按钮的非 null 参数区分)
-                        IconButton(onClick = { onEditEngines(null) }) {
-                            Icon(
-                                painter = painterResource(Res.drawable.ic_add),
-                                contentDescription = stringResource(Res.string.add),
-                                tint = colors.primaryText,
-                            )
-                        }
-                        // 三点菜单: 导入导出族 (对应原版 speak_engine 菜单的导入导出项)
-                        OverflowMenu { dismiss ->
-                            @Composable
-                            fun item(text: String, onClick: () -> Unit) {
-                                DropdownMenuItem(
-                                    onClick = { dismiss(); onClick() },
-                                ) { Text(text, color = AppTheme.colors.primaryText) }
-                            }
-                            item(stringResource(Res.string.import_local)) { onImportLocal() }
-                            item(stringResource(Res.string.import_on_line)) { onImportOnline() }
-                            item(stringResource(Res.string.import_default_rule)) { onImportDefault() }
-                            item(stringResource(Res.string.export)) { onExport() }
-                        }
+            // 系统默认行 (与原版 sysDefault item 对齐)
+            // 桌面端无系统 TTS 引擎列表, 仅保留"系统默认"占位行
+            item(key = "sysDefault") {
+                EngineRow(
+                    name = stringResource(Res.string.system_default),
+                    checked = selected == null,
+                    onTestSpeak = { onTestSpeak(null) },
+                    onSelect = {
+                        selected = null
+                        onSelectEngine(null)
                     },
                 )
-
-                // 引擎列表 (与原版 LazyColumn + sysDefault item + items 对齐;
-                // 内容自适应: 项少随内容收缩, 超出封顶 0.8 锚点高后内部滚动)
-                FastScrollLazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    wrapContentHeight = true,
-                ) {
-                    // 系统默认行 (与原版 sysDefault item 对齐)
-                    // 桌面端无系统 TTS 引擎列表, 仅保留"系统默认"占位行
-                    item(key = "sysDefault") {
-                        EngineRow(
-                            name = stringResource(Res.string.system_default),
-                            checked = selected == null,
-                            onTestSpeak = { onTestSpeak(null) },
-                            onSelect = {
-                                selected = null
-                                onSelectEngine(null)
-                            },
-                        )
-                    }
-                    // HTTP TTS 引擎列表 (与原版 items(items.size, key = { items[it].id }) 对齐)
-                    items(engines, key = { it.id }) { httpTTS ->
-                        EngineRow(
-                            name = httpTTS.name,
-                            checked = httpTTS.id.toString() == selected,
-                            onEdit = { onEditEngines(httpTTS) },
-                            onDelete = { onDeleteEngine(httpTTS) },
-                            // 对齐书源编辑界面登录项显隐: 无登录入口不显示
-                            onLogin = if (httpTTS.hasLogin()) {
-                                { onLogin(httpTTS) }
-                            } else null,
-                            onTestSpeak = { onTestSpeak(httpTTS) },
-                            onSelect = {
-                                selected = httpTTS.id.toString()
-                                onSelectEngine(httpTTS.id.toString())
-                            },
-                        )
-                    }
-                }
+            }
+            // HTTP TTS 引擎列表 (与原版 items(items.size, key = { items[it].id }) 对齐)
+            items(engines, key = { it.id }) { httpTTS ->
+                EngineRow(
+                    name = httpTTS.name,
+                    checked = httpTTS.id.toString() == selected,
+                    onEdit = { onEditEngines(httpTTS) },
+                    onDelete = { onDeleteEngine(httpTTS) },
+                    // 对齐书源编辑界面登录项显隐: 无登录入口不显示
+                    onLogin = if (httpTTS.hasLogin()) {
+                        { onLogin(httpTTS) }
+                    } else null,
+                    onTestSpeak = { onTestSpeak(httpTTS) },
+                    onSelect = {
+                        selected = httpTTS.id.toString()
+                        onSelectEngine(httpTTS.id.toString())
+                    },
+                )
             }
         }
     }
