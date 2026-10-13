@@ -1,15 +1,18 @@
 package io.legado.app.ui.book.source.manage
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.isVirtualPluginSource
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.model.Debug
 import io.legado.app.ui.book.manga.extension.MangaExtensionServiceProviders
 import io.legado.app.ui.book.source.BookSourceListState
 import io.legado.app.ui.book.source.BookSourceSort
+import io.legado.app.ui.book.source.ShowSourceIconDefault
 import io.legado.app.ui.book.source.SourceFilter
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
@@ -46,7 +49,12 @@ class BookSourceScreenModel(
 
     private val scope = screenModelScope("书源管理")
 
-    private val _state = MutableStateFlow(BookSourceListState())
+    private val _state = MutableStateFlow(
+        BookSourceListState(
+            showSourceIcon = PreferenceProviders.get()
+                .getBoolean(PreferKey.showSourceIcon, ShowSourceIconDefault),
+        )
+    )
     val state: StateFlow<BookSourceListState> = _state.asStateFlow()
 
     private var sourceFlowJob: Job? = null
@@ -116,12 +124,13 @@ class BookSourceScreenModel(
     }
 
     /**
-     * 插件源虚拟行的行首图标就地补进行数据: 行内没有图标字段的插件源按归属插件包取图
+     * 插件源虚拟行的行首图标并入行数据: 行内没有图标字段的插件源按归属插件包取图
      * (首次读包并落盘缓存, 之后命中缓存)。本端没有插件宿主 (iOS/鸿蒙) 时 provider 未注册,
      * 直接原样返回 (行内图标字段为空, 界面回落首字占位)。
+     *
+     * 图标字段始终随数据下发, 与行首图标开关无关: 该开关只决定列表是否渲染这一格。
      */
     private fun withPluginSourceIcons(data: List<BookSourcePart>): List<BookSourcePart> {
-        if (!_state.value.showSourceIcon) return data
         val service = MangaExtensionServiceProviders.getOrNull() ?: return data
         return data.map { part ->
             if (part.isVirtualPluginSource() && part.bookSourceIcon.isNullOrBlank()) {
@@ -156,7 +165,9 @@ class BookSourceScreenModel(
                 is SourceFilter.Group -> appDb.bookSourceDao.flowGroupSearch(filter.name)
                 is SourceFilter.Search -> appDb.bookSourceDao.flowSearch(filter.key)
             }
-            base.map { data -> withPluginSourceIcons(sortOrMerge(data)) }
+            base.map { data ->
+                withPluginSourceIcons(sortOrMerge(data))
+            }
                 .catch { AppLog.put("书源界面更新书源出错", it) }
                 .flowOn(IoDispatcher)
                 .throttleLatest(500)
@@ -256,11 +267,10 @@ class BookSourceScreenModel(
             }
 
             BookSourceUiEvent.ToggleShowSourceIcon -> {
-                _state.value = _state.value.copy(
-                    showSourceIcon = !_state.value.showSourceIcon
-                )
-                // 重新取数: 关闭时不再按插件包取图, 重新勾选后立即回填
-                upBookSource(_state.value.searchKey)
+                val showSourceIcon = !_state.value.showSourceIcon
+                PreferenceProviders.get().putBoolean(PreferKey.showSourceIcon, showSourceIcon)
+                _state.value = _state.value.copy(showSourceIcon = showSourceIcon)
+                // 只切渲染档位: 行数据 (含插件源图标字段) 与列表顺序均不受该开关影响。
             }
 
             is BookSourceUiEvent.Toggle -> {

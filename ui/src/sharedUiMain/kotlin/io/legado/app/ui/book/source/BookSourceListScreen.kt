@@ -243,6 +243,7 @@ fun BookSourceListScreen(
             item = item,
             checked = state.selected.contains(item.bookSourceUrl),
             iconUrl = item.bookSourceIcon.takeIf { state.showSourceIcon },
+            showIcon = state.showSourceIcon,
             isScrollIdle = isScrollIdle,
             canDrag = canDrag,
             debugMsg = checkState.messages[item.bookSourceUrl].orEmpty(),
@@ -250,6 +251,14 @@ fun BookSourceListScreen(
         )
     }
 }
+
+/**
+ * 行首书源图标开关的默认档 (开关从未设过时的取值)。
+ *
+ * 声明与 [BookSourceListState.showSourceIcon] 同处: 状态默认值与持久化默认值只能有一份,
+ * 否则「首次进入」与「清掉该偏好后进入」会分叉。
+ */
+const val ShowSourceIconDefault: Boolean = true
 
 /**
  * 列表状态 (immutable)。host 端持有 mutableStateOf<BookSourceListState>, 修改时 copy出新实例。
@@ -262,8 +271,8 @@ data class BookSourceListState(
     val sort: BookSourceSort = BookSourceSort.Default,
     val sortAscending: Boolean = true,
     val groupSourcesByDomain: Boolean = false,
-    /** 行首书源图标是否显示 (关闭时统一回落到书源名首字占位, 且不发起图片加载)。 */
-    val showSourceIcon: Boolean = true,
+    /** 行首图标位是否显示; 关闭时整格不渲染 (列表回到无图标的紧凑形态), 也不发起图片加载。 */
+    val showSourceIcon: Boolean = ShowSourceIconDefault,
     val checkSourceMsg: String? = null,
     val checkSourceVisible: Boolean = false,
 )
@@ -437,7 +446,10 @@ private fun ReorderableCollectionItemScope.BookSourceItem(
     callbacks: BookSourceListCallbacks,
     item: BookSourcePart,
     checked: Boolean,
+    /** 行首图标地址 (开关关闭时传 null)。 */
     iconUrl: String?,
+    /** 行首图标位是否占位; 关闭时整格不渲染, 列表回到无图标的紧凑形态。 */
+    showIcon: Boolean,
     isScrollIdle: () -> Boolean,
     canDrag: Boolean,
     debugMsg: String,
@@ -488,12 +500,14 @@ private fun ReorderableCollectionItemScope.BookSourceItem(
                 checked = checked,
                 onCheckedChange = { callbacks.onToggle(item, it) },
             )
-            BookSourceIcon(
-                url = iconUrl,
-                name = item.bookSourceName,
-                isScrollIdle = isScrollIdle,
-            )
-            Spacer(Modifier.width(DesignTokens.spacingDefault))
+            if (showIcon) {
+                BookSourceIcon(
+                    url = iconUrl,
+                    name = item.bookSourceName,
+                    isScrollIdle = isScrollIdle,
+                )
+                Spacer(Modifier.width(DesignTokens.spacingDefault))
+            }
             Box(Modifier.weight(1f)) {
                 Text(
                     text = item.getDisPlayNameGroup(),
