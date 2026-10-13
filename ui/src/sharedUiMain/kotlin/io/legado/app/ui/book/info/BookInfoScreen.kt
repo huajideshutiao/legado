@@ -37,6 +37,7 @@ import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -166,7 +167,7 @@ import org.jetbrains.compose.resources.stringResource
  *   下拉指示器在 `setOnRefreshListener` 开头就 `isRefreshing = false` (:616-619), 从不表达刷新中
  * - [isLandscape] / [useDevFeat] / [isDarkTheme] / [isEInkMode]: 由路由层计算后传入
  *   (useDevFeat = bookInfoHorizontalLayout && !isVideo && !isLandscape;
- *   isEInkMode 时模糊封面背景与取色均跳过, 回退固定色)
+ *   isEInkMode 时模糊封面背景与取色均跳过, 回退主题文字色)
  * - [menuState]: 溢出菜单显隐控制状态 (对照原 onMenuOpened 内联求值)
  */
 data class BookInfoUiState(
@@ -289,27 +290,40 @@ fun BookInfoScreen(
     // 注: 本层不读 tick —— 本函数是否重组由调用方对 [state] 参数的比较决定, 体内再读一次
     // tick 无法反向影响该比较 (旧实现的 `state.bookTick` 顶读是死代码, 已删);
     // book 原地可变时的强制重组靠 tick 进入 [BookInfoUiState] 使新旧不等
-    // 模糊封面背景显示时 (竖屏非 devFeat / 横屏左列), 顶栏与头部文字按封面取色;
-    // 取色由 blur 背景的加载回调驱动 (LocalCoverLoaded 送来原图, 见 BookCoverPalette),
-    // 未回调 (加载中/失败/E-Ink) 前 palette 为 null, 回退原有固定色
+
+    // 取色来自平台 slot 上报的已加载封面位图 (共用同一次加载, 不另发请求, 见 [LocalCoverLoaded]):
+    // 换书或切横竖时先清空采样, 避免沿用上一份结论。
+    // E-Ink 与竖向 devFeat 分支下 slot 不加载封面, 回调不会触发, 采样自然为空
     val cover = state.book?.getDisplayCover()
-    var coverRegions by remember(cover) { mutableStateOf<CoverRegions?>(null) }
-    val onCoverLoaded: (ImageBitmap) -> Unit = remember(cover, state.isLandscape) {
-        { bmp -> coverRegions = sampleCoverRegions(bmp, state.isLandscape) }
+    var coverRegions by remember(cover, state.isLandscape) { mutableStateOf<CoverRegions?>(null) }
+    val onCoverLoaded: (ImageBitmap) -> Unit = remember(state.isLandscape) {
+        { loaded -> coverRegions = sampleCoverRegions(loaded, state.isLandscape) }
     }
-    val palette = if (state.isLandscape || !state.useDevFeat) {
+    // 模糊背景是否已绘制: 宿主与平台 slot 共用同一份可变状态, 由 slot 按自身绘制条件在组合期写回。
+    // 键含“由哪个分支承载模糊背景”: 切竖/横屏与主题模式时模糊背景会重新测量重载, 重画出来之前
+    // 不得沿用上一分支的结论。
+    val blurPainted = remember(
+        cover,
+        state.isLandscape,
+        state.useDevFeat,
+        state.isEInkMode,
+    ) { mutableStateOf(false) }
+    val blurredCoverPainted = blurPainted.value
+    // 取色产物只在模糊背景确实画出后才对外提供: 未画出时头部文字压的是页面底色, 封面取色不适用
+    val palette = if (blurredCoverPainted) {
         deriveBookCoverPalette(coverRegions, AppTheme.colors.background, state.isLandscape)
     } else {
         null
     }
+    // 对齐原版 applyDevFeatLayout: 模糊封面背景可见时顶栏取亮色文字 (取到色则按色), 否则随主题
     val titleColor = when {
-        state.useDevFeat -> AppTheme.colors.primaryText
-        palette != null -> palette.topBarFg
-        else -> Color.White
+        blurredCoverPainted -> palette?.topBarFg ?: Color.White
+        else -> AppTheme.colors.primaryText
     }
     CompositionLocalProvider(
         LocalBookInfoActions provides actions,
         LocalBookCoverPalette provides palette,
+        LocalBlurCoverPainted provides blurPainted,
         LocalCoverLoaded provides onCoverLoaded,
     ) {
         if (state.isLandscape) {

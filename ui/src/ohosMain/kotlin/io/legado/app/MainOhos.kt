@@ -28,6 +28,8 @@ import io.legado.app.ui.about.notifyAppCrash
 import io.legado.app.ui.about.preferenceUpVersionStore
 import io.legado.app.ui.about.upVersion
 import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
+import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
+import io.legado.app.ui.book.info.SharedBlurCoverBg
 import io.legado.app.ui.book.audio.SharedAudioPlayPlatformProvider
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.manga.OhosMangaReaderPlatform
@@ -135,6 +137,10 @@ fun MainOhos() {
         LocalReadConfigProviders provides readConfigProviders,
         LocalWebViewSlot provides { config, modifier, callbacks ->
             OhosWebViewSlot(config, modifier, callbacks)
+        },
+        // 详情页模糊封面背景 (与 desktop/iOS 同一实现, 走本端图片加载器)
+        LocalBlurCoverBgSlot provides { book, coverTick, inBookshelf, isEInkMode, modifier, land ->
+            SharedBlurCoverBg(book, coverTick, inBookshelf, isEInkMode, modifier, land)
         },
     ) {
         // 字体缩放: 把"界面设置→字体大小"档位接到 LocalDensity (安卓由 AppContextWrapper.wrap

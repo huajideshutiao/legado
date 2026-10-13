@@ -4,7 +4,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.selection.DisableSelection
@@ -20,24 +19,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
-import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /*
  * BookInfoScreen L3 slot 的 CompositionLocal: 模糊封面背景 + 简介内整宽图。
  *
- * 宿主端 (app `BookInfoBlurCoverBg`/`BookInfoIntroImage` / desktop `SharedBlurCoverBgCoil`/
- * `SharedIntroImageCoil` / iOS 同 desktop) 用 [CompositionLocalProvider] 覆盖注入平台实现,
+ * 宿主端用 [CompositionLocalProvider] 覆盖注入平台实现 —— 模糊封面背景: app `BookInfoBlurCoverBg`,
+ * desktop/iOS/鸿蒙 `SharedBlurCoverBg`; 简介内整宽图: 各端共用 `SharedIntroImage`。
  * 供 shared 路由 [io.legado.app.ui.route.BookInfoRoute] 渲染, 避免 shared 路由硬编码平台组件。
- *
- * 未注入时走 default 兜底实现:
- * - [SharedBlurCoverBgPlaceholder]: accent 半透明纯色背景 (非 Android 平台兜底)
- * - [SharedIntroImage]: 走 [BookImageLoaders] 加载 (ohos 未注册 loader 时回退占位)
  *
  * 模式参考 [io.legado.app.ui.bookshelf.LocalBookCoverSlot] / [io.legado.app.ui.browser.LocalWebViewSlot]。
  */
@@ -53,12 +46,15 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
  * - [Modifier]: 调用方传入的尺寸约束 (fillMaxSize 或 fillMaxWidth+height(300.dp))
  * - Boolean: land, 横屏布局 (左半列铺满, 渐变改水平; 竖屏顶部条垂直渐变)。
  *   2026-08 用户反馈: 横屏整列套垂直渐变 → 从上到下越来越黑, 与原版行为不符
+ *
+ * 实现须按自身绘制条件写回 [LocalBlurCoverPainted] (画出封面=true, 未画出=false):
+ * 未画出而写成 true 会让顶栏白字压在页面底色上不可读; 画出而忘了写回则顶栏一直停在主题色
+ * (在深色模糊封面上与默认背景同色, 字看不见)。
  */
 val LocalBlurCoverBgSlot =
     staticCompositionLocalOf<@Composable (Book?, Int, Boolean, Boolean, Modifier, Boolean) -> Unit> {
-        @Composable { book, coverTick, inBookshelf, isEInkMode, modifier, land ->
-            SharedBlurCoverBgPlaceholder(book, modifier)
-        }
+        // 未注入即报错: 四端都在宿主根注入实现, 缺注入属配置错误, 不能靠"不画背景"蒙过去
+        error("LocalBlurCoverBgSlot not provided, inject it at the host root")
     }
 
 /**
@@ -93,31 +89,10 @@ val LocalIntroImageSlot =
     }
 
 /**
- * 模糊封面背景默认占位: accent 半透明纯色 (非 Android 平台兜底)。
- *
- * 视觉: accent 色 15% 透明 + 底色叠加, 与 desktop 替换前纯色占位一致。
- * ohos 等未注册 [BookImageLoaders] 的平台恒走本占位。
- */
-@Composable
-fun SharedBlurCoverBgPlaceholder(
-    book: Book?,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier
-            .background(AppTheme.colors.accent.copy(alpha = 0.15f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        // 加深底色, 保证标题栏文字可读
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.2f)))
-    }
-}
-
-/**
  * 简介内整宽图默认实现: 走 [BookImageLoaders] 加载, 失败/未注册时回退文本占位。
  *
- * desktop/iOS 已注册 Coil3 版 [BookImageLoader], 可正常加载;
- * ohos 未注册时走占位 (与替换前行为一致)。
+ * 各端已注册自己的 [BookImageLoader] (desktop/iOS 为 Coil3 版, 鸿蒙为图像管线版);
+ * 加载中或失败时显示浅灰底占位。
  */
 @Composable
 fun SharedIntroImage(

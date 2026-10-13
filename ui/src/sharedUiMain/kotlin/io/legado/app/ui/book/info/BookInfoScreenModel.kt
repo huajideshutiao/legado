@@ -24,6 +24,9 @@ import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.ConvertUtils
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.incrementAndFetch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -53,6 +56,7 @@ import org.jetbrains.compose.resources.getString
  * 桌面/iOS 端可直接构造本类复用。派生状态 (isLandscape/useDevFeat/isDarkTheme/menuState)
  * 由宿主在 Composition 时经 [BookInfoUiState.copy] 覆盖, 不走 dispatch。
  */
+@OptIn(ExperimentalAtomicApi::class)
 class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
 
     private val appDb get() = AppDbProviders.get()
@@ -135,6 +139,21 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
      */
     var bootStarted: Boolean = false
 
+    /**
+     * 当前书籍展示版本 (每次 [BookInfoUiEvent.ShowBook] 递增)。
+     *
+     * 落地加载的多条链工作线程不同, 而字数链是"先算后交", 算出值的线程与交回值的线程可能不同;
+     * 用原子量保证"递增与读取"看到的是同一个先后顺序。
+     */
+    private val bookVersion = AtomicInt(0)
+
+    /**
+     * 供并行链开工时记版: 与目录链并行推进的字数计算结果上屏前要按此比对
+     * (目录链完成时已换上刷新后的书, 再回填刷新前的字数会把新的覆盖掉),
+     * 陈旧结果直接丢弃。
+     */
+    fun currentBookVersion(): Int = bookVersion.load()
+
     fun dispatch(event: BookInfoUiEvent) {
         when (event) {
             // 只置刷新标志: 不再把 tocText 清成 null —— 同一个 null 曾被界面同时当成
@@ -143,14 +162,17 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
             // 书籍数据更新 (bookData observe 触发)。**不**顺带 bump coverTick:
             // 封面重载只由真换了封面驱动 (BumpCoverTick / getDisplayCover 变化后 remember 重启),
             // 否则每次刷新都销毁封面子树 → 首帧退回默认封面
-            is BookInfoUiEvent.ShowBook -> _state.update {
-                it.copy(
-                    book = event.book,
-                    bookTick = it.bookTick + 1,
-                    lastedTitle = event.lastedTitle,
-                    // refreshing 不在这里复位: 收口在 [launchRefreshing] 的 finally,
-                    // 否则刷新的两步 (ShowBook/UpdateToc) 各自复位一次, 只是重复
-                )
+            is BookInfoUiEvent.ShowBook -> {
+                bookVersion.incrementAndFetch()
+                _state.update {
+                    it.copy(
+                        book = event.book,
+                        bookTick = it.bookTick + 1,
+                        lastedTitle = event.lastedTitle,
+                        // refreshing 不在这里复位: 收口在 [launchRefreshing] 的 finally,
+                        // 否则刷新的两步 (ShowBook/UpdateToc) 各自复位一次, 只是重复
+                    )
+                }
             }
 
             is BookInfoUiEvent.UpdateToc -> _state.update {
@@ -168,8 +190,9 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
                 it.copy(groupName = event.groupName)
             }
 
-            is BookInfoUiEvent.UpdateWordCount -> _state.update {
-                it.copy(wordCountText = event.text)
+            is BookInfoUiEvent.UpdateWordCount -> _state.update { cur ->
+                if (event.bookVersion != bookVersion.load()) cur
+                else cur.copy(wordCountText = event.text)
             }
 
             BookInfoUiEvent.RefreshDone -> _state.update {
@@ -321,7 +344,7 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
                 lastedTitle = if (toc.isEmpty()) null else lasted,
             )
         )
-        dispatch(BookInfoUiEvent.UpdateWordCount(wordCountTextOf(book)))
+        dispatch(BookInfoUiEvent.UpdateWordCount(wordCountTextOf(book), currentBookVersion()))
     }
 
     /** 对照 app 端 BaseReadViewModel.loadBookInfo。 */
@@ -438,8 +461,13 @@ sealed interface BookInfoUiEvent {
     /** 分组名更新 */
     data class UpdateGroup(val groupName: String) : BookInfoUiEvent
 
-    /** 字数信息更新 */
-    data class UpdateWordCount(val text: String?) : BookInfoUiEvent
+    /**
+     * 字数信息更新。
+     *
+     * [bookVersion] 为计算开工时的 [currentBookVersion] 快照: 展示中的书已换代 (回源/换源/刷新回写了新书)
+     * 时丢弃该陈旧结果。
+     */
+    data class UpdateWordCount(val text: String?, val bookVersion: Int) : BookInfoUiEvent
 
     /** book 原地可变后驱动重组 (toggleCanUpdate / toggleSplitLongChapter) */
     object BumpBookTick : BookInfoUiEvent

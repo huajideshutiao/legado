@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.info
 
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -11,15 +12,16 @@ import io.legado.app.utils.ColorUtils
 /*
  * 详情页封面取色: 顶栏与(书名+字数+最新章节)前景色按其背后的模糊封面背景自适应。
  *
- * 取色不独立发起加载 —— 由 blur 背景加载成功的回调 ([LocalCoverLoaded]) 送来封面原图,
- * 就地采样分区均值, 再按 [BookInfoBgTransformation] 的视觉模型换算元素背后的有效背景:
+ * 取色不另发请求: 平台 slot 加载出封面位图后经 [LocalCoverLoaded] 上报**原图**, 宿主就地分区采样
+ * (见 [sampleCoverRegions]), 再由分区均值按 [BookInfoBgTransformation] 的视觉模型换算元素背后的有效背景:
  * - 整体压暗 argb(50,0,0,0) SRC_ATOP ≈ RGB × [DARKEN]
  * - 竖屏书名块位于 300dp 背景的渐变尾段 (封面残留 alpha ≈ [CONTENT_ALPHA]), 有效背景 =
  *   lerp(页面底色, 封面分区均值, alpha); 横屏左列无渐变, alpha = 1
  * - 顶栏背后: 竖屏 300dp 条 CENTER_CROP 只露出封面中段 (~22%~78%), 取可见段上部;
  *   横屏整高铺满取顶部
  *
- * 回调未发生 (加载失败/E-Ink/未注册 loader) 时 palette 为 null, 调用方回退原有固定色。
+ * 取色未完成或失败时无采样结果, 头部文字仍走主题色 (对齐原版该三档的 XML 取值);
+ * 顶栏在该情形下由 [BookInfoScreen] 单独回退为亮色 (对齐原版顶栏在该背景上的固定亮字)。
  */
 
 /** 封面取色结果。 */
@@ -35,16 +37,31 @@ data class BookCoverPalette(
 )
 
 /**
- * "blur 背景封面原图就绪"回调: [BookInfoScreen] 顶层 provides (值 = 分区采样),
- * 平台 blur 实现 ([SharedBlurCoverBgCoil] / app 端 BookInfoBlurCoverBg) 加载成功时
- * 调用并送入封面**原图** bitmap (未经模糊/渐变处理)。默认 null, 非详情页宿主不回调。
+ * "模糊封面背景是否已绘制"——宿主与绘制方共用的同一份事实。
+ *
+ * 宿主在 [BookInfoScreen] 顶层 remember (键含承载模糊背景的布局分支, 切分支时重新从 false 起算)
+ * 并经本 CompositionLocal 下发; 平台 slot 按自身绘制条件在组合期写回 (画出封面=true, 未画出=false);
+ * 顶栏/头部与 slot 读的是同一个值, 不存在"字色已按封面取色、背景却还没画出来"的错配帧。
+ *
+ * 只由详情页宿主提供 (未提供即用错地方), 非详情页不得读。
  */
-val LocalCoverLoaded = staticCompositionLocalOf<((ImageBitmap) -> Unit)?> { null }
+val LocalBlurCoverPainted = staticCompositionLocalOf<MutableState<Boolean>> {
+    error("LocalBlurCoverPainted not provided, wrap content in BookInfoScreen")
+}
 
 /**
- * 当前封面取色结果: [BookInfoScreen] 顶层经 [deriveBookCoverPalette] 推导后 provides,
- * 头部/顶栏按 `current?.xxx ?: 固定色` 消费。默认 null (回调未发生: 加载中/失败/E-Ink/
- * devFeat 竖屏), 消费方回退原有固定色。
+ * "封面原图已就绪"回调: 平台 slot 加载出封面位图后调用 (送的就是它刚解出的那张图)。
+ *
+ * 取色与模糊背景共用同一次加载: 宿主在本回调里就地对分区采样, 不另发图片请求。
+ * 只由详情页宿主提供 (未提供即用错地方): 缺它不会报错但取色永不生效, 故未注入即报错。
+ */
+val LocalCoverLoaded = staticCompositionLocalOf<((ImageBitmap) -> Unit)> {
+    error("LocalCoverLoaded not provided, wrap content in BookInfoScreen")
+}
+
+/**
+ * 当前封面取色结果: [BookInfoScreen] 顶层经 [deriveBookCoverPalette] 推导后 provides; 取色未成
+ * 或模糊背景未画出时为 null, 消费方回退各自的主题色。
  */
 val LocalBookCoverPalette = staticCompositionLocalOf<BookCoverPalette?> { null }
 
@@ -73,7 +90,7 @@ private val WORD_COUNT_FG_ON_LIGHT_BG = Color(0xFF595959) // secondaryText 亮
 private val WORD_COUNT_FG_ON_DARK_BG = Color(0xFFCDCDCD)  // secondaryText 暗
 private val LASTED_FG = Color(0xFF909090)                 // summaryText (不随昼夜)
 
-/** blur 背景"原图加载完成"回调内调用: 分区均值采样 + 压暗换算 (任意尺寸 bitmap 均可)。 */
+/** 分区均值采样 + 压暗换算 (任意尺寸 bitmap 均可)。 */
 fun sampleCoverRegions(bmp: ImageBitmap, land: Boolean): CoverRegions {
     val topBarBand = if (land) LANDSCAPE_TOP_BAR_BAND else PORTRAIT_TOP_BAR_BAND
     val contentBand = if (land) LANDSCAPE_CONTENT_BAND else PORTRAIT_CONTENT_BAND
@@ -100,7 +117,7 @@ fun sampleCoverRegions(bmp: ImageBitmap, land: Boolean): CoverRegions {
     return CoverRegions(bandAvg(topBarBand), bandAvg(contentBand))
 }
 
-/** 组合内推导前景色 (依赖页面底色, 主题切换即时生效); 未采样 (回调未发生) 返回 null。 */
+/** 组合内推导前景色 (依赖页面底色, 主题切换即时生效); 未采样 (取色未完成或失败) 返回 null。 */
 fun deriveBookCoverPalette(
     regions: CoverRegions?,
     pageBg: Color,

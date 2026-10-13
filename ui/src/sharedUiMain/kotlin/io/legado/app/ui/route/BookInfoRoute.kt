@@ -165,39 +165,61 @@ fun BookInfoRoute(
                     BookInfoUiEvent.ShowBook(curBook, screenModel.lastedTitleOf(curBook))
                 )
             }
-            // 加载分组名 (对照 Activity upGroup: 空→no_group)
-            val groupName = try {
-                db.bookGroupDao.getGroupNames(curBook.group).joinToString(",")
-            } catch (e: Throwable) {
-                ""
-            }
-            screenModel.dispatch(BookInfoUiEvent.UpdateGroup(groupName.takeIf { it.isNotEmpty() }
-                ?: noGroupLabel))
-            // 字数信息 (对照 Activity upKinds: 字数 + 本地书文件大小, 逗号拼接; 后续刷新由 upShowBook 重算)
+            // 路由快照里已知的阅读进度/最新章先行上屏: 对照原版 upBook 同步置 curBook → showBook →
+            // tvLasted, 最新章文案在回源/查库之前就已写好 (进度为空时保留初值)
             screenModel.dispatch(
-                BookInfoUiEvent.UpdateWordCount(screenModel.wordCountTextOf(curBook))
+                BookInfoUiEvent.UpdateToc(
+                    tocText = curBook.durChapterTitle
+                        ?.takeIf { it.isNotBlank() }
+                        ?: screenModel.state.value.tocText,
+                    lastedTitle = screenModel.lastedTitleOf(curBook),                )
             )
-            // 自动加载书籍信息/目录 (对照 upBook 的 tocUrl 分支)
-            when {
-                curBook.tocUrl.isEmpty() -> screenModel.refresh(
-                    curBook, source, errorLoadTocLabel,
-                    runPreUpdateJs = inShelf, isSearchBook = isSearchBook,
+            // 以下三条链并行推进 (分组名 / 字数 / 自动加载目录): 原来是一条协程里顺序等完
+            // (分组→字数→目录), 目录链常含回源网络请求, 排在最后决定整页何时补齐。
+            // wordCountVersion 必须在任何链开工前记下 —— 下面任一链收尾都会 ShowBook 换代。
+            val wordCountVersion = screenModel.currentBookVersion()
+            launch {
+                // 加载分组名 (对照 Activity upGroup: 空→no_group)
+                val groupName = try {
+                    db.bookGroupDao.getGroupNames(curBook.group).joinToString(",")
+                } catch (e: Throwable) {
+                    ""
+                }
+                screenModel.dispatch(BookInfoUiEvent.UpdateGroup(groupName.takeIf { it.isNotEmpty() }
+                    ?: noGroupLabel))
+            }
+            launch {
+                // 字数信息 (对照 Activity upKinds: 字数 + 本地书文件大小, 逗号拼接; 后续刷新由 upShowBook 重算)
+                screenModel.dispatch(
+                    BookInfoUiEvent.UpdateWordCount(
+                        screenModel.wordCountTextOf(curBook),
+                        wordCountVersion,
+                    )
                 )
+            }
+            launch {
+                // 自动加载书籍信息/目录 (对照 upBook 的 tocUrl 分支)
+                when {
+                    curBook.tocUrl.isEmpty() -> screenModel.refresh(
+                        curBook, source, errorLoadTocLabel,
+                        runPreUpdateJs = inShelf, isSearchBook = isSearchBook,
+                    )
 
-                !inShelf || curBook.totalChapterNum == 0 ->
-                    screenModel.loadToc(curBook, source, errorLoadTocLabel)
-
-                else -> {
-                    val chapters = db.bookChapterDao.getChapterList(curBook.bookUrl)
-                    if (chapters.isEmpty()) {
+                    !inShelf || curBook.totalChapterNum == 0 ->
                         screenModel.loadToc(curBook, source, errorLoadTocLabel)
-                    } else {
-                        screenModel.dispatch(
-                            BookInfoUiEvent.UpdateToc(
-                                tocText = curBook.durChapterTitle.orEmpty(),
-                                lastedTitle = screenModel.lastedTitleOf(curBook),
+
+                    else -> {
+                        val chapters = db.bookChapterDao.getChapterList(curBook.bookUrl)
+                        if (chapters.isEmpty()) {
+                            screenModel.loadToc(curBook, source, errorLoadTocLabel)
+                        } else {
+                            screenModel.dispatch(
+                                BookInfoUiEvent.UpdateToc(
+                                    tocText = curBook.durChapterTitle.orEmpty(),
+                                    lastedTitle = screenModel.lastedTitleOf(curBook),
+                                )
                             )
-                        )
+                        }
                     }
                 }
             }

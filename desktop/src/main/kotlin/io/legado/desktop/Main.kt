@@ -57,7 +57,7 @@ import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
 import io.legado.app.ui.book.audio.SharedAudioPlayPlatformProvider
 import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
-import io.legado.app.ui.book.info.SharedBlurCoverBgCoil
+import io.legado.app.ui.book.info.SharedBlurCoverBg
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.read.page.provider.registerSkiaTextMeasurer
@@ -870,7 +870,7 @@ private fun runDesktopApp() = application {
             },
             // 注入 Coil3 模糊封面背景到 shared 详情页路由, 覆盖 LocalBlurCoverBgSlot 兜底
             LocalBlurCoverBgSlot provides { book, coverTick, inBookshelf, isEInkMode, modifier, land ->
-                SharedBlurCoverBgCoil(book, coverTick, inBookshelf, isEInkMode, modifier, land)
+                SharedBlurCoverBg(book, coverTick, inBookshelf, isEInkMode, modifier, land)
             },
         ) {
             // 字体缩放: 把"界面设置→字体大小"档位接到 LocalDensity (安卓由 AppContextWrapper.wrap

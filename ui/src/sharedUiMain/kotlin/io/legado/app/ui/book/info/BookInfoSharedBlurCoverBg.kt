@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,12 +27,15 @@ import io.legado.app.data.entities.Book
 import io.legado.app.help.image.BookImageLoaders
 
 /**
- * 模糊封面背景 Coil3 实现 (desktop/iOS 共享)。
+ * 模糊封面背景实现 (desktop/iOS/鸿蒙三端共享, 安卓另有 [io.legado.app.ui.book.info.BookInfoBlurCoverBg])。
  *
- * 走 [BookImageLoaders] (各端注入 Coil3 实现) 加载封面 Bitmap, 再用 [Modifier.blur] 做高斯模糊。
+ * 走 [BookImageLoaders] (各端注入自己的图片加载实现) 加载封面 Bitmap, 再用 [Modifier.blur] 做高斯模糊。
  * I3: 按容器尺寸 1/8 采样解码 (size(w/8,h/8) + FILL + INEXACT), blur 后放大绘制视觉等价,
  * 内存/绘制带宽降 ~64 倍。
  * 加载中/失败/E-Ink 模式不绘制 (对照原版 bgBook 空 drawable), 不铺色块以免换图时闪一下。
+ *
+ * 加载成功后把**原图**位图上报给 [LocalCoverLoaded], 详情页宿主据此就地对封面采样取色 ——
+ * 取色与背景共用同一次加载, 不另发请求。
  *
  * 渐变蒙版对照 app 端 [io.legado.app.ui.book.info.BookInfoBgTransformation]:
  * 先叠压暗 (原版 argb(50,0,0,0) SRC_ATOP ≈ 压暗 20%), 再按 DstIn alpha 蒙版收尾
@@ -44,7 +48,7 @@ import io.legado.app.help.image.BookImageLoaders
  * @param modifier 调用方传入的尺寸约束
  */
 @Composable
-fun SharedBlurCoverBgCoil(
+fun SharedBlurCoverBg(
     book: Book?,
     coverTick: Int,
     inBookshelf: Boolean,
@@ -53,25 +57,31 @@ fun SharedBlurCoverBgCoil(
     land: Boolean = false,
 ) {
     val cover = book?.getDisplayCover()
-    val loader = remember { BookImageLoaders.getOrNull() }
+    // 四端都在宿主根注册了实现, 取不到即配置错误: 用 get() 直接报错, 不静默不画
+    val loader = remember { BookImageLoaders.get() }
     // bitmap 只随封面 url 重置; coverTick 触发的重载期间保留旧图, 失败也不清空 ——
     // 否则重载被失败跳过表拦截时 (url 曾 403) 会闪回空白
     var bitmap by remember(cover) { mutableStateOf<ImageBitmap?>(null) }
-    // 封面取色回调 (详情页宿主提供, 见 BookCoverPalette); 失败不回调, 取色保留旧值/回退
+    // 模糊背景是否已绘制 (宿主与绘制方共用同一状态, 见 shared BookCoverPalette)
+    val paintedState = LocalBlurCoverPainted.current
+    // 封面取色入口 (详情页宿主提供): 把刚解出的原图交上去就地采样, 不再另发一次加载
     val onCoverLoaded = LocalCoverLoaded.current
     // I3: 模糊背景按 1/8 显示尺寸采样解码再放大绘制 (blur 后高频细节不可见, 视觉等价),
     // 内存/绘制带宽降 ~64 倍; 容器尺寸测量后触发加载 (窗口 resize 后按新尺寸重解)
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
     LaunchedEffect(cover, coverTick, loader, isEInkMode, containerSize) {
-        if (isEInkMode || cover.isNullOrBlank() || loader == null) return@LaunchedEffect
+        if (isEInkMode || cover.isNullOrBlank()) return@LaunchedEffect
         if (containerSize == IntSize.Zero) return@LaunchedEffect
         val w = (containerSize.width / 8).coerceAtLeast(1)
         val h = (containerSize.height / 8).coerceAtLeast(1)
         val loaded = loader.loadImageOrNull(cover, book.origin, w, h) ?: return@LaunchedEffect
         bitmap = loaded
-        // 原图 (未经 blur/渐变绘制处理) 就绪, 上报给封面取色
-        onCoverLoaded?.invoke(loaded)
+        onCoverLoaded(loaded)
     }
+    // 写出时机与绘制条件一致 (本实现画出封面的充要条件就是 bitmap 非空)。
+    // 共享状态在组合后写回, 顶栏读到新值会多重组一帧 —— 背景已画出而顶栏尚未换色的那一帧
+    // 是主题色压在模糊封面上, 不存在"白字压在空白背景上"的可读性缺口
+    SideEffect { paintedState.value = bitmap != null }
     Box(modifier.onSizeChanged { containerSize = it }) {
         // 模糊封面铺满 + 渐变蒙版 + 压暗 (对照原版 BookInfoBgTransformation)
         bitmap?.let {

@@ -19,7 +19,7 @@ import io.legado.app.help.AppVersionProviders
 import io.legado.app.help.versionNameToVersionCode
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
-import io.legado.app.ui.book.info.SharedBlurCoverBgCoil
+import io.legado.app.ui.book.info.SharedBlurCoverBg
 import io.legado.app.ui.browser.IosWebViewSlot
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.IosPlatformCapabilities
@@ -124,7 +124,7 @@ fun MainViewController(): UIViewController {
             },
             // 注入 Coil3 模糊封面背景到 shared 详情页路由, 覆盖 LocalBlurCoverBgSlot 兜底
             LocalBlurCoverBgSlot provides { book, coverTick, inBookshelf, isEInkMode, modifier, land ->
-                SharedBlurCoverBgCoil(book, coverTick, inBookshelf, isEInkMode, modifier, land)
+                SharedBlurCoverBg(book, coverTick, inBookshelf, isEInkMode, modifier, land)
             },
         ) {
             // 字体缩放: 把"界面设置→字体大小"档位接到 LocalDensity (安卓由 AppContextWrapper.wrap
