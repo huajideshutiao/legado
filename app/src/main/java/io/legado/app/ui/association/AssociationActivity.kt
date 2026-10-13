@@ -23,6 +23,7 @@ import io.legado.app.ui.root.LaunchRequestBus
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.ui.widget.dialog.awaitWaitDialogDismissed
 import io.legado.app.utils.startActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -51,6 +52,9 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
 
     /** 待处理的"需要导航"请求 (addToBookshelf / read): 壳内转圈抓书后转发主界面。 */
     private var pendingBookNav by mutableStateOf<Pair<DeepLinkImportType, String>?>(null)
+
+    /** 抓书是否已结束 (无论成败): 抓完先收起加载框, 再转发主界面。 */
+    private var bookNavResolved by mutableStateOf(false)
 
     /** 本壳注册的 capabilities 实例, onDestroy 身份校验用。 */
     private var registeredCapabilities: PlatformCapabilities? = null
@@ -161,12 +165,16 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
             }
             return
         }
-        // addToBookshelf / read: 壳内转圈抓书 (透明浮层), 直投进程内总线后唤起主界面
-        WaitDialog(visible = true, onDismissRequest = {})
+        // addToBookshelf / read: 壳内转圈抓书 (透明浮层), 抓完先收框再转发主界面
+        WaitDialog(visible = !bookNavResolved, onDismissRequest = {})
         LaunchedEffect(nav) {
-            runCatching {
+            val result = runCatching {
                 withContext(Dispatchers.IO) { resolveRouteForNav(nav.first, nav.second) }
-            }.onSuccess { route ->
+            }
+            // 先收起加载框并等它确实离开界面, 再唤起主界面: 壳的窗口在页面转场期间仍在合成,
+            // 框不收就会整段转场带着它 (顺序与原版一致: 关框 → 打开详情页 → 结束壳)
+            awaitWaitDialogDismissed { bookNavResolved = true }
+            result.onSuccess { route ->
                 // 同进程直投路由引用 (BookRef.Stored 零拷贝, 保持别名契约; 不序列化不查库),
                 // asRoot = 书架不进导航栈 (对照 master BookInfoActivity/ReadBookActivity 直开);
                 // Intent 只负责把主界面唤到前台, 不带载荷

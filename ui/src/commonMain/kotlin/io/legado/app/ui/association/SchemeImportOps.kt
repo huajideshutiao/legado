@@ -129,10 +129,17 @@ object AddToBookshelfShared {
         return AppRoute.BookInfo(book.toRouteRef())
     }
 
-    suspend fun add(bookUrl: String) {
+    /**
+     * @param beforeNavigate 抓完书、真正 push 之前等的东西。调用方用它把"收起加载框并等它确实
+     *   离开界面"插在跳转前面 —— 置隐与跳转落在同一主线程消息时, 系统合成出的第一帧仍是框还在的
+     *   画面, 整段页面转场都会带着它 (原版是 "关框 → 打开页面" 的顺序)。
+     */
+    suspend fun add(bookUrl: String, beforeNavigate: suspend () -> Unit = {}) {
+        val route = resolveRoute(bookUrl)
+        beforeNavigate()
         // getOrNull: Android 透明壳 AssociationActivity 也挂 DeepLinkImportHost, 壳内没有
         // LegadoApp/navigator (壳把书籍类请求拦成 pendingBookNav 转发, 靠的是壳自己的拦截顺序)
-        AppNavigatorProviders.getOrNull()?.push(resolveRoute(bookUrl))
+        AppNavigatorProviders.getOrNull()?.push(route)
     }
 }
 
@@ -150,8 +157,13 @@ object ReadBookShared {
         return book?.toReadRoute() ?: AddToBookshelfShared.resolveRoute(bookUrl)
     }
 
-    suspend fun read(bookUrl: String) {
+    /**
+     * @param beforeNavigate 同 [AddToBookshelfShared.add]: 跳转前收起加载框并等它离开界面。
+     */
+    suspend fun read(bookUrl: String, beforeNavigate: suspend () -> Unit = {}) {
+        val route = resolveRoute(bookUrl)
+        beforeNavigate()
         // getOrNull: 同 AddToBookshelfShared.add, 透明壳里没有 navigator
-        AppNavigatorProviders.getOrNull()?.push(resolveRoute(bookUrl))
+        AppNavigatorProviders.getOrNull()?.push(route)
     }
 }

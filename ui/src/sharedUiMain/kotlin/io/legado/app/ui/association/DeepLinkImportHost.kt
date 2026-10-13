@@ -12,6 +12,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.ui.widget.dialog.awaitWaitDialogDismissed
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.deep_link_type_not_supported
 import legado.ui.generated.resources.import_complete
@@ -35,20 +36,27 @@ private val schemeOnlyTypes = setOf(
  * - READ_CONFIG: 一步导入完成;
  * - UNKNOWN: 下载嗅探 —— zip 当排版配置一步完成, JSON 识别出具体类型后转生新请求
  *   (对照 app 端 determineType 的分流, 转生后 pending 不再是 [req], 本函数不再负责消费)。
+ *
+ * @param beforeNavigate 两型导航前的等待钩子 (收起加载框并等它离开界面), 由宿主传入。
  */
-private suspend fun runSchemeImport(req: DeepLinkImportRequest) {
+private suspend fun runSchemeImport(
+    req: DeepLinkImportRequest,
+    beforeNavigate: suspend () -> Unit,
+) {
     when (req.type) {
-        DeepLinkImportType.ADD_TO_BOOKSHELF -> runCatching { AddToBookshelfShared.add(req.src) }
-            .onFailure {
-                AppLog.put("添加书籍 ${req.src} 出错", it)
-                Toasters.get().toast(it.message ?: "")
-            }
+        DeepLinkImportType.ADD_TO_BOOKSHELF ->
+            runCatching { AddToBookshelfShared.add(req.src, beforeNavigate) }
+                .onFailure {
+                    AppLog.put("添加书籍 ${req.src} 出错", it)
+                    Toasters.get().toast(it.message ?: "")
+                }
 
-        DeepLinkImportType.READ_BOOK -> runCatching { ReadBookShared.read(req.src) }
-            .onFailure {
-                AppLog.put("阅读书籍 ${req.src} 出错", it)
-                Toasters.get().toast(it.message ?: "")
-            }
+        DeepLinkImportType.READ_BOOK ->
+            runCatching { ReadBookShared.read(req.src, beforeNavigate) }
+                .onFailure {
+                    AppLog.put("阅读书籍 ${req.src} 出错", it)
+                    Toasters.get().toast(it.message ?: "")
+                }
 
         DeepLinkImportType.READ_CONFIG -> runCatching { SchemeImportOps.importReadConfig(req.src) }
             .onSuccess { Toasters.get().toast("导入排版成功: $it") }
@@ -122,8 +130,15 @@ private fun DeepLinkImportContent(
             onDismissRequest = { /* 操作不中断, 对齐原 Android 转圈对话框不可点外取消 */ },
         )
         LaunchedEffect(req) {
-            runSchemeImport(req)
-            waitVisible = false
+            // 收框必须早于导入流程发起的页面跳转 (addToBookshelf / read): 置隐后框要等之后某次
+            // 重组才离开组合, 而承载它的透明壳一旦被转场盖住组合就停摆 —— 框会一直挂着, 整段
+            // 转场都带着它。故置隐后等框确实离开界面, 再让 add/read 往下 push
+            // (与原版 "关框 → 打开页面" 的顺序一致)
+            runSchemeImport(req) {
+                awaitWaitDialogDismissed { waitVisible = false }
+            }
+            // 不导航的两型 (readConfig / unknown) 在上一步里没动过框, 这里统一收掉
+            awaitWaitDialogDismissed { waitVisible = false }
             // JSON 嗅探分支会把 pending 换成新请求, 此时不能再 consume (否则刚升级的请求被清掉)
             if (LegadoDeepLinkHandler.pending.value == req) {
                 LegadoDeepLinkHandler.consume()

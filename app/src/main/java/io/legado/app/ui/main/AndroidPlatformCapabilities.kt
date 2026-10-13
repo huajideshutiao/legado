@@ -139,6 +139,7 @@ import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
 import io.legado.app.ui.root.ensureBookSaveDirSelected
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.ui.widget.dialog.awaitWaitDialogDismissed
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
@@ -1049,6 +1050,10 @@ class AndroidPlatformCapabilities(
                     merged,
                     WebFileImportShared.bookSourceOf(merged),
                 )
+                // 先收加载框、等它确实离开界面, 再交成功回调 (回调里会发起页面跳转): 框与跳转
+                // 落在同一主线程消息时, 合成出的第一帧仍是框还在的画面, 整段转场都会带着它
+                // (原版是 "关框 → 打开页面" 的顺序)
+                awaitWaitDialogDismissed { activity.runOnUiThread { onWaitDialog(false) } }
                 activity.runOnUiThread { success?.invoke(merged) }
             } catch (e: Throwable) {
                 when (e) {
@@ -1077,6 +1082,7 @@ class AndroidPlatformCapabilities(
                 activity.runOnUiThread { onWaitDialog(true) }
                 // 平台无关段 (取源 / 下载保存) 已下沉 WebFileImportShared
                 val path = WebFileImportShared.downloadWebFile(book, webFile)
+                awaitWaitDialogDismissed { activity.runOnUiThread { onWaitDialog(false) } }
                 activity.runOnUiThread { success?.invoke(path) }
             } catch (e: Throwable) {
                 when (e) {
@@ -1127,6 +1133,7 @@ class AndroidPlatformCapabilities(
                     merged,
                     WebFileImportShared.bookSourceOf(merged),
                 )
+                awaitWaitDialogDismissed { activity.runOnUiThread { onWaitDialog(false) } }
                 activity.runOnUiThread { success?.invoke(merged) }
             } catch (e: Throwable) {
                 AppLog.put("importArchiveBook Error\n${e.localizedMessage}", e, true)

@@ -27,6 +27,7 @@ import io.legado.app.ui.book.info.WebFileImportShared
 import io.legado.app.ui.book.manage.reportLocalBookSourceFileDeleteFailure
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.route.encodeReviewListDialogPayload
+import io.legado.app.ui.widget.dialog.awaitWaitDialogDismissed
 import io.legado.app.ui.withLocalDirAccess
 import io.legado.app.utils.FlowBus
 import io.legado.app.web.WebServerManager
@@ -211,6 +212,10 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
                     )
                     local
                 }
+                // 先收加载框、等它确实离开界面, 再交成功回调 (回调里会发起页面跳转): 框与跳转
+                // 落在同一主线程消息时, 合成出的第一帧仍是框还在的画面, 整段转场都会带着它
+                // (原版是 "关框 → 打开页面" 的顺序)
+                awaitWaitDialogDismissed { withContext(mainDispatcher) { onWaitDialog(false) } }
                 withContext(mainDispatcher) { success?.invoke(merged) }
             } catch (e: CancellationException) {
                 throw e
@@ -241,6 +246,7 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
                 val path = withContext(IoDispatcher) {
                     WebFileImportShared.downloadWebFile(book, webFile)
                 }
+                awaitWaitDialogDismissed { withContext(mainDispatcher) { onWaitDialog(false) } }
                 withContext(mainDispatcher) { success?.invoke(path) }
             } catch (e: CancellationException) {
                 throw e
@@ -294,6 +300,7 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
                     )
                     imported
                 }
+                awaitWaitDialogDismissed { withContext(mainDispatcher) { onWaitDialog(false) } }
                 withContext(mainDispatcher) { success?.invoke(merged) }
             } catch (e: CancellationException) {
                 throw e
