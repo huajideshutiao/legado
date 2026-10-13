@@ -137,7 +137,11 @@ final class ShareViewController: UIViewController {
                     try FileManager.default.copyItem(at: url, to: temp)
                     // 原子改名 (同目录 rename): 目标已存在时被整份替换, 取件方只会看到完整文件
                     // (半截内容只出现在隐藏临时名上, 宿主扫收件目录时跳过隐藏项)
-                    guard rename(temp.path, dest.path) == 0 else {
+                    //
+                    // 必须带 `Darwin.` 限定: UIViewController 经 UIResponder 在 iOS 16+ 也有
+                    // 一个 `rename(_:)` 实例方法, Swift 解析名字时成员优先于全局函数, 裸写
+                    // `rename` 会解析成那个实例方法 (参数对不上, 编译报错)。
+                    guard Darwin.rename(temp.path, dest.path) == 0 else {
                         let code = errno
                         throw NSError(
                             domain: NSPOSIXErrorDomain,
