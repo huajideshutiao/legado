@@ -29,12 +29,17 @@ import platform.darwin.NSObject
  * 映射只能按集合归类, 拿不到 Android 那种独立的 Idle 跳变与结束原因。实际影响: 若系统把
  * "响铃→挂断/未接"压成单次回调 (集合已空), 本端就不会收到 Ringing, 也就不暂停
  * (相应地也不需要恢复), 行为自洽但少了一次暂停。已接通/正在响铃的情形一定能收到。
+ *
+ * # 写法约束 (Kotlin/Native 官方限制)
+ * 必须是 **final class**: 官方文档明写 Kotlin 只能以 `final class` 继承 ObjC 类;
+ * `object` 声明的实例是"类对象", 不走 ObjC 实例分配路径, 编译器会以
+ * `Allocation of Obj-C class ... should have been lowered` 直接崩在代码生成阶段。
  */
-private object IosCallObserverDelegate : NSObject(), CXCallObserverDelegateProtocol {
+private class IosCallObserverDelegate : NSObject(), CXCallObserverDelegateProtocol {
 
     private val observer = CXCallObserver()
 
-    /** 挂上观察者 (宿主启动早期调用一次; ARC 持有 delegate, 故本对象是单例)。 */
+    /** 挂上观察者 (宿主启动早期调用一次)。 */
     fun register() {
         observer.setDelegate(this, null)
     }
@@ -55,7 +60,11 @@ private object IosCallObserverDelegate : NSObject(), CXCallObserverDelegateProto
     }
 }
 
+// K/N 限制: ObjC 子类 (NSObject) 的 companion 不允许字段, 单例实例放文件顶层
+// (ARC 持有 delegate, 故只建一次并常驻)
+private val iosCallObserverDelegate = IosCallObserverDelegate()
+
 /** 安装 iOS 来电观察者 (由 [registerIosMediaNotificationController] 调用)。 */
 internal fun registerIosCallStateObserver() {
-    IosCallObserverDelegate.register()
+    iosCallObserverDelegate.register()
 }

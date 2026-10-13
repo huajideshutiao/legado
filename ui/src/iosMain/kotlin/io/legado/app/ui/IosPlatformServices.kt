@@ -525,7 +525,7 @@ object IosNotificationPublisher {
 
     /** 挂上 delegate (须在宿主 didFinishLaunching 内尽早调用; ARC 持有, 故存全局引用)。 */
     fun installDelegate() {
-        UNUserNotificationCenter.currentNotificationCenter().delegate = IosNotificationDelegate
+        UNUserNotificationCenter.currentNotificationCenter().delegate = iosNotificationDelegate
     }
 
     /** 注册通知分类 (自定义动作按钮生效的前提; 须在任何带动作的通知发送之前调用)。 */
@@ -547,8 +547,13 @@ internal const val IosNotificationRouteKey = "legadoRoute"
  * 不新写路由解析: 复用 `route:` 前缀约定 (见 [IosLaunchRequests.parse]), 与系统
  * deep link / 文件关联走同一条链, 消费方仍是唯一的 `LaunchRequestBus` 消费者。
  * 各"取消"动作只调已有的平台取消入口 / 共享层取消链路 (逐分支见下), 不在此另写取消逻辑。
+ *
+ * # 写法约束 (Kotlin/Native 官方限制)
+ * 必须是 **final class**: 官方文档明写 Kotlin 只能以 `final class` 继承 ObjC 类;
+ * `object` 声明的实例是"类对象", 不走 ObjC 实例分配路径, 编译器会以
+ * `Allocation of Obj-C class ... should have been lowered` 直接崩在代码生成阶段。
  */
-private object IosNotificationDelegate : NSObject(), UNUserNotificationCenterDelegateProtocol {
+private class IosNotificationDelegate : NSObject(), UNUserNotificationCenterDelegateProtocol {
 
     override fun userNotificationCenter(
         center: UNUserNotificationCenter,
@@ -600,6 +605,10 @@ private object IosNotificationDelegate : NSObject(), UNUserNotificationCenterDel
         )
     }
 }
+
+// K/N 限制: ObjC 子类 (NSObject) 的 companion 不允许字段, 单例实例放文件顶层
+// (ARC 持有 delegate, 故只建一次并常驻)
+private val iosNotificationDelegate = IosNotificationDelegate()
 
 private object IosExternalRequestService : ExternalRequestService {
     // Swift 侧可传 NSURL (onOpenURL) 或字符串 (通知点击的 route:xxx)
