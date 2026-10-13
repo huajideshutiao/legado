@@ -16,17 +16,16 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import io.legado.app.R
 import io.legado.app.base.BaseService
-import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.media.AudioFocusController
 import io.legado.app.help.media.BecomingNoisyReceiver
 import io.legado.app.help.media.MediaPlaybackLock
+import io.legado.app.help.media.MediaNotificationHost
 import io.legado.app.help.media.MediaPlaybackNotification
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.BookCover
@@ -38,7 +37,6 @@ import io.legado.app.model.audio.AudioPlayController
 import io.legado.app.model.audio.AudioPlaySession
 import io.legado.app.model.audio.AudioPlaySessionHost
 import io.legado.app.model.audio.ExoPlayerAudioPlayController
-import io.legado.app.notificationManager
 import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.service.AudioPlayService.Companion.MAX_LRC_TEXT
 import io.legado.app.service.AudioPlayService.Companion.publishLyricLine
@@ -169,8 +167,22 @@ class AudioPlayService : BaseService(), AudioPlaySessionHost {
     val session by lazy { AudioPlaySession(this) }
 
     private var mediaSessionCompat: MediaSessionCompat? = null
-    private var upNotificationJob: Coroutine<*>? = null
     private var cover: Bitmap = BookCover.notificationDefaultCover
+
+    /** 前台通知宿主 (去重 + 刷新 + 前台启动, 与朗读共用同一实现)。 */
+    private val notificationHost by lazy {
+        MediaNotificationHost(
+            context = this,
+            notificationId = NotificationId.AudioPlayService,
+            async = { block -> execute { block() } },
+            build = ::createNotification,
+            dedupKey = {
+                listOf(pause, session.timerMinute, AudioPlay.book?.name, AudioPlay.durChapter?.title, cover)
+            },
+            errorLog = { message, e -> AppLog.put("创建音频播放通知出错,$message", e, true) },
+            onForegroundFailure = { stopSelf() },
+        )
+    }
 
     /** 上次成功加载封面的 URL,用于避免同 URL 重复触发加载 + 通知 rebuild */
     private var lastCoverUrl: String? = null
@@ -180,17 +192,6 @@ class AudioPlayService : BaseService(), AudioPlaySessionHost {
 
     /** 盯 [AudioPlay.durLrc]: 歌词异步就绪后补刷一次 metadata, 见 [armLrcWatch]。 */
     private var lrcWatchJob: Job? = null
-
-    /** 上一次发出的通知快照,用于跳过无变化的 rebuild。 */
-    private data class NotificationSnapshot(
-        val pause: Boolean,
-        val sleepMin: Int,
-        val bookName: String?,
-        val chapterTitle: String?,
-    )
-
-    private var lastNotificationSnapshot: NotificationSnapshot? = null
-    private var lastNotificationCover: Bitmap? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -311,9 +312,7 @@ class AudioPlayService : BaseService(), AudioPlaySessionHost {
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_STOPPED)
         exoPlayer.release()
         mediaSessionCompat?.release()
-        upNotificationJob?.invokeOnCompletion {
-            notificationManager.cancel(NotificationId.AudioPlayService)
-        }
+        notificationHost.cancelOnDestroy()
         // 会话内部终结 (起播链路失败) 也要停服务; 本就从 onDestroy 进来时 stopSelf 是空操作
         stopSelf()
     }
@@ -487,77 +486,51 @@ class AudioPlayService : BaseService(), AudioPlaySessionHost {
         }
         return MediaPlaybackNotification.build(
             context = this,
-            channelId = AppConst.channelIdReadAloud,
-            title = title,
-            subtitle = subtitle,
-            cover = cover,
-            contentIntent = activityPendingIntent<MainActivity>(IntentAction.activityAudioPlay) {
-                // 点击通知 → 打开当前播放书籍的音频界面 (对齐 origin activityPendingIntent<AudioPlayActivity>:
-                // 直接用内存 AudioPlay.book 进音频页, 不依赖 DB 解析; bookUrl 仅作冷启动兜底)
-                putExtra("route", "audio_play")
-                putExtra("bookUrl", AudioPlay.book?.bookUrl ?: "")
-                putExtra("chapterIndex", AudioPlay.durChapterIndex)
-            },
-            actions = listOf(
-                MediaPlaybackNotification.Action(
-                    R.drawable.ic_time_add_24dp,
-                    androidAppString("set_timer"),
-                    servicePendingIntent<AudioPlayService>(IntentAction.addTimer)
-                ),
-                MediaPlaybackNotification.Action(
-                    R.drawable.ic_skip_previous,
-                    androidAppString("pref_media_button_per_next"),
-                    servicePendingIntent<AudioPlayService>(IntentAction.prev)
-                ),
-                playPause,
-                MediaPlaybackNotification.Action(
-                    R.drawable.ic_skip_next,
-                    androidAppString("pref_media_button_per_next_summary"),
-                    servicePendingIntent<AudioPlayService>(IntentAction.next)
-                ),
-                MediaPlaybackNotification.Action(
-                    R.drawable.ic_stop_black_24dp,
-                    androidAppString("stop"),
-                    servicePendingIntent<AudioPlayService>(IntentAction.stop)
+            spec = MediaPlaybackNotification.Spec(
+                title = title,
+                subtitle = subtitle,
+                subText = androidAppString("audio"),
+                cover = cover,
+                contentIntent = activityPendingIntent<MainActivity>(IntentAction.activityAudioPlay) {
+                    // 点击通知 → 打开当前播放书籍的音频界面 (对齐 origin activityPendingIntent<AudioPlayActivity>:
+                    // 直接用内存 AudioPlay.book 进音频页, 不依赖 DB 解析; bookUrl 仅作冷启动兜底)
+                    putExtra("route", "audio_play")
+                    putExtra("bookUrl", AudioPlay.book?.bookUrl ?: "")
+                    putExtra("chapterIndex", AudioPlay.durChapterIndex)
+                },
+                sessionToken = mediaSessionCompat?.sessionToken,
+                actions = listOf(
+                    MediaPlaybackNotification.Action(
+                        R.drawable.ic_time_add_24dp,
+                        androidAppString("set_timer"),
+                        servicePendingIntent<AudioPlayService>(IntentAction.addTimer)
+                    ),
+                    MediaPlaybackNotification.Action(
+                        R.drawable.ic_skip_previous,
+                        androidAppString("pref_media_button_per_next"),
+                        servicePendingIntent<AudioPlayService>(IntentAction.prev)
+                    ),
+                    playPause,
+                    MediaPlaybackNotification.Action(
+                        R.drawable.ic_skip_next,
+                        androidAppString("pref_media_button_per_next_summary"),
+                        servicePendingIntent<AudioPlayService>(IntentAction.next)
+                    ),
+                    MediaPlaybackNotification.Action(
+                        R.drawable.ic_stop_black_24dp,
+                        androidAppString("stop"),
+                        servicePendingIntent<AudioPlayService>(IntentAction.stop)
+                    ),
                 ),
             ),
-            compactActionIndices = intArrayOf(1, 2, 3),
-            sessionToken = mediaSessionCompat?.sessionToken,
-            subText = androidAppString("audio"),
         )
     }
 
     private fun upAudioPlayNotification() {
-        val snapshot = NotificationSnapshot(
-            pause = pause,
-            sleepMin = session.timerMinute,
-            bookName = AudioPlay.book?.name,
-            chapterTitle = AudioPlay.durChapter?.title,
-        )
-        if (snapshot == lastNotificationSnapshot && lastNotificationCover === cover) return
-        lastNotificationSnapshot = snapshot
-        lastNotificationCover = cover
-        upNotificationJob?.cancel()
-        upNotificationJob = execute {
-            try {
-                val notification = createNotification()
-                notificationManager.notify(NotificationId.AudioPlayService, notification.build())
-            } catch (e: Exception) {
-                AppLog.put("创建音频播放通知出错,${e.localizedMessage}", e, true)
-            }
-        }
+        notificationHost.refresh()
     }
 
     override fun startForegroundNotification() {
-        execute {
-            try {
-                val notification = createNotification()
-                startForeground(NotificationId.AudioPlayService, notification.build())
-            } catch (e: Exception) {
-                AppLog.put("创建音频播放通知出错,${e.localizedMessage}", e, true)
-                //创建通知出错不结束服务就会崩溃,服务必须绑定通知
-                stopSelf()
-            }
-        }
+        notificationHost.startForeground(this)
     }
 }

@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
+import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.telephony.PhoneStateListener
@@ -20,7 +21,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import io.legado.app.R
 import io.legado.app.base.BaseService
-import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
@@ -28,11 +28,11 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
 import io.legado.app.help.MediaHelp
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.media.AudioFocusController
 import io.legado.app.help.media.BecomingNoisyReceiver
 import io.legado.app.help.media.MediaPlaybackLock
+import io.legado.app.help.media.MediaNotificationHost
 import io.legado.app.help.media.MediaPlaybackNotification
 import io.legado.app.help.media.PhoneCallPauseHandler
 import io.legado.app.help.media.PhoneCallState
@@ -164,22 +164,31 @@ abstract class BaseReadAloudService : BaseService() {
         onResume = { resumeReadAloud() },
     )
     private var registeredPhoneStateListener = false
-    private var upNotificationJob: Coroutine<*>? = null
     private var chapterWatchJob: Job? = null
     private var cover: Bitmap = BookCover.notificationDefaultCover
 
-    /** 通知标题用书名; 阅读实例摘除后实时取不到, 随每次通知刷新续缓存 */
-
-    /** 上一次发出的通知快照,用于跳过无变化的 rebuild。 */
-    private data class NotificationSnapshot(
-        val pause: Boolean,
-        val sleepMin: Int,
-        val bookName: String?,
-        val chapterTitle: String?,
-    )
-
-    private var lastNotificationSnapshot: NotificationSnapshot? = null
-    private var lastNotificationCover: Bitmap? = null
+    /** 前台通知宿主 (去重 + 刷新 + 前台启动, 与音频共用同一实现)。 */
+    private val notificationHost by lazy {
+        MediaNotificationHost(
+            context = this,
+            notificationId = NotificationId.ReadAloudService,
+            async = { block -> execute { block() } },
+            build = ::createNotification,
+            dedupKey = {
+                listOf(
+                    pause,
+                    sleepTimer?.minutes ?: 0,
+                    readBook?.bookValue?.name,
+                    readBook?.curTextChapter?.value?.title,
+                    cover,
+                )
+            },
+            errorLog = { message, e -> AppLog.put("创建朗读通知出错,$message", e, true) },
+            // 前台启动失败必须收场: 服务已 onStartCommand 返回、却未进入前台, 不在此刻停掉会留在
+            // "已启动未前台"状态 (对照原版 startForegroundNotification 的 stopSelf)
+            onForegroundFailure = { stopSelf() },
+        )
+    }
 
     var pageChanged = false
     var readAloudByPage = false
@@ -248,8 +257,10 @@ abstract class BaseReadAloudService : BaseService() {
         }
         BookCover.loadNotificationCover(this, book?.getDisplayCover(), lifecycleScope) {
             cover = it
+            upMediaMetadata()
             upReadAloudNotification()
         }
+        upMediaMetadata()
     }
 
     private fun observeLiveBus() {
@@ -281,9 +292,7 @@ abstract class BaseReadAloudService : BaseService() {
         mediaSessionCompat.release()
         ActiveReadAloudHostPorts.uploadProgress()
         unregisterPhoneStateListener(phoneStateListener)
-        upNotificationJob?.invokeOnCompletion {
-            notificationManager.cancel(NotificationId.ReadAloudService)
-        }
+        notificationHost.cancelOnDestroy()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -357,6 +366,7 @@ abstract class BaseReadAloudService : BaseService() {
         playbackLock.acquire()
         _isRunFlow.value = true
         pause = false
+        upMediaMetadata()
         upReadAloudNotification()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
         ActiveReadAloudHostPorts.positionPublisher.publishState(Status.PLAY)
@@ -371,6 +381,7 @@ abstract class BaseReadAloudService : BaseService() {
         pause = readAloudController.state.value != ReadAloudControllerShared.ReadAloudState.PLAYING
         ReadTimeRecorder.end(ReadTimeRecorder.Source.READ_ALOUD)
         if (abandonFocus) audioFocus.abandon()
+        upMediaMetadata()
         upReadAloudNotification()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PAUSED)
         ActiveReadAloudHostPorts.positionPublisher.publishState(Status.PAUSE)
@@ -441,6 +452,23 @@ abstract class BaseReadAloudService : BaseService() {
         )
     }
 
+    /**
+     * 会话元数据 (标题/章节/作者/封面)。携令牌的媒体卡片优先读它, 不写则锁屏与车机
+     * 只能靠通知文案回落, 内容不稳定 —— 与音频服务同口径 (AudioPlayService.upMediaMetadata)。
+     */
+    private fun upMediaMetadata() {
+        val book = readBook?.bookValue
+        val builder = MediaMetadataCompat.Builder()
+            .putBitmap(MediaMetadataCompat.METADATA_KEY_ART, cover)
+            .putText(
+                MediaMetadataCompat.METADATA_KEY_TITLE,
+                readBook?.curTextChapter?.value?.title ?: book?.name.orEmpty()
+            )
+            .putText(MediaMetadataCompat.METADATA_KEY_ARTIST, book?.name.orEmpty())
+            .putText(MediaMetadataCompat.METADATA_KEY_ALBUM, book?.author.orEmpty())
+        mediaSessionCompat.setMetadata(builder.build())
+    }
+
     @SuppressLint("UnspecifiedImmutableFlag")
     private fun initMediaSession() {
         mediaSessionCompat.setCallback(object : MediaSessionCompat.Callback() {
@@ -467,24 +495,7 @@ abstract class BaseReadAloudService : BaseService() {
     }
 
     private fun upReadAloudNotification() {
-        val snapshot = NotificationSnapshot(
-            pause = pause,
-            sleepMin = sleepTimer?.minutes ?: 0,
-            bookName = readBook?.bookValue?.name,
-            chapterTitle = readBook?.curTextChapter?.value?.title,
-        )
-        if (snapshot == lastNotificationSnapshot && lastNotificationCover === cover) return
-        lastNotificationSnapshot = snapshot
-        lastNotificationCover = cover
-        upNotificationJob?.cancel()
-        upNotificationJob = execute {
-            try {
-                val notification = createNotification()
-                notificationManager.notify(NotificationId.ReadAloudService, notification.build())
-            } catch (e: Exception) {
-                AppLog.put("创建朗读通知出错,${e.localizedMessage}", e, true)
-            }
-        }
+        notificationHost.refresh()
     }
 
     private fun createNotification(): NotificationCompat.Builder {
@@ -509,51 +520,46 @@ abstract class BaseReadAloudService : BaseService() {
                 aloudServicePendingIntent(IntentAction.pause)
             )
         }
-        // fix #4090: android 14 lock screen 媒体控件需要在 MediaStyle 上挂 session token
-        val sessionToken = if (AppConfig.systemMediaControlCompatibilityChange) {
-            mediaSessionCompat.sessionToken
-        } else null
         return MediaPlaybackNotification.build(
             context = this,
-            channelId = AppConst.channelIdReadAloud,
-            title = title,
-            subtitle = subtitle,
-            cover = cover,
-            // 路由 extra 经 MainActivity → NavigateTo("last_read") 打开最近阅读书籍
-            // 用独立 action (IntentAction.activityReadAloud) 区分 PendingIntent 身份,
-            // 避免 FLAG_UPDATE_CURRENT 下多个通知坍缩为同一 PendingIntent 互相覆盖 extras
-            // (origin 音频/朗读分别指向 AudioPlayActivity/ReadBookActivity 天然隔离)
-            contentIntent = activityPendingIntent<MainActivity>(IntentAction.activityReadAloud) {
-                putExtra("route", "last_read")
-            },
-            actions = listOf(
-                MediaPlaybackNotification.Action(
-                    R.drawable.ic_time_add_24dp,
-                    androidAppString("set_timer"),
-                    aloudServicePendingIntent(IntentAction.addTimer)
-                ),
-                MediaPlaybackNotification.Action(
-                    R.drawable.ic_skip_previous,
-                    androidAppString("previous_chapter"),
-                    aloudServicePendingIntent(IntentAction.prev)
-                ),
-                playPause,
-                MediaPlaybackNotification.Action(
-                    R.drawable.ic_skip_next,
-                    androidAppString("next_chapter"),
-                    aloudServicePendingIntent(IntentAction.next)
-                ),
-                MediaPlaybackNotification.Action(
-                    R.drawable.ic_stop_black_24dp,
-                    androidAppString("stop"),
-                    aloudServicePendingIntent(IntentAction.stop)
+            spec = MediaPlaybackNotification.Spec(
+                title = title,
+                subtitle = subtitle,
+                subText = androidAppString("read_aloud"),
+                cover = cover,
+                // 路由 extra 经 MainActivity → NavigateTo("last_read") 打开最近阅读书籍
+                // 用独立 action (IntentAction.activityReadAloud) 区分 PendingIntent 身份,
+                // 避免 FLAG_UPDATE_CURRENT 下多个通知坍缩为同一 PendingIntent 互相覆盖 extras
+                // (origin 音频/朗读分别指向 AudioPlayActivity/ReadBookActivity 天然隔离)
+                contentIntent = activityPendingIntent<MainActivity>(IntentAction.activityReadAloud) {
+                    putExtra("route", "last_read")
+                },
+                // fix #4090: android 14 lock screen 媒体控件需要在 MediaStyle 上挂 session token
+                sessionToken = mediaSessionCompat.sessionToken,
+                actions = listOf(
+                    MediaPlaybackNotification.Action(
+                        R.drawable.ic_time_add_24dp,
+                        androidAppString("set_timer"),
+                        aloudServicePendingIntent(IntentAction.addTimer)
+                    ),
+                    MediaPlaybackNotification.Action(
+                        R.drawable.ic_skip_previous,
+                        androidAppString("previous_chapter"),
+                        aloudServicePendingIntent(IntentAction.prev)
+                    ),
+                    playPause,
+                    MediaPlaybackNotification.Action(
+                        R.drawable.ic_skip_next,
+                        androidAppString("next_chapter"),
+                        aloudServicePendingIntent(IntentAction.next)
+                    ),
+                    MediaPlaybackNotification.Action(
+                        R.drawable.ic_stop_black_24dp,
+                        androidAppString("stop"),
+                        aloudServicePendingIntent(IntentAction.stop)
+                    ),
                 ),
             ),
-            compactActionIndices = intArrayOf(1, 2, 3),
-            sessionToken = sessionToken,
-            subText = androidAppString("read_aloud"),
-            category = NotificationCompat.CATEGORY_TRANSPORT,
-            foregroundBehavior = NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE,
         )
     }
 
@@ -564,16 +570,7 @@ abstract class BaseReadAloudService : BaseService() {
             stopSelf()
             return
         }
-        execute {
-            try {
-                val notification = createNotification()
-                startForeground(NotificationId.ReadAloudService, notification.build())
-            } catch (e: Exception) {
-                AppLog.put("创建朗读通知出错,${e.localizedMessage}", e, true)
-                //创建通知出错不结束服务就会崩溃,服务必须绑定通知
-                stopSelf()
-            }
-        }
+        notificationHost.startForeground(this)
     }
 
     abstract fun aloudServicePendingIntent(actionStr: String): PendingIntent?

@@ -78,8 +78,6 @@
     <string name="pause_read_aloud_while_phone_calls_summary">Pause speech during calls, requires phone state permission</string>
     <string name="read_aloud_wake_lock">Read aloud service wake-up lock</string>
     <string name="read_aloud_wake_lock_summary">The wake-up lock is enabled when reading aloud is enabled, and the wake-up lock on some mobile phones will be killed in the background.</string>
-    <string name="system_media_control_compatibility_change">System Media Control Compatibility Change</string>
-    <string name="system_media_control_compatibility_change_summary">If system media controls do not appear on the lock screen, you can try enabling this, for example on OneUI 7.0 or Vivo devices.</string>
     <string name="pref_media_button_per_next">Media Buttons • Previous | Next</string>
     <string name="pref_media_button_per_next_summary">Previous Paragraph|Next Paragraph/Previous Chapter|Next Chapter</string>
     <string name="read_aloud_by_page">Speak by pages</string>

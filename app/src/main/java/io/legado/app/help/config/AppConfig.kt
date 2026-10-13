@@ -171,7 +171,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val readAloudWakeLock by boolPref(PreferKey.readAloudWakeLock, false)
     val readAloudByPage by boolPref(PreferKey.readAloudByPage)
     val mediaButtonPerNext by boolPref("mediaButtonPerNext", false)
-    val systemMediaControlCompatibilityChange by boolPref("systemMediaControlCompatibilityChange")
 
     val speechRatePlay: Int get() = if (ttsFlowSys) AppConfigConstants.defaultSpeechRate else ttsSpeechRate
 
