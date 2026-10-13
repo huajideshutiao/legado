@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -40,7 +39,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppTextField
@@ -58,8 +56,6 @@ import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.action_save
 import legado.ui.generated.resources.copy_rule
 import legado.ui.generated.resources.group
-import legado.ui.generated.resources.help
-import legado.ui.generated.resources.ic_help
 import legado.ui.generated.resources.ic_save
 import legado.ui.generated.resources.paste_rule
 import legado.ui.generated.resources.replace_exclude_scope
@@ -103,7 +99,6 @@ import org.jetbrains.compose.resources.stringResource
  * @param onPasteRule 粘贴规则: 宿主端在 lambda 内读剪贴板文本, 调
  *   [ReplaceEditViewModelShared.pasteRule], 解析成功后回调 success 回填表单;
  *   解析失败由 Shared 内部 `Toasters.get().toast(...)` 提示, 无需外部 error 回调
- * @param onHelp 正则帮助回调 (app 端 showHelp("regexHelp") / desktop 端浏览器跳转)
  * @param onShowKeyboardConfig 辅助键配置入口 (app 端 KeyboardAssistsConfig DialogFragment,
  *   对照 [BookSourceEditScreen] 的 onShowKeyboardConfig; 未注入时 ⚙️ 点击无操作)
  * @param requestFocusSignal 请求根节点持焦的信号 (宿主在页面回到栈顶时投递; 页面全程留在
@@ -117,7 +112,6 @@ fun ReplaceEditScreen(
     onSaved: () -> Unit,
     onCopyRule: (ReplaceRule) -> Unit,
     onPasteRule: (success: (ReplaceRule) -> Unit) -> Unit,
-    onHelp: () -> Unit,
     modifier: Modifier = Modifier,
     onShowKeyboardConfig: () -> Unit = {},
     requestFocusSignal: Flow<Unit> = emptyFlow(),
@@ -263,7 +257,7 @@ fun ReplaceEditScreen(
             FormField(name, stringResource(Res.string.replace_rule_summary)) { focusedField = it }
             FormField(group, stringResource(Res.string.group)) { focusedField = it }
             FormField(pattern, stringResource(Res.string.replace_rule)) { focusedField = it }
-            UseRegexRow(useRegex, onToggle = { useRegex = !useRegex }, onHelp = onHelp)
+            UseRegexRow(useRegex, onToggle = { useRegex = !useRegex })
             FormField(replacement, stringResource(Res.string.replace_to)) { focusedField = it }
             ScopeCheckRow(scopeTitle, scopeContent, { scopeTitle = it }, { scopeContent = it })
             FormField(scopeField, stringResource(Res.string.replace_scope)) { focusedField = it }
@@ -365,39 +359,25 @@ private fun FormField(
     )
 }
 
-/** 是否使用正则 + 帮助按钮 */
+/** 是否使用正则 */
 @Composable
 private fun UseRegexRow(
     useRegex: Boolean,
     onToggle: () -> Unit,
-    onHelp: () -> Unit,
 ) {
     val colors = AppTheme.colors
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier
+            .fillMaxWidth()
+            .clickable { onToggle() },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            Modifier
-                .weight(1f)
-                .clickable { onToggle() },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AppCheckbox(checked = useRegex, onCheckedChange = null)
-            Text(
-                stringResource(Res.string.use_regex),
-                color = colors.primaryText,
-                modifier = Modifier.padding(start = DesignTokens.spacingXs),
-            )
-        }
-        IconButton(onClick = onHelp) {
-            Icon(
-                painter = painterResource(Res.drawable.ic_help),
-                contentDescription = stringResource(Res.string.help),
-                tint = colors.primaryText,
-                modifier = Modifier.size(24.dp),
-            )
-        }
+        AppCheckbox(checked = useRegex, onCheckedChange = null)
+        Text(
+            stringResource(Res.string.use_regex),
+            color = colors.primaryText,
+            modifier = Modifier.padding(start = DesignTokens.spacingXs),
+        )
     }
 }
 

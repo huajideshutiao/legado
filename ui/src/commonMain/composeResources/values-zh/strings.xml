@@ -716,7 +716,6 @@
     <string name="time_format_seconds">%1$d 秒</string>
     <string name="book_source_tutorial">书源教程</string>
     <string name="js_tutorial">JS 教程</string>
-    <string name="regex_tutorial">正则教程</string>
     <string name="debug_search_hint">调试搜索&gt;&gt;输入关键字，如：</string>
     <string name="debug_explore_hint">调试发现&gt;&gt;输入发现URL，如：</string>
     <string name="debug_book_info_hint">调试详情页&gt;&gt;输入详情页URL，如：</string>

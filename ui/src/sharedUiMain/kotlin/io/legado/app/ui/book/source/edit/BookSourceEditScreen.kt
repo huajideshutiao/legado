@@ -84,7 +84,6 @@ import legado.ui.generated.resources.ic_save
 import legado.ui.generated.resources.js_tutorial
 import legado.ui.generated.resources.login
 import legado.ui.generated.resources.paste_source
-import legado.ui.generated.resources.regex_tutorial
 import legado.ui.generated.resources.search
 import legado.ui.generated.resources.set_source_variable
 import legado.ui.generated.resources.str_share
@@ -354,9 +353,6 @@ private fun EditActions(state: BookSourceEditState, callbacks: BookSourceEditCal
             }
             MenuItem(stringResource(Res.string.js_tutorial)) {
                 dismiss(); callbacks.onHelp("jsHelp")
-            }
-            MenuItem(stringResource(Res.string.regex_tutorial)) {
-                dismiss(); callbacks.onHelp("regexHelp")
             }
         } else {
             if (hasLogin) {

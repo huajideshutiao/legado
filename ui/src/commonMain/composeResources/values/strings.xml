@@ -716,7 +716,6 @@
     <string name="time_format_seconds">%1$d seconds</string>
     <string name="book_source_tutorial">Book source tutorial</string>
     <string name="js_tutorial">JS tutorial</string>
-    <string name="regex_tutorial">Regex tutorial</string>
     <string name="debug_search_hint">Debug search&gt;&gt;input keyword, e.g.:</string>
     <string name="debug_explore_hint">Debug explore&gt;&gt;input explore URL, e.g.:</string>
     <string name="debug_book_info_hint">Debug detail&gt;&gt;input detail page URL, e.g.:</string>
