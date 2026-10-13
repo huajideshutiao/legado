@@ -88,7 +88,7 @@ internal object DesktopWindowChromeNative {
         }
 
         /**
-         * 白名单窗口消息 (0x0323 / 0x0326 / WM_COMMAND)。
+         * 白名单窗口消息 (0x0323 / 0x0326 / WM_COMMAND / WM_SETTINGCHANGE)。
          * 返回 1 = 已处理 (native 直接答 0 给 Windows), 0 = 未处理继续转发。
          */
         interface MessageCallback : Callback {
@@ -318,12 +318,13 @@ internal object DesktopWindowChromeNative {
      * 注册主窗口消息处理器 (返回 true = 已处理, native 不再沿子类化链转发)。
      *
      * 只有白名单低频消息会送来: WM_DWMSENDICONICTHUMBNAIL(0x0323) /
-     * WM_DWMSENDICONICLIVEPREVIEWBITMAP(0x0326) / WM_COMMAND(0x0111)。
+     * WM_DWMSENDICONICLIVEPREVIEWBITMAP(0x0326) / WM_COMMAND(0x0111) /
+     * WM_SETTINGCHANGE(0x001A, 系统深/浅色切换)。
      *
      * **处理器跑在 native 窗口线程 (AWT-Windows), 不是 EDT**: 禁止阻塞 (取图/网络/等锁),
      * 也不要直接动 Compose/Swing 状态, 请自行投递。
      *
-     * 幂等 (同一实例重复注册只留一份); 注册顺序即询问顺序, 但白名单三条消息互不重叠, 顺序无关。
+     * 幂等 (同一实例重复注册只留一份); 注册顺序即询问顺序, 但白名单四条消息互不重叠, 顺序无关。
      *
      * @return 是否注册成功 (native 桥不可用时 false, 调用方功能需优雅退化)
      */
@@ -362,6 +363,9 @@ internal object DesktopWindowChromeNative {
     /**
      * 把一个运行期才知道号的消息追加进 native 侧白名单 (如 RegisterWindowMessage 取到的
      * TaskbarButtonCreated)。只准加低频消息 —— 白名单里的消息每次都会 upcall 到 JVM。
+     *
+     * 编译期就在白名单里的消息 (WM_COMMAND / WM_SETTINGCHANGE / 两条任务栏缩略图请求)
+     * 不要走这里。
      */
     fun addHookMessage(msg: Int): Boolean {
         val lib = lib() ?: return false

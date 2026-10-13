@@ -64,7 +64,8 @@ typedef void (*lgchrome_metrics_cb)(int dpi, int captionBtnW, int maximized);
 /*
  * 窗口消息钩子 (S3: 把任务栏那两层 JNA 子类化收进本桥, 三层变一层)。
  *
- * 只对**白名单低频消息**回调 JVM (任务栏缩略图请求 / thumbbar 按钮命令 / 任务栏按钮建立),
+ * 只对**白名单低频消息**回调 JVM (任务栏缩略图请求 / thumbbar 按钮命令 / 任务栏按钮建立 /
+ * 系统深/浅色切换),
  * hot path 一律不回调。
  * 返回 1 = Kotlin 侧已处理 (C 侧直接 return 0 给 Windows); 返回 0 = 未处理, 继续沿子类化链转发。
  */
@@ -89,7 +90,7 @@ void lgchrome_detach(void);
 /*
  * 注册窗口消息钩子 (可传 NULL 清除)。见 lgchrome_msg_cb。
  * 编译期白名单: WM_DWMSENDICONICTHUMBNAIL(0x0323) / WM_DWMSENDICONICLIVEPREVIEWBITMAP(0x0326) /
- * WM_COMMAND(0x0111); 运行期号见 lgchrome_add_hook_message。
+ * WM_COMMAND(0x0111) / WM_SETTINGCHANGE(0x001A, 系统深/浅色切换); 运行期号见 lgchrome_add_hook_message。
  */
 void lgchrome_set_message_hook(lgchrome_msg_cb cb);
 

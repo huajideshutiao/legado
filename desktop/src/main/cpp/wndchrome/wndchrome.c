@@ -27,7 +27,7 @@
  *   另: 窗口消息处理里**绝不回调 JVM** —— 拖动时 WM_WINDOWPOSCHANGED 每帧都来,
  *   每帧一次 JNA upcall 会撞 AWT tree lock 死锁。
  *   唯一例外是 lgchrome_set_message_hook 的白名单低频消息 (任务栏缩略图请求 / thumbbar 命令 /
- *   任务栏按钮建立, 后者的号由 lgchrome_add_hook_message 运行期追加);
+ *   任务栏按钮建立 / 系统深/浅色切换, 后者两条的号由 lgchrome_add_hook_message 运行期追加);
  *   hot path (WM_NCHITTEST / WM_NCMOUSEMOVE 等) 绝不回调。 */
 /*   还有一条更狠的: 子窗口**必须在拥有父窗口的那条线程上创建**。attach 跑在 EDT, 而 frame 的
  *   HWND 由 AWT-Windows 线程创建; 跨线程 CreateWindowEx 会让两条线程的输入队列被挂在一起
@@ -37,6 +37,12 @@
 #define LGC_WM_REPAINT  (WM_APP + 0x41)
 #define LGC_WM_RELAYOUT (WM_APP + 0x42)
 #define LGC_WM_TEARDOWN (WM_APP + 0x43)
+
+/* 系统设置变更: 系统切换深/浅色时向所有顶层窗口广播 (不携带是深还是浅)。
+ * 窗口侧据此重算主题色; 原生自己也要处理它 (重建字体/重排), 故 hook 处理完仍继续沿链转发。 */
+#ifndef WM_SETTINGCHANGE
+#define WM_SETTINGCHANGE 0x001A
+#endif
 
 /* 我们自己的键在非客户区的命中码: HTBORDER 既不触发系统拖拽 (HTCAPTION 会),
  * 也不落客户区 (HTCLIENT 会被 Compose/Canvas 吃掉), 且不会变 resize 光标。 */
@@ -103,9 +109,9 @@ static void fail(int code) {
     g_osErr = (int) GetLastError();
 }
 
-/* 该消息要不要先给 Kotlin: 编译期三条 + 运行期追加的几条, 全是低频消息。 */
+/* 该消息要不要先给 Kotlin: 编译期四条 + 运行期追加的几条, 全是低频消息。 */
 static int is_hook_msg(UINT msg) {
-    if (msg == 0x0323 || msg == 0x0326 || msg == WM_COMMAND) return 1;
+    if (msg == 0x0323 || msg == 0x0326 || msg == WM_COMMAND || msg == WM_SETTINGCHANGE) return 1;
     for (int i = 0; i < LGC_EXTRA_MSG_MAX; i++) {
         if (g_extraMsg[i] && g_extraMsg[i] == (unsigned int) msg) return 1;
     }

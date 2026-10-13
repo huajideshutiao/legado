@@ -164,6 +164,8 @@ fun registerIosProviders() {
 
     // 2.5 主题配置 provider (文件持久化 themeConfig.json, 与 app 端 ThemeConfig 同格式; 替换原内存版)
     ThemeConfigProviders.register(FileThemeConfigProvider())
+    // 2.5.1 系统深色初值 + 启动期无条件按当前日/夜重算一次主题色 (之后的变化走 NativeSystemTheme.update)
+    NativeSystemTheme.init()
 
     // 2.5.1 阅读配置 provider (readConfig.json / shareReadConfig.json, 供 BackupShared 备份/恢复)
     ReadBookConfigProviders.register(ReadBookConfigShared(PreferenceProviders.get()))

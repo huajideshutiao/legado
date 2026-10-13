@@ -132,6 +132,7 @@ import io.legado.desktop.ui.DesktopToasts
 import io.legado.desktop.ui.DesktopWindowChrome
 import io.legado.desktop.ui.DesktopWindowChromeNative
 import io.legado.desktop.ui.DesktopWindowHandle
+import io.legado.desktop.ui.installSystemThemeWatcher
 import io.legado.desktop.ui.FileDropHintOverlay
 import io.legado.desktop.ui.browser.DesktopWebViewSlot
 import io.legado.desktop.ui.onFilesDroppedToWindow
@@ -459,6 +460,8 @@ private fun runDesktopApp() = application {
     }
     // 注册桌面端 PlatformCapabilities (供 shared LegadoApp 经 PlatformCapabilityProviders.get() 取能力)
     PlatformCapabilityProviders.register(DesktopPlatformCapabilities)
+    // 系统深浅色变化来源: 主窗口收到的系统设置变更消息 (Windows 才有效)
+    installSystemThemeWatcher()
     // 注册桌面端 PlatformServices (必须早于 LegadoApp: shared 侧一律 PlatformServiceProviders.get(),
     // 未注册即 error, 不再有静默回退分支)
     // windowHandle 在 Window 组装后由 DisposableEffect 注入 AWT 窗口, 供全屏切换

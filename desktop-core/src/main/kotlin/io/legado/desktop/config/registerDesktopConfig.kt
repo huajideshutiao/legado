@@ -22,13 +22,22 @@ import io.legado.app.help.config.ThemeConfigProviders
  */
 fun registerDesktopConfig(): ReadBookConfigShared {
     PreferenceProviders.register(DesktopPreferenceProvider())
-    AppConfigProviders.register(DesktopAppConfigAccessor())
+    val appConfig = DesktopAppConfigAccessor()
+    AppConfigProviders.register(appConfig)
 
     // 备份格式兼容性: 注册 ReadBookConfigProviders + ThemeConfigProviders
     // 让 BackupShared 能全局访问 readBookConfig.configList / shareConfig / themeConfigList
     val readBookConfig = ReadBookConfigShared(PreferenceProviders.get())
     ReadBookConfigProviders.register(readBookConfig)
-    ThemeConfigProviders.register(FileThemeConfigProvider())
+    val themeConfig = FileThemeConfigProvider()
+    ThemeConfigProviders.register(themeConfig)
+
+    // 启动期按当前日/夜重算主题色 (对照原版 `ThemeConfig.applyDayNightInit`: 只重算不广播,
+    // 此时还没有界面可重建)。不做这一步时, 上次会话写下的「已应用色」会一直显示到系统外观下次变化。
+    themeConfig.applyThemeModeQuiet()
+    // 系统外观变化时重算 + 广播: 与 Android 系统外观变化走的同一条链 (失效系统深浅判定缓存 →
+    // 按新日/夜重算主题色 → 重建界面)。注册时机在界面组合之前, 与原生窗口消息钩子无关。
+    DesktopSystemThemeWatcher.install(appConfig, themeConfig)
 
     return readBookConfig
 }

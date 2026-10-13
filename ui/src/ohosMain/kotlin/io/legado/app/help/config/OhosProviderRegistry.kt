@@ -204,6 +204,9 @@ fun registerOhosProviders() {
 
     // 2.3 主题配置 provider (文件持久化 themeConfig.json, 与 app 端 ThemeConfig 同格式; 替换原内存版)
     ThemeConfigProviders.register(FileThemeConfigProvider())
+    // 2.3.05 启动期按当前日/夜无条件重算一次主题色 (鸿蒙同步探测返回 null, 此时按日间算;
+    // 真实深浅由宿主推送, 走 NativeSystemTheme.update)
+    NativeSystemTheme.init()
 
     // 2.3.1 阅读配置 provider (readConfig.json / shareReadConfig.json, 供 BackupShared 备份/恢复)
     ReadBookConfigProviders.register(ReadBookConfigShared(PreferenceProviders.get()))

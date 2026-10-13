@@ -1,8 +1,6 @@
 package io.legado.app.help.config
 
-import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
-import io.legado.app.utils.FlowBus
 import kotlin.concurrent.Volatile
 
 /**
@@ -420,7 +418,6 @@ class NativeAppConfigAccessor(
  * 前置依赖: [PreferenceProviders] 已注册 (AppConfigAccessor 委托 PreferenceProvider)。
  */
 fun registerNativeAppConfigAccessor() {
-    NativeSystemTheme.init()
     AppConfigProviders.register(NativeAppConfigAccessor())
 }
 
@@ -432,7 +429,8 @@ fun registerNativeAppConfigAccessor() {
  *   (封面加载/排版等), 故由主线程侧写入本缓存, 读侧只读内存;
  * - 鸿蒙: Kotlin/Native 侧没有 configuration API, 由 ArkTS 宿主经 platformEvent 通道推送。
  *
- * 变更时刷新派生缓存并 emit RECREATE, 让 AppTheme 与直读日/夜色的界面重组
+ * 启动期 ([init]) 无条件按当前日/夜重算一次主题色, 运行期 ([update]) 仅在值变化时重算; 两条路径
+ * 都先刷派生缓存再重算主题色, 让 AppTheme 与直读日/夜色的界面重组
  * (对照桌面端 DesktopAppConfigAccessor.systemNightMode 的注册表探测)。
  */
 object NativeSystemTheme {
@@ -444,21 +442,39 @@ object NativeSystemTheme {
     // 监听注册在启动早期, 之后不再增删 (同 PreferenceProvider 的自通知列表)
     private val listeners = mutableListOf<() -> Unit>()
 
-    /** 启动早期取一次初值 (iOS 可同步探测; 鸿蒙返回 null, 等宿主推送)。 */
+    /**
+     * 冷启动入口: 取系统深色初值, 并**无条件**按当前日/夜重算一次主题色。
+     *
+     * 由各端注册入口在 [ThemeConfigProviders] 就绪后调用。上次会话写下的「已应用色」与本次系统
+     * 外观无关, 不重算会一直显示到系统外观下次变化。探测到值 (iOS) 时同步刷派生缓存; 探测不到值
+     * (鸿蒙) 时按日间算, 宿主推送真值再走 [update] 重算一次。
+     */
     fun init() {
-        probeSystemNightMode()?.let { isNight = it }
+        probeSystemNightMode()?.let { storeNight(it) }
+        ThemeConfigProviders.get().applyThemeMode()
     }
 
     fun addChangeListener(listener: () -> Unit) {
         listeners.add(listener)
     }
 
-    /** 系统深色变更入口: iOS 由 Compose 侧 LocalSystemTheme 回写, 鸿蒙由 ArkTS 推送。 */
+    /**
+     * 系统深色变更入口: iOS 由 Compose 侧 LocalSystemTheme 回写, 鸿蒙由 ArkTS 推送。
+     * 运行期仅在值变化时重算 (重复事件不重建界面)。
+     *
+     * 顺序: 先刷派生缓存 (按日/夜取键的默认封面/封面文字开关), 再按新的日/夜重算并应用主题色,
+     * 最后才广播重建 —— 反过来的话界面会先按旧色重建一次, 而重建不一定再被触发一次。
+     */
     fun update(value: Boolean) {
         if (isNight == value) return
+        storeNight(value)
+        ThemeConfigProviders.get().applyThemeMode()
+    }
+
+    /** 写入系统深浅值并刷新按日/夜取键的派生缓存 (主题色重算由调用方决定)。 */
+    private fun storeNight(value: Boolean) {
         isNight = value
         listeners.toList().forEach { it() }
-        FlowBus.with(EventBus.RECREATE).tryEmit("")
     }
 }
 

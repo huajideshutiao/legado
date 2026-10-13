@@ -125,6 +125,17 @@ class FileThemeConfigProvider : ThemeConfigProvider {
     }
 
     /**
+     * 系统深浅色变化与启动时共用的重算入口 (对照原版 `ThemeConfig.applyDayNightInit`
+     * 与系统深浅色变化后走的 `initNightMode + applyTheme`: 只按新的日/夜重算主题色, 不写 themeMode,
+     * 也不广播重建 —— 启动期还没有界面可重建, 变化期由调用方决定何时广播)。
+     *
+     * 主题色是「应用主题时算好写进 pref」的, 光刷缓存或光广播都读不到新的日/夜分支, 故必须重算。
+     */
+    fun applyThemeModeQuiet() {
+        applyTheme()
+    }
+
+    /**
      * 按当前 themeMode 重新应用主题色 + 触发全局重组 (对照原版无参 applyDayNight)。
      * 不写 themeMode, 故「跟随系统」/E-Ink 两档不会被改掉。
      */
