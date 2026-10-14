@@ -592,7 +592,7 @@
     <string name="open_sys_dir_picker_error">Lỗi khi mở bộ chọn thư mục hệ thống, tự động mở bộ chọn thư mục ứng dụng</string>
     <string name="book_tree_uri_t">Vị trí lưu sách</string>
     <string name="book_tree_uri_s">Vị trí lưu sách được mở từ các ứng dụng khác</string>
-    <string name="book_storage_help">Do hạn chế truy cập bộ nhớ của Android, Legado cần một thư mục con trong thư mục công khai (ví dụ Documents/Books hoặc Download/Books) để sao chép và tải sách.\nNếu không đặt, các chức năng liên quan đến sách cục bộ và sách webDav sẽ không hoạt động bình thường.</string>
+    <string name="book_storage_help">Do hạn chế truy cập bộ nhớ của Android, không thể chọn thư mục gốc của bộ nhớ trong, thư mục gốc của thẻ SD và chính thư mục Download (muốn dùng Download, hãy chọn thư mục con như Download/Books).\nMọi thư mục khác đều chọn được, kể cả thư mục con của thư mục gốc bộ nhớ (ví dụ /sdcard/books).\nNếu không đặt vị trí lưu sách, việc sao chép và tải sách cục bộ, webDav sẽ không hoạt động.</string>
     <string name="select_book_folder">Chọn thư mục lưu sách</string>
     <string name="user_agent">User agent</string>
     <string name="bg_alpha">Độ trong suốt của nền</string>

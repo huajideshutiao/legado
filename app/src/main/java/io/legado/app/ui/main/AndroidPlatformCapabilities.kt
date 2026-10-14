@@ -1846,9 +1846,14 @@ class AndroidPlatformCapabilities(
      *
      * 只在进入页面时问一次 (对照原版该流程只在 onActivityCreated 执行); 用户此后主动选目录
      * 直接读所选目录, 不再经过本流程。
+     *
+     * 导入目录已设置时也不再弹: 说明框要的是"书籍保存位置", 与导入页所选目录是两个设置,
+     * 用户在主页面选过目录仍会被反复问同一条说明 —— 保存位置留给真正需要它的时刻
+     * (上架 / 导入压缩包) 由书籍保存位置选择器拉起。
      */
     private suspend fun ensureImportStorage() {
         if (!AppConfig.defaultBookTreeUri.isNullOrBlank()) return
+        if (!AppConfig.importBookPath.isNullOrBlank()) return
         val selected = CompletableDeferred<Boolean>()
         activity.alert(
             androidAppString("select_book_folder"),

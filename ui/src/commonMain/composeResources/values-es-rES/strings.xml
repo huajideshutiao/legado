@@ -588,7 +588,7 @@
     <string name="open_sys_dir_picker_error">打开系统文件夹选择器出错,自动打开应用文件夹选择器</string>
     <string name="book_tree_uri_t">书籍保存位置</string>
     <string name="book_tree_uri_s">从其它应用打开的书籍保存位置</string>
-    <string name="book_storage_help">Debido a las restricciones de acceso al almacenamiento de Android, Legado necesita una subcarpeta dentro de un directorio público (por ejemplo Documents/Books o Download/Books) para copiar y descargar libros.\nSin ella, los libros locales y los libros WebDAV no funcionarán correctamente.</string>
+    <string name="book_storage_help">Debido a las restricciones de acceso al almacenamiento de Android, no se pueden seleccionar la raíz del almacenamiento interno, la raíz de la tarjeta SD ni la propia carpeta Download (para usar Download, elige una subcarpeta como Download/Books).\nCualquier otra carpeta sí se puede seleccionar, incluidas las subcarpetas de la raíz del almacenamiento (por ejemplo /sdcard/books).\nSin una ubicación de guardado de libros, no funcionarán la copia ni la descarga de libros locales y WebDAV.</string>
     <string name="select_book_folder">选择保存书籍的文件夹</string>
     <string name="user_agent">用户代理</string>
     <string name="bg_alpha">背景透明度</string>

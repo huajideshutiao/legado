@@ -601,7 +601,7 @@
     <string name="open_sys_dir_picker_error">打開系統資料夾選擇器出錯，自動打開應用資料夾選擇器</string>
     <string name="book_tree_uri_t">書籍儲存位置</string>
     <string name="book_tree_uri_s">從其它應用打開的書籍儲存位置</string>
-    <string name="book_storage_help">由於安卓的儲存存取限制，閱讀需要設定公共目錄下的子目錄來實現書籍複製、下載，例如 Documents/Books、Download/Books。\n如不設定，將無法正常使用本地書籍、webDav 書籍的相關功能。</string>
+    <string name="book_storage_help">由於安卓的儲存存取限制，不能選擇內部儲存根目錄、SD 卡根目錄和 Download 目錄本身（要放在 Download 下請選 Download 內的子目錄，例如 Download/Books）。\n其它目錄都可以選，包括儲存根目錄下的子目錄（例如 /sdcard/books）。\n不設定書籍儲存位置，本地書籍與 webDav 書籍的複製、下載將無法使用。</string>
     <string name="select_book_folder">選擇儲存書籍的資料夾</string>
     <string name="user_agent">用户代理</string>
     <string name="bg_alpha">背景透明度</string>
