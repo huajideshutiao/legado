@@ -345,6 +345,15 @@ interface WindowController {
      * 故其余端走默认空实现。
      */
     fun setLightIconOverlay(enabled: Boolean) {}
+
+    /**
+     * 阅读页系统栏外观 (对照原版 `BaseReadBookActivity.upSystemUiVisibility` 的图标明暗分支
+     * 与 `ReadBookActivity.upNavigationBarColor`)。[appearance] 为 null 表示离开阅读页可见期,
+     * 按本端非阅读页规则恢复 (主题状态栏/导航栏色, 有壁纸时按贴边像素亮度)。
+     *
+     * 无系统栏的端 (desktop) 走默认空实现。
+     */
+    fun setReaderSystemBarAppearance(appearance: ReaderSystemBarAppearance?) {}
 }
 
 /** 软输入法控制（hide/resize）。

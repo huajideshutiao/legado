@@ -44,6 +44,7 @@ import io.legado.app.ui.root.OrientationPolicy
 import io.legado.app.ui.root.PermissionService
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.PlatformServices
+import io.legado.app.ui.root.ReaderSystemBarAppearance
 import io.legado.app.ui.root.ShareService
 import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
@@ -64,6 +65,8 @@ import io.legado.app.utils.hasPlayableScheme
 import io.legado.app.utils.list
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.realScreenSize
+import io.legado.app.utils.setLightStatusBar
+import io.legado.app.utils.setNavigationBarColorAuto
 import io.legado.app.utils.share
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.writeDocumentBytesAtomically
@@ -442,6 +445,9 @@ private class AndroidWindowController(
     private var savedLightStatusBars: Boolean? = null
     private var savedLightNavigationBars: Boolean? = null
 
+    /** 当前窗口是否处于阅读页系统栏外观 (见 [setReaderSystemBarAppearance])。 */
+    private var readerAppearanceApplied = false
+
     override fun setLightIconOverlay(enabled: Boolean) {
         val controller =
             WindowCompat.getInsetsController(activity.window, activity.window.decorView)
@@ -458,6 +464,25 @@ private class AndroidWindowController(
             savedLightStatusBars = null
             savedLightNavigationBars = null
         }
+    }
+
+    override fun setReaderSystemBarAppearance(appearance: ReaderSystemBarAppearance?) {
+        if (appearance == null) {
+            // 离开阅读页可见期: 回到非阅读页规则
+            // (主题状态栏色 / 壁纸贴边像素亮度 + 主题导航栏色)。
+            // 本就不在阅读页外观状态时不重算 —— 非阅读页每次路由变化都会走这条,
+            // 而重算含壁纸贴边像素采样
+            if (!readerAppearanceApplied) return
+            readerAppearanceApplied = false
+            activity.setupSystemBar()
+            return
+        }
+        readerAppearanceApplied = true
+        activity.setLightStatusBar(appearance.lightStatusBarIcons)
+        // 对照原版 ReadBookActivity.upNavigationBarColor: 菜单布局不可见时按阅读背景色
+        // (setNavigationBarColorAuto 一并按该色亮度定导航栏图标明暗), 可见时走主题规则
+        appearance.navigationBarColor?.let { activity.setNavigationBarColorAuto(it) }
+            ?: activity.upNavigationBarColor()
     }
 }
 

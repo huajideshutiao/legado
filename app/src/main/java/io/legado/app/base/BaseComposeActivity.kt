@@ -130,6 +130,10 @@ abstract class BaseComposeActivity(
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         setupSystemBar()
+        // 屏幕配置变化会把窗口系统栏重置为页面默认值 (阅读页可见期内的图标明暗/导航栏底色也
+        // 被覆盖), 复用 SYSTEM_UI 事件让阅读页重读配置并重下发外观
+        // (对照原版 ReadBookActivity.onConfigurationChanged → upSystemUiVisibility)
+        ReadBookEvents.postConfig(ReadConfigChange.SYSTEM_UI)
     }
 
     open fun initTheme() {

@@ -1181,6 +1181,22 @@ object OhosNativeBridge {
         )
     }
 
+    /**
+     * 设置系统栏属性 (对照 @ohos.window setWindowSystemBarProperties)。
+     * [properties] 只放本次要设的字段 (键名同 @ohos.window SystemBarProperties, 如
+     * statusBarContentColor), 未列出的字段保持原值; 未注册 window tsfn 时丢弃。
+     */
+    fun setWindowSystemBarProperties(properties: Map<String, String>) {
+        sendWindowCommand(
+            KS_JSON.encodeToString(
+                WindowCommand(
+                    action = "setSystemBarProperties",
+                    payload = KS_JSON.encodeToString(properties),
+                )
+            )
+        )
+    }
+
     /** 设置窗口亮度 (对照 @ohos.window setWindowBrightness, brightness 范围 0.0f..1.0f, -1.0f 为跟随系统)。 */
     fun setWindowBrightness(brightness: Float) {
         sendWindowCommand(

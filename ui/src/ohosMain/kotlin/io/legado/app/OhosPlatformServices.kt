@@ -15,6 +15,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.help.writeBytesAtomically
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.ui.OhosPlatformCapabilities
+import io.legado.app.ui.compose.platform.SharedThemeStoreProvider
 import io.legado.app.ui.percentDecode
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BrowserService
@@ -32,6 +33,7 @@ import io.legado.app.ui.root.OrientationPolicy
 import io.legado.app.ui.root.PermissionService
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.PlatformServices
+import io.legado.app.ui.root.ReaderSystemBarAppearance
 import io.legado.app.ui.root.ShareService
 import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
@@ -40,7 +42,9 @@ import io.legado.app.ui.root.WindowController
 import io.legado.app.ui.video.VideoDirect
 import io.legado.app.utils.File
 import io.legado.app.utils.KS_JSON
+import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.systemCurrentTimeMillis
+import androidx.compose.ui.graphics.toArgb
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 
@@ -135,6 +139,26 @@ object OhosPlatformServices : PlatformServices {
             // 桥未注册 (EntryAbility 未 registerWindowCallback) 时丢弃命令。
             val visible = policy == SystemBarsPolicy.Default || policy == SystemBarsPolicy.Visible
             OhosNativeBridge.setWindowSystemBarEnable(visible)
+        }
+
+        override fun setReaderSystemBarAppearance(appearance: ReaderSystemBarAppearance?) {
+            if (appearance == null) {
+                // 离开阅读页: 图标内容色交还系统默认 (系统栏底色由系统与窗口决定, 本端不接管)
+                OhosNativeBridge.setWindowSystemBarProperties(DEFAULT_CONTENT_COLORS)
+                return
+            }
+            // 阅读页: 状态栏图标明暗按外观值; 导航栏区域由页面内容铺满 (沉浸式全屏布局),
+            // 按导航栏底色亮度定 (外观未指定底色时回到主题导航栏色)
+            val navigationBarColor = appearance.navigationBarColor
+                ?: SharedThemeStoreProvider().navigationBarColor.toArgb()
+            OhosNativeBridge.setWindowSystemBarProperties(
+                mapOf(
+                    "statusBarContentColor" to
+                        if (appearance.lightStatusBarIcons) ICON_DARK else ICON_LIGHT,
+                    "navigationBarContentColor" to
+                        if (ColorUtils.isColorLight(navigationBarColor)) ICON_DARK else ICON_LIGHT,
+                )
+            )
         }
     }
 
@@ -510,3 +534,13 @@ private fun FileFilter.toUtis(): List<String> = when {
         }
     }.distinct().ifEmpty { listOf("public.data") }
 }
+
+/** 系统栏图标内容色: 深色图标 (浅色底色) / 浅色图标 (深色底色) */
+private const val ICON_DARK = "#FF000000"
+private const val ICON_LIGHT = "#FFFFFFFF"
+
+/** 图标内容色交还系统默认 (对照 @ohos.window SystemBarProperties 内容色默认值) */
+private val DEFAULT_CONTENT_COLORS = mapOf(
+    "statusBarContentColor" to "#E5FFFFFF",
+    "navigationBarContentColor" to "#E5FFFFFF",
+)

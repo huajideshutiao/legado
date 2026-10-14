@@ -118,10 +118,10 @@ const NOTIFICATION_ACTION_PARAM: string = 'action';
 
 /** 窗口策略命令 payload (与 OhosNativeBridge.kt WindowCommand 对齐)。 */
 interface WindowCommand {
-  action: string;  // 'setFullScreenLayout' | 'setKeepScreenOn' | 'setPreferredOrientation' | 'setSystemBarEnable' | 'exitApplication' | 'showDialog'
+  action: string;  // 'setFullScreenLayout' | 'setKeepScreenOn' | 'setPreferredOrientation' | 'setSystemBarEnable' | 'setSystemBarProperties' | 'exitApplication' | 'showDialog'
   enabled?: boolean;
   orientation?: number;
-  /** 'showDialog' 专用: 系统对话框桥请求 JSON (OhosNativeBridge.DialogBridgeRequest)。 */
+  /** 'showDialog' / 'setSystemBarProperties' 专用: 内层请求 JSON (OhosNativeBridge 同名字段)。 */
   payload?: string;
 }
 
@@ -1078,6 +1078,13 @@ export default class EntryAbility extends UIAbility {
                   const bars: Array<'status' | 'navigation'> =
                     (cmd.enabled ?? true) ? ['status', 'navigation'] : [];
                   win.setWindowSystemBarEnable(bars);
+                  break;
+                }
+                case 'setSystemBarProperties': {
+                  // 状态栏/导航栏底色与图标内容色 (KMP 侧按主题色与底色亮度算好后下发);
+                  // 内容色一旦设置, isStatusBarLightIcon/isNavigationBarLightIcon 不再生效
+                  const props = JSON.parse(cmd.payload ?? '{}') as window.SystemBarProperties;
+                  win.setWindowSystemBarProperties(props);
                   break;
                 }
                 case 'exitApplication':

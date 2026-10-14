@@ -74,6 +74,7 @@ import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.read.ReaderScreen
 import io.legado.app.ui.book.read.ReaderScreenModel
 import io.legado.app.ui.book.read.ReaderScreenModelRegistry
+import io.legado.app.ui.book.read.ReaderSystemBarAppearanceEffect
 import io.legado.app.ui.book.read.ReaderUiActions
 import io.legado.app.ui.book.read.ReaderUiState
 import io.legado.app.ui.book.read.UnderlineNoteBubbleHost
@@ -216,6 +217,11 @@ fun ReaderRoute(
             screenModel.onPause()
         },
     )
+
+    // ③ 系统栏外观 (对照原版 BaseReadBookActivity.upSystemUiVisibility 的图标明暗分支与
+    //    ReadBookActivity.upNavigationBarColor): 菜单/搜索菜单/底部弹层显隐与系统栏配置变更
+    //    都会重算, 离开可见期恢复非阅读页规则。
+    ReaderSystemBarAppearanceEffect(screenModel)
 
     // region 排版参数注入（对照原版 ContentTextView.onSizeChanged → ChapterProvider.upViewSize
     // + TextStyleProvider.upStyle）
