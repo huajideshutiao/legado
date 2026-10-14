@@ -49,6 +49,8 @@ import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.appDialogSize
+import io.legado.app.ui.compose.component.sliderTrackSpan
+import io.legado.app.ui.compose.component.sliderTrackStart
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ColorUtils
@@ -349,7 +351,12 @@ fun ColorPickerDialogContent(
     }
 }
 
-/** 通用渐变滑条：track 走 brush，thumb 随 fraction 移动 */
+/**
+ * 通用渐变滑条：track 走 brush，滑块中心随 fraction 在色带上移动。
+ *
+ * 换算与绘制同源：色带两端各内缩一个滑块半径，滑块中心永远落在手指处，
+ * 两端不再半个滑块出界（回调口径不变，仍是 0..1 的 fraction）。
+ */
 @Composable
 private fun GradientSlider(
     fraction: Float,
@@ -357,6 +364,12 @@ private fun GradientSlider(
     onChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val thumbRadius = 10.dp
+
+    fun fractionAt(x: Float, widthPx: Float, radiusPx: Float): Float =
+        ((x - sliderTrackStart(widthPx, radiusPx)) / sliderTrackSpan(widthPx, radiusPx))
+            .coerceIn(0f, 1f)
+
     Box(
         modifier
             .fillMaxWidth()
@@ -364,27 +377,27 @@ private fun GradientSlider(
             .clip(RoundedCornerShape(12.dp))
             .background(brush)
             .pointerInput(Unit) {
-                detectTapGestures { onChange((it.x / size.width).coerceIn(0f, 1f)) }
+                val rPx = thumbRadius.toPx()
+                detectTapGestures { pos ->
+                    onChange(fractionAt(pos.x, size.width.toFloat(), rPx))
+                }
             }
             .pointerInput(Unit) {
+                val rPx = thumbRadius.toPx()
                 detectDragGestures { change, _ ->
-                    onChange((change.position.x / size.width).coerceIn(0f, 1f))
+                    onChange(fractionAt(change.position.x, size.width.toFloat(), rPx))
                 }
             },
-        contentAlignment = Alignment.CenterStart,
     ) {
-        Box(
-            Modifier
-                .fillMaxWidth(fraction.coerceIn(0f, 1f))
-        ) {
-            Box(
-                Modifier
-                    .align(Alignment.CenterEnd)
-                    .size(20.dp)
-                    .clip(CircleShape)
-                    .background(Color.White)
-                    .border(DesignTokens.strokeThin, Color.Gray, CircleShape),
-            )
+        Canvas(Modifier.fillMaxSize()) {
+            val rPx = thumbRadius.toPx()
+            val cx = sliderTrackStart(size.width, rPx) +
+                sliderTrackSpan(size.width, rPx) * fraction.coerceIn(0f, 1f)
+            val cy = size.height / 2
+            // 描边中线内缩半个描边宽: 与 Modifier.border 的内缩语义一致, 外径仍是 2r
+            val strokePx = DesignTokens.strokeThin.toPx()
+            drawCircle(Color.White, rPx, Offset(cx, cy))
+            drawCircle(Color.Gray, rPx - strokePx / 2f, Offset(cx, cy), style = Stroke(strokePx))
         }
     }
 }

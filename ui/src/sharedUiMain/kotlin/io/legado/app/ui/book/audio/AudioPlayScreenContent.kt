@@ -8,15 +8,12 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -53,7 +50,6 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
@@ -636,7 +633,8 @@ private fun ProgressRow(
     lrcInactiveColor: Color?,
     onSeek: (Int) -> Unit,
 ) {
-    // 拖动中的预览值 (拖动期间不回显事件进度)
+    // 拖动中的值 (拖动期间不回显事件进度): 只用于左侧进度文本; 滑块位置由 AppSlider 自己按手指位置持有,
+    // 因此这里不回灌给滑条 —— 调整被中断时本预览不会回滚, 回灌会把作废的预览当成业务值把滑块冻住
     var dragValue by remember { mutableStateOf<Int?>(null) }
     // 时长未知 (流式资源 READY 前/无时长): 显示 --:-- 并禁用拖动, 避免“进度超过时长”的观感
     val durationKnown = durationMs > 0
@@ -652,17 +650,19 @@ private fun ProgressRow(
             color = Color.White,
             fontSize = 14.sp,
         )
-        AudioSeekBar(
-            value = dragValue ?: progressMs,
-            secondary = bufferMs,
+        AppSlider(
+            value = progressMs,
             max = durationMs,
-            activeColor = lrcActiveColor ?: accentColor,
-            bufferColor = lrcInactiveColor ?: accentColor.copy(alpha = 0.5f),
+            secondary = bufferMs,
+            color = lrcActiveColor ?: accentColor,
+            // 轨道底色 / 缓冲层色对齐原版 media3 PlayerView
+            trackColor = Color(0xB3FFFFFF),
+            secondaryColor = lrcInactiveColor ?: accentColor.copy(alpha = 0.5f),
             enabled = durationKnown,
-            onDrag = { dragValue = it },
-            onDragFinished = {
-                dragValue?.let { onSeek(it) }
+            onValueChange = { dragValue = it },
+            onValueChangeFinished = {
                 dragValue = null
+                onSeek(it)
             },
             modifier = Modifier
                 .weight(1f)
@@ -673,93 +673,6 @@ private fun ProgressRow(
             color = Color.White,
             fontSize = 14.sp,
         )
-    }
-}
-
-/** 自绘 SeekBar: 背景 + 缓冲层 + 已播层 + thumb, 支持点击/拖动 seek */
-@Composable
-private fun AudioSeekBar(
-    value: Int,
-    secondary: Int,
-    max: Int,
-    activeColor: Color,
-    bufferColor: Color,
-    enabled: Boolean = true,
-    onDrag: (Int) -> Unit,
-    onDragFinished: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val range = max.coerceAtLeast(1)
-    // 显示钳制: 兜住 READY 前 progressMs 瞬时超限, 避免文字/轨道溢出
-    val clampedValue = value.coerceIn(0, range)
-    val clampedSecondary = secondary.coerceIn(0, range)
-
-    fun fractionToValue(fraction: Float): Int =
-        (fraction * range).toInt().coerceIn(0, range)
-
-    Box(
-        modifier.then(
-            if (enabled) {
-                Modifier
-                    .pointerInput(max) {
-                        detectTapGestures(onTap = { pos ->
-                            onDrag(fractionToValue(pos.x / size.width))
-                            onDragFinished()
-                        })
-                    }
-                    .pointerInput(max) {
-                        detectHorizontalDragGestures(
-                            onDragEnd = { onDragFinished() },
-                            onDragCancel = { onDragFinished() },
-                        ) { change, _ ->
-                            change.consume()
-                            onDrag(fractionToValue(change.position.x / size.width))
-                        }
-                    }
-            } else {
-                Modifier
-            }
-        ),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Canvas(Modifier.fillMaxSize()) {
-            val thumbR = 8.dp.toPx()
-            val trackH = 2.dp.toPx()
-            val cy = size.height / 2
-            val startX = thumbR
-            val endX = size.width - thumbR
-            val playFrac = (clampedValue.toFloat() / range).coerceIn(0f, 1f)
-            val bufFrac = (clampedSecondary.toFloat() / range).coerceIn(0f, 1f)
-            val playX = startX + (endX - startX) * playFrac
-            val bufX = startX + (endX - startX) * bufFrac
-            // 禁用态 (时长未知): 半透明呈现, 与可拖动态区分
-            val layerColor = { color: Color -> if (enabled) color else color.copy(alpha = 0.35f) }
-            // 进度背景
-            drawLine(
-                layerColor(Color(0xB3FFFFFF)),
-                Offset(startX, cy),
-                Offset(endX, cy),
-                trackH,
-                StrokeCap.Round
-            )
-            if (bufX > startX) {
-                drawLine(
-                    layerColor(bufferColor),
-                    Offset(startX, cy),
-                    Offset(bufX, cy),
-                    trackH,
-                    StrokeCap.Round,
-                )
-            }
-            drawLine(
-                layerColor(activeColor),
-                Offset(startX, cy),
-                Offset(playX, cy),
-                trackH,
-                StrokeCap.Round
-            )
-            drawCircle(layerColor(activeColor), thumbR, Offset(playX, cy))
-        }
     }
 }
 

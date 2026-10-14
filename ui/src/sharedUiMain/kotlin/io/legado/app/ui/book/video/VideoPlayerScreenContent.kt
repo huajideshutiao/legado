@@ -662,23 +662,30 @@ fun VideoSeekBar(
     // → 乐观值残留、seeking 恒 true 把自动隐藏永久抑制住
     val currentRange = rememberUpdatedState(max.coerceAtLeast(1L))
     val currentOnSeek = rememberUpdatedState(onSeek)
+    // 换算区间与绘制区间同源: 两端各内缩一个滑块半径, 四舍五入取整
+    val thumbRadius = 8.dp
 
     fun seekTo(target: Long) {
         optimistic = target
         currentOnSeek.value(target)
     }
 
-    fun fractionToValue(fraction: Float): Long =
-        (fraction * currentRange.value).toLong().coerceIn(0L, currentRange.value)
+    fun valueAt(x: Float, widthPx: Float, radiusPx: Float): Long {
+        val span = (widthPx - 2 * radiusPx).coerceAtLeast(1f)
+        val fraction = ((x - radiusPx) / span).coerceIn(0f, 1f)
+        return (fraction * currentRange.value + 0.5f).toLong().coerceIn(0L, currentRange.value)
+    }
 
     Box(
         modifier
             .pointerInput(Unit) {
+                val rPx = thumbRadius.toPx()
                 detectTapGestures(onTap = { pos ->
-                    seekTo(fractionToValue(pos.x / size.width))
+                    seekTo(valueAt(pos.x, size.width.toFloat(), rPx))
                 })
             }
             .pointerInput(Unit) {
+                val rPx = thumbRadius.toPx()
                 detectHorizontalDragGestures(
                     onDragStart = { onDragStateChange(true) },
                     onDragEnd = {
@@ -691,13 +698,13 @@ fun VideoSeekBar(
                     },
                 ) { change, _ ->
                     change.consume()
-                    optimistic = fractionToValue(change.position.x / size.width)
+                    optimistic = valueAt(change.position.x, size.width.toFloat(), rPx)
                 }
             },
         contentAlignment = Alignment.CenterStart,
     ) {
         Canvas(Modifier.fillMaxSize()) {
-            val thumbR = 8.dp.toPx()
+            val thumbR = thumbRadius.toPx()
             val trackH = 2.dp.toPx()
             val cy = size.height / 2
             val startX = thumbR

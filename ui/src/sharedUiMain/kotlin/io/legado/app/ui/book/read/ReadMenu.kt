@@ -83,7 +83,6 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -1275,19 +1274,20 @@ private fun ReadMenuBottom(state: ReadMenuState) {
 
 @Composable
 private fun ReadSeekBar(state: ReadMenuState, modifier: Modifier = Modifier) {
-    // 拖动中仅移动滑块，抬手才跳转(原 SeekBarChangeListener 语义)；-1 表示未拖动
-    var dragValue by remember { mutableIntStateOf(-1) }
+    // 拖动中位置由滑条自己持有, 抬手才跳转(原 SeekBarChangeListener 语义)
+    var dragging by remember { mutableStateOf(false) }
     AppSlider(
-        value = if (dragValue >= 0) dragValue else state.seekValue,
+        value = state.seekValue,
         max = state.seekMax,
         onValueChange = {
-            if (dragValue < 0) state.onSeekDragStart()
-            dragValue = it
+            if (!dragging) {
+                dragging = true
+                state.onSeekDragStart()
+            }
         },
         onValueChangeFinished = {
-            val v = dragValue
-            dragValue = -1
-            if (v >= 0) state.onSeekStop(v)
+            dragging = false
+            state.onSeekStop(it)
         },
         modifier = modifier,
     )

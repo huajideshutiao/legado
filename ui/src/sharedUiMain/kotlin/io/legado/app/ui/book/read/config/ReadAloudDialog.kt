@@ -34,7 +34,6 @@
 package io.legado.app.ui.book.read.config
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -43,12 +42,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.Icon
-import androidx.compose.material.Slider
-import androidx.compose.material.SliderDefaults
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.AppSheetSurface
+import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.LocalSheetDismissRequest
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -150,8 +147,6 @@ fun ReadAloudDialog(
     var followSys by remember(initialFollowSys) { mutableStateOf(initialFollowSys) }
     // 定时弹窗展开状态 (与原版 context.selector 单弹窗对齐)
     var timerMenuExpanded by remember { mutableStateOf(false) }
-    // 拖动中的语速预览值 (与原版 AppSlider 拖动语义对齐: 拖动中仅刷新显示, 抬手回调)
-    var draggingSpeed by remember { mutableFloatStateOf(-1f) }
     // 内容侧带动画收起 (对照原版 dismissAllowingStateLoss 的动画语义; 不在弹层内时兜底直关)
     val requestDismiss = LocalSheetDismissRequest.current ?: onDismiss
 
@@ -235,19 +230,15 @@ fun ReadAloudDialog(
                         tint = colors.primaryText,
                         onClick = { onSetTimer(timer) },
                     )
-                    // 滑条 0..180 分钟 (与原版 AppSlider(value=timer, max=180) 对齐)
-                    // 用 material.Slider (Float) 替代 AppSlider (Int), 因为 AppSlider 没有 Float 重载
-                    // 拖动中只刷显示, 抬手才落定时 (与原版 onValueChangeFinished 一致, 免每帧重启计时器)
-                    Slider(
-                        value = timer.toFloat(),
-                        onValueChange = { timer = it.toInt().coerceIn(0, 180) },
-                        onValueChangeFinished = { onSetTimer(timer) },
-                        valueRange = 0f..180f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = DesignTokens.arcoBlue6,
-                            activeTrackColor = DesignTokens.arcoBlue6,
-                            inactiveTrackColor = DesignTokens.arcoBlue6.copy(alpha = 0.2f),
-                        ),
+                    // 滑条 0..180 分钟 (与原版 seek_timer max=180 对齐)
+                    // 拖动中即刷新分钟文本, 抬手才落定定时 (与原版 onProgressChanged/onStopTrackingTouch 一致)
+                    AppSlider(
+                        value = timer,
+                        max = 180,
+                        onValueChange = { timer = it },
+                        onValueChangeFinished = { onSetTimer(it) },
+                        color = DesignTokens.arcoBlue6,
+                        trackColor = DesignTokens.arcoBlue6.copy(alpha = 0.2f),
                         modifier = Modifier.weight(1f),
                     )
                     // 当前时间显示 + 点击弹选择对话框 (对照原版 Text(timer_m) + context.selector)
@@ -310,25 +301,15 @@ fun ReadAloudDialog(
                             onAdjustSpeed((speechRate + 5) / 10f)
                         },
                     )
-                    Slider(
-                        value = (if (draggingSpeed >= 0) draggingSpeed else speechRate.toFloat()),
-                        onValueChange = {
-                            draggingSpeed = it
-                        },
-                        onValueChangeFinished = {
-                            if (draggingSpeed >= 0) {
-                                speechRate = draggingSpeed.toInt().coerceIn(0, 45)
-                                draggingSpeed = -1f
-                                onAdjustSpeed((speechRate + 5) / 10f)
-                            }
-                        },
-                        valueRange = 0f..45f,
+                    // 语速滑条: 拖动中即刷新倍率文本 (对照原版 upTtsSpeechRateText), 抬手才落定语速
+                    AppSlider(
+                        value = speechRate,
+                        max = 45,
                         enabled = !followSys,
-                        colors = SliderDefaults.colors(
-                            thumbColor = DesignTokens.arcoBlue6,
-                            activeTrackColor = DesignTokens.arcoBlue6,
-                            inactiveTrackColor = DesignTokens.arcoBlue6.copy(alpha = 0.2f),
-                        ),
+                        onValueChange = { speechRate = it },
+                        onValueChangeFinished = { onAdjustSpeed((it + 5) / 10f) },
+                        color = DesignTokens.arcoBlue6,
+                        trackColor = DesignTokens.arcoBlue6.copy(alpha = 0.2f),
                         modifier = Modifier.weight(1f),
                     )
                     AloudIcon(
