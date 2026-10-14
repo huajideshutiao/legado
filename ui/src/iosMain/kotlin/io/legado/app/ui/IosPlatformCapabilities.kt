@@ -30,6 +30,7 @@ import io.legado.app.help.config.effectiveBookExportDir
 import io.legado.app.help.config.rememberBookExportDir
 import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
 import io.legado.app.help.openURL
+import io.legado.app.help.openURLIfPossible
 import io.legado.app.help.copyToClipboard as copyTextToClipboard
 import io.legado.app.help.readFromClipboard
 import io.legado.app.help.DirectLinkUploadNativePrimitives
@@ -107,6 +108,16 @@ import platform.darwin.dispatch_get_main_queue
  * (本地书导入浏览由 [NativeImportBook] 支持, 见下方"导入本地书"段)。
  */
 object IosPlatformCapabilities : NativePlatformCapabilities {
+    /**
+     * 系统报告取件指引 (深链不可用时的回落文案)。
+     *
+     * 写成字面量而不是新增资源键: 它是 iOS 专属文案, 与 native 侧其余平台提示
+     * (如"未设置备份目录")同一口径。
+     */
+    private const val CRASH_REPORT_HINT: String =
+        "原生崩溃的完整调用栈由系统记录，应用内拿不到。\n" +
+            "请到「设置 → 隐私与安全性 → 分析与改进 → 分析数据」中，" +
+            "找到以应用名开头、时间与崩溃时刻一致的文件。"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** 导出队列与"正在导出"标记的读写锁 (与队列读写同锁判断, 避免"收工瞬间入队"的书没人导)。 */
@@ -165,6 +176,99 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     // iOS 无物理/手势返回键, PlatformBackHandler 是 no-op → 无系统返回通道,
     // 页面内的子状态需自带可见退出口。
     override val supportsSystemBack: Boolean get() = false
+
+    /**
+     * 关于页「崩溃日志」的 iOS 行为: 先直接跳到系统「分析数据」页, 跳不成再弹对话框。
+     *
+     * # 为何不打开应用自己的崩溃日志列表
+     * iOS 侧应用只能拿到带函数名的异常日志 (Kotlin/ObjC 异常); 原生崩溃 (如换源闪退)
+     * 的完整调用栈只有系统报告有 —— 信号处理器内不允许取调用栈, 自己落盘的现场只有裸地址,
+     * 连崩在哪个模块都判不出。所以这个入口应当把用户送到那份能定位的报告。
+     *
+     * # 为何先用深链再回落
+     * 系统报告的归档页在设置里要逐级翻 (分析与改进 → 分析数据), 而 iOS 没有公开 API 能直达
+     * 该页 —— 公开的 `openSettingsURLString` 只能到本应用自己的设置页。这里用系统仍认的
+     * `prefs:` 深链直达; 它是未公开接口, 随系统版本可能失效, 故**必须**带回落:
+     * 打不开时弹对话框说明取件路径, 不让用户碰到“点了没反应”。同理, 页面深层路径在不同
+     * 小版本上有差异, 故先试“分析数据”深层, 再退一级试“分析与改进”。
+     *
+     * # 上架前必须先处理这里 (阻塞项)
+     * `App-prefs:` 是**未公开 URL scheme**。 App Store 审核指南第 2.5.1 条原文:
+     * “Apps may only use public APIs and must run on the appropriate operating system.”
+     * 该条将未公开 scheme 一并纳入管控, 审核会据此驳回。
+     *
+     * 上架时的处理办法 (二选一, 不要只删深链而把入口变成点了没反应):
+     * - 删掉 [CRASH_DEEP_LINKS] 里的两条深链, 让入口直接走 [showCrashLogFallback] 的说明框; 或
+     * - 换成公开的 `UIApplication.openSettingsURLString` 跳本应用设置页, 再接说明框。
+     * 两种改法都无需改调用方 —— 回落链路已存在, 去掉深链即自然落到说明框。
+     */
+    override fun showCrashLogs() {
+        tryDeepLink(CRASH_DEEP_LINKS) { showCrashLogFallback() }
+    }
+
+    /**
+     * 待试的系统报告取件深链 (按页层深度排序, 逐个试)。
+     *
+     * 均为未公开 scheme, 上架前必须移除 —— 理由与改法见 [showCrashLogs] 的上架说明。
+     */
+    private val CRASH_DEEP_LINKS = listOf(
+        // 分析与改进 → 分析数据 (目标页)
+        "App-prefs:root=Privacy&path=PROBLEM_REPORTING/DIAGNOSTIC_USAGE_DATA",
+        // 退一级: 分析与改进 (再手动点进“分析数据”)
+        "App-prefs:root=Privacy&path=PROBLEM_REPORTING",
+    )
+
+    /**
+     * 依次试 [urls], 任一被系统接受即止; 全不接受时调 [onAllFailed]。
+     *
+     * `openURL` 的 completionHandler 回调线程不保证是主线程, 故后续动作统一回主线程。
+     *
+     * 纯机制函数, 不含任何未公开 scheme —— 上架前只需处理 [CRASH_DEEP_LINKS]。
+     */
+    private fun tryDeepLink(urls: List<String>, onAllFailed: () -> Unit) {
+        fun attempt(index: Int) {
+            if (index >= urls.size) {
+                dispatch_async(dispatch_get_main_queue()) { onAllFailed() }
+                return
+            }
+            dispatch_async(dispatch_get_main_queue()) {
+                openURLIfPossible(urls[index]) { accepted ->
+                    if (!accepted) attempt(index + 1)
+                }
+            }
+        }
+        attempt(0)
+    }
+
+    /**
+     * 深链不可用时的人工取件指引。
+     *
+     * 用户可感知的后果: 告诉他报告在“设置 → 隐私与安全性 → 分析与改进 → 分析数据”里,
+     * 找以应用名开头、时间与崩溃时刻一致的文件。
+     */
+    private fun showCrashLogFallback() {
+        val rootVc = topMostViewController() ?: run {
+            Toasters.get().toast(CRASH_REPORT_HINT)
+            return
+        }
+        val alert = UIAlertController.alertControllerWithTitle(
+            title = syncGetString("crash_log"),
+            message = CRASH_REPORT_HINT,
+            preferredStyle = UIAlertControllerStyleAlert,
+        )
+        alert.addAction(
+            UIAlertAction.actionWithTitle(
+                title = syncGetString("ok"),
+                style = UIAlertActionStyleDefault,
+                handler = { _ -> },
+            )
+        )
+        try {
+            rootVc.presentViewController(alert, animated = true, completion = null)
+        } catch (_: Exception) {
+            Toasters.get().toast(CRASH_REPORT_HINT)
+        }
+    }
 
     private val appDb get() = AppDbProviders.get()
     private val prefs get() = PreferenceProviders.get()

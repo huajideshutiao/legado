@@ -11,13 +11,13 @@ import okio.Path.Companion.toPath
  *
  * # 为什么需要抽象
  * 原版只有 Android: `CrashHandler.handleException` 置 `LocalConfig.appCrash = true`,
- * `MainActivity.notifyAppCrash` 读它并清掉。四端对齐后写方落在四个崩溃处理器里,
- * 而 native 端与 Android 原生信号的**信号处理器路径**无法走偏好存储 (不能分配、不能加锁),
- * 只能落标记文件 (见 [CrashMarkerFile]); 故把"置位/读取并清除"抽成 provider。
+ * `MainActivity.notifyAppCrash` 读它并清掉。四端对齐后写方落在各端崩溃处理器里,
+ * 而 Android 的**信号处理器路径**无法走偏好存储 (不能分配、不能加锁), 只能落标记文件
+ * (见 [CrashMarkerFile]); 故把"置位/读取并清除"抽成 provider。
  *
  * # 默认实现
  * 未注册时用 [LocalConfigProviders] 的 `appCrash` 键 —— 与原版同键同存储。
- * 有信号路径的端 (Android/iOS/鸿蒙) 各自注册能同时看偏好与文件的实现。
+ * 只有 Android 与 iOS 注册能同时看偏好与文件的实现 (两者保留信号处理器通道)。
  */
 interface CrashMarkerProvider {
 
@@ -39,10 +39,10 @@ interface CrashMarkerProvider {
 const val CRASH_LOG_FILE_PREFIX = "crash-"
 
 /**
- * 异常退出标记文件 (信号处理器专用通道)。
+ * 异常退出标记文件 (信号处理器通道: Android native 与 iOS IosSignalMarker)。
  *
- * 文件名与内容与各端 native 信号处理器逐字一致 (`pending-crash`, 内容 `1\n`),
- * 见 `native_crash_handler.cpp` (Android) 与 `NativeCrashLogWriter` (iOS/鸿蒙)。
+ * 文件名与内容与两端信号处理器逐字一致 (`pending-crash`, 内容 `1\n`),
+ * 见 `native_crash_handler.cpp`。
  */
 object CrashMarkerFile {
 
@@ -75,10 +75,10 @@ object CrashMarkerProviders {
 }
 
 /**
- * "偏好存储 + 标记文件" 双通道实现 (有信号路径的 Android / iOS / 鸿蒙共用)。
+ * "偏好存储 + 标记文件" 双通道实现 (Android / iOS 注册)。
  *
  * 两条通道各自覆盖一类崩溃路径, 读取时取或:
- * - 偏好存储: JVM/K-N 未捕获异常路径可以正常写偏好, 与各端 `mark()` 同一处
+ * - 偏好存储: JVM 未捕获异常路径可以正常写偏好, 与 `mark()` 同一处
  * - 标记文件: 信号处理器内不能分配/加锁, 只能落文件 ([CrashMarkerFile]); 由
  *   [markerDirs] 给出候选目录 (与崩溃日志同目录, 顺序即优先级)
  *
@@ -108,7 +108,7 @@ class LocalConfigCrashMarkerProvider(
  * 默认实现: [LocalConfigProviders] 的 `appCrash` 键。
  *
  * 与原版 `LocalConfig.appCrash` 同键同存储 —— Android 端照旧写它, 桌面端与 native
- * 异常钩子 (非信号路径) 也写它。
+ * 异常钩子 (无信号路径) 也写它。
  */
 private object LocalConfigCrashMarker : CrashMarkerProvider {
 

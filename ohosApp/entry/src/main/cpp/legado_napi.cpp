@@ -29,10 +29,10 @@
  * 应用版本名注入 (ArkTS → Kotlin 同步推送, 同 FileDir 模式):
  * - registerAppVersion(name: string): void  → legado_register_app_version(const char*) (注入版本名)
  *
- * 宿主层异常落盘 (ArkTS → Kotlin 同步推送, 同 FileDir 模式):
+ * 宿主层崩溃现场落盘 (ArkTS → Kotlin 同步推送, 同 FileDir 模式):
  * - reportHostException(kind: string, detail: string): void
  *                                           → legado_report_host_exception(const char*, const char*)
- *                                             (ArkTS errorManager 回调里把 JS_CRASH 现场交给 KMP 落盘,
+ *                                             (系统崩溃事件 watcher 把 APP_CRASH 现场交给 KMP 落盘,
  *                                              与 K/N 崩溃日志同目录)
  *
  * legado:// deep link 投递 (ArkTS → Kotlin 同步推送, 无回调):
@@ -664,7 +664,7 @@ static napi_value RegisterCacheDir(napi_env env, napi_callback_info info) {
 }
 
 // napi 包装: reportHostException(kind: string, detail: string): void
-// ArkTS errorManager 回调把 JS_CRASH 现场交给 KMP 落盘 (与 K/N 崩溃日志同目录同格式)
+// 系统崩溃事件 watcher 把 APP_CRASH 现场交给 KMP 落盘 (与 K/N 崩溃日志同目录同格式)
 static napi_value ReportHostException(napi_env env, napi_callback_info info) {
     size_t argc = 2;
     napi_value args[2] = {nullptr, nullptr};
@@ -2104,7 +2104,7 @@ androidx_compose_ui_arkui_init(env, exports
         {"registerCacheDir", nullptr, RegisterCacheDir, nullptr, nullptr, nullptr, napi_default, nullptr},
         // 应用版本名注入 (ArkTS → Kotlin 同步推送, 同 FileDir 模式)
         {"registerAppVersion", nullptr, RegisterAppVersion, nullptr, nullptr, nullptr, napi_default, nullptr},
-        // 宿主层异常落盘 (ArkTS → Kotlin 同步推送, 同 FileDir 模式)
+        // 宿主层崩溃现场落盘 (ArkTS → Kotlin 同步推送, 同 FileDir 模式)
         {"reportHostException", nullptr, ReportHostException, nullptr, nullptr, nullptr, napi_default, nullptr},
             // 屏幕尺寸注入 (ArkTS → Kotlin 同步推送, 同 FileDir 模式)
             {"registerScreenSize", nullptr, RegisterScreenSize, nullptr, nullptr, nullptr, napi_default, nullptr},

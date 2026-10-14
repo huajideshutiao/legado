@@ -422,21 +422,21 @@ object LegadoNativeExports {
     }
 
     /**
-     * 宿主层 (ArkTS) 未捕获异常落盘 (ArkTS EntryAbility 的 errorManager 观测器回调调用)。
+     * 宿主层 (ArkTS) 崩溃现场落盘 (系统崩溃事件订阅回调调用)。
      *
-     * 调用链: `ArkTS errorManager.on("error", observer)` → `legado.reportHostException(kind, detail)`
+     * 调用链: `ArkTS hiAppEvent watcher (APP_CRASH)` → `legado.reportHostException(kind, detail)`
      * → napi (legado_napi.cpp ReportHostException) → dlsym("legado_report_host_exception") → 本函数。
      *
      * # 为何需要这条通道
-     * ArkTS 层的 JS_CRASH 既不进 Kotlin/Native 的未捕获异常钩子, 也不触发 POSIX 信号 ——
-     * 上面两条已有入口都抓不到, 不接就完全无日志。落盘走 [NativeCrashLogWriter.writeException],
+     * 崩溃在下次启动由系统补报给 watcher, 而 ArkTS 与 Kotlin 是两个运行时, 现场要落到
+     * 同一个崩溃日志目录只能过桥。落盘走 [NativeCrashLogWriter.writeException],
      * 与 K/N 崩溃日志同目录同文件名口径, 用户在"关于 → 崩溃日志"里能一并看到。
      *
      * # 跨语言传递
      * 两个字符串直接传 (无需 JSON 包装, 与 registerFileDir 同思路)。
      *
-     * @param kind 崩溃来源描述 (如 `arkts-unhandled`)
-     * @param detail 异常消息与堆栈 (errorManager 回调给的 errMsg 原文)
+     * @param kind 崩溃来源描述 (如 `ohos-system-crash`)
+     * @param detail 系统给的现场文本 (含全量线程栈与故障日志内容)
      */
     @CName("legado_report_host_exception")
     fun reportHostException(kind: CPointer<ByteVar>, detail: CPointer<ByteVar>) {

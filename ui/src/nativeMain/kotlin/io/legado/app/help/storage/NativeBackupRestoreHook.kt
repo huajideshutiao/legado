@@ -3,9 +3,6 @@
 package io.legado.app.help.storage
 
 import io.legado.app.help.config.PreferenceProviders
-import io.legado.app.help.crash.CrashMarkerProviders
-import io.legado.app.help.crash.LocalConfigCrashMarkerProvider
-import io.legado.app.help.crash.NativeCrashLogWriter
 import io.legado.app.help.toast.Toasters
 import kotlin.time.Clock
 
@@ -50,21 +47,6 @@ private object NativeBackupRestoreHook : BackupRestoreHook {
 /** 宿主启动早期注册一次 (任何备份/恢复之前)。 */
 fun registerNativeBackupRestoreHook() {
     BackupRestoreHooks.register(NativeBackupRestoreHook)
-}
-
-/**
- * 注册 iOS/鸿蒙的异常退出标记实现 (对照原版 `LocalConfig.appCrash` 语义, 两端共用)。
- *
- * 与其余三端的差别只有信号路径: 信号处理器内不能走偏好存储 (需分配/加锁), 故
- * [NativeCrashLogWriter.writeSignal] 改落标记文件; 本实现把两条来源合并 ——
- * 异常钩子写偏好存储 (与 Android/桌面同键), 信号写文件。
- */
-fun registerNativeCrashMarkerProvider() {
-    // 走共用的"偏好存储 + 标记文件"实现: 偏好覆盖 K-N 未捕获异常/ObjC 异常路径,
-    // 标记文件覆盖信号路径 (信号上下文内不能写偏好); 候选目录与崩溃日志同目录
-    CrashMarkerProviders.register(
-        LocalConfigCrashMarkerProvider { NativeCrashLogWriter.crashCandidateDirs() }
-    )
 }
 
 /**

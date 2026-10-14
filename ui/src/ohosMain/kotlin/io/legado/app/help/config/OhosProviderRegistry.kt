@@ -10,13 +10,11 @@ import io.legado.app.help.book.registerNativeBookHelpAccessor
 import io.legado.app.help.book.registerNativeBookStorage
 import io.legado.app.help.openURL
 import io.legado.app.help.storage.registerNativeBackupRestoreHook
-import io.legado.app.help.storage.registerNativeCrashMarkerProvider
 import io.legado.app.help.storage.registerOhosDataStorage
 import io.legado.app.help.book.registerNativeBookImageStorage
 import io.legado.app.help.book.registerNativeContentProcessorAccessor
 import io.legado.app.help.book.registerOhosLocalBookLocator
 import io.legado.app.help.crash.OhosCrashHandler
-import io.legado.app.help.crash.refreshNativeCrashLogPaths
 import io.legado.app.help.file.registerOhosAppFilesDir
 import io.legado.app.help.log.registerNativeAppLogHost
 import io.legado.app.help.regex.registerNativeRegexErrorHandler
@@ -143,7 +141,7 @@ fun registerOhosProviders() {
     // 0. 主线程 id 捕获 (任何 JS eval / webView 调用之前, EntryAbility.onCreate 在主线程执行本函数)
     registerOhosMainThread()
 
-    // 0.1 崩溃捕获 (未捕获异常钩子 + 信号处理器) 必须在最前: 本函数内任一 provider 注册抛异常
+    // 0.1 崩溃捕获 (未捕获异常钩子) 必须在最前: 本函数内任一 provider 注册抛异常
     // 都会中断整条链, 而后面未注册的 provider 后续会硬崩 —— 捕获装在链首才能留下现场
     OhosCrashHandler.install()
 
@@ -154,9 +152,6 @@ fun registerOhosProviders() {
 
     // 1. 文件系统目录 (其他 provider 持久化依赖)
     registerOhosAppFilesDir()
-
-    // 1.01 崩溃日志落盘路径补齐 (崩溃捕获装在链首时只有回退路径, 文件目录一就绪重建一次)
-    refreshNativeCrashLogPaths()
 
     // 1.05 napi 桥 + Toaster (须在 AppLog 宿主之前: AppLog.put(toast = true) 的 toast 出口走
     // Toasters, 晚注册则初始化期的提示直接抛; OhosToaster 仅依赖 OhosNativeBridge)
@@ -357,8 +352,6 @@ fun registerOhosProviders() {
     // 备份/恢复钩子 (lastBackup 时间戳 + 恢复完成提示; zip 复制/解压走 BackupFileOps 默认实现,
     // 与 iOS 端共用 nativeMain NativeBackupRestoreHook; 未注册时默认空实现静默丢这些副作用)
     registerNativeBackupRestoreHook()
-    // 异常退出标记 (对照原版 LocalConfig.appCrash; 须在启动期提示读取之前)
-    registerNativeCrashMarkerProvider()
 
     // 8.8 阅读排版真实字形度量器 (Skia Font 度量, 取代 SimpleTextMeasurer 等宽近似;
     // 须在任何章节排版之前, 依赖 skiko 随 compose ui 已就绪)

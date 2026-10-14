@@ -3,7 +3,9 @@ import type AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import type Want from '@ohos.app.ability.Want';
 import type { Configuration } from '@ohos.app.ability.Configuration';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
-import { bundleManager, common } from '@kit.AbilityKit';
+import { bundleManager } from '@kit.AbilityKit';
+import { util } from '@kit.ArkTS';
+import fs from '@ohos.file.fs';
 import type window from '@ohos.window';
 import display from '@ohos.display';
 import notificationManager from '@ohos.notificationManager';
@@ -50,9 +52,10 @@ import { installSystemEventSources } from '../bridge/SystemEventSources';
 import { systemShare } from '@kit.ShareKit';
 import { handleKeyboardCommand } from '../bridge/KeyboardBridgeHandler';
 import { initPermissionBridge, handlePermissionRequest } from '../bridge/PermissionBridgeHandler';
-// 宿主层异常观测器 (errorManager): ArkTS 层 JS_CRASH 不进 K/N 异常钩子也不触发 POSIX 信号,
-// 必须单独接才能落盘 (见 installHostErrorObserver)
-import { errorManager } from '@kit.AbilityKit';
+// 系统崩溃事件订阅 (hiAppEvent): 系统同时覆盖 ArkTS 崩溃 (JsError) 与原生崩溃 (NativeCrash),
+// 现场含全量线程调用栈与故障日志文件路径, 取代原先只覆盖 ArkTS 的 errorManager 观测器。
+// 崩溃事件在**下次启动**补报 (崩溃当场进程已终止), 故必须在 onCreate 尽早注册。
+import { hiAppEvent } from '@kit.PerformanceAnalysisKit';
 
 // Notification tsfn 跨语言 payload (与 OhosNativeBridge.kt NotificationPayload 对齐)
 // 由 KMP 侧 KS_JSON 序列化为 JSON 字符串, 经 C++ tsfn dispatch 到 ArkTS 回调, 此处 JSON.parse 还原。
@@ -330,59 +333,119 @@ function registerSafely(register: () => void, successLog: string, failLogPrefix:
  * 根 Gradle staging 和 CMake 均对缺失产物直接失败，不再生成表面可运行的 mock HAP。
  */
 /**
- * 宿主层 (ArkTS) 未捕获异常落盘。
+ * 系统崩溃事件订阅 (取代原 errorManager 观测器)。
  *
- * ArkTS 层的 JS_CRASH 既不进 Kotlin/Native 的未捕获异常钩子, 也不触发 POSIX 信号 ——
- * KMP 侧已有的两条入口都抓不到, 不接就完全无日志。官方接口说明 (errorManager):
- * "注册后可以捕获到应用产生的 js crash, 属于应用崩溃的一种。观测器捕获到该异常时应用不退出,
- * 建议在回调函数执行完后, 增加同步退出操作"。
+ * 为何改走系统事件: 原观测器只能抓 ArkTS 异常, 而 native 崩溃 (换源闪退这类) 既不进
+ * Kotlin/Native 异常钩子、原自制信号处理器又只能拿到裸地址 —— 都定位不了。系统崩溃事件
+ * 同时覆盖两类, 且给的现场含全量线程调用栈 (仅 NativeCrash 提供) 与故障日志文件路径,
+ * 日志文件已符号化。
  *
- * 落盘交给 KMP (legado.reportHostException → NativeCrashLogWriter), 与 K/N 崩溃日志同目录
- * 同文件名口径, 用户在"关于 → 崩溃日志"里能一并看到。
+ * 交付时机: 崩溃当场进程已终止, 系统缓存后**下次启动**回调 —— 这正是本函数放在 onCreate
+ * 最早处的原因 (晚注册会漏掉本次启动应补报的事件)。
  *
- * 只在 onCreate 调一次 (官方要求仅主线程使用); 注册失败不阻断启动, 仅打日志。
+ * 落盘: 把系统给的现场文本交给 KMP (legado.reportHostException), 与 K/N 崩溃日志同目录,
+ * 用户在"关于 → 崩溃日志"里能一并看到。
  */
-/** 宿主异常观测器序号 (errorManager.on 的返回值, 供 onDestroy 配对注销)。 */
-let hostErrorObserverId: number = -1;
-
-function installHostErrorObserver(abilityContext: common.UIAbilityContext): void {
+function installSystemCrashWatcher(): void {
   try {
-    const observer: errorManager.ErrorObserver = {
-      onUnhandledException(errMsg: string): void {
-        reportHostException('arkts-unhandled', errMsg);
-        exitAfterHostCrash(abilityContext);
-      },
-      onException(errObj: Error): void {
-        const detail = 'ArkTS exception' +
-          '\nname=' + errObj.name +
-          '\nmessage=' + errObj.message +
-          '\nstack=' + (typeof errObj.stack === 'string' ? errObj.stack : '(no stack)');
-        reportHostException('arkts-exception', detail);
-        exitAfterHostCrash(abilityContext);
+    hiAppEvent.addWatcher({
+      name: 'legado_crash_watcher',
+      appEventFilters: [
+        {
+          domain: hiAppEvent.domain.OS,
+          names: [hiAppEvent.event.APP_CRASH]
+        }
+      ],
+      onReceive: (domain: string, appEventGroups: Array<hiAppEvent.AppEventGroup>): void => {
+        for (const group of appEventGroups) {
+          for (const info of group.appEventInfos) {
+            reportSystemCrash(info);
+          }
+        }
       }
-    };
-    // 返回值是观测器序号, 保存下来供注销 (SDK 要求 on/off 配对调用)
-    hostErrorObserverId = errorManager.on('error', observer);
-    console.info('[Legado] host error observer installed');
+    });
+    console.info('[Legado] system crash watcher installed');
   } catch (e) {
-    console.error('[Legado] installHostErrorObserver failed: ' + JSON.stringify(e));
+    console.error('[Legado] installSystemCrashWatcher failed: ' + JSON.stringify(e));
   }
 }
 
 /**
- * 崩溃现场落盘后的同步退出。
+ * 把一条系统崩溃事件的现场落盘。
  *
- * 官方接口说明逐字: "观测器捕获到该异常时应用不退出, 建议在回调函数执行完后, 增加同步退出
- * 操作"。不退出的话, 进程带着已损坏的状态继续跑, 而"崩溃后重启提示"要等用户手动退出再启动
- * 才会出现 —— 与"崩溃了"这个事实不符。退出失败只打日志。
+ * 系统给的 params 含 crash_type / exception / threads (仅 NativeCrash 有全量线程栈) /
+ * hilog 等, 整体序列化后落盘 (逐字段取值会在字段缺失时丢掉整条事件); 另把
+ * `external_log` 指向的**故障日志文件内容**读进来 —— 那是真正能定位的那份。
+ * 读失败只记路径, 不让读取失败弄丢整条事件。
  */
-function exitAfterHostCrash(abilityContext: common.UIAbilityContext): void {
+function reportSystemCrash(info: hiAppEvent.AppEventInfo): void {
   try {
-    abilityContext.terminateSelf();
+    const params: Record<string, Object> = info.params;
+    const lines: string[] = [];
+    lines.push('system_crash_params=' + JSON.stringify(params));
+    const externalLog = params['external_log'];
+    if (externalLog !== undefined && externalLog !== null) {
+      const paths = externalLog as string[];
+      for (let i = 0; i < paths.length; i++) {
+        const filePath = String(paths[i]);
+        lines.push('fault_log_path=' + filePath);
+        const content = readFaultLog(filePath);
+        if (content !== null) {
+          lines.push('fault_log_content:');
+          lines.push(content);
+          // 现场已随本应用崩溃日志落盘: 删掉系统侧故障日志释放配额 (官方要求处理完及时删除,
+          // 超出上限后系统不再写新日志, 之后的崩溃现场会丢)
+          deleteFaultLog(filePath);
+        }
+      }
+    }
+    reportHostException('ohos-system-crash', lines.join('\n'));
   } catch (e) {
-    console.error('[Legado] terminateSelf after host crash failed: ' + JSON.stringify(e));
+    console.error('[Legado] reportSystemCrash failed: ' + JSON.stringify(e));
   }
 }
+
+/**
+ * 读系统故障日志文件内容; 读不到返回 null (只保留路径, 不让读取失败弄丢整条事件)。
+ *
+ * 文件在系统故障日志目录下, 属应用可读范围。读成功后由调用方删除该文件 (内容已进本应用
+ * 崩溃日志, 系统侧配额需要释放); 读失败时不删, 保留路径供事后取件。
+ */
+function readFaultLog(path: string): string | null {
+  try {
+    const stat = fs.statSync(path);
+    // 只读文本形态的日志; 超出合理长度只取头部 (避免把崩溃日志目录涨爆)
+    const size = Math.min(stat.size, FAULT_LOG_MAX_BYTES);
+    const file = fs.openSync(path, fs.OpenMode.READ_ONLY);
+    try {
+      const buffer = new ArrayBuffer(size);
+      const readLen = fs.readSync(file.fd, buffer);
+      const decoder = util.TextDecoder.create('utf-8');
+      return decoder.decodeToString(new Uint8Array(buffer, 0, readLen));
+    } finally {
+      fs.closeSync(file);
+    }
+  } catch (e) {
+    console.error('[Legado] readFaultLog failed: ' + JSON.stringify(e));
+    return null;
+  }
+}
+
+/**
+ * 删除系统侧故障日志文件, 释放系统配额。
+ *
+ * 只在其内容已落进本应用崩溃日志后调用; 删失败只记日志 (现场仍在记录里)。
+ */
+function deleteFaultLog(path: string): void {
+  try {
+    fs.unlinkSync(path);
+  } catch (e) {
+    console.error('[Legado] deleteFaultLog failed: ' + JSON.stringify(e));
+  }
+}
+
+/** 单个故障日志最多落盘的字节数 (与系统侧 5M 上限无关, 只避免崩溃日志目录膨胀)。 */
+const FAULT_LOG_MAX_BYTES: number = 1024 * 1024;
 
 /** 把异常现场交给 KMP 落盘; 失败只打日志 (崩溃路径上不能再抛)。 */
 function reportHostException(kind: string, detail: string): void {
@@ -398,8 +461,9 @@ export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     console.info('[Legado] EntryAbility.onCreate');
 
-    // 宿主层异常观测器最先装: 本方法内后续任何一步抛异常都只能靠它留下现场
-    installHostErrorObserver(this.context);
+    // 系统崩溃事件订阅最先装: 崩溃事件在下次启动补报, 晚注册会漏掉本次启动应补报的事件;
+    // 本方法内后续任何一步抛异常也只能靠它留下现场
+    installSystemCrashWatcher();
 
     // KP7+: 注入鸿蒙应用沙盒 filesDir / cacheDir 真实路径 (供 shared AppFilesDir / DatabaseDriver 使用)。
     // 必须在 registerOhosProviders 之前调用, 使 OhosDatabaseDriver.defaultDbPath 读到真实沙盒路径
@@ -1062,15 +1126,6 @@ export default class EntryAbility extends UIAbility {
    */
   onDestroy(): void {
     console.info('[Legado] EntryAbility.onDestroy');
-    // 宿主异常观测器按 SDK 要求配对注销 (on 在 onCreate 注册); 注销失败只打日志
-    if (hostErrorObserverId >= 0) {
-      try {
-        errorManager.off('error', hostErrorObserverId);
-        hostErrorObserverId = -1;
-      } catch (e) {
-        console.error('[Legado] errorManager.off failed: ' + JSON.stringify(e));
-      }
-    }
     notifyAbilityDestroyed();
   }
 

@@ -52,7 +52,7 @@ object NativeAppLogStore {
  * 崩溃日志存储 (两端 `CrashLogProvider` 的数据源)。
  *
  * 只收 `{filesDir}/logs/crash/crash-*.log` —— 真正的崩溃现场, 由
- * [io.legado.app.help.crash.NativeCrashLogWriter] 经未捕获异常钩子 / 信号处理器落盘
+ * [io.legado.app.help.crash.NativeCrashLogWriter] 经未捕获异常钩子落盘
  * (不受"记录日志"开关门控, 默认就在写)。
  *
  * 运行日志 (`{filesDir}/logs/appLog-*.txt`) 不在本列表内: 对照 app 端

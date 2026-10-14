@@ -192,7 +192,8 @@ object OhosPlatformServices : PlatformServices {
         override fun handleLaunchRequest(request: LaunchRequest): Boolean = false
     }
 
-    // 崩溃日志: 只列崩溃现场 (logs/crash/ 下的 crash-*.log, 未捕获异常钩子 + 信号处理器落盘);
+    // 崩溃日志: 只列本应用自己落盘的异常现场 (logs/crash/ 下的 crash-*.log, 未捕获异常钩子与
+    // 系统崩溃事件, 两条都带调用栈)。系统事件的故障日志文件也写进同目录；
     // 运行日志 (logs/appLog-*.txt, recordLog 开启时落盘) 不再混入
     override val crashLogs: CrashLogProvider = object : CrashLogProvider {
         override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> =

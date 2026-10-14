@@ -11,8 +11,10 @@ import io.legado.app.help.book.registerNativeBookStorage
 import io.legado.app.help.storage.registerNativeDataStorage
 import io.legado.app.help.book.registerIosLocalBookLocator
 import io.legado.app.help.book.registerNativeContentProcessorAccessor
+import io.legado.app.help.crash.CrashMarkerProviders
 import io.legado.app.help.crash.IosCrashHandler
-import io.legado.app.help.crash.refreshNativeCrashLogPaths
+import io.legado.app.help.crash.LocalConfigCrashMarkerProvider
+import io.legado.app.help.crash.NativeCrashLogWriter
 import io.legado.app.help.file.registerIosAppFilesDir
 import io.legado.app.help.file.registerNativeFileDownloader
 import io.legado.app.help.http.registerIosBackstageWebView
@@ -42,7 +44,6 @@ import io.legado.app.help.source.registerNativeSourceHelpAccessor
 import io.legado.app.help.source.registerNativeSourceProviders
 import io.legado.app.help.source.registerNativeVerificationUiProvider
 import io.legado.app.help.storage.registerNativeBackupRestoreHook
-import io.legado.app.help.storage.registerNativeCrashMarkerProvider
 import io.legado.app.help.toast.registerIosToaster
 import io.legado.app.help.tts.IosHttpTtsPlayer
 import io.legado.app.help.tts.TtsEngineProvider
@@ -108,16 +109,18 @@ fun registerIosProviders() {
     if (providersRegistered) return
     providersRegistered = true
 
-    // 0. 崩溃捕获 (未捕获异常钩子 + 信号处理器) 必须在最前: 本函数内任一 provider 注册抛异常
+    // 0. 崩溃捕获 (未捕获异常钩子 + 原生信号标记) 必须在最前: 本函数内任一 provider 注册抛异常
     // 都会中断整条链, 而后面未注册的 provider (如 ScreenInfoProviders) 后续会硬崩 ——
     // 捕获装在链首才能留下现场
     IosCrashHandler.install()
+    // 0.1 异常退出标记的读取通道: 原生信号处理器只写标记文件, 这里让启动期提示能消费它
+    // (偏好通道覆盖未捕获异常路径; 两条都查、都清)
+    CrashMarkerProviders.register(
+        LocalConfigCrashMarkerProvider { NativeCrashLogWriter.crashCandidateDirs() }
+    )
 
     // 1. 文件系统目录 (其他 provider 持久化依赖)
     registerIosAppFilesDir()
-
-    // 1.01 崩溃日志落盘路径补齐 (崩溃捕获装在链首时只有回退路径, 文件目录一就绪重建一次)
-    refreshNativeCrashLogPaths()
 
     // 1.05 字符串 provider (syncGetString 与 appString 两条同步通道: model/help 层异常、
     // 翻页边界提示、Toaster 按钮文案等; 未注册时两条通道均返回 key 名, 运行期可见为
@@ -273,8 +276,6 @@ fun registerIosProviders() {
     registerIosReadBookPlatform()
     // 备份/恢复钩子 (lastBackup 时间戳 + 恢复完成提示; zip 复制/解压走 BackupFileOps 默认实现)
     registerNativeBackupRestoreHook()
-    // 异常退出标记 (对照原版 LocalConfig.appCrash; 须在启动期提示读取之前, 与备份钩子同段)
-    registerNativeCrashMarkerProvider()
     registerIosNotificationProgress()
     // 通知分类 (带自定义动作的通知必须先注册分类再发送, 否则通知上不出现动作按钮):
     // 发送侧在 IosNotificationPublisher, 动作处理在 IosNotificationDelegate

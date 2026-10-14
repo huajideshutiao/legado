@@ -97,7 +97,8 @@ object IosPlatformServices : PlatformServices {
     override val notifications: NotificationService = IosNotificationService
     override val externalRequests: ExternalRequestService = IosExternalRequestService
 
-    // 崩溃日志: 只列崩溃现场 (logs/crash/ 下的 crash-*.log, 未捕获异常钩子 + 信号处理器落盘);
+    // 崩溃日志: 只列本应用自己落盘的异常现场 (logs/crash/ 下的 crash-*.log, 未捕获异常钩子与
+    // ObjC 异常, 两条都带函数名)。原生崩溃不在此列 —— 它由系统报告承载 (关于页「崩溃日志」入口直达系统取件页);
     // 运行日志 (logs/appLog-*.txt, recordLog 开启时落盘) 不再混入
     // 落盘/读取实现与鸿蒙端共用 nativeMain
     override val crashLogs: CrashLogProvider = object : CrashLogProvider {

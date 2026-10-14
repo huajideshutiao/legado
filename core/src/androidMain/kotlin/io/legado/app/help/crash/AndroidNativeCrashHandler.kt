@@ -4,12 +4,13 @@ import com.script.quickjs.QuickJsNative
 import io.legado.app.constant.AppLog
 
 /**
- * Android 端原生崩溃捕获安装入口 (对照 iOS/鸿蒙的 POSIX 信号捕获)。
+ * Android 端原生崩溃捕获安装入口 (对照 iOS/鸿蒙的系统崩溃报告通道)。
  *
  * # 为什么需要
  * Kotlin 的 `Thread.setDefaultUncaughtExceptionHandler` (见 app 端
  * [io.legado.app.help.CrashHandler]) 只覆盖 JVM 异常; NDK/JNI 侧的越界、野指针、栈溢出等
- * 直接以 POSIX 信号终止进程, 一条日志都不留。iOS/鸿蒙早已接上信号捕获, Android 此前没有。
+ * 直接以 POSIX 信号终止进程, 一条日志都不留。Android 因 debuggerd 会在现场保留模块与内存映射表,
+ * 裸地址仍可定位, 故保留自捕; iOS/鸿蒙无此机制, 改由系统报告承担 (自捕只有裸地址)。
  *
  * # 实现位置
  * 信号处理器在 `legado_quickjs.so` 内 (modules/quickjs-android-native 的

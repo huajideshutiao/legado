@@ -123,14 +123,13 @@ export interface LegadoNativeBridge {
 
   // ===== 宿主层异常落盘 (ArkTS → Kotlin 同步推送, 同 FileDir 模式) =====
   /**
-   * 把 ArkTS 宿主层的未捕获异常现场交给 KMP 落盘。
+   * 把 ArkTS 侧收到的系统崩溃现场交给 KMP 落盘。
    *
-   * ArkTS 层 (EntryAbility / 各桥接处理器 / Compose 宿主) 的 JS_CRASH 不进 Kotlin/Native
-   * 的异常钩子, 也不触发 POSIX 信号 —— 不单独接就完全无日志。
-   * 调用方是 EntryAbility.onCreate 里注册的 errorManager 错误观测器回调。
+   * 调用方是 EntryAbility.onCreate 里注册的 hiAppEvent 崩溃事件 watcher (APP_CRASH,
+   * 覆盖 JsError 与 NativeCrash)。两者是两个运行时, 现场要落到同一个崩溃日志目录只能过桥。
    *
-   * @param kind   崩溃来源描述, 如 'arkts-unhandled'
-   * @param detail 异常消息与堆栈 (errorManager 回调给的 errMsg 原文)
+   * @param kind   崩溃来源描述, 如 'ohos-system-crash'
+   * @param detail 系统给的现场文本 (含全量线程栈与故障日志内容)
    */
   reportHostException(kind: string, detail: string): void;
 

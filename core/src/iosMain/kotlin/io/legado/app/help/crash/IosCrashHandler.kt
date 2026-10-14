@@ -2,48 +2,34 @@
 
 package io.legado.app.help.crash
 
-import kotlinx.cinterop.CFunction
-import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.staticCFunction
 import platform.Foundation.NSBundle
 import platform.Foundation.NSException
 import platform.Foundation.NSHomeDirectory
 import platform.Foundation.NSProcessInfo
-import platform.Foundation.NSThread
 import platform.Foundation.NSSetUncaughtExceptionHandler
+import platform.Foundation.NSThread
 import platform.UIKit.UIDevice
-import platform.posix.SIGABRT
-import platform.posix.SIGBUS
-import platform.posix.SIGFPE
-import platform.posix.SIGHUP
-import platform.posix.SIGILL
-import platform.posix.SIGSEGV
-import platform.posix.SIGSYS
-import platform.posix.SIGTRAP
-import platform.posix.signal
 
 /**
- * iOS 端全局崩溃捕获 (对照 app 端 `io.legado.app.help.CrashHandler` /
- * 桌面端 `DesktopCrashHandler`)。三个入口都汇到 [NativeCrashLogWriter]:
+ * iOS 端崩溃捕获 (对照 app 端 `io.legado.app.help.CrashHandler` / 桌面端 `DesktopCrashHandler`)。
+ * 两个入口都汇到 [NativeCrashLogWriter], 写的都是**带函数名的调用栈**:
  *
  * 1. `NSSetUncaughtExceptionHandler` —— ObjC 未捕获异常 (`NSException`), 典型如未注册的
- *    `BGTaskScheduler` 标识、KVC 失败、UIKit 断言。
- * 2. Kotlin/Native 未捕获异常钩子 —— 由 [installNativeUnhandledHook] 安装 (与鸿蒙同源)。
- * 3. POSIX `signal()` —— SIGSEGV/SIGABRT/SIGBUS/SIGILL/SIGFPE/SIGTRAP 这类**纯原生崩溃**。
- *    Metal/Skia/ObjC 层的越界通常只走到这里, 前两个钩子都抓不到。
+ *    `BGTaskScheduler` 标识、KVC 失败、UIKit 断言。系统已给出符号化好的调用栈。
+ * 2. Kotlin/Native 未捕获异常钩子 —— 由 [installNativeUnhandledHook] 安装 (与鸿蒙同源),
+ *    K/N 从自身元数据解析出函数名与行号。
  *
- * # 为什么必须留信号兜底
- * "点开闪一下就没了"在 iOS 上最常见的形态就是原生信号崩溃, 只装前两个钩子会得到
- * "有钩子但一条日志都没有"的结果 —— 与不装无异。
+ * 3. POSIX `signal()` —— SIGSEGV/SIGABRT/SIGBUS 这类**纯原生崩溃**。处理器内不允许取调用栈
+ *    (展开器均不在 async-signal-safe 清单内), 故它**只置异常退出标记** ([IosSignalMarker]),
+ *    不写现场: 现场由系统报告承载, 用户经“设置 → 隐私与安全性 → 分析与改进 → 分析数据”取
+ *    `.ips` (含完整调用栈)。置标记的作用是让下次启动能提示"上次崩了"并指向那份报告。
  *
- * # 与系统 `.ips` 的关系
- * 处理器写完自有日志后把该信号的处置交还 `SIG_DFL` 再返回: 处理器返回时内核重新执行出错指令、
- * 再次触发同一信号, 这次走默认处置终止进程 —— 系统 ReportCrash 照常生成 `.ips`。
- * 不交还处置直接返回会**再次进入本处理器** (处置未被重置, 与 `sigaction`+POSIX 语义一致),
- * 形成"每次进入都追加一段日志"的死循环并吃满 CPU, 直到被系统看门狗杀掉。
- * 本机制是**在沙盒里多留一份证据**, 不是替代系统报告 —— 用户不必连电脑导日志,
- * 直接经"文件" App 取 `Documents/logs/crash/` 即可。
+ * # 系统报告需要符号表
+ * `.ips` 里本应用自身的帧是裸地址, 要用与安装包**同一次构建**产出的 dSYM 才能翻译成函数名。
+ * 本仓不归档 dSYM, 故那份报告只能读到模块与偏移; 但那已比自捕的裸地址有用 ——
+ * 至少能看出崩在哪个模块。
  */
 object IosCrashHandler {
 
@@ -60,14 +46,9 @@ object IosCrashHandler {
         installed = true
         installNativeUnhandledHook()
         NSSetUncaughtExceptionHandler(staticCFunction(::onUncaughtNsException))
-        NativeCrashLogWriter.prepareSignalBuffer()
-        for (sig in HANDLED_SIGNALS) {
-            signal(sig, staticCFunction(::onSignal))
-        }
+        // 原生信号崩溃只置异常退出标记 (现场由系统报告承载), 见 [IosSignalMarker]
+        IosSignalMarker.install(NativeCrashLogWriter.crashCandidateDirs())
     }
-
-    private val HANDLED_SIGNALS =
-        listOf(SIGHUP, SIGILL, SIGTRAP, SIGABRT, SIGBUS, SIGFPE, SIGSEGV, SIGSYS)
 }
 
 /**
@@ -90,35 +71,6 @@ private fun onUncaughtNsException(exception: NSException?) {
         if (!userInfo.isNullOrEmpty()) append("userInfo=").append(userInfo).append('\n')
     }
     NativeCrashLogWriter.writeException("objc-uncaught", detail)
-}
-
-/** `SIG_DFL` 的 C 表示 (宏 `((__sighandler_t)0)`, cinterop 不为该宏生成常量)。 */
-private val SigDfl: CPointer<CFunction<(Int) -> Unit>>? = null
-
-/** 信号处理器 (同为顶层无捕获函数, 原因见 [onUncaughtNsException])。 */
-private fun onSignal(sig: Int) {
-    NativeCrashLogWriter.writeSignal(signalLabel(sig))
-    // 交还处置后返回: 返回时内核重新执行出错指令、再次触发同一信号, 这次走 SIG_DFL 终止进程。
-    signal(sig, SigDfl)
-}
-
-/**
- * 信号显示名 (定宽 9 字符)。
- *
- * 必须在各端按**自己的平台常量**映射: 信号编号在 iOS 与 Linux 内核上并不相同 (如 SIGSYS),
- * 放到共用实现里用字面量会把名字映射错。表外信号不会进处理器 (未注册即走系统默认处置),
- * 兜底也是定宽常量字符串 —— 本函数在崩溃处理器内调用, 不得做任何分配。
- */
-private fun signalLabel(sig: Int): String = when (sig) {
-    SIGHUP -> "SIGHUP   "
-    SIGILL -> "SIGILL   "
-    SIGTRAP -> "SIGTRAP  "
-    SIGABRT -> "SIGABRT  "
-    SIGBUS -> "SIGBUS   "
-    SIGFPE -> "SIGFPE   "
-    SIGSEGV -> "SIGSEGV  "
-    SIGSYS -> "SIGSYS   "
-    else -> "SIG?     "
 }
 
 private fun currentThreadName(): String =
