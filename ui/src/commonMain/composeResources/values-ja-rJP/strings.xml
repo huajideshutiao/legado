@@ -914,4 +914,10 @@
     <string name="close_to_tray_prompt">トレイに最小化しますか？アプリとバックグラウンド処理は実行を継続し、トレイアイコンから再度開けます。</string>
     <string name="close_to_tray">トレイに最小化</string>
     <string name="show_main_window">メインウィンドウを表示</string>
+    <string name="dialog_preview">ダイアログ一覧</string>
+    <string name="dialog_preview_summary">すべてのダイアログとシートの見た目を順に確認（デバッグ用・データはコピー）</string>
+    <string name="dialog_preview_group_alert">確認・通知</string>
+    <string name="dialog_preview_group_dialog">ダイアログ</string>
+    <string name="dialog_preview_group_sheet">ボトムシート</string>
+    <string name="dialog_preview_group_base">基本シェル</string>
 </resources>

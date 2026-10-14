@@ -1003,4 +1003,10 @@
     <string name="close_to_tray_prompt">Minimizar para a bandeja? O aplicativo e as tarefas em segundo plano continuam em execução, e você pode reabri-lo pelo ícone da bandeja.</string>
     <string name="close_to_tray">Minimizar para a bandeja</string>
     <string name="show_main_window">Mostrar janela principal</string>
+    <string name="dialog_preview">Prévia de diálogos</string>
+    <string name="dialog_preview_summary">Veja um por um todos os diálogos e folhas (apenas depuração; os dados são uma cópia)</string>
+    <string name="dialog_preview_group_alert">Avisos e confirmações</string>
+    <string name="dialog_preview_group_dialog">Diálogos</string>
+    <string name="dialog_preview_group_sheet">Folhas inferiores</string>
+    <string name="dialog_preview_group_base">Estruturas base</string>
 </resources>

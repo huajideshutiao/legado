@@ -1769,4 +1769,10 @@
     <string name="close_to_tray_prompt">Minimize to the tray? The app and its background tasks keep running, and you can reopen it from the tray icon.</string>
     <string name="close_to_tray">Minimize to tray</string>
     <string name="show_main_window">Show main window</string>
+    <string name="dialog_preview">Pop-up preview</string>
+    <string name="dialog_preview_summary">Browse every dialog and sheet style one by one (debug only; data is a copy)</string>
+    <string name="dialog_preview_group_alert">Confirm / message boxes</string>
+    <string name="dialog_preview_group_dialog">Dialogs</string>
+    <string name="dialog_preview_group_sheet">Bottom sheets</string>
+    <string name="dialog_preview_group_base">Base shells</string>
 </resources>

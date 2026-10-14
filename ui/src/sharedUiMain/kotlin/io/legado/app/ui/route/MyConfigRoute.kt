@@ -15,6 +15,7 @@ import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.book.manga.extension.MangaExtensionServiceProviders
 import io.legado.app.ui.book.tvbox.TvBoxServiceProviders
 import io.legado.app.ui.main.my.MyConfigScreen
+import io.legado.app.ui.debug.DialogPreviewLaunchers
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -101,6 +102,7 @@ fun MyConfigRoute(
             onReadRecord = { navigator.push(AppRoute.ReadRecord) },
             onSourceToolbox = { navigator.push(AppRoute.SourceToolbox) },
             onAbout = { navigator.push(AppRoute.About) },
+            onDialogPreview = DialogPreviewLaunchers.getOrNull(),
             // 原版 pref_main.xml 无 RSS 条目, 订阅入口在主界面底栏 tab, 此处不渲染
         )
     }

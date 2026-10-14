@@ -237,6 +237,17 @@ sealed interface AppRoute {
     @SerialName("rule_sub")
     data object RuleSub : AppRoute
 
+    /**
+     * 弹窗预览: 逐个列出全部对话框/弹层形制并就地弹出, 供改界面时逐项对照。
+     *
+     * 纯调试页面, 无业务语义: 入口只在桌面端「我的」页提供 (其余端不传回调, 条目不渲染)。
+     * 页面内所有弹窗读写的都是数据副本 (桌面端入口会先把真实数据只读复制到独立数据根再重启进入),
+     * 不影响正式数据。
+     */
+    @Serializable
+    @SerialName("dialog_preview")
+    data object DialogPreview : AppRoute
+
     // 三端合并: 书架/搜索/导入类
     @Serializable
     @SerialName("bookshelf_manage")

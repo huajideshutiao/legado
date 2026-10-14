@@ -98,6 +98,7 @@ import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.ui.debug.DialogPreviewLaunchers
 import io.legado.app.ui.dialog.TextInputDialog
 import io.legado.app.ui.main.MainScreen
 import io.legado.app.ui.main.explore.ExploreScreen
@@ -1482,6 +1483,7 @@ private fun MyTabContent(navigator: AppNavigator) {
             onReadRecord = { navigator.push(AppRoute.ReadRecord) },
             onSourceToolbox = { navigator.push(AppRoute.SourceToolbox) },
             onAbout = { navigator.push(AppRoute.About) },
+            onDialogPreview = DialogPreviewLaunchers.getOrNull(),
         )
     }
 

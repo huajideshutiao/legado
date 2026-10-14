@@ -148,12 +148,22 @@ object DesktopCore {
     fun initRuntimeEnvironment(portableDataRoot: File?, quickjsLibFile: File?) {
         // 1. 便携模式定位: 数据存 exe/启动目录同级 data/ (设置 legado.portable.root 系统属性)
         if (portableDataRoot != null) {
-            // 创建失败不静默: 失败后仍设属性, 后续 prefs/DB 会在首次访问时才炸, 现场离根因很远
-            if (!portableDataRoot.mkdirs() && !portableDataRoot.isDirectory) {
-                AppLog.put("portable 数据目录创建失败: ${portableDataRoot.absolutePath}", tag = TAG)
+            // 已经显式指定的数据根优先级更高 (弹窗预览用启动参数带来的调试数据根): 覆盖它会让
+            // "以为在副本上、实际写正式数据"成真
+            val explicit = System.getProperty("legado.portable.root")
+            if (!explicit.isNullOrEmpty()) {
+                AppLog.put(
+                    "已显式指定数据根, 便携模式推导值不生效: $explicit (忽略 ${portableDataRoot.absolutePath})",
+                    tag = TAG,
+                )
+            } else {
+                // 创建失败不静默: 失败后仍设属性, 后续 prefs/DB 会在首次访问时才炸, 现场离根因很远
+                if (!portableDataRoot.mkdirs() && !portableDataRoot.isDirectory) {
+                    AppLog.put("portable 数据目录创建失败: ${portableDataRoot.absolutePath}", tag = TAG)
+                }
+                System.setProperty("legado.portable.root", portableDataRoot.absolutePath)
+                AppLog.put("portable 模式, dataDir = ${portableDataRoot.absolutePath}", tag = TAG)
             }
-            System.setProperty("legado.portable.root", portableDataRoot.absolutePath)
-            AppLog.put("portable 模式, dataDir = ${portableDataRoot.absolutePath}", tag = TAG)
         }
         // 2. native 库定位: 有文件即设属性, 让 quickjs 模块 Platform.kt 候选1 System.load 加载
         if (quickjsLibFile != null && quickjsLibFile.isFile) {

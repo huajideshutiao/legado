@@ -1836,4 +1836,10 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="close_to_tray_prompt">是否缩小到托盘？缩小后程序与后台任务继续运行，可从托盘图标重新打开。</string>
     <string name="close_to_tray">缩小到托盘</string>
     <string name="show_main_window">显示主界面</string>
+    <string name="dialog_preview">弹窗预览</string>
+    <string name="dialog_preview_summary">逐个查看全部对话框与弹窗形制（调试用，数据为副本）</string>
+    <string name="dialog_preview_group_alert">确认/提示框</string>
+    <string name="dialog_preview_group_dialog">对话框</string>
+    <string name="dialog_preview_group_sheet">底部弹层</string>
+    <string name="dialog_preview_group_base">基础形制</string>
 </resources>

@@ -15,6 +15,8 @@ import legado.ui.generated.resources.book_source
 import legado.ui.generated.resources.book_source_manage
 import legado.ui.generated.resources.book_source_manage_desc
 import legado.ui.generated.resources.bookmark
+import legado.ui.generated.resources.dialog_preview
+import legado.ui.generated.resources.dialog_preview_summary
 import legado.ui.generated.resources.dict_rule
 import legado.ui.generated.resources.ic_baseline_sort_24
 import legado.ui.generated.resources.ic_bookmark
@@ -123,6 +125,8 @@ fun MyConfigScreen(
     onMangaExtensionManage: (() -> Unit)? = null,
     // 影视源 TVBox 管理 (TvBoxService 未注册端 null, 条目隐藏)
     onTvBoxManage: (() -> Unit)? = null,
+    // 弹窗预览 (仅桌面端提供入口, 其余端 null 时条目不渲染)
+    onDialogPreview: (() -> Unit)? = null,
     // 网络服务开关是否显示 (未注册 WebServerPlatform 的端没有该服务, 条目隐藏)
     showWebService: Boolean = false,
 ) {
@@ -170,6 +174,8 @@ fun MyConfigScreen(
     val iconExtension = painterResource(Res.drawable.ic_extension)
     val iconVideo = painterResource(Res.drawable.ic_layout_video)
     val iconAbout = painterResource(Res.drawable.ic_cfg_about)
+    val titleDialogPreview = stringResource(Res.string.dialog_preview)
+    val summaryDialogPreview = stringResource(Res.string.dialog_preview_summary)
 
     AppTheme {
         PreferenceScreen {
@@ -283,6 +289,14 @@ fun MyConfigScreen(
                 icon = iconAbout,
                 onClick = onAbout,
             )
+            if (onDialogPreview != null) {
+                preference(
+                    title = titleDialogPreview,
+                    summary = summaryDialogPreview,
+                    icon = iconToolbox,
+                    onClick = { onDialogPreview.invoke() },
+                )
+            }
         }
     }
 }

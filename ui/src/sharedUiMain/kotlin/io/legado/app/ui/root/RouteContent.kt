@@ -34,6 +34,7 @@ import io.legado.app.ui.route.RuleSubRoute
 import io.legado.app.ui.route.KeywordHighlightRoute
 import io.legado.app.ui.route.SearchContentRoute
 import io.legado.app.ui.route.SearchRoute
+import io.legado.app.ui.debug.DialogPreviewScreen
 import io.legado.app.ui.route.SourceFilterRuleRoute
 import io.legado.app.ui.route.SourceToolboxRoute
 import io.legado.app.ui.route.ThemeConfigRoute
@@ -115,6 +116,11 @@ fun RouteContent(
 
         is AppRoute.CoverConfig -> {
             CoverConfigRoute(entry, navigator, screenModelStore)
+            true
+        }
+
+        is AppRoute.DialogPreview -> {
+            DialogPreviewScreen(navigator)
             true
         }
 

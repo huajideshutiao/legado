@@ -132,6 +132,9 @@ import io.legado.desktop.ui.DesktopToasts
 import io.legado.desktop.ui.DesktopWindowChrome
 import io.legado.desktop.ui.DesktopWindowChromeNative
 import io.legado.desktop.ui.DesktopWindowHandle
+import io.legado.desktop.ui.applyDialogPreviewRoot
+import io.legado.desktop.ui.installDialogPreviewLauncher
+import io.legado.desktop.ui.isDialogPreviewLaunch
 import io.legado.desktop.ui.installSystemThemeWatcher
 import io.legado.desktop.ui.FileDropHintOverlay
 import io.legado.desktop.ui.browser.DesktopWebViewSlot
@@ -196,6 +199,9 @@ fun main(args: Array<String>) {
     // KP6: 便携模式检测 + native 库加载。必须最先执行 (早于 SingleInstanceGuard):
     // 它设置的 legado.portable.root 决定 desktopAppRootDir() 的解析结果, 而后者进程内 lazy
     // 只解析一次 —— 单实例守卫要在数据目录写 instance.lock, 提前读会把便携模式的根目录定位歪。
+    // 弹窗预览的调试数据根同样是“进程内只解析一次”的根目录, 必须在它之前落到系统属性上
+    // (否则预览进程会落在正式数据根, 预览里的改动直接写进正式数据)
+    applyDialogPreviewRoot(args)
     initDesktopRuntimeEnvironment()
     // 全局崩溃日志 (对照 app 端 CrashHandler): 必须紧跟 initDesktopRuntimeEnvironment ——
     // 落盘目录依赖它设的 legado.portable.root, 提前装会把便携模式的日志写到系统缓存目录去。
@@ -460,6 +466,8 @@ private fun runDesktopApp() = application {
     }
     // 注册桌面端 PlatformCapabilities (供 shared LegadoApp 经 PlatformCapabilityProviders.get() 取能力)
     PlatformCapabilityProviders.register(DesktopPlatformCapabilities)
+    // 弹窗预览入口 (共享预览页在 :ui, 进入前要切数据根并重启, 故由本端注入)
+    installDialogPreviewLauncher()
     // 系统深浅色变化来源: 主窗口收到的系统设置变更消息 (Windows 才有效)
     installSystemThemeWatcher()
     // 注册桌面端 PlatformServices (必须早于 LegadoApp: shared 侧一律 PlatformServiceProviders.get(),
@@ -660,7 +668,10 @@ private fun runDesktopApp() = application {
         }.onFailure { AppLog.put("任务栏图标加载失败", it) }.getOrNull()
     }
     // AppNavigator: 零薄壳导航唯一状态源 (替代旧 DesktopApp 的 20+ 并行状态字段)
-    val navigator = remember { AppNavigator(AppRoute.Main()) }
+    // 弹窗预览启动参数: 以调试数据根启动时直接落在预览页 (见 DialogPreviewLauncher)
+    val navigator = remember {
+        AppNavigator(if (isDialogPreviewLaunch()) AppRoute.DialogPreview else AppRoute.Main())
+    }
     val screenModelStore = remember { ScreenModelStore() }
     // Compose 未捕获异常兜底: CMP 默认工厂 (DefaultWindowExceptionHandlerFactory) 弹的是
     // 模态 JOptionPane —— 模态窗口会禁用主窗口输入却不影响重绘, 又常被置顶的 Dialog 图层

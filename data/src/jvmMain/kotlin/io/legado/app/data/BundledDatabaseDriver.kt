@@ -84,3 +84,18 @@ class BundledDatabaseDriver(
         }
     }
 }
+
+/**
+ * 取数据库文件的一致性快照 (用独立连接执行 `VACUUM INTO`)。
+ *
+ * 用于在库正被本进程打开时另得一份可用副本 (弹窗预览的数据副本走这条): 直接拷 `.db`/`-wal`
+ * 文件会得到撕裂的副本, 而 `VACUUM INTO` 由 SQLite 自己产出一份一致的库。
+ *
+ * @param sourcePath 源库绝对路径
+ * @param targetPath 目标库绝对路径 (必须不存在, `VACUUM INTO` 不会覆盖已有文件)
+ */
+fun snapshotDatabaseTo(sourcePath: String, targetPath: String) {
+    BundledSQLiteDriver().open(sourcePath).use { connection ->
+        connection.prepare("VACUUM INTO '${targetPath.replace("'", "''")}'").use { it.step() }
+    }
+}

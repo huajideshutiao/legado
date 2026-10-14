@@ -999,4 +999,10 @@
     <string name="close_to_tray_prompt">Thu nhỏ vào khay? Ứng dụng và các tác vụ nền vẫn tiếp tục chạy, bạn có thể mở lại từ biểu tượng khay.</string>
     <string name="close_to_tray">Thu nhỏ vào khay</string>
     <string name="show_main_window">Hiện cửa sổ chính</string>
+    <string name="dialog_preview">Xem trước hộp thoại</string>
+    <string name="dialog_preview_summary">Xem lần lượt mọi hộp thoại và bảng trượt (chỉ để gỡ lỗi; dữ liệu là bản sao)</string>
+    <string name="dialog_preview_group_alert">Hộp xác nhận / thông báo</string>
+    <string name="dialog_preview_group_dialog">Hộp thoại</string>
+    <string name="dialog_preview_group_sheet">Bảng trượt dưới</string>
+    <string name="dialog_preview_group_base">Khung cơ bản</string>
 </resources>
