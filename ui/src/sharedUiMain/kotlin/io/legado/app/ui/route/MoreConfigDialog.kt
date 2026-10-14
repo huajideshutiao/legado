@@ -17,7 +17,6 @@ import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.config.ClickRegionalConfigDialogHost
 import io.legado.app.ui.book.read.config.MoreConfigScreen
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
-import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.dialog.NumberPickerDialog
@@ -30,7 +29,8 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 阅读界面更多设置底部弹窗形态 (对照原版 MoreConfigDialog:
  * BasePrefDialogFragment + setupAsBottomDialog(480dp): 全宽贴底、固定高 480dp、
- * 无标题栏; 圆角/背景按对话框统一规格 = shapeDefault + bottomBackground, 原版无圆角。
+ * 无标题栏; 圆角/底色按弹层面板统一规格 = 顶角 16dp (随上拉展开收平) + bottomBackground,
+ * 原版无圆角。
  * 由阅读菜单"设置"按钮弹起, 行为与正文 [MoreConfigBody] 一致。
  */
 @Composable
@@ -40,10 +40,10 @@ fun MoreConfigDialogHost(
     val readBookConfig = ReadBookConfigProviders.get()
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
-        properties = AppDialogSizes.properties(),
     ) {
         AppTheme {
-            // 面板占满所属弹层 (贴底、整窗宽、上两角 16dp、底栏色, 高度到 0.8 锚点)
+            // 面板占满所属弹层 (贴底、收起态宽度取对话框上限、顶角 16dp 随展开收平、
+            // 底栏色, 高度到 0.8 锚点)
             AppSheetSurface(
                 modifier = Modifier.fillMaxSize(),
             ) {

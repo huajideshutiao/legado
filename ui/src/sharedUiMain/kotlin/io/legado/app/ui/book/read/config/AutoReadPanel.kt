@@ -22,7 +22,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
-import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.component.LocalSheetDismissRequest
@@ -51,7 +50,6 @@ fun AutoReadPanelDialogHost(
 ) {
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
-        properties = AppDialogSizes.properties(),
         dismissed = dismissed,
     ) {
         // 原版 AutoReadDialog: BaseBottomDialogFragment 全宽贴底;

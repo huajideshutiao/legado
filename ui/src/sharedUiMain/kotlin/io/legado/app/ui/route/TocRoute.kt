@@ -25,7 +25,6 @@ import io.legado.app.ui.book.toc.TocScreenModel
 import io.legado.app.ui.book.toc.TocUiActions
 import io.legado.app.ui.book.toc.TocUiEvent
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
-import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.theme.AppTheme
@@ -96,7 +95,6 @@ fun TocDialogHost(
 ) {
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
-        properties = AppDialogSizes.properties(),
     ) {
         AppTheme {
             AppSheetSurface(

@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.ui.compose.platform.platformDialogProperties
+import io.legado.app.ui.compose.platform.platformSheetDialogProperties
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ScreenInfoProviders
 
@@ -34,13 +35,13 @@ val LocalDialogAnchorSize = compositionLocalOf<IntSize?> { null }
  */
 object AppDialogSizes {
 
-    /** 宽度: 锚点宽 * [DesignTokens.dialogWidthFraction], 上限 800dp。 */
+    /** 宽度: 锚点宽 * [DesignTokens.dialogWidthFraction], 上限 [DesignTokens.dialogMaxWidth]。 */
     @Composable
     fun width(): Dp {
         val anchor = LocalDialogAnchorSize.current
         val wPx = anchor?.width ?: ScreenInfoProviders.get().screenWidthPx
         return with(LocalDensity.current) {
-            (wPx * DesignTokens.dialogWidthFraction).toDp().coerceAtMost(800.dp)
+            (wPx * DesignTokens.dialogWidthFraction).toDp().coerceAtMost(DesignTokens.dialogMaxWidth)
         }
     }
 
@@ -62,28 +63,34 @@ object AppDialogSizes {
     fun textAreaMaxHeight(): Dp = (fullHeight() - 180.dp).coerceAtLeast(120.dp)
 
     /**
-     * 对话框窗口属性: 必须关掉平台默认宽度, 否则 [appDialogSize] 的钳制被平台宽度覆盖。
-     * 构造走 [io.legado.app.ui.compose.platform.platformDialogProperties] 平台桥
-     * (common DialogProperties 仅 3 参, decorFitsSystemWindows 是 Android 专属)。
+     * 居中对话框与自管内容窗口的窗口属性: 必须关掉平台默认宽度, 否则 [appDialogSize] 的钳制
+     * 被平台宽度覆盖。构造走 [io.legado.app.ui.compose.platform.platformDialogProperties] 平台桥。
+     *
+     * 窗口不铺满整窗 (按平台默认贴合系统栏): 面板画不到状态栏, 避让也不用自理。
+     * 底部弹层不走这里, 见 [sheetProperties]。
      *
      * 背景暗化不在这里做: Android 端由
      * [io.legado.app.ui.compose.platform.PlatformDialogDim] 在 Dialog 内容内补
-     * FLAG_DIM_BEHIND 0.6 (decor=false 时窗口主题自带 dim, 无需再补), 桌面/iOS 自带 0.6 scrim。
-     *
-     * @param decorFitsSystemWindows 仅 Android 有意义: false = 窗口 edge-to-edge,
-     * ime insets 才全量派发给内容 (键盘跟随/收起检测可靠), 内容需自行避让系统栏
-     * ([io.legado.app.ui.compose.platform.bottomSheetBottomInsets]);
-     * 默认 true = 现行为, 仅底部输入面板 (ReviewPost) 显式传 false。
+     * FLAG_DIM_BEHIND 0.6, 桌面/iOS 自带 0.6 scrim。
      */
     fun properties(
         dismissOnBackPress: Boolean = true,
         dismissOnClickOutside: Boolean = true,
-        decorFitsSystemWindows: Boolean = true,
     ): DialogProperties = platformDialogProperties(
         dismissOnBackPress = dismissOnBackPress,
         dismissOnClickOutside = dismissOnClickOutside,
-        decorFitsSystemWindows = decorFitsSystemWindows,
     )
+
+    /**
+     * 底部弹层窗口属性 (走 [platformSheetDialogProperties]): 窗口内容铺满整窗 —— Android 贴边,
+     * skiko 三端关掉平台安全区缩进并把平台 scrim 置透明。
+     *
+     * 铺满是弹层面板能画到窗口顶 (状态栏/安全区那一条) 的前提; 随之而来的顶部装饰带、
+     * 底部系统栏避让由面板容器 ([AppSheetSurface]) 与弹层骨架按实际进入量补 (Android 侧另由
+     * [io.legado.app.ui.compose.platform.PlatformSheetWindowStyle] 清窗口暗化标志),
+     * 底层的压暗由对话框窗口/层自带 (见 [AppBottomSheetDialog]), 均不由调用方声明。
+     */
+    fun sheetProperties(): DialogProperties = platformSheetDialogProperties()
 }
 
 /**

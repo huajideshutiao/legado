@@ -59,7 +59,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
-import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.compose.component.AppSwitch
@@ -160,7 +159,6 @@ fun ReadAloudDialog(
     // 内容 8dp 间距由下方 Column padding 提供)
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
-        properties = AppDialogSizes.properties(),
         dismissed = dismissed,
     ) {
         AppSheetSurface(

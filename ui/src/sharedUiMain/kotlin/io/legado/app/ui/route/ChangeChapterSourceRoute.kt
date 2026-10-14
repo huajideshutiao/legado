@@ -28,7 +28,6 @@ import io.legado.app.ui.book.changesource.ChangeChapterSourceUiEvent
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
-import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
@@ -70,7 +69,6 @@ fun ChangeChapterSourceDialogHost(
 ) {
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
-        properties = AppDialogSizes.properties(),
     ) {
         AppTheme {
             AppSheetSurface(

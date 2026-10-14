@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -30,7 +29,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -78,6 +76,7 @@ import io.legado.app.ui.browser.WebViewSheetContent
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppSelectorDialog
+import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.dialog.TextInputDialog
 import io.legado.app.ui.compose.component.directionKeyFocusNavigation
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
@@ -87,7 +86,6 @@ import io.legado.app.ui.compose.platform.dismissTopLayer
 import io.legado.app.ui.compose.platform.handleBackKey
 import io.legado.app.ui.compose.platform.performBack
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.config.BookshelfLayoutConfigDialog
 import io.legado.app.ui.config.BottomNavConfigDialog
@@ -1329,24 +1327,15 @@ private fun SheetOverlayContent(overlay: AppOverlay.Sheet, navigator: AppNavigat
         fullScreen = fullScreen,
     ) {
         AppTheme {
-            Surface(
-                color = AppTheme.colors.bottomBackground,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    // 顶部圆角收口于 sheetShape (对照原版 JsActivity BottomSheetDialog 的
-                    // GradientDrawable 顶部圆角); 外层同色背景矩形会填掉内层 Column 裁剪掉的顶角,
-                    // 这里同样裁圆角。全屏态贴齐窗口四边, 圆角去掉 (对齐全屏路由页的观感)
-                    .then(
-                        if (fullScreen) Modifier
-                        else Modifier.clip(DesignTokens.sheetShape)
-                    ),
-            ) {
+            // 面板容器统一收口底色、顶角圆角 (随展开收平) 与顶部装饰带避让:
+            // 全屏态 = 展开比例 1, 圆角自然为 0
+            AppSheetSurface(modifier = Modifier.fillMaxWidth()) {
                 if (overlay.key == "web_view") {
                     // 参数包与全屏路由同源 (AppOverlay.Sheet.webView); 旧快照只有裸 URL
                     // payload 时退化成 AppRoute.WebView(url) —— 两者都为空才没得可开
                     val spec = overlay.webView
                         ?: overlay.payload?.let { AppRoute.WebView(url = it) }
-                        ?: return@Surface
+                        ?: return@AppSheetSurface
                     WebViewSheetContent(
                         spec = spec,
                         onBack = { navigator.dismissOverlay(overlay.key) },

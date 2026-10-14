@@ -42,7 +42,6 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogBar
-import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSwitch
@@ -191,7 +190,7 @@ fun TxtTocRuleRoute(
  * 确定后经 [onTocRegexResult] 回传选中规则的 rule 表达式, 宿主负责写回 book.tocUrl 并重载目录。
  *
  * 对照 app 端 [io.legado.app.ui.book.toc.rule.TxtTocRuleDialog]:
- * - isFullHeight 全高弹窗 → AppBottomSheetDialog + AppDialogSizes.properties()
+ * - isFullHeight 全高弹窗 → AppBottomSheetDialog (窗口与展开形制由弹层壳统一承担)
  * - initData: observeAll 订阅规则列表
  * - initSelectedName: durRegex(book.tocUrl) 匹配规则预选中, 无匹配 selectedName=""
  * - tvOk: 按 selectedName 找规则回传 rule (无匹配不关闭)
@@ -207,7 +206,6 @@ fun TxtTocRuleDialogHost(
 ) {
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
-        properties = AppDialogSizes.properties(),
     ) {
         AppTheme {
             AppSheetSurface(

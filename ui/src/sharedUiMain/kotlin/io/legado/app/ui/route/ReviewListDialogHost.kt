@@ -23,7 +23,6 @@ import io.legado.app.ui.book.read.review.SharedReviewImage
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
-import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
@@ -53,8 +52,7 @@ import org.jetbrains.compose.resources.stringResource
  * showReviewListDialog) 更是静默无反应。本宿主把 BottomSheet 形态补到四端:
  *
  * - 外壳: [AppBottomSheetDialog] 贴底滑入 (对照原版 BaseBottomDialogFragment gravity=Bottom),
- *   高度走 [AppDialogSizes.fullHeight] (全局统一 0.8 锚点高), 顶部圆角由
- *   [ReviewListDialog] 内容自带
+ *   高度由面板内容决定 (封顶 0.8 锚点高), 顶角圆角由面板容器统一给 (随上拉展开收平)
  * - 业务: [ReviewViewModelShared] (与 app 端同款, 分页/点赞/点踩/回复/删除/规则执行全下沉)
  * - 交互: 点击单条 → [ReviewPostDialogHost] 回复输入面板 (F39 已修: 底部弹窗 + 键盘跟随);
  *   删除二次确认 / 头像/配图大图 (photo Overlay) 与 ReviewListRoute 同款
@@ -271,11 +269,10 @@ fun ReviewListDialogHost(
 ) {
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
-        properties = AppDialogSizes.properties(),
     ) {
         AppTheme {
-            // fillMaxSize 跟随外层: 默认被 maxHeight 钳在 0.8 锚点高, 上拉拖拽展开时
-            // 跟着变高到视觉全屏 (AppBottomSheetDialog 自带的双向拖拽语义);
+            // fillMaxSize 跟随外层: 默认被半屏锚点高钳住, 上拉拖拽展开时
+            // 跟着变高到整窗 (AppBottomSheetDialog 自带的双向拖拽语义);
             // 写死 .height(sheetHeight) 会把展开高度钉死, 上拉只放大外层空壳
             AppSheetSurface(
                 modifier = Modifier.fillMaxSize(),

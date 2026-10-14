@@ -55,7 +55,6 @@ fun BgTextConfigDialogHost(
 ) {
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
-        properties = AppDialogSizes.properties(),
     ) {
         AppTheme {
             // 原版 BaseBottomDialogFragment: 窗口 MATCH_PARENT 全宽贴底;

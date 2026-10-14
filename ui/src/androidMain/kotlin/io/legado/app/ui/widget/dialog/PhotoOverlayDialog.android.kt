@@ -1,15 +1,13 @@
 package io.legado.app.ui.widget.dialog
 
 import android.graphics.Color
-import android.view.View
-import android.view.Window
 import android.view.WindowManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.platform.findDialogWindow
 import io.legado.app.ui.compose.platform.platformDialogProperties
 
 /**
@@ -37,16 +35,8 @@ internal actual fun PlatformPhotoOverlayDialog(
     ) {
         val view = LocalView.current
         DisposableEffect(view) {
-            // LocalView 是 DialogLayout 内的 AndroidComposeView, 沿父链找到实现
-            // DialogWindowProvider 的 DialogLayout 以拿到对话框 Window。
-            var window: Window? = null
-            var v: View? = view
-            while (v != null && window == null) {
-                window = (v as? DialogWindowProvider)?.window
-                v = v.parent as? View
-            }
             @Suppress("DEPRECATION")
-            window?.let {
+            view.findDialogWindow()?.let {
                 it.statusBarColor = Color.TRANSPARENT
                 it.navigationBarColor = Color.TRANSPARENT
                 it.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)

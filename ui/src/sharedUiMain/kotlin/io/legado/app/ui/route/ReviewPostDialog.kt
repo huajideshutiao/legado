@@ -1,7 +1,6 @@
 package io.legado.app.ui.route
 
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -20,9 +19,7 @@ import io.legado.app.ui.book.read.review.ReviewPostUiActions
 import io.legado.app.ui.book.read.review.ReviewPostUiEvent
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppSheetSurface
-import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.LocalSheetDismissRequest
-import io.legado.app.ui.compose.platform.bottomSheetBottomInsets
 import io.legado.app.ui.compose.platform.rememberImeVisible
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.ui.generated.resources.Res
@@ -38,11 +35,10 @@ import org.jetbrains.compose.resources.stringResource
  * root 铺 scrim + sheet 贴底 `layout_gravity=bottom`, `translationY = -ime.bottom` 跟随软键盘,
  * ime 由可见变不可见时 finish()。本弹窗把该形态搬到四端, 逻辑全在 shared:
  * - [AppBottomSheetDialog] 外壳 (贴底 + 滑入/滑出动画 + 点外部/返回键关闭, 对照原版
- *   sheet 贴底 + root 点击 finish); properties 显式 decorFitsSystemWindows=false
- *   (Android: 窗口 edge-to-edge, ime insets 全量派发, 键盘跟随/收起检测才可靠)
- * - 面板 match_parent 宽 + 顶角 20dp (对照 bg_review_dialog), 底部
- *   `windowInsetsPadding(bottomSheetBottomInsets())` = ime ∪ 导航栏 (iOS 的导航栏
- *   inset 即底部安全区), 面板底边顶在软键盘上方 (对照 translationY=-ime.bottom)
+ *   sheet 贴底 + root 点击 finish; 窗口贴边语义由弹层壳自身固定, 调用方不再声明)
+ * - 面板 match_parent 宽 + 顶角圆角 (对照 bg_review_dialog), 底部避让 (ime ∪ 导航栏,
+ *   iOS 的导航栏 inset 即底部安全区) 由面板容器统一施加, 面板底边顶在软键盘上方
+ *   (对照 translationY=-ime.bottom); 背景压暗对齐原版 layout 里的 scrim
  * - 键盘收起即关闭 (对照 onApplyWindowInsets 的 imeWasVisible 跟踪 + finish)
  * - 正文 [ReviewPostScreen] (输入框 + 发布按钮同行), 进入即聚焦 + 弹键盘
  * - 关闭全部收敛到 [ReviewPostSheetDismiss] (下沉原版 finish(): dismissed 幂等守卫 +
@@ -90,8 +86,6 @@ fun ReviewPostDialogHost(
             cancelCleanup.value?.invoke()
             onDismiss()
         },
-        // decor=false: Android 窗口 edge-to-edge, ime insets 可靠 (键盘跟随/收起检测的前提)
-        properties = AppDialogSizes.properties(decorFitsSystemWindows = false),
     ) {
         AppTheme {
             // 关闭收敛 (对照原版 finish(): dismissed 幂等 + hideSoftInput + 退场动画);
@@ -134,13 +128,9 @@ fun ReviewPostDialogHost(
                 }
             }
 
-            // 对照原版 bg_review_dialog: 顶角圆角、底部直角贴屏底 (顶角统一由 sheetShape 收口);
-            // 原版 sheet 是 match_parent 宽 + 贴底, 不做对话框式收窄/外边距
-            AppSheetSurface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .windowInsetsPadding(bottomSheetBottomInsets()),
-            ) {
+            // 对照原版 bg_review_dialog: 顶角圆角、底部直角贴屏底 (圆角与底部系统栏/键盘避让
+            // 统一由 AppSheetSurface 收口); 原版 sheet 是 match_parent 宽 + 贴底, 不收起
+            AppSheetSurface(modifier = Modifier.fillMaxWidth()) {
                 ReviewPostScreen(state = state, actions = actions)
             }
         }

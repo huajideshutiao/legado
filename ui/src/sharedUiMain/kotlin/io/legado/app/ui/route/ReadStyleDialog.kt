@@ -49,7 +49,6 @@ import io.legado.app.ui.book.read.config.ReadStyleActions
 import io.legado.app.ui.book.read.config.ReadStyleController
 import io.legado.app.ui.book.read.config.ReadStyleScreen
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
-import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -80,12 +79,11 @@ fun ReadStyleDialogHost(
     if (subConfig == ReadStyleSubConfig.NONE) {
         AppBottomSheetDialog(
             onDismissRequest = onDismiss,
-            properties = AppDialogSizes.properties(),
         ) {
             AppTheme {
                 // 原版 BaseBottomDialogFragment: 窗口 MATCH_PARENT 全宽贴底 + Gravity.BOTTOM + WRAP_CONTENT,
                 // 底色 bottomBackground (原版 filletBackground); 圆角收口于半屏弹层统一规格
-                // (AppSheetSurface: 仅上两角 16dp);
+                // (AppSheetSurface: 顶角 16dp, 随上拉展开收平);
                 // 内容横向 8dp 间距由 ReadStyleScreen 内部 padding(horizontal=spacingDefault) 提供
                 // (arco_spacing_default; 原 XML root 为 lg)。
                 AppSheetSurface(

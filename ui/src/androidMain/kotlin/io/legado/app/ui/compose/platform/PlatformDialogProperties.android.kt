@@ -23,6 +23,17 @@ actual fun platformDialogProperties(
 )
 
 /**
+ * Android 弹层 actual: 贴边窗口 (decorFitsSystemWindows = false) —— 面板要画到窗口顶的状态栏区域,
+ * 且 ime insets 只有贴边窗口才真正派发给内容; 关掉平台默认宽度。
+ */
+actual fun platformSheetDialogProperties(): DialogProperties = DialogProperties(
+    dismissOnBackPress = true,
+    dismissOnClickOutside = true,
+    usePlatformDefaultWidth = false,
+    decorFitsSystemWindows = false,
+)
+
+/**
  * Android: ime ∪ navigationBars。decor=false 后键盘弹出时两 insets 并存
  * (键盘从导航栏上方出现, 手势条仍可见), max 语义 = 面板底边顶在键盘顶;
  * 键盘收起后 ime=0, 剩导航栏避让, 面板不被 3 键导航黑条压住。

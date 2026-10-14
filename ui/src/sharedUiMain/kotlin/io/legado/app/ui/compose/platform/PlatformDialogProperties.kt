@@ -26,6 +26,16 @@ expect fun platformDialogProperties(
 ): DialogProperties
 
 /**
+ * 底部弹层窗口属性: 与 [platformDialogProperties] 同一目的, 但两端都要"窗口内容铺满整窗"——
+ * Android 走贴边窗口 (decorFitsSystemWindows = false), skiko 三端关掉窗口自带的平台 insets 缩进
+ * (usePlatformInsets = false) 并把平台 scrim 置透明。面板要画到窗口顶的状态栏/安全区那一条,
+ * 于是系统栏/安全区避让改由面板容器自理
+ * ([io.legado.app.ui.compose.component.AppSheetSurface] 按 [bottomSheetBottomInsets] 与弹层
+ * 骨架给出的顶部进入量补), 需要压暗底层的面板自绘一层暗化。
+ */
+expect fun platformSheetDialogProperties(): DialogProperties
+
+/**
  * 底部避让 insets (底部弹层面板 / 编辑页根容器共用)。
  *
  * - Android (decor=false 弹窗) / iOS / 鸿蒙: ime ∪ navigationBars (逐边 max) —— 键盘

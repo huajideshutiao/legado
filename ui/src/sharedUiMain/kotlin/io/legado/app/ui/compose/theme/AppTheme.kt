@@ -70,9 +70,8 @@ object AppTheme {
         val shapeMd: RoundedCornerShape = RoundedCornerShape(radiusMd)
         val shapeLg: RoundedCornerShape = RoundedCornerShape(radiusLg)
 
-        // 语义别名: 按钮 8dp / 贴底弹层顶角 16dp (半屏弹层面板统一用 sheetShape)
+        // 语义别名: 按钮 8dp (贴底弹层顶角不在此列 —— 它随展开比例收平, 由 AppSheetSurface 按 radiusLg 插值)
         val buttonShape: RoundedCornerShape = shapeDefault
-        val sheetShape: RoundedCornerShape = RoundedCornerShape(topStart = radiusLg, topEnd = radiusLg)
 
         /**
          * 文字按钮最小宽 (对齐 M2 ButtonDefaults.MinWidth, 窄文案不被压到比规范更窄)。
@@ -85,6 +84,13 @@ object AppTheme {
         // 高度 0.8 为全局统一值, 新弹窗一律取这里而非自行乘系数
         const val dialogWidthFraction: Float = 0.9f
         const val dialogHeightFraction: Float = 0.8f
+
+        /**
+         * 居中对话框与半屏弹层面板的宽度上限: 可用宽超过它时收成居中面板 (桌面宽窗),
+         * 窄于它时铺满 (移动端/窄窗)。消费方见 AppDialogSizes 的宽度计算与半屏弹层
+         * (AppBottomSheetDialog), 后者按上拉展开比例插值 —— 收起态取上限, 拉到底为整窗宽。
+         */
+        val dialogMaxWidth: Dp = 800.dp
 
         // Arco 描边: thin/medium 对齐 arco_stroke_width_*, hairline 为极细描边
         val strokeHairline: Dp = 0.5.dp

@@ -21,11 +21,13 @@ import io.legado.app.ui.root.AppRoute
  *    同时补主题底色, 弹层圆角内不露白 (WebView 组合/加载完成前)。
  * 2. **返回键**: 走覆盖物栈 [BackLayerHandler] (注册在 AppBottomSheetDialog 自身的拦截之后,
  *    栈顶优先); 兜底关闭走 [LocalSheetDismissRequest] 才有退出动画, 直调 [onBack] 会砍掉动画。
- * 3. **全屏**: [fullScreen] 只切弹层外壳的高度/圆角 (见 SheetOverlayContent), 组合位置不变 ——
- *    WebView 实例与页面状态 (滚动位置/表单/登录态) 全部保留, 不像推新路由那样重建重载。
+ * 3. **全屏**: [fullScreen] 只切弹层外壳的全屏档 (高度/宽度/圆角/铺色, 见 SheetOverlayContent),
+ *    组合位置不变 —— WebView 实例与页面状态 (滚动位置/表单/登录态) 全部保留, 不像推新路由
+ *    那样重建重载。
  *
  * 与全屏路由仅剩的形态差异: 路由全屏还会调平台 `window.setFullscreen` 隐藏系统栏, 弹层是
- * 独立对话框窗口、不掌管系统栏, 故只撑满窗口 (顶部由 platformStatusBarPadding 让位状态栏)。
+ * 独立对话框窗口、不掌管系统栏, 故只撑满窗口 (顶部装饰带由面板容器按进入量避让, 状态栏区域
+ * 由面板底色接管)。
  */
 @Composable
 internal fun WebViewSheetContent(
