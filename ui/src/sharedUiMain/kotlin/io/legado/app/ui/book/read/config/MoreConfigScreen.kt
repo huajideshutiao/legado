@@ -2,6 +2,7 @@ package io.legado.app.ui.book.read.config
 
 import androidx.compose.runtime.Composable
 import io.legado.app.constant.PreferKey
+import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.preference.PreferenceScreen
 import io.legado.app.ui.compose.preference.listPreference
 import io.legado.app.ui.compose.preference.preference
@@ -80,7 +81,8 @@ fun MoreConfigScreen(
     val titleShowReadTitleAddition = stringResource(Res.string.show_read_title_addition)
 
     AppTheme {
-        PreferenceScreen {
+        // 宽屏自动分列: 单列 640dp→2 列、1000dp→3 列, 之后每 +400dp 加一列 (窄屏恒单列)
+        PreferenceScreen(columns = rememberResponsiveColumns(1)) {
             if (hasScreenOrientation) {
                 listPreference(
                     prefKey = PreferKey.screenOrientation,

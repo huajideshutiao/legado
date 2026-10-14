@@ -17,6 +17,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -76,7 +80,37 @@ import org.jetbrains.compose.resources.stringResource
  * [PreferenceProviders] 注入, 替代 SharedPreferences 直接访问。
  */
 
-/** LazyColumn 容器，透明背景（露出 Activity 主题背景/壁纸），底部避让导航栏 */
+/**
+ * 设置项 DSL 作用域: 列表容器与网格容器共用同一套 DSL 目标。
+ *
+ * [fullLine] 仅网格下有意义: true = 该行跨整行 (分组标题等必须整行的项)。
+ */
+interface PreferenceScope {
+    fun preferenceItem(fullLine: Boolean = false, content: @Composable () -> Unit)
+}
+
+private class ListPreferenceScope(private val scope: LazyListScope) : PreferenceScope {
+    override fun preferenceItem(fullLine: Boolean, content: @Composable () -> Unit) {
+        scope.item { content() }
+    }
+}
+
+private class GridPreferenceScope(private val scope: LazyGridScope) : PreferenceScope {
+    override fun preferenceItem(fullLine: Boolean, content: @Composable () -> Unit) {
+        if (fullLine) {
+            scope.item(span = { GridItemSpan(maxLineSpan) }) { content() }
+        } else {
+            scope.item { content() }
+        }
+    }
+}
+
+/**
+ * 设置页容器，透明背景（露出 Activity 主题背景/壁纸），底部避让导航栏。
+ *
+ * @param columns 非空 = 网格容器 (宽屏按列数分列, 列数入口见 rememberResponsiveColumns); 空 = 单列列表。
+ *                网格容器不用 [listState] (只有列表容器接外部滚动状态)。
+ */
 @Composable
 fun PreferenceScreen(
     modifier: Modifier = Modifier,
@@ -84,18 +118,30 @@ fun PreferenceScreen(
     // 替代 WindowInsets.navigationBars.asPaddingValues(): commonMain 走 expect/actual
     // Android 端等价返回 WindowInsets.navigationBars.asPaddingValues(), 其他平台返回 PaddingValues(0)
     contentPadding: PaddingValues = rememberNavigationBarPaddingValues(),
-    content: LazyListScope.() -> Unit,
+    columns: GridCells? = null,
+    content: PreferenceScope.() -> Unit,
 ) {
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        state = listState,
-        contentPadding = contentPadding,
-        content = content,
-    )
+    if (columns == null) {
+        LazyColumn(
+            modifier = modifier.fillMaxSize(),
+            state = listState,
+            contentPadding = contentPadding,
+        ) {
+            ListPreferenceScope(this).content()
+        }
+    } else {
+        LazyVerticalGrid(
+            columns = columns,
+            modifier = modifier.fillMaxSize(),
+            contentPadding = contentPadding,
+        ) {
+            GridPreferenceScope(this).content()
+        }
+    }
 }
 
-/** 分组标题：accent 色，复刻 PreferenceCategory */
-fun LazyListScope.preferenceCategory(title: String) = item {
+/** 分组标题：accent 色，复刻 PreferenceCategory (网格下跨整行) */
+fun PreferenceScope.preferenceCategory(title: String) = preferenceItem(fullLine = true) {
     Text(
         text = title,
         color = AppTheme.colors.accent,
@@ -107,7 +153,7 @@ fun LazyListScope.preferenceCategory(title: String) = item {
 }
 
 /** 普通项：title/summary/icon/click，复刻 Preference */
-fun LazyListScope.preference(
+fun PreferenceScope.preference(
     title: String,
     summary: String? = null,
     icon: Painter? = null,
@@ -116,7 +162,7 @@ fun LazyListScope.preference(
     widget: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
-) = item {
+) = preferenceItem {
     PreferenceRow(
         title = title,
         summary = summary,
@@ -158,7 +204,7 @@ fun <T> rememberPrefState(prefKey: String, read: (PreferenceProvider) -> T): Mut
  * onCheckedChange 在持久化后回调（承接原 OnSharedPreferenceChangeListener 副作用）。
  * checked 非空时开关态由外部驱动（如 webService 由 WEB_SERVICE 事件回填），否则内部随 prefs。
  */
-fun LazyListScope.switchPreference(
+fun PreferenceScope.switchPreference(
     prefKey: String,
     title: String,
     summary: String? = null,
@@ -169,7 +215,7 @@ fun LazyListScope.switchPreference(
     checked: Boolean? = null,
     onCheckedChange: ((Boolean) -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
-) = item {
+) = preferenceItem {
     // 替代 LocalContext.current + context.getPrefBoolean: commonMain 走 PreferenceProviders 单例
     val pref = PreferenceProviders.get()
     var internalChecked by rememberPrefState(prefKey) { it.getBoolean(prefKey, defaultValue) }
@@ -197,7 +243,7 @@ fun LazyListScope.switchPreference(
 }
 
 /** 输入项：点击弹 AppAlertDialog + 输入框，复刻 EditTextPreference */
-fun LazyListScope.editTextPreference(
+fun PreferenceScope.editTextPreference(
     prefKey: String,
     title: String,
     summary: String? = null,
@@ -209,7 +255,7 @@ fun LazyListScope.editTextPreference(
     // 对话框宽度占窗口宽度的比例 (默认 1f 占满, 备份相关对话框传 0.8f 避免桌面端占满难看)
     widthFraction: Float = 1f,
     onValueChange: ((String) -> Unit)? = null,
-) = item {
+) = preferenceItem {
     // 替代 LocalContext.current: commonMain 走 PreferenceProviders 单例
     val pref = PreferenceProviders.get()
     var showDialog by remember { mutableStateOf(false) }
@@ -255,7 +301,7 @@ fun LazyListScope.editTextPreference(
 }
 
 /** 单选项：entries/values 语义，行尾 fillet 文本显示当前 entry，点击弹单选。复刻 NameListPreference */
-fun LazyListScope.listPreference(
+fun PreferenceScope.listPreference(
     prefKey: String,
     title: String,
     entries: List<String>,
@@ -266,7 +312,7 @@ fun LazyListScope.listPreference(
     enabled: Boolean = true,
     isBottomBackground: Boolean = false,
     onValueChange: ((String) -> Unit)? = null,
-) = item {
+) = preferenceItem {
     // 替代 LocalContext.current: commonMain 走 PreferenceProviders 单例
     val pref = PreferenceProviders.get()
     var value by rememberPrefState(prefKey) { it.getStringOrNull(prefKey) ?: defaultValue }
@@ -299,7 +345,7 @@ fun LazyListScope.listPreference(
 }
 
 /** 图标单选项：行尾图标预览，点击弹带图标的单选。复刻 IconListPreference */
-fun LazyListScope.iconListPreference(
+fun PreferenceScope.iconListPreference(
     prefKey: String,
     title: String,
     entries: List<String>,
@@ -310,7 +356,7 @@ fun LazyListScope.iconListPreference(
     enabled: Boolean = true,
     isBottomBackground: Boolean = false,
     onValueChange: ((String) -> Unit)? = null,
-) = item {
+) = preferenceItem {
     // 替代 LocalContext.current: commonMain 走 PreferenceProviders 单例
     val pref = PreferenceProviders.get()
     var value by rememberPrefState(prefKey) { it.getStringOrNull(prefKey) ?: defaultValue }
