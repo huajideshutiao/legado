@@ -2,7 +2,6 @@ package io.legado.app.ui.book.search
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,8 +10,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.material.Icon
-import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -22,22 +19,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.compose.component.AppCheckbox
-import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppPickDialog
 import io.legado.app.ui.compose.component.AppRadioButton
-import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.RadioChip
+import io.legado.app.ui.compose.component.rememberAppDialogSearchState
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.flow.catch
@@ -49,14 +43,9 @@ import legado.ui.generated.resources.all_source
 import legado.ui.generated.resources.book_source
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.group
-import legado.ui.generated.resources.close
-import legado.ui.generated.resources.ic_baseline_close
-import legado.ui.generated.resources.ic_search
 import legado.ui.generated.resources.ok
 import legado.ui.generated.resources.screen
-import legado.ui.generated.resources.search
 import legado.ui.generated.resources.search_scope
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -78,12 +67,13 @@ fun SearchScopeDialog(
     val colors = AppTheme.colors
     // 原版每次打开都默认分组模式，选择状态不从已保存范围预填。
     var groupMode by remember { mutableStateOf(true) }
-    var screenText by remember { mutableStateOf("") }
-    var showScreen by remember { mutableStateOf(false) }
     var selectedGroups by remember { mutableStateOf<List<String>>(emptyList()) }
     var selectedSource by remember { mutableStateOf<BookSourcePart?>(null) }
     var dbGroups by remember { mutableStateOf<List<String>>(emptyList()) }
     var dbSources by remember { mutableStateOf<List<BookSourcePart>>(emptyList()) }
+    // 搜索态与关键词由顶栏壳持有; 未搜索时的关键词为空, 建库查询走全量
+    val searchState = rememberAppDialogSearchState()
+    val screenText = searchState.query
     if (groups == null) {
         LaunchedEffect(Unit) {
             dbGroups = withContext(IoDispatcher) {
@@ -117,52 +107,15 @@ fun SearchScopeDialog(
     }
     val visibleGroups = groups ?: dbGroups
     val visibleSources = if (sources == null) dbSources else injectedSources
-    // 书源模式筛选框聚焦 (进入筛选态即请求焦点)
-    val focusRequester = remember { FocusRequester() }
-    // 退出筛选 (对照原版 SearchView 收起: 关输入态并清空筛选词)
-    val exitScreen: () -> Unit = {
-        showScreen = false
-        screenText = ""
-    }
 
-    AppDialogScaffold(
+    AppPickDialog(
         onDismissRequest = onDismiss,
         title = stringResource(Res.string.search_scope),
-        // 筛选态: 输入框顶掉标题文本, 与返回箭头同行 (对照原版标题栏 SearchView 展开)
-        titleContent = if (!groupMode && showScreen) {
-            {
-                AppSearchField(
-                    value = screenText,
-                    onValueChange = { screenText = it },
-                    hint = stringResource(Res.string.screen),
-                    modifier = Modifier.weight(1f),
-                    textFieldModifier = Modifier.focusRequester(focusRequester),
-                )
-                // 退出搜索态的大叉常显 (有文本时输入框自带的清除叉同时可见)
-                IconButton(onClick = exitScreen) {
-                    Icon(
-                        painter = painterResource(Res.drawable.ic_baseline_close),
-                        contentDescription = stringResource(Res.string.close),
-                        tint = colors.primaryText,
-                    )
-                }
-                LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
-            }
-        } else null,
-        // 返回箭头: 始终关闭对话框 (退出搜索态由右侧大叉承担)
-        onBack = onDismiss,
-        titleActions = {
-            // 切换书源模式时的筛选入口 (对照原版标题栏 menu 搜索项)
-            if (!groupMode && !showScreen) {
-                IconButton(onClick = { showScreen = true }) {
-                    Icon(
-                        painter = painterResource(Res.drawable.ic_search),
-                        contentDescription = stringResource(Res.string.search),
-                        tint = colors.primaryText,
-                    )
-                }
-            }
-        },
+        searchState = searchState,
+        searchHint = stringResource(Res.string.screen),
+        // 筛选入口只在书源模式出现 (对照原版切分组时隐藏菜单搜索项)
+        searchEnabled = !groupMode,
+        properties = AppDialogSizes.properties(),
         bottomBar = {
             AppTextButton(text = stringResource(Res.string.all_source)) {
                 onConfirm(SearchScope(""))
@@ -182,10 +135,6 @@ fun SearchScopeDialog(
                 onConfirm(scope)
             }
         },
-        contentPadding = PaddingValues(0.dp),
-        // 全高型: 高度锁定 0.8 屏高
-        fullHeight = true,
-        properties = AppDialogSizes.properties(),
     ) {
         Row(
             Modifier
@@ -199,7 +148,8 @@ fun SearchScopeDialog(
                 modifier = Modifier.weight(1f),
             ) {
                 groupMode = true
-                exitScreen()
+                // 切回分组同时退出筛选态并清空筛选词 (对照原版切模式后菜单搜索项收起)
+                searchState.exit()
             }
             RadioChip(
                 text = stringResource(Res.string.book_source),

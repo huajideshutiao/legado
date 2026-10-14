@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -41,11 +40,12 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppPickDialog
 import io.legado.app.ui.compose.component.AppRadioButton
-import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
+import io.legado.app.ui.compose.component.rememberAppDialogSearchState
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.postEvent
@@ -360,7 +360,7 @@ fun HomeSectionEditDialog(
         }
     }
 
-    // ─── 三个选择弹窗 (对照原版泛型 searchPick: 搜索框 + 360dp 列表) ─────────
+    // ─── 三个选择弹窗 (对照原版泛型 searchPick: 搜索框 + 列表) ─────────
     favoriteOptions?.let { options ->
         HomeSearchPickDialog(
             title = pickFavoriteText,
@@ -459,7 +459,8 @@ private fun StyleRadio(text: String, selected: Boolean, onClick: () -> Unit) {
 
 /**
  * 通用搜索选择弹窗，下沉自原版私有泛型 `searchPick`：
- * 搜索框即时按 label 模糊过滤，列表 360dp 高，点击回调后关闭。
+ * 搜索框在顶栏内 (放大镜进搜索态, 退出叉退搜索态) 即时按 label 模糊过滤，
+ * 列表撑满正文区，点击回调后关闭。
  */
 @Composable
 private fun <T> HomeSearchPickDialog(
@@ -470,15 +471,17 @@ private fun <T> HomeSearchPickDialog(
     onPick: (T) -> Unit,
 ) {
     val colors = AppTheme.colors
-    var query by remember { mutableStateOf("") }
+    val searchState = rememberAppDialogSearchState()
+    val query = searchState.query
     val shown = remember(items, query) {
         if (query.isEmpty()) items else items.filter { label(it).contains(query, true) }
     }
-    AppDialogScaffold(
+    AppPickDialog(
         onDismissRequest = onDismiss,
         title = title,
+        searchState = searchState,
+        searchHint = stringResource(Res.string.search),
         properties = AppDialogSizes.properties(),
-        contentPadding = PaddingValues(0.dp),
         bottomBar = {
             AppTextButton(
                 text = stringResource(Res.string.cancel),
@@ -487,38 +490,26 @@ private fun <T> HomeSearchPickDialog(
             )
         },
     ) {
-        Column(
-            Modifier.fillMaxWidth().padding(top = DesignTokens.spacingMd)
+        FastScrollLazyColumn(
+            state = rememberLazyListState(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .padding(top = DesignTokens.spacingDefault),
         ) {
-            AppSearchField(
-                value = query,
-                onValueChange = { query = it },
-                hint = stringResource(Res.string.search),
-                modifier = Modifier.fillMaxWidth()
-                    .padding(horizontal = DesignTokens.spacingDefault),
-            )
-            FastScrollLazyColumn(
-                state = rememberLazyListState(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    // 对照原版 searchPick 的 ListView 固定 360dp 高
-                    .heightIn(max = 360.dp)
-                    .padding(top = DesignTokens.spacingDefault),
-            ) {
-                items(shown) { item ->
-                    Text(
-                        text = label(item),
-                        color = colors.primaryText,
-                        fontSize = 16.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onPick(item) }
-                            // 本弹窗正文列不带统一内边距, 8dp 由各子项自带 (与搜索框同值)
-                            .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingMd),
-                    )
-                }
+            items(shown) { item ->
+                Text(
+                    text = label(item),
+                    color = colors.primaryText,
+                    fontSize = 16.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPick(item) }
+                        // 本弹窗正文列不带统一内边距, 8dp 由各子项自带 (与顶栏同值)
+                        .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingMd),
+                )
             }
         }
     }
