@@ -2,9 +2,11 @@ package org.jsoup.internal
 
 import io.legado.app.help.http.KmpHttpClient
 import io.legado.app.help.http.KmpRequestBody
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSink
 import okio.IOException
 import okio.source
@@ -69,10 +71,19 @@ internal actual fun buildPlatformClient(
     return builder.build()
 }
 
+/**
+ * 零字段 multipart: okhttp 的 MultipartBody.Builder 拒绝构建空 parts,按 OkHttp MultipartBody
+ * 的分隔行口径只发结束分隔行 (与 native 端手工拼接结果一致)。
+ */
 internal actual fun buildMultipartBody(
     data: Collection<Connection.KeyVal>,
     boundary: String
 ): KmpRequestBody {
+    if (data.isEmpty()) {
+        val mediaType = "${okhttp3.MultipartBody.FORM}; boundary=$boundary".toMediaType()
+        return "--$boundary--\r\n".toRequestBody(mediaType)
+    }
+
     val body = okhttp3.MultipartBody.Builder(boundary)
         .setType(okhttp3.MultipartBody.FORM)
 

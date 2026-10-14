@@ -238,10 +238,15 @@ class HttpConnection : Connection {
     }
 
     /**
-     * 构建请求 body,决策表同 jsoup setOutputContentType + implWritePost:
-     * 1. 有流字段或用户显式 multipart → multipart/form-data
-     * 2. 显式 requestBody → 原样发送,CT 缺省 form-urlencoded
-     * 3. 其余(含空 data 的 POST) → form-urlencoded
+     * 构建请求 body,决策表同 jsoup 1.17.2 setOutputContentType + writePost
+     * (CT 的类型/子类型/参数名比对按 RFC 2045 大小写不敏感,jsoup 此处为大小写敏感):
+     * 1. 用户 CT 含 multipart/form-data 且未自带 boundary → 生成 boundary,由表单字段拼 multipart
+     * 2. 用户 CT 含 multipart/form-data 且自带 boundary → 调用方已自行拼好整个 multipart 字节
+     *    (如书源 JS 直传 multipart body),原样发送,不重建
+     * 3. 无 CT 且有流字段 → 生成 boundary,由表单字段拼 multipart
+     * 4. 其余(含空 data 的 POST) → 显式 requestBody 原样发送,CT 缺省 form-urlencoded
+     *
+     * 零字段 multipart 输出只含结束分隔行的空体,由各端 [buildMultipartBody] 实现。
      *
      * body 一律先按 [HttpConnectionRequest.postDataCharset] 编码为字节再包装,
      * 避免 OkHttp 的 String.toRequestBody 改写 charset。
@@ -253,18 +258,18 @@ class HttpConnection : Connection {
         userContentType: String?,
     ): KmpRequestBody {
         val charsetName = requestDelegate.postDataCharset
-        val needsMultipart = data.any { it.hasInputStream() } ||
-            userContentType?.contains("multipart/form-data", ignoreCase = true) == true
+        // CT 自带 boundary 即视为调用方已自行拼好整个 multipart 字节
+        val needsMultipart = if (userContentType != null) {
+            userContentType.contains("multipart/form-data", ignoreCase = true) &&
+                !userContentType.contains("boundary", ignoreCase = true)
+        } else {
+            data.any { it.hasInputStream() }
+        }
 
         if (needsMultipart) {
-            // 用户 CT 自带 boundary 则复用,否则生成;header 与 body 必须用同一个 boundary
-            val boundary = userContentType?.let { parseBoundary(it) }
-                ?: randomUUIDString()
-            builder.header(
-                "Content-Type",
-                userContentType?.takeIf { parseBoundary(it) != null }
-                    ?: "multipart/form-data; boundary=$boundary"
-            )
+            // 生成 boundary 时整段替换 CT (同 jsoup setOutputContentType),header 与 body 用同一个 boundary
+            val boundary = randomUUIDString()
+            builder.header("Content-Type", "multipart/form-data; boundary=$boundary")
             return buildMultipartBody(data, boundary)
         }
 
@@ -305,17 +310,6 @@ class HttpConnection : Connection {
 
     private fun urlEncode(value: String, charset: String): String {
         return urlEncodeForm(value, charset)
-    }
-
-    /** 从用户 Content-Type 中取已有 boundary,没有则返回 null */
-    private fun parseBoundary(contentType: String): String? {
-        val idx = contentType.indexOf("boundary=", ignoreCase = true)
-        if (idx < 0) return null
-        return contentType.substring(idx + "boundary=".length)
-            .split(';', limit = 2)[0]
-            .trim()
-            .removeSurrounding("\"")
-            .takeIf { it.isNotEmpty() }
     }
 
     companion object {

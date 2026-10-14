@@ -90,10 +90,15 @@ actual fun KmpResponseBody.decompressed(): KmpResponseBody {
  * 载荷类型与 jvm 分支一致: 平台文件 ([io.legado.app.utils.File], iOS/鸿蒙的载荷类型) 读其字节;
  * `ByteArray` 直接作为内容; `String` 按 UTF-8 编码; 其它对象取字符串表示 (与 jvm 分支同语义)。
  *
- * type 入参对应 OkHttp MultipartBody 的整体 MediaType (如 "multipart/form-data"),
- * 实际不生效 (Ktor setBody 时统一用 multipart/form-data; boundary=...); 与 jvm 行为基本一致。
+ * type 入参是整体 MediaType (如 "multipart/form-data"), 必须以 multipart/ 开头 (同 jvm 端 setType 约束),
+ * 与生成的 boundary 一起作为请求 Content-Type。
  */
 actual fun KmpRequestBuilder.postMultipart(type: String?, form: Map<String, Any>) {
+    // 整体类型约束对齐 jvm 端 MultipartBody.Builder.setType: 调用方给出的类型必须是 multipart/*
+    type?.let {
+        val slash = it.indexOf('/')
+        require(slash > 0 && it.substring(0, slash) == "multipart") { "multipart != $it" }
+    }
     // 用 systemCurrentTimeMillis() (posix clock_gettime 包装) 替代 jvm 的 System.currentTimeMillis()
     val boundary = "legado-native-boundary-${systemCurrentTimeMillis()}-${(form.hashCode() and 0xFFFFFF)}"
     val CRLF = "\r\n"

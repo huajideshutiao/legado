@@ -2,6 +2,7 @@ package io.legado.app.help.http
 
 import io.legado.app.utils.EncodingDetect
 import io.legado.app.utils.Utf8BomUtils
+import io.legado.app.utils.randomUUIDString
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -21,7 +22,7 @@ import java.util.zip.ZipInputStream
  * - [newCallStrResponse]: 依赖 [text] (Charset), 委托 newCallResponse + body.text()
  * - [text]: 依赖 java.nio.charset.Charset + EncodingDetect (icu4j)
  * - [decompressed]: 依赖 java.util.zip.ZipInputStream + RealResponseBody
- * - [postMultipart]: 依赖 java.io.File + asRequestBody
+ * - [postMultipart]: 依赖 java.io.File + asRequestBody;零字段时只发结束分隔行
  *
  * KP4 OkHttp 跨平台修复: 原用 [Any] 接收者 + actual 内部 cast 回 okhttp3.* 类型;
  * 现改用 [KmpHttpClient] / [KmpRequestBuilder] / [KmpResponseBody] 跨平台抽象。
@@ -71,9 +72,17 @@ actual fun KmpResponseBody.decompressed(): KmpResponseBody {
 }
 
 actual fun KmpRequestBuilder.postMultipart(type: String?, form: Map<String, Any>) {
-    val multipartBody = MultipartBody.Builder()
+    val boundary = randomUUIDString()
+    val multipartBody = MultipartBody.Builder(boundary)
     type?.let {
         multipartBody.setType(it.toMediaType())
+    }
+    // 零字段: okhttp 的 MultipartBody.Builder 拒绝构建空 parts,按 OkHttp MultipartBody
+    // 的分隔行口径只发结束分隔行 (与 native 端手工拼接结果一致)
+    if (form.isEmpty()) {
+        val mediaType = "${type ?: "multipart/form-data"}; boundary=$boundary".toMediaType()
+        this.post("--$boundary--\r\n".toRequestBody(mediaType))
+        return
     }
     form.forEach {
         when (val value = it.value) {

@@ -2,6 +2,7 @@ package io.legado.app.help.tvbox
 
 import android.util.Base64
 import io.legado.app.utils.NetworkUtils
+import io.legado.app.utils.randomUUIDString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
@@ -168,9 +169,21 @@ class TvBoxJsBridge internal constructor(
             "form" -> FormBody.Builder().apply {
                 for ((key, value) in flatMapOf(data)) add(key, value ?: "")
             }.build()
-            "form-data" -> okhttp3.MultipartBody.Builder().setType(okhttp3.MultipartBody.FORM).apply {
-                for ((key, value) in flatMapOf(data)) addFormDataPart(key, value ?: "")
-            }.build()
+            "form-data" -> {
+                val form = flatMapOf(data)
+                // 零字段: okhttp 的 MultipartBody.Builder 拒绝构建空 parts,按 OkHttp
+                // MultipartBody 的分隔行口径只发结束分隔行
+                if (form.isEmpty()) {
+                    val boundary = randomUUIDString()
+                    "--$boundary--\r\n".toRequestBody(
+                        "${okhttp3.MultipartBody.FORM}; boundary=$boundary".toMediaTypeOrNull()
+                    )
+                } else {
+                    okhttp3.MultipartBody.Builder().setType(okhttp3.MultipartBody.FORM).apply {
+                        for ((key, value) in form) addFormDataPart(key, value ?: "")
+                    }.build()
+                }
+            }
             else -> data.toString().toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
         }
     }
