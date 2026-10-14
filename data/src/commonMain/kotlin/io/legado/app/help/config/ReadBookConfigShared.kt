@@ -32,7 +32,7 @@ import kotlinx.serialization.builtins.ListSerializer
  *    调用方通过 [ReadBookConfigProviders] / [ReadConfigProviders] /
  *    [io.legado.app.ui.compose.platform.LocalReadConfigProviders] 取得已注入实例。
  * 2. **全局简单值** (autoReadSpeed / readStyleSelect / comicStyleSelect / shareLayout /
- *    textFullJustify / textBottomJustify / hideStatusBar / hideNavigationBar)
+ *    textFullJustify / textBottomJustify / hangFirstPunctuation / hideStatusBar / hideNavigationBar)
  *    走 [prefs]，key 与 app 端 `PreferKey` 一致；**排版字段全部委托 [config]**
  *    (= shareLayout ? [shareConfig] : [durConfig])，与 app 端委托关系一一对应。
  *    app 端原本把这些值缓存在字段里，这里改为每次直读 prefs（安卓端底层同为
@@ -88,6 +88,10 @@ class ReadBookConfigShared(private val prefs: PreferenceProvider) {
     /** 底部对齐（默认 true）。 */
     val textBottomJustify: Boolean
         get() = prefs.getBoolean(PreferKey.textBottomJustify, true)
+
+    /** 段首标点悬挂（默认 false = 现状：开始夹注占正文首半字）。 */
+    val hangFirstPunctuation: Boolean
+        get() = prefs.getBoolean(PreferKey.hangFirstPunctuation, false)
 
     /** 隐藏状态栏（默认 false）。 */
     var hideStatusBar: Boolean

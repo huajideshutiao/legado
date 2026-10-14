@@ -442,6 +442,7 @@
     <string name="enabled_explore">已啟用發現</string>
     <string name="disabled_explore">已禁用發現</string>
     <string name="text_bottom_justify">文字底部對齊</string>
+    <string name="hang_first_punctuation">段首標點懸掛</string>
     <string name="contributors_summary">gedoor,Invinciblelee,Xwite等,詳情請在github中查看</string>
     <string name="clear_cache_summary">清除已下載書籍和字體緩存</string>
     <string name="default_cover">默認封面</string>

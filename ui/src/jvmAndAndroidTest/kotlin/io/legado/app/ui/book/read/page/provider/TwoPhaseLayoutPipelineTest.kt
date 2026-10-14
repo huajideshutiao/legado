@@ -55,6 +55,7 @@ class TwoPhaseLayoutPipelineTest {
         indent: String = "",
         indentCharWidth: Float = 0f,
         visibleWidth: Int = 100,
+        hangFirstPunctuation: Boolean = false,
     ) = ParagraphLayoutEngine.layoutParagraph(
         text = text,
         measurer = measurer,
@@ -68,6 +69,7 @@ class TwoPhaseLayoutPipelineTest {
         descent = 2f,
         cache = cache,
         fontKey = "body",
+        hangFirstPunctuation = hangFirstPunctuation,
     )
 
     private fun titleParagraph(
@@ -110,6 +112,79 @@ class TwoPhaseLayoutPipelineTest {
         doublePage = doublePage,
         textFullJustify = false,
     )
+
+    /**
+     * 段首标点悬挂：首行缩进后的开始夹注符号挂进缩进空间，被夹注正文仍从标准缩进位起笔。
+     *
+     * fixed 字宽 10px ⇒ 缩进 2 字 = 20px，引号被阶段 0 裁成半字 5px。
+     * 关闭时正文从 25px 起，开启后缩进让出那 5px（15px），正文回到 20px。
+     */
+    @Test
+    fun `段首开始夹注悬挂让出缩进宽度`() {
+        val text = "　　“" + group
+        val off = bodyParagraph(text, indent = "　　", indentCharWidth = 10f)
+        val on = bodyParagraph(text, indent = "　　", indentCharWidth = 10f, hangFirstPunctuation = true)
+        val offLine = off.lines.first()
+        val onLine = on.lines.first()
+        assertEquals(20f, offLine.indentWidth, 0f)
+        assertEquals(15f, onLine.indentWidth, 0f)
+        // 引号已是半字宽，两个开关下正文起点分别为 25px / 20px（与其它行缩进位一致）
+        assertEquals(5f, onLine.widths.first(), 0f)
+        assertEquals(
+            offLine.indentWidth + offLine.widths.first(),
+            onLine.indentWidth + onLine.widths.first() + 5f,
+            0f,
+        )
+        assertEquals(20f, onLine.indentWidth + onLine.widths.first(), 0f)
+    }
+
+    /** 段首缩进后是普通文字（非开始夹注）时开关无效果。 */
+    @Test
+    fun `段首非标点不悬挂`() {
+        val text = "　　" + group
+        val off = bodyParagraph(text, indent = "　　", indentCharWidth = 10f)
+        val on = bodyParagraph(text, indent = "　　", indentCharWidth = 10f, hangFirstPunctuation = true)
+        assertEquals(off.lines.first().indentWidth, on.lines.first().indentWidth, 0f)
+        assertEquals(20f, on.lines.first().indentWidth, 0f)
+    }
+
+    /** 缩进一字时同样只让出标点自身宽度（1 字缩进 10px，引号半字 5px）。 */
+    @Test
+    fun `缩进一字时悬挂让出标点宽度`() {
+        val text = "　“" + group
+        val on = bodyParagraph(text, indent = "　", indentCharWidth = 10f, hangFirstPunctuation = true)
+        assertEquals(5f, on.lines.first().indentWidth, 0f)
+        assertEquals(10f, on.lines.first().indentWidth + on.lines.first().widths.first(), 0f)
+    }
+
+    /** 无几何缩进（无段首缩进）时开关无效果：没有空间可借。 */
+    @Test
+    fun `无缩进时悬挂无效果`() {
+        val text = "“" + group
+        val off = bodyParagraph(text)
+        val on = bodyParagraph(text, hangFirstPunctuation = true)
+        assertEquals(0f, off.lines.first().indentWidth, 0f)
+        assertEquals(off.lines.first().indentWidth, on.lines.first().indentWidth, 0f)
+    }
+
+    /**
+     * 段首标点悬挂参与折行缓存键：同一段落开关两态不能互相命中缓存。
+     */
+    @Test
+    fun `悬挂开关进折行缓存键`() {
+        val cache = ParagraphLayoutCache()
+        val text = "　　“" + group
+        val off = bodyParagraph(text, cache = cache, indent = "　　", indentCharWidth = 10f)
+        val on = bodyParagraph(
+            text,
+            cache = cache,
+            indent = "　　",
+            indentCharWidth = 10f,
+            hangFirstPunctuation = true,
+        )
+        assertEquals(20f, off.lines.first().indentWidth, 0f)
+        assertEquals(15f, on.lines.first().indentWidth, 0f)
+    }
 
     /**
      * 走缓存与不走缓存必须产出逐字段相等的 [ParagraphLineMetrics]（含几何缩进首行），

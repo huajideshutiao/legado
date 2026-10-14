@@ -2245,6 +2245,7 @@ class ReadBookViewModelShared(
             textFullJustify = cfg.textFullJustify,
             viewWidth = cfg.viewWidth,
             textBottomJustify = cfg.textBottomJustify,
+            hangFirstPunctuation = cfg.hangFirstPunctuation,
             doublePage = cfg.doublePage,
             // 几何缩进宽度：对应 app 端 indentCharWidth = getDesiredWidth(paragraphIndent) / 长度
             indentCharWidth = cfg.paragraphIndent.takeIf { it.isNotEmpty() }?.let {
@@ -2784,6 +2785,8 @@ class ReadBookViewModelShared(
         val textFullJustify: Boolean = true,
         // 默认值与 ReadBookConfig 一致（textBottomJustify=true / titleMode=0）
         val textBottomJustify: Boolean = true,
+        /** 段首标点悬挂（默认 false，与全局开关 PreferKey.hangFirstPunctuation 同源） */
+        val hangFirstPunctuation: Boolean = false,
         /** 末页底部留白 px（原版为 20dp；DEFAULT 按 2x 密度折算 40px） */
         val endPadding: Int = 40,
         val titleMode: Int = 0,

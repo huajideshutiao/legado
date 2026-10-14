@@ -77,6 +77,9 @@ object PreferKey {
     const val systemTypefaces = "system_typefaces"
     const val textFullJustify = "textFullJustify"
     const val textBottomJustify = "textBottomJustify"
+
+    /** 段首标点悬挂（CSS Text 4 §8.5.3 第三方案 hanging alignment / clreq 6.3.2 段首缩进条）。 */
+    const val hangFirstPunctuation = "hangFirstPunctuation"
     const val autoReadSpeed = "autoReadSpeed"
     const val barElevation = "barElevation"
     const val defaultCover = "defaultCover"

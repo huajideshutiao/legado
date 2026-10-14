@@ -46,6 +46,8 @@ data class ParsedParagraph(
  * - **双页**：[doublePage]=true 时左右分栏，标记 [io.legado.app.ui.book.read.page.entities.TextLine.isLeftLine]。
  * - **底部对齐**：[textBottomJustify]=true 时由 [TextPage.upLinesPosition] 调整 surplus 均摊。
  * - **段落缩进**：支持字符拼接与等宽几何缩进（[indentCharWidth]）。
+ * - **段首标点悬挂**：[hangFirstPunctuation]=true 时首行缩进后的开始夹注符号挂进缩进，
+ *   被夹注正文与其它行起点齐平。
  * - **断行**：复用 [LineBreaker]（平台 ICU 断点 ∩ 中文禁则），前置 [PunctuationTrimmer] 标点挤压。
  * - **朗读高亮**：写入真实连续章节字符偏移 [io.legado.app.ui.book.read.page.entities.TextLine.chapterPosition]。
  */
@@ -79,6 +81,8 @@ class SimpleChapterLayout(
     val layoutCache: ParagraphLayoutCache = ParagraphLayoutCache(),
     val contentWeight: Int = 400,
     val titleWeight: Int = 700,
+    /** 段首标点悬挂（默认 false = 引号占正文首半字，与迁移前一致）。 */
+    val hangFirstPunctuation: Boolean = false,
 ) {
 
     /**
@@ -201,6 +205,7 @@ class SimpleChapterLayout(
                     isTitle = false,
                     isFirstLine = true,
                     paragraphNum = paragraphSeq,
+                    hangFirstPunctuation = hangFirstPunctuation,
                     textHeight = textHeight,
                     descent = descent,
                     reviewChar = reviewChar,
@@ -312,6 +317,7 @@ class SimpleChapterLayout(
                             isTitle = false,
                         isFirstLine = true,
                         paragraphNum = paragraphSeq,
+                        hangFirstPunctuation = hangFirstPunctuation,
                         textHeight = textHeight,
                         descent = descent,
                         reviewChar = reviewChar,
@@ -345,6 +351,7 @@ class SimpleChapterLayout(
                                                             isTitle = false,
                                         isFirstLine = isFirstSegment,
                                         paragraphNum = paragraphSeq,
+                                        hangFirstPunctuation = hangFirstPunctuation,
                                         textHeight = textHeight,
                                         descent = descent,
                                         images = embeddedImages.toList(),
@@ -400,6 +407,7 @@ class SimpleChapterLayout(
                                     isTitle = false,
                             isFirstLine = !hasNonEmbeddedImage && isFirstSegment,
                             paragraphNum = paragraphSeq,
+                            hangFirstPunctuation = hangFirstPunctuation,
                             textHeight = textHeight,
                             descent = descent,
                             reviewChar = reviewChar,

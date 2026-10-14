@@ -1,9 +1,11 @@
 package io.legado.app.ui.book.read.page.provider
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -151,6 +153,19 @@ class PunctuationTrimmerTest {
         val r = PunctuationTrimmer.trimAdjacent(listOf("：", "“"), listOf(cn, cn), 0f)
         assertWidths(listOf(10f, 10f), r.widths)
         assertNull(r.drawOffsets)
+    }
+
+    // ---- 段首标点悬挂 ----
+
+    /** 只有开始夹注标点可悬挂；宽度为 0（未测到字形）时不挂。 */
+    @Test
+    fun `只有开始夹注可悬挂`() {
+        assertTrue(PunctuationTrimmer.isHangableOpening("“", half))
+        assertTrue(PunctuationTrimmer.isHangableOpening("（", cn))
+        assertFalse(PunctuationTrimmer.isHangableOpening("”", cn))
+        assertFalse(PunctuationTrimmer.isHangableOpening("，", cn))
+        assertFalse(PunctuationTrimmer.isHangableOpening("甲", cn))
+        assertFalse(PunctuationTrimmer.isHangableOpening("“", 0f))
     }
 
     // ---- 阶段 2：行首 / 行尾挤压 ----

@@ -1437,6 +1437,7 @@ private fun buildLayoutConfig(
         paragraphIndent = config.paragraphIndent,
         textFullJustify = config.textFullJustify,
         textBottomJustify = config.textBottomJustify,
+        hangFirstPunctuation = config.hangFirstPunctuation,
         titleMode = config.titleMode,
         // 度量侧字体与 ReaderDrawStyle 的 loadReaderFontFamily 同一路径，避免度量/绘制不同字体
         textFontPath = config.textFont,

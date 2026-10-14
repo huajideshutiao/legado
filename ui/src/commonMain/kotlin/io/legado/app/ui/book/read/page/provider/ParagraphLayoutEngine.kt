@@ -23,6 +23,7 @@ import kotlin.concurrent.Volatile
  * @param textHeight 字体高度（px，烘进 [LineMetrics.textHeight]）
  * @param descent 下行度量（px，烘进 [LineMetrics.descent]）
  * @param indentCharWidth 缩进单字宽（px，决定几何缩进是否生效与 [LineMetrics.indentWidth]）
+ * @param hangFirstPunctuation 段首标点悬挂开关（决定 [LineMetrics.indentWidth] 是否让出首簇宽度）
  * @param centerTitle 标题是否居中（烘进 [LineMetrics.centerTitle]，随 titleMode 变化）
  * @param reviewChar 段评占位字符（烘进 [LineMetrics.reviewChar]）
  */
@@ -36,6 +37,7 @@ data class ParagraphCacheKey(
     val textHeight: Float = 0f,
     val descent: Float = 0f,
     val indentCharWidth: Float = 0f,
+    val hangFirstPunctuation: Boolean = false,
     val centerTitle: Boolean = false,
     val reviewChar: String = "",
 )
@@ -253,7 +255,8 @@ class ParagraphLayoutCache(val maxSize: Int = 1000) {
  * 3. **标点挤压与中西间距先于断行**（无条件生效）：[PunctuationTrimmer.trimAdjacent]（阶段 0）与
  *    [JustifySpacing.insertHanWestSpacing]（clreq 6.3.3）在 [breakLines] 之前定稿宽度，
  *    [PunctuationTrimmer.trimLineEdges]（阶段 2）切行后逐行补做行首行尾。
- * 4. **首行缩进几何度量**：支持字符拼接与等宽几何缩进（[indentCharWidth]）双模式。
+ * 4. **首行缩进几何度量**：支持字符拼接与等宽几何缩进（[indentCharWidth]）双模式；
+ *    开启 [hangFirstPunctuation] 时首行的开始夹注符号挂进缩进（见 [hungOpeningWidth]）。
  * 5. **段落折行缓存对接**：支持传入 [ParagraphLayoutCache] 实现秒级重排与 100% 缓存命中。
  */
 object ParagraphLayoutEngine {
@@ -277,6 +280,8 @@ object ParagraphLayoutEngine {
      * @param reviewCount 段评数量
      * @param cache 可选的段落折行 LRU 缓存
      * @param fontKey 字体特征键（用于缓存查找）
+     * @param hangFirstPunctuation 段首标点悬挂：首行缩进后的首簇是开始夹注标点时，该符号挂进缩进空间，
+     *   使被夹注正文与其它行起点齐平（默认 false = 现状）
      * @return 包含该段各行切片与度量数据的 [ParagraphLineMetrics]
      */
     fun layoutParagraph(
@@ -297,6 +302,7 @@ object ParagraphLayoutEngine {
         srcReplaceChar: String = ChapterContentParserShared.srcReplaceChar,
         cache: ParagraphLayoutCache? = null,
         fontKey: String = "",
+        hangFirstPunctuation: Boolean = false,
     ): ParagraphLineMetrics {
         if (text.isEmpty()) {
             return ParagraphLineMetrics.EMPTY
@@ -321,6 +327,7 @@ object ParagraphLayoutEngine {
                 textHeight = th,
                 descent = d,
                 indentCharWidth = indentCharWidth,
+                hangFirstPunctuation = hangFirstPunctuation,
                 centerTitle = centerTitle,
                 reviewChar = reviewChar,
             )
@@ -404,7 +411,11 @@ object ParagraphLayoutEngine {
             val needsIndent = useGeomIndent && isFirstLine && lineIdx == 0 && !isTitle
             val (adjustedWords, adjustedWidths, adjustedOffsets, indentWidth, indentLength) = if (needsIndent) {
                 val indentLen = paragraphIndent.length.coerceAtMost(lineWords.size)
-                val indentW = indentLen * indentCharWidth
+                val indentW = indentLen * indentCharWidth - if (hangFirstPunctuation) {
+                    hungOpeningWidth(lineWords, lineWidths, indentLen, indentLen * indentCharWidth)
+                } else {
+                    0f
+                }
                 IndentAdjustment(
                     words = lineWords.subList(indentLen, lineWords.size),
                     widths = lineWidths.subList(indentLen, lineWidths.size),
@@ -584,6 +595,27 @@ object ParagraphLayoutEngine {
         val width = measurer.measureWidth("我")
         cnCharWidthCache = CnCharWidth(measurer, textSizePx, letterSpacingPx, width)
         return width
+    }
+
+    /**
+     * 段首标点悬挂宽度（px）：首行缩进后的首簇是开始夹注标点时，把该符号整体放进缩进空间 ——
+     * 缩进让出它的宽度，被夹注的正文仍从缩进末起笔（CSS Text 4 §8.5.3 段首约定第三方案 hanging
+     * alignment「Brackets hang in indent, flush with other lines」；clreq 6.3.2 段首缩进格式中
+     * 「可以缩减该符号始侧二分之一个汉字大小的空白」）。
+     *
+     * 只挂一个符号（规范：一行每侧至多挂一个）；符号宽于缩进时不挂 —— 无空间可借，
+     * 硬挂会让正文起点反而跑到缩进之前。
+     */
+    private fun hungOpeningWidth(
+        lineWords: List<String>,
+        lineWidths: List<Float>,
+        indentLen: Int,
+        indentWidth: Float,
+    ): Float {
+        if (indentWidth <= 0f || indentLen >= lineWords.size) return 0f
+        val width = lineWidths[indentLen]
+        if (!PunctuationTrimmer.isHangableOpening(lineWords[indentLen], width)) return 0f
+        return if (width <= indentWidth) width else 0f
     }
 
     private data class IndentAdjustment(

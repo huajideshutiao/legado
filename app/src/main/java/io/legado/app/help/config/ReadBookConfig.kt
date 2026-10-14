@@ -117,6 +117,11 @@ object ReadBookConfig {
      * 底部对齐
      */
     val textBottomJustify get() = shared.textBottomJustify
+
+    /**
+     * 段首标点悬挂
+     */
+    val hangFirstPunctuation get() = shared.hangFirstPunctuation
     var hideStatusBar
         get() = shared.hideStatusBar
         set(value) {

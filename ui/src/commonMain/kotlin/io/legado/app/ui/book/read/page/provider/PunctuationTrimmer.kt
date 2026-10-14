@@ -51,6 +51,13 @@ class TrimResult(
  *
  * 已裁过一半的簇宽度不再等于汉字宽，因此同一簇不会被两阶段重复挤压。
  *
+ * # 段首标点悬挂
+ *
+ * [isHangableOpening] 供 [ParagraphLayoutEngine] 在段首缩进处让出首簇宽度，把首行的开始夹注符号
+ * 整体放进缩进空间（CSS Text 4 §8.5.3 段首约定第三方案 hanging alignment：正文与其它行起点齐平；
+ * clreq 6.3.2「在使用段首缩进格式的排版中，若首行行首出现开始夹注符号，可以缩减该符号始侧
+ * 二分之一个汉字大小的空白」）。悬挂不改字宽，只在缩进几何上让位。
+ *
  * # 与 [LineBreaker] 禁则表的关系
  *
  * 下面的类别表与禁则表（`POST_PANC_CHARS` / `PRE_PANC_CHARS`）**刻意不等值**：禁则表还含半角标点
@@ -131,6 +138,15 @@ object PunctuationTrimmer {
      */
     fun isLineEndTrimmable(cluster: String, width: Float, cnCharWidth: Float): Boolean =
         cnCharWidth > 0f && category(cluster) == CAT_CLOSING && isFullWidth(width, cnCharWidth)
+
+    /**
+     * 「本簇可否悬挂进段首缩进」—— [FW_OPENING] 里的开始夹注标点。
+     *
+     * 宽度取阶段 0 挤压后的实际值：缩进后的开始夹注已被 U+3000 触发位裁成半字，悬挂的就是这半字；
+     * 比例字形（未裁）则悬挂其原宽，同样让正文起点回到缩进末。
+     */
+    fun isHangableOpening(cluster: String, width: Float): Boolean =
+        width > 0f && category(cluster) == CAT_OPENING
 
     /**
      * 阶段 0：整段扫描，相邻 fullwidth 标点互相靠拢。
