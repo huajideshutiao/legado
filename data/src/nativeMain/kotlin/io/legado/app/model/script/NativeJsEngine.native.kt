@@ -22,7 +22,6 @@ import io.legado.app.napi.quickjs.qjs_EvalTypeGlobal
 import io.legado.app.napi.quickjs.JS_Call
 import io.legado.app.napi.quickjs.JS_Eval
 import io.legado.app.napi.quickjs.JS_EvalFunction
-import io.legado.app.napi.quickjs.JS_FreeAtom
 import io.legado.app.napi.quickjs.JS_GetLength
 import io.legado.app.napi.quickjs.JS_GetPropertyStr
 import io.legado.app.napi.quickjs.JS_FreeContext
@@ -885,24 +884,23 @@ object NativeJsEngine : JsEngine {
             try {
                 for (i in 0 until count) {
                     val atom = tab[i.toLong()].atom
-                    try {
-                        val keyCstr = qjs_AtomToCString(ctx, atom)
-                        if (keyCstr != null) {
-                            val key = keyCstr.toKString()
-                            qjs_FreeCString(ctx, keyCstr)
-                            // 用 atom 取属性值 (避免再次通过 C 字符串解析)
-                            val value = JS_GetProperty(ctx, obj, atom)
-                            try {
-                                result[key] = fromJsValue(ctx, value, depth + 1)
-                            } finally {
-                                JS_FreeValue(ctx, value)
-                            }
+                    val keyCstr = qjs_AtomToCString(ctx, atom)
+                    if (keyCstr != null) {
+                        val key = keyCstr.toKString()
+                        qjs_FreeCString(ctx, keyCstr)
+                        // 用 atom 取属性值 (避免再次通过 C 字符串解析)
+                        val value = JS_GetProperty(ctx, obj, atom)
+                        try {
+                            result[key] = fromJsValue(ctx, value, depth + 1)
+                        } finally {
+                            JS_FreeValue(ctx, value)
                         }
-                    } finally {
-                        JS_FreeAtom(ctx, atom)
                     }
                 }
             } finally {
+                // 枚举结果连同其中每个属性名句柄一并释放: 逐个再释放一次会把对象仍
+                // 持有的属性名句柄多减一次引用计数, 该句柄被回收后置为空闲链标记,
+                // 后续任何枚举读到它就按指针解引用闪退
                 JS_FreePropertyEnum(ctx, tab, count.toUInt())
             }
         }
