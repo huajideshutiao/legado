@@ -926,14 +926,11 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     private suspend fun privacyPolicy(): Boolean {
         if (LocalConfig.privacyPolicyOk) return true
         // privacyPolicy.md 统一存于 shared composeResources files/md (四端共享一份),
-        // 经 WebAssetSources 读 (四端同一 composeResources 取数路径, 与关于页文档弹窗同源)
+        // 经 WebAssetSources 读 (四端同一 composeResources 取数路径, 与关于页文档弹窗同源)。
+        // 不吞读取异常: 该文件随包分发, 读不到只可能是打包/改名错 (构建期事实), 降级成空正文
+        // 会把构建错误伪装成"协议是空的"
         val privacyPolicy = withContext(IO) {
-            runCatching {
-                WebAssetSources.get().read("md/privacyPolicy.md").decodeToString()
-            }.getOrElse {
-                AppLog.put("读取隐私政策失败", it)
-                null
-            }
+            WebAssetSources.get().read("md/privacyPolicy.md").decodeToString()
         }
         return suspendCancellableCoroutine sc@{ block ->
             alert(androidAppString("privacy_policy"), privacyPolicy) {
