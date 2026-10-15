@@ -2,6 +2,7 @@
 
 package io.legado.app.help.storage
 
+import io.legado.app.help.book.bookSaveSubDir
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.toast.Toasters
 import kotlin.time.Clock
@@ -10,7 +11,7 @@ import kotlin.time.Clock
  * native (iOS/鸿蒙) 端 [BackupRestoreHook]: 记录备份时间戳 + 恢复完成提示。
  *
  * 恢复侧无平台特例 (config.xml 旧格式 / 解压都走 [RestoreShared] 默认实现); 备份侧只有一处
- * 平台差异: 用户选定的备份目录在沙盒之外, 写入前必须先取得该目录的持久授权
+ * 平台差异: 用户选定的书籍保存位置在沙盒之外, 写入前必须先取得该目录的持久授权
  * ([copyBackupIntoUserDir])。
  *
  * app 端 onRestoreFinished 还有换图标/日夜间刷新: 换图标是唯一平台差异
@@ -32,9 +33,17 @@ private object NativeBackupRestoreHook : BackupRestoreHook {
 
     override fun onBackupStart() = markBackupTime()
 
-    /** 备份 zip 落地到用户选定目录前先取得该目录授权, 再写 ([copyBackupIntoUserDir])。 */
-    override fun copyBackupTo(zipFilePath: String, destination: String, fileName: String): Boolean =
-        copyBackupIntoUserDir(zipFilePath, destination, fileName)
+    /** 备份 zip 落地到用户选定目录下的 backup 子目录前先取得该目录授权, 再写 ([copyBackupIntoUserDir])。 */
+    override fun copyBackupTo(
+        zipFilePath: String,
+        destination: String,
+        fileName: String,
+        subDir: String,
+    ): Boolean = copyBackupIntoUserDir(
+        zipFilePath,
+        bookSaveSubDir(destination, subDir),
+        fileName,
+    )
 
     override fun onRestoreFromZipFinished() = markBackupTime()
 
@@ -50,11 +59,11 @@ fun registerNativeBackupRestoreHook() {
 }
 
 /**
- * 把备份 zip 写进用户选定目录 (内容与 [BackupFileOps.copyFile] 同一份)。
+ * 把备份 zip 写进用户选定目录下的子目录 (内容与 [BackupFileOps.copyFile] 同一份)。
  *
  * 用户选定目录在应用沙盒之外: iOS 靠 security-scoped 租约, 鸿蒙靠已持久化的目录授权激活 ——
  * 两者都必须在写入前取得, 否则跨启动后写入被系统拒绝; 授权失效时报明确失败 (不谎报已备份)。
- * 沙盒内目录 (应用私有目录) 无需授权直接写入。
+ * 租约/激活按保存位置根匹配, 子目录路径同样命中该根; 沙盒内目录 (应用私有目录) 无需授权直接写入。
  *
  * @return true = 已由本端完成复制
  */

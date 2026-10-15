@@ -4,8 +4,6 @@
     <string name="app_name_a">閱讀·A</string>
     <string name="receiving_shared_label">閱讀·搜尋</string>
     <string name="tip_perm_request_storage">閱讀需要存取記憶卡權限，請前往「設定」—「應用程式權限」—打開所需權限</string>
-    <string name="backup_path">備份路徑</string>
-    <string name="select_backup_path">請選擇備份路徑</string>
     <string name="dialog_title">提示</string>
     <string name="dialog_cancel">取消</string>
     <string name="dialog_setting">去設定</string>
@@ -70,6 +68,7 @@
     <string name="pt_auto_refresh">自動重新整理</string>
     <string name="ps_auto_refresh">打開軟體時自動更新書籍</string>
     <string name="backup_restore">備份與復原</string>
+    <string name="auto_backup_no_book_save_dir">未設定書籍儲存位置，自動備份不會執行</string>
     <string name="web_dav_set">WebDav設定</string>
     <string name="web_dav_set_import_old">WebDav設定/匯入舊版本資料</string>
     <string name="backup">備份</string>
@@ -521,7 +520,6 @@
     <string name="background_image">背景圖片</string>
     <string name="bg_image_import_failed">背景圖片導入失敗</string>
     <string name="background_image_blurring">背景圖片虛化</string>
-    <string name="export_folder">匯出資料夾</string>
     <string name="export_charset">匯出編碼</string>
     <string name="export_no_chapter_name">TXT不匯出章節名</string>
     <string name="export_to_web_dav">匯出到WebDav</string>

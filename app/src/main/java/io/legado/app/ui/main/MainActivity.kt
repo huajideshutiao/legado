@@ -52,12 +52,10 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadConfigProviders
-import io.legado.app.help.config.rememberBookExportDir
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.storage.Backup
-import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.help.extension.AndroidMangaExtensionHost
@@ -124,8 +122,6 @@ import io.legado.app.ui.root.shareTextTarget
 import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.utils.ACache
 import io.legado.app.utils.FileUtils
-import io.legado.app.utils.enableCustomExport
-import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.keepScreenOn
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.registerForActivityResult
@@ -243,39 +239,11 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         mode = HandleFileContract.DIR_SYS
     }
 
-    /** 书架管理导出: 待导出书籍暂存 (由 [AndroidPlatformCapabilities.selectExportFolder] 写入,
-     *  [exportDir] 回调 value=="cache" 时消费, 启动 ExportBookService)。 */
-    var pendingExportBooks: List<Book>? = null
-
-    /** 书架管理导出: HandleFileContract (对照 BookshelfManageActivity.exportDir)。 */
+    /** 书架管理导出: HandleFileContract (对照 BookshelfManageActivity.exportDir 的文件导出分支)。 */
     private val exportDir by lazy {
         registerHandleFile { result ->
-            val uri = result.uri ?: return@registerHandleFile
-            if (result.value == "cache") {
-                // 文件夹选择: 保存路径 + 启动 ExportBookService
-                // 记忆落设备本地配置空间 (rememberBookExportDir), 不落随备份走的默认偏好:
-                // 选定的是本机 SAF 授权引用, 跟着备份到别的设备必然失效。
-                // 读取方见 effectiveBookExportDir (三分支与备份路径同一形制)
-                val dirPath = if (uri.isContentScheme()) uri.toString() else uri.path
-                    ?: return@registerHandleFile
-                rememberBookExportDir(dirPath)
-                // 导出目录只存放导出成品, 登记用途后其下文件不作为本地书来源
-                AndroidDirAuthorizations.remember(uri.toString(), DirUsage.Export)
-                val books = pendingExportBooks
-                pendingExportBooks = null
-                if (books != null && books.isNotEmpty()) {
-                    // 对照 BookshelfManageActivity.exportDir 回调: 开启自定义导出时先弹章节配置对话框
-                    if (enableCustomExport()) {
-                        PlatformCapabilityProviders.get()
-                            .showExportSectionConfig(dirPath, books)
-                    } else {
-                        startExportBooks(dirPath, books)
-                    }
-                }
-            } else {
-                // 文件导出: 显示成功
-                showExportSuccess(uri)
-            }
+            // 文件导出: 显示成功
+            result.uri?.let { showExportSuccess(it) }
         }
     }
 
@@ -284,18 +252,6 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         exportDir.launch {
             mode = HandleFileContract.EXPORT
             fileData = HandleFileContract.FileData(name, file, type)
-        }
-    }
-
-    /** 暴露给 [AndroidPlatformCapabilities] 启动导出文件夹选择器 (对照 selectExportFolder, value="cache")。 */
-    fun launchExportFolderPicker(currentPath: String?) {
-        val default = arrayListOf<SelectItem<Int>>()
-        if (!currentPath.isNullOrEmpty()) {
-            default.add(SelectItem(currentPath, -1))
-        }
-        exportDir.launch {
-            otherActions = default
-            value = "cache"
         }
     }
 
@@ -356,7 +312,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     private val createDocumentPicker =
         registerForActivityResult(ActivityResultContracts.CreateDocument("*/*"))
 
-    // 选目录: SAF OpenDocumentTree (备份路径用), 与 selectDocTree 同语义
+    // 选目录: SAF OpenDocumentTree (书籍保存位置用), 与 selectDocTree 同语义
     private val openDocumentTreePicker =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree())
 

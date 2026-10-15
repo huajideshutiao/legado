@@ -227,9 +227,9 @@ object OhosPlatformServices : PlatformServices {
         override fun handleLaunchRequest(request: LaunchRequest): Boolean = false
     }
 
-    // 崩溃日志: 只列本应用自己落盘的异常现场 (logs/crash/ 下的 crash-*.log, 未捕获异常钩子与
-    // 系统崩溃事件, 两条都带调用栈)。系统事件的故障日志文件也写进同目录；
-    // 运行日志 (logs/appLog-*.txt, recordLog 开启时落盘) 不再混入
+    // 崩溃日志: 只列本应用自己落盘的异常现场 (log/ 下的 crash-*.log, 未捕获异常钩子与
+    // 系统崩溃事件, 两条都带调用栈)。系统事件的故障日志文件也写进同目录;
+    // 运行日志 (log/appLog-*.txt, recordLog 开启时落盘) 与崩溃日志同目录, 靠文件名前缀区分, 不混入
     override val crashLogs: CrashLogProvider = object : CrashLogProvider {
         override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> =
             NativeCrashLogs.listLogs().map { CrashLogProvider.CrashLogEntry(it) }
@@ -402,8 +402,10 @@ private object OhosFilePickerService : FilePickerService {
      * 目标文件路径, 由调用方写盘。
      *
      * 写入用的是选择器当场给的临时授权 (授权持久化与 URI→路径转换在 [pickDirectory] 内完成),
-     * 后续访问才需激活。
+     * 后续访问才需激活。目录按 [DirUsage.Export] 登记: 为导出一个 json 选的目录只放行导出写入,
+     * 不放行书籍文件访问 (与书籍保存位置分开)。
      *
+     * @param defaultDir 调用方指定的落点; 传了就不再询问用户
      * @return 用户取消选目录返回 null (调用方静默)
      */
     override fun saveFile(suggestedName: String, defaultDir: String?): String? {
@@ -413,7 +415,7 @@ private object OhosFilePickerService : FilePickerService {
 
     /**
      * 图片查看器长按保存落系统相册 (用户指定要求, 与原版 PhotoDialog 的目录记忆不同)。
-     * 漫画图片保存不受本项影响, 始终走 [saveImageRememberingDir] 的目录记忆。
+     * 漫画图片保存走同一个 [io.legado.app.ui.root.FilePickerService.saveImageToUser], 同样落相册。
      */
     override val imageViewerSavesToAlbum: Boolean = true
 
@@ -446,6 +448,8 @@ private object OhosFilePickerService : FilePickerService {
      * 否则重启后写入被拒 (对照 [OhosAuthorizedFileBookAccessor] 的书籍落盘同款处理);
      * 落盘走"同目录临时件 + 改名就位" (与备份 zip 写进用户选定目录同一机制:
      * BackupFileOps.copyFile → copyFileAtomically), 覆盖同名图时目标始终完整。
+     *
+     * 本端 [imageViewerSavesToAlbum] 为真, 图片保存 (含漫画页) 不走本分支。
      */
     override val supportsDirWrite: Boolean = true
 
@@ -459,7 +463,7 @@ private object OhosFilePickerService : FilePickerService {
     /**
      * 目录可写性预检。
      *
-     * 用户选定的备份目录在沙盒外, "已记住的备份路径"须先激活持久化授权才可写 —— 否则
+     * 用户选定的书籍保存位置在沙盒外, "已记住的目录"须先激活持久化授权才可写 —— 否则
      * 重启后这里会为真可写的目录报出 false, 把用户拉回重选目录 (对照
      * [io.legado.app.ui.route.BackupConfigRoute] 不可写即重选的分支)。
      * 激活按 [usage] 匹配: 该目录须在该用途下已授权。

@@ -410,12 +410,8 @@ private fun rememberPhotoSaveAction(
             // 落点按平台定: 鸿蒙落系统相册 (用户指定要求), 其余端走目录记忆
             // (对照原版 PhotoDialog.initEvent 读图片目录键后直写);
             // 实际字节决定扩展名; 用户取消选择位置 (null) 静默返回。
-            val saved = if (files.imageViewerSavesToAlbum) {
-                files.saveImageBytes(fileName, bytes)
-            } else {
-                files.saveImageRememberingDir(fileName, bytes)
-            }
-            when (saved) {
+            // 漫画页"保存图片"同一入口 ([FilePickerService.saveImageToUser]), 两处口径唯一。
+            when (files.saveImageToUser(fileName, bytes)) {
                 true -> Toasters.get().toast("保存成功")
                 false -> Toasters.get().toast("保存图片失败")
                 null -> Unit

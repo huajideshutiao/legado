@@ -56,11 +56,10 @@ object OhosMangaReaderPlatform : MangaReaderScreenModel.Platform {
 
     /**
      * 保存图片: 只导出已缓存的图 (对照原版 BaseReadViewModel.saveImage 的读取段) → 按实际格式命名
-     * → 写进记住的保存目录。
+     * → 写进本端"图片保存"落点。
      *
-     * 目录记忆与选定目录的持久化授权由 [io.legado.app.ui.root.FilePickerService.saveImageRememberingDir]
-     * 统一处理 (对照原版 ReadMangaActivity.saveImage: 没记住目录先选一次并记 ACache imagePathKey,
-     * 之后直写)。
+     * 与图像查看器长按保存同一入口 ([io.legado.app.ui.root.FilePickerService.saveImageToUser]:
+     * 本端为系统相册), 目录记忆与选定目录的持久化授权由该入口统一处理。
      */
     override suspend fun saveImage(
         url: String,
@@ -68,7 +67,7 @@ object OhosMangaReaderPlatform : MangaReaderScreenModel.Platform {
         source: BookSource?,
     ): Boolean? = withContext(IoDispatcher) {
         saveCachedMangaImage(url, book) { name, bytes ->
-            PlatformServiceProviders.get().files.saveImageRememberingDir(name, bytes)
+            PlatformServiceProviders.get().files.saveImageToUser(name, bytes)
         }
     }
 

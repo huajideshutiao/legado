@@ -7,9 +7,10 @@ import kotlin.concurrent.Volatile
  * 应用存储路径集中 provider: 调用方只问"要哪类目录", 不问"落在哪"。
  *
  * 目录分两层: **应用私有数据** (数据库/缓存/封面/背景/字体) 落在应用数据根目录;
- * **用户产物** (规则 json 落 [userExportDir], 备份 zip 落 [defaultBackupDir]) 优先按平台惯例
- * 落在用户找得到的位置 (桌面=桌面/文档, iOS=Documents); 导出书籍的落点不与平台惯例绑定,
- * 由用户在"书架管理 → 选择导出文件夹"自行选定 (见 [io.legado.app.help.config.effectiveBookExportDir])。
+ * **用户产物** (规则 json 落 [userExportDir]) 优先按平台惯例落在用户找得到的位置
+ * (桌面=桌面/文档, iOS=Documents)。备份 zip 与导出书籍的落点不与平台惯例绑定,
+ * 两者共用用户在"其它设置 → 书籍保存位置"选定的目录
+ * (见 [io.legado.app.help.book.effectiveBookSaveDir])。
  *
  * 各端路径映射见实现 (Android `AndroidDataStorage` / 桌面 [JvmDataStorage] /
  * iOS [NativeDataStorage] / 鸿蒙 `OhosDataStorage`)。一律返回绝对路径字符串, 不保证目录已创建。
@@ -38,7 +39,7 @@ interface DataStorage {
     /**
      * 备份**打包暂存**目录 (各端均为 `filesDir/backup`)。
      *
-     * 注意: [BackupShared] 收尾会整目录删除, 落地路径请用 [defaultBackupDir]。
+     * 注意: [BackupShared] 收尾会整目录删除, 不得作为备份产物落地路径。
      */
     val backupDir: String
 
@@ -52,15 +53,6 @@ interface DataStorage {
     val userExportDir: String
         get() = AppFilesDirs.get().filesDir.trimEnd('/', '\\') +
             BackupFileOps.separator + "export"
-
-    /**
-     * 备份 zip 默认落地目录 (用户未在设置里指定备份路径时用), 默认 [userExportDir]`/backup`。
-     *
-     * 返回 null 表示该平台必须由用户先选目录 (Android 需 SAF 授权的 content:// 目录),
-     * 调用方应改为拉起目录选择器。
-     */
-    val defaultBackupDir: String?
-        get() = userExportDir.trimEnd('/', '\\') + BackupFileOps.separator + "backup"
 }
 
 /**

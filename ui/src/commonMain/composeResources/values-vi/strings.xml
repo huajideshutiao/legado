@@ -4,8 +4,6 @@
     <string name="app_name_a">Legado·A</string>
     <string name="receiving_shared_label">Legado·Tìm kiếm</string>
     <string name="tip_perm_request_storage">Legado cần quyền truy cập bộ nhớ để tìm và đọc sách. Vui lòng vào "Cài đặt ứng dụng" để cấp "Quyền truy cập bộ nhớ".</string>
-    <string name="backup_path">Đường dẫn sao lưu</string>
-    <string name="select_backup_path">Vui lòng chọn đường dẫn sao lưu.</string>
     <string name="dialog_title">Thông báo</string>
     <string name="dialog_cancel">Hủy</string>
     <string name="dialog_setting">Đến cài đặt</string>
@@ -68,6 +66,7 @@
     <string name="pt_auto_refresh">Tự động làm mới</string>
     <string name="ps_auto_refresh">Tự động cập nhật sách khi mở phần mềm</string>
     <string name="backup_restore">Sao lưu và khôi phục</string>
+    <string name="auto_backup_no_book_save_dir">Chưa đặt vị trí lưu sách; sao lưu tự động sẽ không chạy</string>
     <string name="web_dav_set">Cài đặt WebDav</string>
     <string name="web_dav_set_import_old">Cài đặt WebDav/Nhập dữ liệu cũ</string>
     <string name="backup">Sao lưu</string>
@@ -510,7 +509,6 @@
     <string name="background_image_blurring">Làm mờ ảnh nền</string>
     <string name="copy_book_url">Sao chép URL sách</string>
     <string name="copy_toc_url">Sao chép URL chương</string>
-    <string name="export_folder">Thư mục xuất</string>
     <string name="export_charset">Mã hóa văn bản xuất</string>
     <string name="export_to_web_dav">Xuất sang WebDav</string>
     <string name="debug">Gỡ lỗi</string>

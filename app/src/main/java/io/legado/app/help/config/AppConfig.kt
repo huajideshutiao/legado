@@ -145,9 +145,8 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var episodeExportFileName by stringPref(PreferKey.episodeExportFileName, "")
 
     var bookImportFileName by stringPref(PreferKey.bookImportFileName)
-    var backupPath by stringPrefClearOnEmpty(PreferKey.backupPath)
 
-    // 书籍保存位置
+    // 书籍保存位置 (下载书籍、备份 zip、导出书籍共用)
     var defaultBookTreeUri by stringPrefClearOnEmpty(PreferKey.defaultBookTreeUri)
 
     var showDiscovery by boolPref(PreferKey.showDiscovery, true)

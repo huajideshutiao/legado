@@ -12,6 +12,7 @@ import android.os.Build
 import kotlinx.coroutines.runBlocking
 import io.legado.app.base.AppContextWrapper
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.LOG_DIR_NAME
 import io.legado.app.constant.appInfo
 import io.legado.app.constant.AppConst.channelIdDownload
 import io.legado.app.constant.AppConst.channelIdReadAloud
@@ -490,7 +491,7 @@ class App : Application() {
             LogUtils.d("App", "initQuickJs prewarm failed: ${it.message}")
         }
         // 原生崩溃捕获 (NDK/JNI 信号的 POSIX 信号): native 库已在上方加载完毕, 此刻装才安全。
-        // 与 Java 异常捕获 (CrashHandler) 落同一目录, 两类崩溃在崩溃日志里一并可见
-        AndroidNativeCrashHandler.install(instance.externalCache.getFile("crash").absolutePath)
+        // 与 Java 异常捕获 (CrashHandler) 落同一日志目录, 两类日志靠文件名前缀区分
+        AndroidNativeCrashHandler.install(instance.externalCache.getFile(LOG_DIR_NAME).absolutePath)
     }
 }

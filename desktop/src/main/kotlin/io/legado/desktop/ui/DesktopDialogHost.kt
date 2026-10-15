@@ -131,7 +131,7 @@ sealed interface DesktopDialogRequest {
     /**
      * 自定义导出章节配置 (对照 app 端 configExportSection / dialog_select_section_export.xml)。
      *
-     * @param path 已选定的导出目录
+     * @param path 书籍保存位置
      * @param books 待导出书籍
      * @param currentFileName 已保存的分卷文件名 JS 规则 (对照 AppConfig.episodeExportFileName 预填)
      * @param onConfirm all=true → 普通导出 (txt/epub 按导出配置); all=false → 按 scope/size 自定义 epub 导出。
@@ -278,7 +278,7 @@ fun DesktopDialogHost() {
 /**
  * 导出文件设置 (对照 app 端 showExportConfig / dialog_export_config.xml 全量字段):
  * 导出文件名 JS 规则 / 导出格式 txt|epub / 导出编码 / TXT 不导出章节名。
- * 导出目录仍由导出时的文件夹选择器决定; 图片书自动走 cbz。
+ * 导出落点固定为书籍保存位置; 图片书自动走 cbz。
  */
 @Composable
 private fun ExportConfigDialog(

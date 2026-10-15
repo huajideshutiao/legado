@@ -4,8 +4,6 @@
     <string name="app_name_a">Legado·A</string>
     <string name="receiving_shared_label">Legado·pesquisa</string>
     <string name="tip_perm_request_storage">Legado precisa de acesso ao armazenamento para encontrar e ler livros. Por favor, vá às "Configurações do App" para conceder "Permissão de armazenamento".</string>
-    <string name="backup_path">Backup para</string>
-    <string name="select_backup_path">Por favor, selecione uma pasta de Backup.</string>
     <string name="dialog_title">Aviso</string>
     <string name="dialog_cancel">Cancelar</string>
     <string name="dialog_setting">Vá até às Configurações</string>
@@ -69,6 +67,7 @@
     <string name="pt_auto_refresh">Atualização automática</string>
     <string name="ps_auto_refresh">Atualizar os livros automaticamente ao abrir o App</string>
     <string name="backup_restore">Backup e restauração</string>
+    <string name="auto_backup_no_book_save_dir">Nenhum local de salvamento de livros definido; o backup automático não será executado</string>
     <string name="web_dav_set">Configurações de WebDav</string>
     <string name="web_dav_set_import_old">Configurações/importação WebDav de dados Legado </string>
     <string name="backup">Fazer Backup</string>
@@ -503,7 +502,6 @@
     <string name="background_image">Imagem de fundo</string>
     <string name="copy_book_url">Copiar a URL do livro</string>
     <string name="copy_toc_url">Copiar a URL dos capítulos</string>
-    <string name="export_folder">Exportar a pasta</string>
     <string name="export_charset">Codificação de texto exportada</string>
     <string name="export_to_web_dav">Exportar para WebDav</string>
     <string name="debug">Depuração</string>

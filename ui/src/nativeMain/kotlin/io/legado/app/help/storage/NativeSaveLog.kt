@@ -1,11 +1,11 @@
 package io.legado.app.help.storage
 
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.PreferKey
-import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.constant.LOG_DIR_NAME
+import io.legado.app.help.book.bookSaveSubDir
+import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.mainDispatcher
-import io.legado.app.help.crash.NativeCrashLogWriter
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.log.NativeAppLogStore
 import io.legado.app.help.toast.Toasters
@@ -18,9 +18,10 @@ import kotlinx.coroutines.withContext
 /**
  * iOS/鸿蒙"保存日志"的打包与落盘 (对照原版 `AboutFragment.saveLog` 的三段式)。
  *
- * 原版逐字行为: 备份目录未设置 → toast「未设置备份目录」并中止; 未开记录日志 → toast 提醒
- * (不中止); 把 logs + crash 压成 `logs.zip` 写进**用户设置的备份目录** → toast
- * 「已保存至备份目录」; 失败只记 AppLog。
+ * 原版逐字行为: 书籍保存位置未设置 → toast「未设置书籍保存位置」并中止; 未开记录日志 → toast 提醒
+ * (不中止); 把运行日志与崩溃日志 (同在 `{filesDir}/log`) 压成 `logs.zip` 写进**用户选定的
+ * 书籍保存位置下的 log 目录** → toast
+ * 「已保存至书籍保存位置」; 失败只记 AppLog。
  *
  * 与 Android 的差别只有两处, 都是平台事实而非设计选择:
  * - 目录取自 native 的 filesDir/cacheDir, 而不是 `externalCache`
@@ -34,9 +35,8 @@ internal object NativeSaveLog {
 
     private const val ZIP_NAME = "logs.zip"
 
-    /** 与备份设置页写的是同一个 key (见 `BackupConfigRoute`)。 */
-    private fun backupPathOrNull(): String? =
-        PreferenceProviders.get().getStringOrNull(PreferKey.backupPath)?.takeIf { it.isNotBlank() }
+    /** 落盘目录 = 书籍保存位置 (与备份 zip/导出书籍同一处)。 */
+    private fun backupPathOrNull(): String? = effectiveBookSaveDir()
 
     /**
      * 在 [scope] 上跑完整套"保存日志"并把结果 toast 出去 (对照原版 saveLog 的 onError/成功提示)。
@@ -47,7 +47,7 @@ internal object NativeSaveLog {
         scope.launch {
             val backupPath = backupPathOrNull()
             if (backupPath == null) {
-                withContext(mainDispatcher) { Toasters.get().toast("未设置备份目录") }
+                withContext(mainDispatcher) { Toasters.get().toast("未设置书籍保存位置") }
                 return@launch
             }
             if (!isRecordLogEnabled) {
@@ -58,7 +58,7 @@ internal object NativeSaveLog {
             }
             runCatching { save(backupPath) }
                 .onSuccess {
-                    withContext(mainDispatcher) { Toasters.get().toast("已保存至备份目录") }
+                    withContext(mainDispatcher) { Toasters.get().toast("已保存至书籍保存位置") }
                 }
                 .onFailure {
                     // 与原版一致: 失败只记日志 (失败原因可能是授权失效/磁盘满, 具体信息在 AppLog)
@@ -68,32 +68,31 @@ internal object NativeSaveLog {
     }
 
     /**
-     * 打包并写入备份目录 (失败抛异常, 由 [run] 记录; 与原版 `saveLog` 的 onError 一致)。
+     * 打包并写入书籍保存位置下的日志目录 (失败抛异常, 由 [run] 记录; 与原版 `saveLog` 的 onError 一致)。
      *
-     * @param backupPath 用户在备份设置里选定的目录 (空则抛"未设置备份目录", 与原版一致)
+     * @param backupPath 用户在"书籍保存位置"选定的目录 (空则抛"未设置书籍保存位置", 与原版一致)
      */
     private suspend fun save(backupPath: String) {
         withContext(IoDispatcher) {
-            // 运行日志与崩溃日志同在 {filesDir}/logs (崩溃在 crash/ 子目录), 压一个源即覆盖两类
+            // 运行日志与崩溃日志同在 {filesDir}/log (靠文件名前缀区分), 压一个目录即覆盖两类
             val logDir = File(NativeAppLogStore.logDir)
-            // 只要求两类里至少有一类存在: 运行日志开关默认关, 只开过崩溃日志的用户同样该能导出
-            // (原版 zipFiles 对不存在的源也只是跳过, 不拒绝整次打包)
-            val crashDir = File(NativeCrashLogWriter.crashDir)
-            if (!logDir.exists() && !crashDir.exists()) error("没有可保存的日志文件")
-            // logs 目录在时压它 (内部含 crash/ 子目录, 两类齐全); 只有崩溃日志时直接压 crash
-            val source = if (logDir.exists()) logDir else crashDir
+            if (!logDir.exists()) error("没有可保存的日志文件")
             // 临时 zip 落在应用缓存目录 (打包中转, 与 Android 落 externalCache 同语义)
             val tmpZip = File(AppFilesDirs.get().cacheDir, ZIP_NAME)
             tmpZip.parentFile?.mkdirs()
             if (tmpZip.exists()) tmpZip.delete()
-            if (!NativeZipCodec.zipFiles(listOf(source.absolutePath), tmpZip.absolutePath)) {
+            if (!NativeZipCodec.zipFiles(listOf(logDir.absolutePath), tmpZip.absolutePath)) {
                 error("打包日志失败")
             }
             val copied = runCatching {
-                copyBackupIntoUserDir(tmpZip.absolutePath, backupPath, ZIP_NAME)
+                copyBackupIntoUserDir(
+                    tmpZip.absolutePath,
+                    bookSaveSubDir(backupPath, LOG_DIR_NAME),
+                    ZIP_NAME,
+                )
             }
             tmpZip.delete()
-            if (copied.getOrNull() != true) error("写入备份目录失败")
+            if (copied.getOrNull() != true) error("写入书籍保存位置失败")
         }
     }
 }

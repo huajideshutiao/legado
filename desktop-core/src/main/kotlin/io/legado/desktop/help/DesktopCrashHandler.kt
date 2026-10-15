@@ -1,10 +1,11 @@
 package io.legado.desktop.help
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.LOG_DIR_NAME
+import io.legado.app.help.book.bookLogDirOrNull
 import io.legado.app.help.crash.CrashLogWriter
 import io.legado.app.help.crash.CrashMarkerProviders
 import io.legado.app.help.file.desktopAppCacheDir
-import io.legado.app.help.storage.DataStorageProviders
 import io.legado.desktop.constant.DesktopAppInfo
 import io.legado.desktop.help.tts.DesktopReadAloudHost
 import java.io.File
@@ -12,23 +13,21 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.logging.LogManager
 
 /**
- * 桌面端崩溃日志落盘目录 (写入方 [DesktopCrashHandler] 与读取方 DesktopCrashLogProvider 共用)。
+ * 桌面端日志落盘目录 (写入方 [DesktopCrashHandler] 与读取方 DesktopCrashLogProvider 共用)。
  *
  * 对照 app 端 CrashHandler.saveCrashInfo2File 的两份落盘:
- * - [cacheCrashDir] ← app 端 `externalCacheDir/crash`, 应用私有, 不依赖任何 provider 注册,
- *   崩溃发生在启动早期也能写进去
- * - [exportCrashDir] ← app 端 `备份路径/crash`, 用户可见 (桌面 legado 目录), provider 未就绪时为 null
+ * - [cacheCrashDir] ← app 端 `externalCacheDir/log`, 应用私有, 不依赖任何 provider 注册,
+ *   崩溃发生在启动早期也能写进去; 运行日志 (appLog-) 与崩溃日志 (crash-) 同目录, 靠文件名前缀区分
+ * - [exportCrashDir] ← 用户选定的书籍保存位置下的 log 目录, 用户可见 (未设置保存位置时为 null)
  */
 object DesktopCrashLogDirs {
 
-    /** 应用缓存目录下的 crash 子目录 (desktopAppCacheDir 为纯函数, 无需注册)。 */
-    val cacheCrashDir: File get() = File(desktopAppCacheDir(), "crash")
+    /** 应用缓存目录下的日志子目录 (desktopAppCacheDir 为纯函数, 无需注册)。 */
+    val cacheCrashDir: File get() = File(desktopAppCacheDir(), LOG_DIR_NAME)
 
-    /** 用户可见导出目录下的 logs/crash (DataStorage 未注册时 null)。 */
+    /** 书籍保存位置下的日志目录 (未设置保存位置或 provider 未就绪时 null)。 */
     val exportCrashDir: File?
-        get() = runCatching {
-            File(DataStorageProviders.get().userExportDir, "logs/crash")
-        }.getOrNull()
+        get() = runCatching { bookLogDirOrNull()?.let(::File) }.getOrNull()
 
     /** 落盘目标 (写两份), 顺序 = 优先级。 */
     fun writeDirs(): List<File> = listOfNotNull(cacheCrashDir, exportCrashDir)

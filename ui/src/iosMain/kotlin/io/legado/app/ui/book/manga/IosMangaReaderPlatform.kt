@@ -9,7 +9,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.DownloadProgressRegistry
-import io.legado.app.help.writeBytesAtomically
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.entities.MangaCellState
 import io.legado.app.ui.book.manga.render.MangaSkiaImage
@@ -60,17 +59,15 @@ object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
         )
     }
 
-    // 保存图片：只导出已缓存的图 (对照原版 BaseReadViewModel.saveImage 的读取段), 落点走沙盒导出目录。
-    // 落盘整份归位: 覆盖写被打断会在用户可见目录留下半张图
+    // 保存图片：只导出已缓存的图 (对照原版 BaseReadViewModel.saveImage 的读取段), 落点走"图片保存"
+    // (对照原版 ReadMangaActivity.saveImage 与图像查看器同一目录记忆口径)
     override suspend fun saveImage(
         url: String,
         book: Book?,
         source: BookSource?,
     ): Boolean? = withContext(IoDispatcher) {
         saveCachedMangaImage(url, book) { name, bytes ->
-            val destPath = PlatformServiceProviders.get().files.saveFile(name)
-                ?: return@saveCachedMangaImage null
-            writeBytesAtomically(destPath, bytes)
+            PlatformServiceProviders.get().files.saveImageToUser(name, bytes)
         }
     }
 

@@ -79,7 +79,7 @@ interface FilePickerService {
      * [saveImageRememberingDir] 的目录记忆 (对照原版 PhotoDialog.initEvent 读图片目录键后直写)。
      *
      * 鸿蒙落系统相册是用户指定要求 (与原版 PhotoDialog 的目录记忆不同, 不是对齐原版的改动)。
-     * 漫画图片保存不受本项影响: 那条路径始终用目录记忆 (对照原版 ReadMangaActivity.saveImage)。
+     * 漫画页保存图片走同一个 [saveImageToUser], 本项对两处一并生效。
      */
     val imageViewerSavesToAlbum: Boolean get() = false
 
@@ -129,6 +129,20 @@ interface FilePickerService {
         prefs.remove(AppConst.imagePathKey)
         return false
     }
+
+    /**
+     * 保存图片字节到本端的"图片保存"落点 —— 图像查看器长按保存与漫画页"保存图片"共用一份口径:
+     * 落系统相册的端 ([imageViewerSavesToAlbum]) 走 [saveImageBytes], 其余端走
+     * [saveImageRememberingDir] 的目录记忆 (对照原版 `PhotoDialog` 与 `ReadMangaActivity.saveImage`
+     * 读同一个图片目录键后直写)。
+     *
+     * 阻塞 IO + 可能弹平台选择器, 必须在 IO 线程调用。
+     *
+     * @return true=已写入, false=写入失败, null=用户取消选择位置 (调用方静默)
+     */
+    fun saveImageToUser(fileName: String, bytes: ByteArray): Boolean? =
+        if (imageViewerSavesToAlbum) saveImageBytes(fileName, bytes)
+        else saveImageRememberingDir(fileName, bytes)
 
     /**
      * 选目录 (对照 app 端 HandleFileContract.DIR_SYS / OpenDocumentTree)。
@@ -390,14 +404,14 @@ interface ExternalRequestService {
  * 崩溃日志提供者：读取崩溃日志文件列表、读文件内容、清空、分享。
  *
  * 对照 app 端 CrashLogsDialog.CrashViewModel 的逻辑:
- * - initData: 从 externalCacheDir/crash 和备份路径收集崩溃日志文件
+ * - initData: 从 externalCacheDir/log 和书籍保存位置收集崩溃日志文件
  * - readFile: 读取单个崩溃日志文件内容
  * - clearCrashLog: 删除所有崩溃日志文件
  * - 分享: 通过 ShareService 分享文件
  *
  * 各端 actual 实现:
- * - androidMain: 外部缓存目录 + SAF 备份路径
- * - desktopMain: 用户目录/logs/crash
+ * - androidMain: 外部缓存目录 + SAF 书籍保存位置
+ * - desktopMain: 缓存目录 + 书籍保存位置
  * - iOS/鸿蒙: 暂返回空列表 (后续按需实现)
  */
 interface CrashLogProvider {

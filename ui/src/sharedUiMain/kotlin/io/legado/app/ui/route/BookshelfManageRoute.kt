@@ -328,8 +328,6 @@ fun BookshelfManageRoute(
             onToggleEnableReplace = { platform.toggleExportUseReplace() },
             onToggleCustomExport = { platform.toggleCustomExport() },
             onToggleExportWebDav = { platform.toggleExportWebDav() },
-            // 平台专属文件夹选择器 (对照 selectExportFolderMenu)
-            onSelectExportFolderMenu = { platform.selectExportFolder(screenModel.selection()) },
             // 平台专属导出配置弹窗 (对照 showExportConfig)
             onShowExportConfig = { platform.showExportConfig() },
             // 日志对话框

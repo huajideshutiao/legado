@@ -4,6 +4,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.DirUsage
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.resolveImagePath
+import io.legado.app.help.crash.CRASH_LOG_FILE_PREFIX
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.DesktopTrayNotifier
 import io.legado.app.help.writeBytesAtomically
@@ -276,8 +277,8 @@ private class DesktopExternalRequestService : ExternalRequestService {
     override fun handleLaunchRequest(request: LaunchRequest): Boolean = false
 }
 
-// 桌面端崩溃日志提供者: 读 DesktopCrashHandler 落盘的两个目录 (缓存 + 用户导出),
-// 对照 app 端 CrashViewModel.initData 同样从外部缓存 + 备份路径两处收集
+// 桌面端崩溃日志提供者: 读 DesktopCrashHandler 落盘的两个目录 (缓存 + 书籍保存位置),
+// 对照 app 端 CrashViewModel.initData 同样从外部缓存 + 用户选定目录两处收集, 都按 crash- 前缀过滤
 private class DesktopCrashLogProvider : CrashLogProvider {
 
     private fun dirs(): List<File> = DesktopCrashLogDirs.readDirs()
@@ -287,13 +288,17 @@ private class DesktopCrashLogProvider : CrashLogProvider {
         dirs().map { File(it, name) }.firstOrNull { it.isFile }
 
     override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> {
-        // 只列自己的崩溃目录: JVM 致命错误现场在启动时已被认领并搬进来
+        // 只列自己的日志目录: JVM 致命错误现场在启动时已被认领并搬进来
         // (见 DesktopCrashHandler.collectJvmFatalErrorLogs), 故这里不再跨目录扫描 ——
         // 工作目录/临时目录/用户主目录是多进程共享的, 在那里读会列出别的 JVM 的报告,
-        // 清空时更会删掉别人的文件
+        // 清空时更会删掉别人的文件。
+        // 只收 crash- 前缀: 目录里同时放着运行日志 (appLog-), 它不是崩溃现场
         return dirs()
             .filter { it.isDirectory }
-            .flatMap { it.listFiles { f -> f.isFile }?.toList().orEmpty() }
+            .flatMap {
+                it.listFiles { f -> f.isFile && f.name.startsWith(CRASH_LOG_FILE_PREFIX) }
+                    ?.toList().orEmpty()
+            }
             .sortedByDescending { it.name }
             .distinctBy { it.name }
             .map { CrashLogProvider.CrashLogEntry(it.name) }
@@ -302,8 +307,12 @@ private class DesktopCrashLogProvider : CrashLogProvider {
     override suspend fun readCrashLog(name: String): String? = findFile(name)?.readText()
 
     override suspend fun clearCrashLogs() {
+        // 只删崩溃现场: 目录里还有运行日志 (appLog-), 它们不该被"清空崩溃日志"连带删掉
         dirs().forEach { dir ->
-            if (dir.isDirectory) dir.listFiles()?.forEach { it.delete() }
+            if (dir.isDirectory) {
+                dir.listFiles { f -> f.isFile && f.name.startsWith(CRASH_LOG_FILE_PREFIX) }
+                    ?.forEach { it.delete() }
+            }
         }
     }
 

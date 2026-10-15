@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import androidx.webkit.WebViewCompat
 import io.legado.app.App
+import io.legado.app.constant.LOG_DIR_NAME
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.appInfo
@@ -30,7 +31,7 @@ object LogUtils {
 
     private fun cleanExpiredLogs(context: Context) {
         val root = context.externalCacheDir ?: return
-        val logFolder = java.io.File(root, "logs")
+        val logFolder = java.io.File(root, LOG_DIR_NAME)
         if (!logFolder.exists() || !logFolder.isDirectory) return
         globalExecutor.execute {
             val expiredTime = System.currentTimeMillis() - 7.days.inWholeMilliseconds
@@ -90,7 +91,7 @@ object LogUtils {
     private fun createFileHandler(): FileHandler? {
         try {
             val root = App.instance.externalCacheDir ?: return null
-            val logFolder = FileUtils.createFolderIfNotExist(root, "logs")
+            val logFolder = FileUtils.createFolderIfNotExist(root, LOG_DIR_NAME)
             val date = getCurrentDateStr(TIME_PATTERN).replace(" ", "_").replace(":", "-")
             val logPath = FileUtils.getPath(root = logFolder, "appLog-$date.txt")
             return AsyncFileHandler(logPath).apply {

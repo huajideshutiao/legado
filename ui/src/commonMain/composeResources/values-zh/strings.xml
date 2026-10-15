@@ -276,7 +276,6 @@
     <string name="empty_msg_import_book">点击右上角文件夹图标，选择文件夹</string>
     <string name="export_all_use_book_source">导出所有书的书源</string>
     <string name="export_config">导出文件设置</string>
-    <string name="export_folder">导出文件夹</string>
     <string name="export_to_web_dav">导出到 WebDav</string>
     <string name="custom_export_section">自定义Epub导出章节</string>
     <string name="select_section_export">选择待导出章节</string>
@@ -305,8 +304,8 @@
     <string name="app_name">阅读</string>
     <string name="backup_config">备份设置</string>
     <string name="backup">备份</string>
-    <string name="backup_path">备份路径</string>
     <string name="backup_restore">备份与恢复</string>
+    <string name="auto_backup_no_book_save_dir">未设置书籍保存位置，自动备份不会执行</string>
     <string name="backup_summary">本地和 WebDav 一起备份</string>
     <string name="auto_check_new_backup_s">打开软件时检查是否有新备份，有新备份时提示是否更新</string>
     <string name="auto_check_new_backup_t">自动检查新备份</string>
@@ -1370,7 +1369,6 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="rss_source">订阅源</string>
     <string name="rule_sub_empty_msg">添加大佬们提供的规则导入地址\n添加后点击可导入规则</string>
     <string name="search_content_empty">搜索内容为空，请检查净化或简繁设置</string>
-    <string name="select_backup_path">请选择备份路径</string>
     <string name="select_local_image">选择本地图片</string>
     <string name="setting">设置</string>
     <string name="share_layout">共用布局</string>

@@ -1,6 +1,7 @@
 package io.legado.app.help.storage
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.BOOK_BACKUP_DIR_NAME
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.ThreadSafeDateFormat
 import io.legado.app.data.AppDbProviders
@@ -17,6 +18,9 @@ import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.book.bookSaveSubDir
+import io.legado.app.help.book.effectiveBookSaveDir
+import io.legado.app.help.book.requireBookSaveDir
 import io.legado.app.help.ruleFileName
 import io.legado.app.help.storage.BackupShared.backupLocked
 import io.legado.app.help.storage.BackupShared.backupPath
@@ -136,7 +140,7 @@ object BackupShared {
      * 发起即返回 (启动路径用); 需要等它落完盘的收尾路径用 [autoBackAwait]。
      */
     fun autoBack(
-        destinationPath: String? = PreferenceProviders.get().getStringOrNull(PreferKey.backupPath),
+        destinationPath: String? = effectiveBookSaveDir(),
     ) {
         Coroutine.async {
             autoBackAwait(destinationPath)
@@ -152,7 +156,7 @@ object BackupShared {
      * 备份截断 (文件名带时间戳, 不覆盖旧备份, 但会留下一个不可用的半成品)。
      */
     suspend fun autoBackAwait(
-        destinationPath: String? = PreferenceProviders.get().getStringOrNull(PreferKey.backupPath),
+        destinationPath: String? = effectiveBookSaveDir(),
     ) {
         // 规则订阅的每日更新挂在自动备份这批时机上 (退出阅读页 / 退出程序 / 退到后台), 节流各算各的:
         // 订阅读自己的 RuleSub.update, 备份读 lastBackup, 互不推迟。
@@ -160,6 +164,8 @@ object BackupShared {
         // 挑选时已把该条订阅的下次尝试时间推到次日, 失败或中断都等次日时机再试, 不写半份数据。
         RuleSubAutoUpdate.run()
         if (!shouldAutoBackup()) return
+        // 书籍保存位置未设置: 没有可用的落地目录, 跳过本次自动备份
+        if (destinationPath.isNullOrBlank()) return
         autoBackMutex.withLock {
             if (!shouldAutoBackup()) return
             val backupZipFileName = nowZipFileName()
@@ -175,14 +181,15 @@ object BackupShared {
     /**
      * 备份执行入口 (互斥锁保护)。
      *
-     * @param destinationPath 本地备份目录。为空时回退到平台默认落地目录
-     *                        ([DataStorage.defaultBackupDir]), 再回退应用 externalFilesDir/filesDir;
+     * @param destinationPath 本地备份目录 (书籍保存位置); 未设置时抛 [InvalidBooksDirException],
+     *                        由调用链既有的"去设置目录"出口处理。备份 zip 落其下的
+     *                        [BOOK_BACKUP_DIR_NAME] 子目录 (书籍直接放保存位置根)。
      *                        Android 的 content:// 目录由 [BackupRestoreHook.copyBackupTo] 处理。
      * @param uploadToWebDav 是否上传到 WebDav
      * @return 已保留在本地的备份 zip 绝对路径
      */
     suspend fun backupLocked(
-        destinationPath: String? = null,
+        destinationPath: String? = effectiveBookSaveDir(),
         uploadToWebDav: Boolean = true,
     ): String {
         return mutex.withLock {
@@ -380,16 +387,16 @@ object BackupShared {
                 zipFileName
             }
             val localDirectory = destinationPath?.takeIf { it.isNotBlank() }
-                ?: usableDefaultBackupDir()
-                ?: AppFilesDirs.get().externalFilesDir
-                ?: AppFilesDirs.get().filesDir
-            val localZipPath = localDirectory.trimEnd('/', '\\') +
-                BackupFileOps.separator + localFileName
+                ?: requireBookSaveDir()
+            // 备份 zip 落保存位置下的 backup 子目录 (书籍直接放根): 普通路径端在这里拼路径,
+            // SAF 树引用端由 hook 在树内建同名子目录
+            val backupDir = bookSaveSubDir(localDirectory, BOOK_BACKUP_DIR_NAME)
+            val localZipPath = bookSaveSubDir(backupDir, localFileName)
 
             if (!BackupFileOps.zipFiles(pathsWithImages, tempZipPath)) {
                 error("备份 zip 打包失败")
             }
-            if (!hooks.copyBackupTo(tempZipPath, localDirectory, localFileName)) {
+            if (!hooks.copyBackupTo(tempZipPath, localDirectory, localFileName, BOOK_BACKUP_DIR_NAME)) {
                 BackupFileOps.copyFile(tempZipPath, localZipPath)
             }
             if (uploadToWebDav) {
@@ -437,18 +444,6 @@ object BackupShared {
         if (primaryFailure == null) {
             firstCleanupFailure?.let { throw it }
         }
-    }
-
-    /**
-     * 平台默认落地目录 ([DataStorage.defaultBackupDir], 桌面=文档目录下的 legado/backup)。
-     * 平台要求用户先选目录 (Android SAF) 或目录建不出来时返回 null, 交回应用目录兜底。
-     */
-    private fun usableDefaultBackupDir(): String? {
-        val dir = DataStorageProviders.getOrNull()?.defaultBackupDir ?: return null
-        return runCatching {
-            BackupFileOps.createFolderIfNotExist(dir)
-            dir.takeIf { BackupFileOps.exists(it) }
-        }.getOrNull()
     }
 
     /** 写入 List<Any> 为 JSON 到 [backupPath]/[fileName]。空列表跳过 (与原版一致)。 */

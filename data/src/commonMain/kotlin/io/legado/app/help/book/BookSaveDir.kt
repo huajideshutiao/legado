@@ -1,9 +1,11 @@
 package io.legado.app.help.book
 
+import io.legado.app.constant.LOG_DIR_NAME
 import io.legado.app.constant.PreferKey
 import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 
@@ -29,6 +31,19 @@ fun effectiveBookSaveDir(): String? =
 fun requireBookSaveDir(): String =
     effectiveBookSaveDir()
         ?: throw InvalidBooksDirException(appString(AppStringKey.no_books_dir))
+
+/**
+ * 书籍保存位置下的产物子目录 (普通路径形态): [saveDir] + 分隔符 + [name]。
+ *
+ * 只给路径形态的端用 (桌面/iOS/鸿蒙); 安卓的保存位置是 SAF 树引用, 不能拼路径 —— 那里把子目录
+ * **名**交给文档 API 在树内建出同名子目录。
+ */
+fun bookSaveSubDir(saveDir: String, name: String): String =
+    saveDir.trimEnd('/', '\\') + BackupFileOps.separator + name
+
+/** 日志落点 (书籍保存位置/log, 普通路径形态); 未设置保存位置返回 null。 */
+fun bookLogDirOrNull(): String? =
+    effectiveBookSaveDir()?.let { bookSaveSubDir(it, LOG_DIR_NAME) }
 
 /** 导入目录的 pref key (app 端 `AppConfig.importBookPath`、桌面与 iOS/鸿蒙导入页同键)。 */
 const val IMPORT_BOOK_PATH_KEY = "importBookPath"

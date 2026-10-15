@@ -58,6 +58,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.LOG_DIR_NAME
 import io.legado.app.constant.appInfo
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -78,6 +79,7 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.delBookCore
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.getRemoteUrl
+import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.toShelfJsonMap
@@ -86,7 +88,6 @@ import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ThemeConfig
-import io.legado.app.help.config.effectiveBookExportDir
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.copyToFileAtomically
 import io.legado.app.help.file.AndroidDirAuthorizations
@@ -137,6 +138,7 @@ import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.encodeBookVariableOverlayPayload
 import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
 import io.legado.app.ui.root.ensureBookSaveDirSelected
+import io.legado.app.ui.root.reselectBookSaveDir
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.dialog.awaitWaitDialogDismissed
@@ -146,6 +148,7 @@ import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.copyToDocumentAtomically
+import io.legado.app.utils.checkWrite
 import io.legado.app.utils.createFolderIfNotExist
 import io.legado.app.utils.delete
 import io.legado.app.utils.externalCache
@@ -1298,8 +1301,7 @@ class AndroidPlatformCapabilities(
 
     // 对照 BookshelfManageActivity.configExportSection: 自定义导出章节配置对话框
     // (导出全部/自定义导出 + epub 文件名JS规则 + 分卷大小 + 章节范围, 复刻 dialog_select_section_export.xml)。
-    // 仅在选择导出文件夹且 enableCustomExport() 成立 (开关开启且导出类型为 epub) 时弹出
-    // (对照 exportDir 回调 value=="cache" 分支)。
+    // 仅在 enableCustomExport() 成立 (开关开启且导出类型为 epub) 时弹出。
     override fun showExportSectionConfig(path: String, books: List<Book>) {
         // 默认选中自定义导出 (对照 cbSelectExport.callOnClick())
         val allState = mutableStateOf(false)
@@ -1513,16 +1515,32 @@ class AndroidPlatformCapabilities(
         }
     }
 
-    // 对照 BookshelfManageActivity.exportAll: 已选过导出目录 → 直接导出;
-    // 未选过 → 拉起目录选择器 (写公共目录要 SAF 授权, 没有可用惯例目录)
+    // 导出书籍正文落"书籍保存位置" (与下载书籍/备份 zip 同一处, 书籍直接放根): 未设置先拉选择器,
+    // 选定后继续导出; 已设置但不可写 (目录被删/授权失效) 同样重新选一次, 取消则本次导出作罢;
+    // 本次新选定目录且开了自定义导出时先弹章节配置 (对照原版 exportDir 回调), 否则直接导出
     override fun exportAllBooks(books: List<Book>) {
-        val path = effectiveBookExportDir()
-        if (path.isNullOrEmpty()) {
-            selectExportFolder(books)
-        } else {
-            activity.startExportBooks(path, books)
+        Coroutine.async {
+            var freshlySelected = effectiveBookSaveDir() == null
+            if (freshlySelected && !ensureBookSaveDirSelected()) return@async
+            var path = effectiveBookSaveDir() ?: return@async
+            if (!isBookSaveDirWritable(path)) {
+                if (!reselectBookSaveDir()) return@async
+                path = effectiveBookSaveDir() ?: return@async
+                freshlySelected = true
+            }
+            if (freshlySelected && enableCustomExport()) {
+                showExportSectionConfig(path, books)
+            } else {
+                activity.startExportBooks(path, books)
+            }
+        }.onError {
+            activity.toastOnUi("导出书籍出错\n${it.localizedMessage}")
         }
     }
+
+    /** 书籍保存位置可写性预检 (SAF 树引用用 DocumentFile 判定, 普通路径直通)。 */
+    private fun isBookSaveDirWritable(path: String): Boolean =
+        runCatching { FileDoc.fromUri(path.toUri(), true).checkWrite() }.getOrDefault(false)
 
     // 对照 BookshelfManageActivity.exportBookshelf / viewModel.exportBookshelf
     @OptIn(ExperimentalSerializationApi::class)
@@ -1562,15 +1580,6 @@ class AndroidPlatformCapabilities(
         }.onError {
             activity.toastOnUi("导出书籍出错\n${it.localizedMessage}")
         }
-    }
-
-    // 对照 BookshelfManageActivity.selectExportFolder (既有的"选择导出文件夹"入口):
-    // 读设备本地记忆的导出目录 ([effectiveBookExportDir]) 作选择器默认项
-    // (写出选择结果由选择器回调负责, 见 MainActivity 的 exportDir)
-    override fun selectExportFolder(books: List<Book>) {
-        val path = effectiveBookExportDir()
-        activity.pendingExportBooks = books
-        activity.launchExportFolderPicker(path)
     }
 
     // ===== 书源管理平台能力: 对照 BookSourceActivity 同名方法 =====
@@ -1971,18 +1980,18 @@ class AndroidPlatformCapabilities(
 
     private fun saveLogInternal() {
         Coroutine.async {
-            val backupPath = AppConfig.backupPath ?: let {
-                App.instance.toastOnUi("未设置备份目录")
+            val savePath = effectiveBookSaveDir() ?: let {
+                App.instance.toastOnUi("未设置书籍保存位置")
                 return@async
             }
             if (!AppConfig.recordLog) {
                 App.instance.toastOnUi("未开启日志记录，请去其他设置里打开记录日志")
                 delay(3000)
             }
-            val doc = FileDoc.fromUri(backupPath.toUri(), true)
+            val doc = FileDoc.fromUri(savePath.toUri(), true)
             copyLogs(doc)
             copyHeapDump(doc)
-            App.instance.toastOnUi("已保存至备份目录")
+            App.instance.toastOnUi("已保存至书籍保存位置")
         }.onError {
             AppLog.put("保存日志出错\n${it.localizedMessage}", it, true)
         }
@@ -1990,8 +1999,8 @@ class AndroidPlatformCapabilities(
 
     private fun createHeapDumpInternal() {
         Coroutine.async {
-            val backupPath = AppConfig.backupPath ?: let {
-                App.instance.toastOnUi("未设置备份目录")
+            val savePath = effectiveBookSaveDir() ?: let {
+                App.instance.toastOnUi("未设置书籍保存位置")
                 return@async
             }
             if (!AppConfig.recordHeapDump) {
@@ -2001,11 +2010,11 @@ class AndroidPlatformCapabilities(
             App.instance.toastOnUi("开始创建堆转储")
             System.gc()
             CrashHandler.doHeapDump(true)
-            val doc = FileDoc.fromUri(backupPath.toUri(), true)
+            val doc = FileDoc.fromUri(savePath.toUri(), true)
             if (!copyHeapDump(doc)) {
                 App.instance.toastOnUi("未找到堆转储文件")
             } else {
-                App.instance.toastOnUi("已保存至备份目录")
+                App.instance.toastOnUi("已保存至书籍保存位置")
             }
         }.onError {
             AppLog.put("保存堆转储失败\n${it.localizedMessage}", it)
@@ -2015,7 +2024,7 @@ class AndroidPlatformCapabilities(
     /**
      * 把本地文件整份写进 [dirDoc] 下的 [fileName]: content:// 目录走 SAF 临时文档 + 改名就位
      * ([copyToDocumentAtomically]), file:// 目录走同目录唯一临时件 + 改名 ([copyToFileAtomically])。
-     * 备份目录是用户可见目录, 没有孤儿临时件的回收方, 两条通道都在各自的每条退出路径上清掉中间件。
+     * 书籍保存位置是用户可见目录, 没有孤儿临时件的回收方, 两条通道都在各自的每条退出路径上清掉中间件。
      * 写不成时抛异常 (调用方的 onError 如实报失败)。SAF 目录里目标名上已有同名旧文档时由
      * [copyToDocumentAtomically] 先把它挪成契约过渡件, 就位成功后删过渡件, 失败则改回目标名;
      * 就位成立时目标名上是完整的旧件或新件, 提供方不支持同目录就位时直写回落, 目标名上可能出现半截。
@@ -2027,23 +2036,27 @@ class AndroidPlatformCapabilities(
             return
         }
         check(copyToDocumentAtomically(App.instance, dirDoc.uri, fileName, input)) {
-            "写入备份目录失败: $fileName"
+            "写入书籍保存位置失败: $fileName"
         }
     }
 
+    /**
+     * 打包运行日志与崩溃日志 (外部缓存的日志目录) 加 logcat 现场成 logs.zip,
+     * 落书籍保存位置的日志目录 (与崩溃日志同处, 书籍直接放根)。
+     */
     private fun copyLogs(doc: FileDoc) {
         val cacheDir = App.instance.externalCache
-        val logFiles = File(cacheDir, "logs")
-        val crashFiles = File(cacheDir, "crash")
-        val logcatFile = File(cacheDir, "logcat.txt")
+        val logDir = File(cacheDir, LOG_DIR_NAME).apply { mkdirs() }
+        val logcatFile = File(logDir, "logcat.txt")
 
         dumpLogcat(logcatFile)
 
         val zipFile = File(cacheDir, "logs.zip")
-        ZipUtils.zipFiles(arrayListOf(logFiles, crashFiles, logcatFile), zipFile)
+        ZipUtils.zipFiles(arrayListOf(logDir), zipFile)
 
+        val logDoc = doc.createFolderIfNotExist(LOG_DIR_NAME)
         zipFile.inputStream().use { input ->
-            writeIntoDir(doc, "logs.zip", input)
+            writeIntoDir(logDoc, "logs.zip", input)
         }
         zipFile.delete()
     }

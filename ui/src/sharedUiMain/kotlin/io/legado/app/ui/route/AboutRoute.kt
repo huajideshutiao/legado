@@ -138,7 +138,7 @@ fun AboutRoute(
             PlatformCapabilityProviders.get().showCrashLogs()
         }
 
-        // 保存日志到备份目录: 委托平台能力 (app: copyLogs+copyHeapDump; desktop: 文件选择器导出)
+        // 保存日志到书籍保存位置: 委托平台能力 (app: copyLogs+copyHeapDump; desktop: 文件选择器导出)
         override fun onSaveLog() {
             PlatformCapabilityProviders.get().saveLog()
         }

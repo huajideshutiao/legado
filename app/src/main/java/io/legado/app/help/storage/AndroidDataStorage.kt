@@ -32,10 +32,4 @@ object AndroidDataStorage : DataStorage {
             val dir = File(documents, "legado")
             if (dir.isDirectory || dir.mkdirs()) dir.absolutePath else null
         }.getOrNull() ?: FileUtils.getPath(App.instance.externalFiles, "export")
-
-    /**
-     * 备份落地目录由用户经 SAF 选 (PreferKey.backupPath), 返回 null 让调用方拉起目录选择器,
-     * 保持原有交互不变 —— 直写公共目录在 Android 11+ 需额外授权, 不能当默认值。
-     */
-    override val defaultBackupDir: String? get() = null
 }

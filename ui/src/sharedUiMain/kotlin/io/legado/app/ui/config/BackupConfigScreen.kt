@@ -17,9 +17,9 @@ import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.auto_check_new_backup_s
 import legado.ui.generated.resources.auto_check_new_backup_t
 import legado.ui.generated.resources.backup
-import legado.ui.generated.resources.backup_path
 import legado.ui.generated.resources.backup_restore
 import legado.ui.generated.resources.backup_summary
+import legado.ui.generated.resources.book_tree_uri_t
 import legado.ui.generated.resources.only_latest_backup_s
 import legado.ui.generated.resources.only_latest_backup_t
 import legado.ui.generated.resources.restore
@@ -56,8 +56,7 @@ fun BackupConfigScreen(
     webDavPasswordSummary: String,
     webDavDirSummary: String,
     webDavDeviceNameSummary: String,
-    backupPathSummary: String,
-    onBackupPath: () -> Unit,
+    bookSaveDirWarning: String? = null,
     onWebDavBackup: () -> Unit,
     onWebDavBackupLong: () -> Unit,
     onWebDavRestore: () -> Unit,
@@ -82,7 +81,7 @@ fun BackupConfigScreen(
     val titleSyncProgressPlus = stringResource(Res.string.sync_book_progress_plus_t)
     val summarySyncProgressPlus = stringResource(Res.string.sync_book_progress_plus_s)
     val titleBackupRestore = stringResource(Res.string.backup_restore)
-    val titleBackupPath = stringResource(Res.string.backup_path)
+    val titleBackupPath = stringResource(Res.string.book_tree_uri_t)
     val titleBackup = stringResource(Res.string.backup)
     val summaryBackup = stringResource(Res.string.backup_summary)
     val titleRestore = stringResource(Res.string.restore)
@@ -149,11 +148,13 @@ fun BackupConfigScreen(
             )
 
             preferenceCategory(titleBackupRestore)
-            preference(
-                title = titleBackupPath,
-                summary = backupPathSummary,
-                onClick = onBackupPath,
-            )
+            // 未设置书籍保存位置时自动备份不会执行 (备份产物落该目录): 在这里明确告知
+            bookSaveDirWarning?.let { warning ->
+                preference(
+                    title = titleBackupPath,
+                    summary = warning,
+                )
+            }
             preference(
                 title = titleBackup,
                 summary = summaryBackup,

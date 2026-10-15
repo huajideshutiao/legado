@@ -13,7 +13,7 @@ import io.legado.app.utils.systemCurrentTimeMillis
  *
  * # 与桌面端 registerDesktopAppLogHost 对照
  * - [AppLogHost.write] → 开启"记录日志" (PreferKey.recordLog) 时经 [NativeAppLogStore] 追加到
- *   `{filesDir}/logs/appLog-<epochMillis>.txt`, 即 [NativeCrashLogs] 的崩溃日志来源
+ *   `{filesDir}/log/appLog-<epochMillis>.txt` (与崩溃日志同目录, 靠文件名前缀区分)
  * - [AppLogHost.toast] → [Toasters] (与 app/desktop 端同口径, 两端 registry 已把 toaster
  *   提前到本 host 注册之前)
  * - [AppLogHost.debugPrint] → println (iOS: Xcode 控制台; 鸿蒙: K/N stdout 由 runtime 重定向到 hilog)

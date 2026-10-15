@@ -2,6 +2,7 @@ package io.legado.desktop.help.log
 
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppLogHost
+import io.legado.app.constant.LOG_DIR_NAME
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.file.AppFilesDirs
@@ -56,11 +57,11 @@ private fun fileHandlerOrNull(): FileHandler? {
     }
 }
 
-/** 对齐 app 端 LogUtils.createFileHandler: `{cacheDir}/logs/appLog-{时间}.txt` + 清理 7 天前旧日志。 */
+/** 对齐 app 端 LogUtils.createFileHandler: `{cacheDir}/log/appLog-{时间}.txt` + 清理 7 天前旧日志。 */
 private fun createFileHandler(): FileHandler? = try {
     val dirs = AppFilesDirs.get()
     // 桌面端无外部缓存, 回退到 cacheDir (AppFilesDir 文档约定的回退路径)
-    val logFolder = File(dirs.externalCacheDir ?: dirs.cacheDir, "logs").apply { mkdirs() }
+    val logFolder = File(dirs.externalCacheDir ?: dirs.cacheDir, LOG_DIR_NAME).apply { mkdirs() }
     globalExecutor.execute {
         val expiredTime = System.currentTimeMillis() - 7.days.inWholeMilliseconds
         logFolder.listFiles()?.forEach {

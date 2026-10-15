@@ -14,8 +14,9 @@ import io.legado.app.utils.systemCurrentTimeMillis
  * 不因导出重新下载 (对照 app 端 `ReadMangaActivity.saveImage` → `BaseReadViewModel.saveImage`
  * 的读取段)。
  *
- * [save] 是本端的落点原语 (Android SAF 单文件 / 桌面另存对话框 / iOS 沙盒导出目录 / 鸿蒙目录记忆),
- * 见 [io.legado.app.ui.root.FilePickerService]。命名与异常收口在这里统一, 各端只提供自己的落点。
+ * [save] 是本端的落点原语 (各端由 [io.legado.app.ui.root.FilePickerService.saveImageToUser]
+ * 决定: 落相册 / 记住的图片目录 / 沙盒导出目录), 与图像查看器长按保存同一入口。
+ * 命名与异常收口在这里统一, 各端只提供自己的落点。
  *
  * @return true=已写入, false=取不到缓存或写入失败, null=用户取消选择位置 (调用方静默)
  */

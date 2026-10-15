@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.update
 /**
  * 备份设置页 UI 状态 (immutable)。
  *
- * 6 个 summary (webDavUrl/Account/Password/Dir/DeviceName + backupPath) 由宿主
+ * 5 个 summary (webDavUrl/Account/Password/Dir/DeviceName) 由宿主
  * 在 OnSharedPreferenceChangeListener 回调中通过 [BackupConfigScreenModel.dispatch]
  * 推入 [BackupConfigUiEvent.UpdateXxxSummary]; 宿主 Activity/桌面端负责解析平台资源
  * (R.string.web_dav_url_s 等) 后传字符串进来。
@@ -24,7 +24,6 @@ import kotlinx.coroutines.flow.update
  * @param webDavPasswordSummary    WebDav 密码 summary (宿主按长度补 "*")
  * @param webDavDirSummary         WebDav 子目录 summary
  * @param webDavDeviceNameSummary  WebDav 设备名 summary
- * @param backupPathSummary        本地备份路径 summary
  */
 data class BackupConfigUiState(
     val webDavUrlSummary: String = "",
@@ -32,16 +31,14 @@ data class BackupConfigUiState(
     val webDavPasswordSummary: String = "",
     val webDavDirSummary: String = "",
     val webDavDeviceNameSummary: String = "",
-    val backupPathSummary: String = "",
 )
 
 /**
  * 备份设置页用户交互事件。
  *
  * - [UpdateWebDavUrlSummary] / [UpdateWebDavAccountSummary] / [UpdateWebDavPasswordSummary] /
- *   [UpdateWebDavDirSummary] / [UpdateWebDavDeviceNameSummary] / [UpdateBackupPathSummary]:
+ *   [UpdateWebDavDirSummary] / [UpdateWebDavDeviceNameSummary]:
  *   prefs 变更后宿主更新对应 summary
- * - [SelectBackupPath]: 选择本地备份目录 (宿主注入 SAF/桌面文档选取器)
  * - [Backup]: 备份 (上传到 WebDav), [BackupLocal] 长按仅本地备份
  * - [Restore]: 从 WebDav 备份恢复, [RestoreFromLocal] 长按从本地 zip 恢复
  * - [RestoreIgnore]: 备份忽略项设置
@@ -52,8 +49,6 @@ sealed interface BackupConfigUiEvent {
     data class UpdateWebDavPasswordSummary(val summary: String) : BackupConfigUiEvent
     data class UpdateWebDavDirSummary(val summary: String) : BackupConfigUiEvent
     data class UpdateWebDavDeviceNameSummary(val summary: String) : BackupConfigUiEvent
-    data class UpdateBackupPathSummary(val summary: String) : BackupConfigUiEvent
-    object SelectBackupPath : BackupConfigUiEvent
     object Backup : BackupConfigUiEvent
     object BackupLocal : BackupConfigUiEvent
     object Restore : BackupConfigUiEvent
@@ -72,14 +67,12 @@ sealed interface BackupConfigUiEvent {
  * @param onBackup          备份动作 (uploadToWebDav=true 上传 WebDav, false 仅本地)
  * @param onRestore         从 WebDav 备份恢复 (无备份文件时宿主回退到本地)
  * @param onRestoreFromLocal 从本地 zip 恢复 (长按)
- * @param onSelectBackupPath 选择本地备份目录
  * @param onRestoreIgnore   备份忽略项设置
  */
 class BackupConfigScreenModel(
     private val onBackup: (uploadToWebDav: Boolean) -> Unit,
     private val onRestore: () -> Unit,
     private val onRestoreFromLocal: () -> Unit,
-    private val onSelectBackupPath: () -> Unit,
     private val onRestoreIgnore: () -> Unit,
 ) : ScreenModel {
 
@@ -111,10 +104,6 @@ class BackupConfigScreenModel(
             is BackupConfigUiEvent.UpdateWebDavDeviceNameSummary ->
                 _state.update { it.copy(webDavDeviceNameSummary = event.summary) }
 
-            is BackupConfigUiEvent.UpdateBackupPathSummary ->
-                _state.update { it.copy(backupPathSummary = event.summary) }
-
-            BackupConfigUiEvent.SelectBackupPath -> onSelectBackupPath()
             BackupConfigUiEvent.Backup -> onBackup(true)
             BackupConfigUiEvent.BackupLocal -> onBackup(false)
             BackupConfigUiEvent.Restore -> onRestore()

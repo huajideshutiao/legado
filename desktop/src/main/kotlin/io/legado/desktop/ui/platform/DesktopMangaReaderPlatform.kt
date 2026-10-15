@@ -9,7 +9,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.glide.progress.ProgressManager
-import io.legado.app.help.writeBytesAtomically
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.entities.MangaCellState
@@ -74,10 +73,10 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
     }
 
     /**
-     * 保存图片到本端落点 (桌面经保存对话框取绝对路径)。
+     * 保存图片到本端落点: 与图像查看器长按保存同一入口 ([FilePickerService.saveImageToUser],
+     * 桌面端为"记住的图片目录直接写, 没记住先选一次")。
      *
      * 取字节只读图片缓存/本地书内嵌图 (见 shared [saveCachedMangaImage]), 与阅读页同一条读取口径。
-     * 落盘整份归位: 用户选了同名文件时覆盖写会先把旧图截断, 写到一半被打断就留下一张半截图。
      */
     override suspend fun saveImage(
         url: String,
@@ -85,9 +84,7 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
         source: BookSource?,
     ): Boolean? = withContext(Dispatchers.IO) {
         saveCachedMangaImage(url, book) { name, bytes ->
-            val destPath = PlatformServiceProviders.get().files.saveFile(name)
-                ?: return@saveCachedMangaImage null
-            writeBytesAtomically(destPath, bytes)
+            PlatformServiceProviders.get().files.saveImageToUser(name, bytes)
         }
     }
 

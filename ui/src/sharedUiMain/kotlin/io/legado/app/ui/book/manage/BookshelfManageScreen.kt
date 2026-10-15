@@ -55,7 +55,6 @@ import legado.ui.generated.resources.delete
 import legado.ui.generated.resources.empty
 import legado.ui.generated.resources.export_all_use_book_source
 import legado.ui.generated.resources.export_config
-import legado.ui.generated.resources.export_folder
 import legado.ui.generated.resources.export_to_web_dav
 import legado.ui.generated.resources.filter_book_type
 import legado.ui.generated.resources.group
@@ -216,7 +215,6 @@ data class BookshelfManageCallbacks(
     val onToggleEnableReplace: () -> Unit = {},
     val onToggleCustomExport: () -> Unit = {},
     val onToggleExportWebDav: () -> Unit = {},
-    val onSelectExportFolderMenu: () -> Unit = {},
     val onShowExportConfig: () -> Unit = {},
     val onShowLog: () -> Unit = {},
     val onSetBookTypeFilter: (Int) -> Unit = {},
@@ -307,7 +305,6 @@ private fun BookshelfManageActions(
                 text = stringResource(Res.string.export_to_web_dav),
                 checked = state.exportToWebDav,
             ) { dismiss(); callbacks.onToggleExportWebDav() }
-            MenuItem(stringResource(Res.string.export_folder)) { dismiss(); callbacks.onSelectExportFolderMenu() }
             MenuItem(stringResource(Res.string.export_config)) { dismiss(); callbacks.onShowExportConfig() }
             MenuItem(stringResource(Res.string.log)) { dismiss(); callbacks.onShowLog() }
         }

@@ -5,7 +5,6 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.core.net.toUri
 import io.legado.app.App
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -16,7 +15,6 @@ import io.legado.app.ui.book.manga.entities.MangaCellState
 import io.legado.app.ui.book.manga.render.MangaCoilImage
 import io.legado.app.ui.book.manga.render.preloadMangaImageAndroid
 import io.legado.app.ui.root.PlatformServiceProviders
-import io.legado.app.utils.writeDocumentBytesAtomically
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -72,17 +70,16 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
         )
     }
 
-    // 保存图片: 只导出已缓存的图 (对照原版 BaseReadViewModel.saveImage 的读取段), 落点走 SAF 单文件
-    // (写盘整份归位与回落条件见 [writeDocumentBytesAtomically])
+    // 保存图片: 只导出已缓存的图 (对照原版 BaseReadViewModel.saveImage 的读取段), 落点走"图片保存"
+    // (对照原版 ReadMangaActivity.saveImage: 记住的图片目录直接写, 没记住先选一次并记住;
+    // 与图像查看器长按保存同一入口, 见 FilePickerService.saveImageToUser)
     override suspend fun saveImage(
         url: String,
         book: Book?,
         source: BookSource?,
     ): Boolean? = withContext(Dispatchers.IO) {
         saveCachedMangaImage(url, book) { name, bytes ->
-            val destPath = PlatformServiceProviders.get().files.saveFile(name)
-                ?: return@saveCachedMangaImage null
-            writeDocumentBytesAtomically(App.instance, destPath.toUri(), name, bytes)
+            PlatformServiceProviders.get().files.saveImageToUser(name, bytes)
         }
     }
 }

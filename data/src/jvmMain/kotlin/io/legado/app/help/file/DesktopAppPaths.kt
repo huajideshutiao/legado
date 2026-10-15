@@ -40,12 +40,6 @@ fun desktopAppCacheDir(): String = resolvedCacheDir
  */
 fun desktopUserExportDir(): String = resolvedUserExportDir
 
-/**
- * 桌面端备份 zip 默认落地目录: 系统文档目录下的 `legado/backup` (备份是归档件, 不占桌面);
- * 便携模式落在 `{程序目录}/backup`。用户在设置里指定了备份路径时以用户选择为准。
- */
-fun desktopBackupOutputDir(): String = resolvedBackupOutputDir
-
 /** 根目录解析结果缓存 (进程内只解析一次; Main.kt 在首个消费方构造前已完成便携属性设置)。 */
 private val resolvedRootDir: String by lazy { resolveRootDir() }
 
@@ -54,11 +48,6 @@ private val resolvedCacheDir: String by lazy { resolveCacheDir() }
 private val resolvedUserExportDir: String by lazy {
     portableBaseDir()?.let { return@lazy File(it, "export").absolutePath }
     File(systemDesktopDir(), "legado").absolutePath
-}
-
-private val resolvedBackupOutputDir: String by lazy {
-    portableBaseDir()?.let { return@lazy File(it, "backup").absolutePath }
-    File(systemDocumentsDir(), "legado" + File.separator + "backup").absolutePath
 }
 
 private fun resolveRootDir(): String {
@@ -146,10 +135,7 @@ private fun preferredCacheDir(): File {
     }
 }
 
-/** 系统"文档"目录 (Win 可能被 OneDrive 重定向, Linux 走 XDG user-dirs)。 */
-private fun systemDocumentsDir(): File = userDir(xdgKey = "XDG_DOCUMENTS_DIR", fallbackName = "Documents")
-
-/** 系统"桌面"目录 (同上, Win 的桌面同样可能被 OneDrive 接管)。 */
+/** 系统"桌面"目录 (Win 的桌面同样可能被 OneDrive 接管)。 */
 private fun systemDesktopDir(): File = userDir(xdgKey = "XDG_DESKTOP_DIR", fallbackName = "Desktop")
 
 /**

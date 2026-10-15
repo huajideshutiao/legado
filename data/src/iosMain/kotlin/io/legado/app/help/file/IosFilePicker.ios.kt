@@ -115,7 +115,7 @@ fun pickDocumentContent(url: NSURL): ByteArray? {
 }
 
 /**
- * 弹 [UIDocumentPickerViewController] 选目录 (备份路径等场景), 返回选中的 [NSURL]。
+ * 弹 [UIDocumentPickerViewController] 选目录 (书籍保存位置等场景), 返回选中的 [NSURL]。
  *
  * 与 [pickDocuments] 区别:
  * - **模式**: 用 [UIDocumentPickerMode.Open] (Import 模式不支持目录);

@@ -28,11 +28,19 @@ interface BackupRestoreHook {
     fun onBackupStart() {}
 
     /**
-     * 把备份 zip 复制到用户指定目录。
+     * 把备份 zip 复制到用户指定目录下的产物子目录。
      *
+     * @param destination 用户选定的书籍保存位置
+     * @param subDir 保存位置下承载备份的子目录名 ([io.legado.app.constant.BOOK_BACKUP_DIR_NAME]);
+     *   SAF 树引用端在树内建出同名子目录, 普通路径端由 [BackupFileOps.copyFile] 建父目录
      * @return true 表示宿主已处理 (app 端 content:// 走 SAF), false 走 [BackupFileOps.copyFile]
      */
-    fun copyBackupTo(zipFilePath: String, destination: String, fileName: String): Boolean = false
+    fun copyBackupTo(
+        zipFilePath: String,
+        destination: String,
+        fileName: String,
+        subDir: String,
+    ): Boolean = false
 
     /** 备份收尾 (app 端: 上传阅读背景图到 WebDav)。 */
     suspend fun onBackupFinished(uploadToWebDav: Boolean) {}

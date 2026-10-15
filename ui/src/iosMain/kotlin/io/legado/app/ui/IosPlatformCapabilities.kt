@@ -26,8 +26,6 @@ import io.legado.app.help.book.toShelfJsonMap
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.file.exportFile
-import io.legado.app.help.config.effectiveBookExportDir
-import io.legado.app.help.config.rememberBookExportDir
 import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
 import io.legado.app.help.openURL
 import io.legado.app.help.openURLIfPossible
@@ -54,6 +52,7 @@ import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteTransitionSpec
 import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.ensureBookSaveDirSelected
+import io.legado.app.ui.root.reselectBookSaveDir
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.File
 import io.legado.app.utils.GSON
@@ -112,7 +111,7 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
      * 系统报告取件指引 (深链不可用时的回落文案)。
      *
      * 写成字面量而不是新增资源键: 它是 iOS 专属文案, 与 native 侧其余平台提示
-     * (如"未设置备份目录")同一口径。
+     * (如"未设置书籍保存位置")同一口径。
      */
     private const val CRASH_REPORT_HINT: String =
         "原生崩溃的完整调用栈由系统记录，应用内拿不到。\n" +
@@ -156,10 +155,10 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     override val capabilityScope: CoroutineScope get() = scope
 
     /**
-     * 保存日志到备份目录 (对照原版 `AboutFragment.saveLog` 的三段式: 未设备份目录则提示中止、
-     * 未开记录日志只提醒、写成功后提示"已保存至备份目录")。
+     * 保存日志到书籍保存位置 (对照原版 `AboutFragment.saveLog` 的三段式: 未设置则提示中止、
+     * 未开记录日志只提醒、写成功后提示"已保存至书籍保存位置")。
      *
-     * 打包与落盘见 nativeMain 的 [NativeSaveLog] —— 它要用备份目录的授权通道
+     * 打包与落盘见 nativeMain 的 [NativeSaveLog] —— 它要用书籍保存位置的授权通道
      * (`copyBackupIntoUserDir`), 那个声明在 nativeMain, 本源集可见。
      */
     override fun saveLog() {
@@ -720,21 +719,27 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
         IosNotificationService.cancelNotification(NotificationId.ExportBookService)
     }
 
-    // 导出书籍正文, 直接写进有效导出目录 (用户经目录选择器选定; 未选过时先选目录),
+    // 导出书籍正文, 直接写进"书籍保存位置" (与下载书籍/备份 zip 同一处; 未选过时先选目录),
+    // 本次新选定目录且开了自定义导出时先弹章节配置, 否则直接导出;
     // 不经系统分享面板 (对照 app 端 ExportBookService 的落盘语义)
     override fun exportAllBooks(books: List<Book>) {
         if (books.isEmpty()) {
             Toasters.get().toast("书籍不能为空")
             return
         }
-        // 未选过导出目录时先选目录 (对照 BookshelfManageActivity.exportAll)
-        if (effectiveBookExportDir() == null) {
-            selectExportFolder(books)
-            return
+        scope.launch {
+            val hadDir = effectiveBookSaveDir() != null
+            // 未设置书籍保存位置时先选目录
+            if (!ensureBookSaveDirSelected()) return@launch
+            val dir = effectiveBookSaveDir() ?: return@launch
+            if (!hadDir && io.legado.app.utils.enableCustomExport()) {
+                showExportSectionConfig(dir, books)
+                return@launch
+            }
+            // 导出配置在此快照 (对照原版把 exportType 随 intent 传进服务)
+            val exportType = prefs.getInt(PreferKey.exportType, 0)
+            enqueueExport(books) { ExportMode.ByConfig(exportType) }
         }
-        // 导出配置在此快照 (对照原版把 exportType 随 intent 传进服务)
-        val exportType = prefs.getInt(PreferKey.exportType, 0)
-        enqueueExport(books) { ExportMode.ByConfig(exportType) }
     }
 
     /**
@@ -840,7 +845,7 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
                     currentCoroutineContext().ensureActive()
                     val opened = openExportDir()
                     if (opened == null) {
-                        // 目录不可用 (已提示并忘掉记忆目录): 本次不能导出, 剩余队列不再导
+                        // 目录不可用 (已拉起选择器重选仍不可用/用户取消): 本次不能导出, 剩余队列不再导
                         discardExportQueue()
                         break
                     }
@@ -893,59 +898,42 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     }
 
     /**
-     * 选择导出文件夹 (对照 BookshelfManageActivity.selectExportFolder 与 exportDir 回调):
-     * 选定目录存 security-scoped bookmark 并记入设备本地配置空间 ([rememberBookExportDir]);
-     * 开了自定义导出 (且导出类型为 epub) 先弹章节配置, 否则立即导出。
-     *
-     * 与 [pickBookTreeUri] 同一入口 ([pickDirectoryDocument]) 但用途不同: 这里登记为
-     * [DirUsage.Export], 该目录只放行导出写入, 不放行书籍文件访问。
-     */
-    override fun selectExportFolder(books: List<Book>) {
-        scope.launch {
-            val url = pickDirectoryDocument() ?: return@launch
-            val path = IosSecurityScopedStorage.addDir(url, DirUsage.Export) ?: run {
-                Toasters.get().toast("无法保存导出目录的访问授权")
-                return@launch
-            }
-            rememberBookExportDir(path)
-            if (books.isEmpty()) return@launch
-            // 本类同名成员是"自定义导出"开关当前值 (菜单勾选态), 走全限定名取上面那条带导出类型的判定
-            if (io.legado.app.utils.enableCustomExport()) {
-                showExportSectionConfig(path, books)
-            } else {
-                exportAllBooks(books)
-            }
-        }
-    }
-
-    /**
-     * 打开有效导出目录: 取 security-scoped 授权租约 + 确保目录存在, 供整段导出持有。
+     * 打开书籍保存目录: 取 security-scoped 授权租约 + 确保目录存在, 供整段导出持有。
      *
      * 用户选定的目录在应用容器之外, 直接按 POSIX 路径写入会因缺 security scope 失败;
      * 写入新建文件与 [io.legado.app.model.fileBook.IosAuthorizedFileBookAccessor] 的落盘入口
      * 同模式 —— 直接持 [IosSecurityScopedStorage.acquireLease] 而不走 NSFileCoordinator
      * (协调器会对尚不存在的目标路径报错)。
      *
-     * 授权已失效 (用户在系统里撤销/换过目录) 时清掉记忆目录 ([rememberBookExportDir]), 下次导出
-     * 重新让用户选目录 (与图片保存目录写入失败即忘掉记忆目录同一处理)。
+     * 授权已失效 (用户在系统里撤销/换过目录) 或目录建不出时, 拉起书籍保存位置选择器重选一次,
+     * 选中即继续本次导出; 用户取消则本次导出作罢。
      *
      * @return 目录与租约 (调用方必须在 finally 里 [IosSecurityScopeLease.close]);
      *   已提示并返回 null 表示本次不能导出
      */
-    private fun openExportDir(): Pair<File, IosSecurityScopeLease>? {
-        val path = effectiveBookExportDir() ?: return null
+    private suspend fun openExportDir(): Pair<File, IosSecurityScopeLease>? {
+        tryOpenBookSaveDir()?.let { return it }
+        if (!reselectBookSaveDir()) {
+            Toasters.get().toast("书籍保存目录不可用，本次导出已取消")
+            return null
+        }
+        return tryOpenBookSaveDir().also {
+            if (it == null) Toasters.get().toast("无法创建书籍保存目录")
+        }
+    }
+
+    /** 单次尝试打开保存目录 (授权失效/目录建不出返回 null, 由调用方决定是否重选)。 */
+    private fun tryOpenBookSaveDir(): Pair<File, IosSecurityScopeLease>? {
+        val path = effectiveBookSaveDir() ?: return null
         val lease = try {
-            IosSecurityScopedStorage.acquireLease(path, DirUsage.Export)
+            IosSecurityScopedStorage.acquireLease(path, DirUsage.BookTree)
         } catch (e: Exception) {
-            rememberBookExportDir(null)
-            AppLog.put("导出目录不可用, 已清除记忆目录\n${e.message}", e)
-            Toasters.get().toast("导出目录不可用，请重新选择")
+            AppLog.put("书籍保存目录不可用\n${e.message}", e)
             return null
         }
         val dir = File(path)
         if (!dir.isDirectory && !dir.mkdirs()) {
             lease.close()
-            Toasters.get().toast("无法创建导出目录")
             return null
         }
         return dir to lease
@@ -995,10 +983,6 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 
     private fun exportCustomBooks(books: List<Book>, scopeChapters: Set<Int>, size: Int) {
         if (books.isEmpty()) return
-        if (effectiveBookExportDir() == null) {
-            selectExportFolder(books)
-            return
-        }
         enqueueExport(books, label = " (自定义章节)") { ExportMode.CustomEpub(scopeChapters, size) }
     }
 

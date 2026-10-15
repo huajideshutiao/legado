@@ -3,6 +3,7 @@
 package io.legado.app.help.crash
 
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.LOG_DIR_NAME
 import io.legado.app.constant.fileNameFormat
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.utils.File
@@ -22,9 +23,9 @@ import kotlinx.cinterop.ExperimentalForeignApi
  * okio 的分配/异常路径可能二次崩溃。故这里整条包在 runCatching 里, 任何一步失败都静默。
  *
  * # 目录
- * `{filesDir}/logs/crash/`。iOS 的 filesDir 就是沙盒 Documents (Info.plist 已开
- * `UIFileSharingEnabled`), 用户可经系统"文件" App 直接取出, 不必连电脑抓 `.ips`。
- * `AppFilesDirs` 未注册时回退 [fallbackDir] (iOS: 沙盒 `Documents/logs/crash`, 与 filesDir
+ * `{filesDir}/log/` (运行日志与崩溃日志同目录, 靠文件名前缀区分)。iOS 的 filesDir 就是沙盒 Documents
+ * (Info.plist 已开 `UIFileSharingEnabled`), 用户可经系统"文件" App 直接取出, 不必连电脑抓 `.ips`。
+ * `AppFilesDirs` 未注册时回退 [fallbackDir] (iOS: 沙盒 `Documents/log`, 与 filesDir
  * 同一路径; 鸿蒙: 进程工作目录) —— 回退不引入新的写权限依赖。
  */
 object NativeCrashLogWriter {
@@ -45,11 +46,11 @@ object NativeCrashLogWriter {
      */
     val crashDir: String
         get() = runCatching {
-            AppFilesDirs.get().filesDir.trimEnd('/', '\\') + "/logs/crash"
+            AppFilesDirs.get().filesDir.trimEnd('/', '\\') + "/" + LOG_DIR_NAME
         }.getOrDefault(fallbackDir)
 
     /** provider 未就绪时的回退目录。 */
-    private val fallbackDir: String = nativeCrashHomeDir() + "/logs/crash"
+    private val fallbackDir: String = nativeCrashHomeDir() + "/" + LOG_DIR_NAME
 
     /**
      * 单个崩溃日志绝对路径 (供分享用)。
@@ -212,9 +213,9 @@ internal fun installNativeUnhandledHook() {
  * 进程沙盒内与 `filesDir` 等价的根目录 (iOS: 容器根的 Documents 子目录; 鸿蒙: 当前工作目录)。
  *
  * iOS 上 `NSHomeDirectory()` 返回的是**容器根** (`.../Application/<UUID>`), 不是 Documents。
- * 直接拿它拼 `/logs/crash` 会把日志建到容器根, 而那里不在文件共享范围内 (只有 Documents 经
+ * 直接拿它拼 `/log` 会把日志建到容器根, 而那里不在文件共享范围内 (只有 Documents 经
  * `UIFileSharingEnabled` 暴露), 用户与崩溃日志读取端都拿不到 —— 实测模拟器容器里同时出现了
- * 容器根 `logs/crash` 与 `Documents/logs/crash` 两个目录。
+ * 容器根 `log` 与 `Documents/log` 两个目录。
  */
 internal expect fun nativeCrashHomeDir(): String
 

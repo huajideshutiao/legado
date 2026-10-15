@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit
  *
  * 平台差异经参数注入: 参数头内容由调用方给 ([jvmRuntimeParams] 提供 JVM 通用项,
  * Android 端另传机型/SDK/WebView 项), 落盘目录由调用方给
- * (Android=外部缓存 crash 子目录 + SAF 备份路径, 桌面=缓存目录+用户导出目录)。
+ * (Android=外部缓存 log 目录 + SAF 书籍保存位置, 桌面=缓存 log 目录 + 书籍保存位置)。
  */
 object CrashLogWriter {
 
@@ -41,7 +41,7 @@ object CrashLogWriter {
     }
 
     /**
-     * 便捷入口: 取一次快照并落到 [dirs] 每个目录各一份 (对齐 app 端"备份路径 + 外部缓存"两份)。
+     * 便捷入口: 取一次快照并落到 [dirs] 每个目录各一份 (对齐 app 端"书籍保存位置 + 外部缓存"两份)。
      *
      * @return 实际写成功的文件列表
      */

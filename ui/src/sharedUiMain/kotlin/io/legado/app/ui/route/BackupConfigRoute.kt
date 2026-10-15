@@ -26,16 +26,15 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.DirUsage
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.AppWebDavShared
+import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.HelpVersion
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.LocalConfigProviders
 import io.legado.app.help.config.LocalConfigShared
-import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.storage.BackupConfigShared
 import io.legado.app.help.storage.BackupShared
-import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.storage.RestoreShared
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AlertButton
@@ -43,6 +42,7 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.preference.rememberPrefState
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.config.BackupConfigScreen
@@ -53,6 +53,8 @@ import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
+import io.legado.app.ui.root.ensureBookSaveDirSelected
+import io.legado.app.ui.root.reselectBookSaveDir
 import io.legado.app.ui.widget.dialog.HelpDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.format
@@ -61,6 +63,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.ui.generated.resources.Res
+import legado.ui.generated.resources.auto_backup_no_book_save_dir
 import legado.ui.generated.resources.backup_fail
 import legado.ui.generated.resources.backup_restore
 import legado.ui.generated.resources.backup_success
@@ -71,7 +74,6 @@ import legado.ui.generated.resources.loading
 import legado.ui.generated.resources.ok
 import legado.ui.generated.resources.restore
 import legado.ui.generated.resources.restore_ignore
-import legado.ui.generated.resources.select_backup_path
 import legado.ui.generated.resources.select_restore_file
 import legado.ui.generated.resources.web_dav_account_s
 import legado.ui.generated.resources.web_dav_pw_s
@@ -87,8 +89,6 @@ import org.jetbrains.compose.resources.stringResource
  *   (对照 app 端 restoreDoc.launch + viewModel.restore)
  * - 备份忽略项: 用 [AppAlertDialog] 多选列表 + [BackupConfigShared] 实现
  *   (对照 app 端 backupIgnore alert multiChoiceItems)
- * - 选择备份路径: [PlatformServiceProviders.files.pickDirectory] + 写 PreferKey.backupPath
- *   (对照 app 端 selectBackupPath.launch + AppConfig.backupPath = uri.toString())
  * - 备份: [BackupShared.backupLocked] + [WaitDialog] (对照 app 端 BackupConfigHost.backup + WaitDialog)
  * - 恢复: [AppWebDavShared.upConfig] + [AppWebDavShared.getBackupNames] + [AppSelectorDialog] +
  *   [AppWebDavShared.restoreWebDav] + [WaitDialog]; WebDav 无备份时弹 [AppAlertDialog] 回退本地
@@ -100,14 +100,17 @@ fun BackupConfigRoute(
     navigator: AppNavigator,
     screenModelStore: ScreenModelStore,
 ) {
-    val pref = PreferenceProviders.get()
     val appConfig = remember { AppConfigProviders.get() }
 
     // Summary 占位符 (对照 app 端 getString(R.string.xxx))
     val webDavUrlSStr = stringResource(Res.string.web_dav_url_s)
     val webDavAccountSStr = stringResource(Res.string.web_dav_account_s)
     val webDavPwSStr = stringResource(Res.string.web_dav_pw_s)
-    val selectBackupPathStr = stringResource(Res.string.select_backup_path)
+    // 未设置书籍保存位置时自动备份不会执行 (备份产物落该目录): 在设置页明确告知
+    val autoBackupNoDirWarning = stringResource(Res.string.auto_backup_no_book_save_dir)
+    val bookSaveDirPref by rememberPrefState(PreferKey.defaultBookTreeUri) {
+        it.getStringOrNull(PreferKey.defaultBookTreeUri)
+    }
     // 顶栏标题 (对照 app 端 R.string.backup_restore)
     val titleStr = stringResource(Res.string.backup_restore)
     // 动作/对话框文案 (对照 app 端 R.string.restore/select_restore_file/ok/cancel)
@@ -133,7 +136,7 @@ fun BackupConfigRoute(
     // WebDav 无备份时回退本地 alert (对照 app 端 activity.alert "WebDav无备份文件")
     var showNoBackupAlert by remember { mutableStateOf(false) }
 
-    // lateinit 让 onBackup/onSelectBackupPath lambda 内可引用 screenModel.dispatch
+    // lateinit 让 onBackup lambda 内可引用 screenModel.dispatch
     // (factory 内部 lambda 延迟执行, 实际调用时 screenModel 已赋值)
     lateinit var screenModel: BackupConfigScreenModel
 
@@ -194,51 +197,23 @@ fun BackupConfigRoute(
 
     screenModel = screenModelStore.getOrCreateTyped(entry) {
         BackupConfigScreenModel(
-            // 备份: 读 backupPath, 空则用平台默认落地目录 (桌面=文档目录), 平台要求选目录时先 SAF 选;
-            // 非空直接 BackupShared.backupLocked + WaitDialog
-            // (对照 app 端 BackupConfigHost.backup + viewModel.backup + WaitDialog)
+            // 备份: 落用户在"书籍保存位置"选定的目录 (与导出书籍/下载书籍同一处);
+            // 未设置先拉选择器, 已设置先预检可写性, 不可写重新选
             onBackup = { uploadToWebDav ->
                 val services = PlatformServiceProviders.get()
-                val backupPath = pref.getStringOrNull(PreferKey.backupPath)
-                val defaultDir = DataStorageProviders.getOrNull()?.defaultBackupDir
-                if (backupPath.isNullOrBlank() && defaultDir != null) {
-                    // 桌面/iOS: 有平台惯例目录, 不打扰用户 (不写 prefs, 设置项仍显示"未设置")
-                    startBackup(defaultDir, uploadToWebDav)
-                } else if (backupPath.isNullOrBlank()) {
-                    // 没设路径: SAF 选目录, 选完写 prefs + 立即备份 (对照 app 端 backupDir.launch)
-                    screenModel.scope.launch {
-                        val path = withContext(IoDispatcher) {
-                            services.files.pickDirectory(DirUsage.Backup)
-                        }
-                        if (path != null) {
-                            pref.putString(PreferKey.backupPath, path)
-                            screenModel.dispatch(
-                                BackupConfigUiEvent.UpdateBackupPathSummary(path)
-                            )
-                            startBackup(path, uploadToWebDav)
-                        }
+                screenModel.scope.launch {
+                    if (!ensureBookSaveDirSelected()) return@launch
+                    val backupPath = effectiveBookSaveDir() ?: return@launch
+                    val canWrite = withContext(IoDispatcher) {
+                        services.files.checkWrite(backupPath, DirUsage.BookTree)
                     }
-                } else {
-                    // 对照 app 端 backup(): 已设路径先 checkWrite, 不可写则重新选目录再备份
-                    screenModel.scope.launch {
-                        val canWrite = withContext(IoDispatcher) {
-                            services.files.checkWrite(backupPath, DirUsage.Backup)
-                        }
-                        if (canWrite) {
-                            startBackup(backupPath, uploadToWebDav)
-                        } else {
-                            // 对照 app 端 backupDir.launch(): 重新选目录, 选完写 prefs + 立即备份
-                            val path = withContext(IoDispatcher) {
-                                services.files.pickDirectory(DirUsage.Backup)
-                            }
-                            if (path != null) {
-                                pref.putString(PreferKey.backupPath, path)
-                                screenModel.dispatch(
-                                    BackupConfigUiEvent.UpdateBackupPathSummary(path)
-                                )
-                                startBackup(path, uploadToWebDav)
-                            }
-                        }
+                    if (canWrite) {
+                        startBackup(backupPath, uploadToWebDav)
+                    } else {
+                        // 选定目录已不可写: 重新选一次 (与各端"去设置目录"出口同一入口), 取消则中止本次备份
+                        if (!reselectBookSaveDir()) return@launch
+                        val path = effectiveBookSaveDir() ?: return@launch
+                        startBackup(path, uploadToWebDav)
                     }
                 }
             },
@@ -296,19 +271,6 @@ fun BackupConfigRoute(
                 // 对照 app 端 restoreDoc.launch (HandleFileContract.FILE + allowExtensions=zip)
                 startRestoreFromLocal()
             },
-            // SAF 选目录 + 写 prefs + 更新 summary
-            // (对照 app 端 selectBackupPath.launch + AppConfig.backupPath = uri.toString())
-            onSelectBackupPath = {
-                screenModel.scope.launch {
-                    val path = withContext(IoDispatcher) {
-                        PlatformServiceProviders.get().files.pickDirectory(DirUsage.Backup)
-                    }
-                    if (path != null) {
-                        pref.putString(PreferKey.backupPath, path)
-                        screenModel.dispatch(BackupConfigUiEvent.UpdateBackupPathSummary(path))
-                    }
-                }
-            },
             onRestoreIgnore = { showRestoreIgnore = true },
         )
     }
@@ -360,16 +322,6 @@ fun BackupConfigRoute(
                 BackupConfigUiEvent.UpdateWebDavDeviceNameSummary(appConfig.webDavDeviceName)
             )
         }
-        if (state.backupPathSummary.isEmpty()) {
-            // 未设置时显示平台默认落地目录 (桌面=文档目录), 让用户知道备份实际存在哪
-            screenModel.dispatch(
-                BackupConfigUiEvent.UpdateBackupPathSummary(
-                    pref.getStringOrNull(PreferKey.backupPath)?.takeIf { it.isNotBlank() }
-                        ?: DataStorageProviders.getOrNull()?.defaultBackupDir
-                        ?: selectBackupPathStr
-                )
-            )
-        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -393,8 +345,7 @@ fun BackupConfigRoute(
             webDavPasswordSummary = state.webDavPasswordSummary,
             webDavDirSummary = state.webDavDirSummary,
             webDavDeviceNameSummary = state.webDavDeviceNameSummary,
-            backupPathSummary = state.backupPathSummary,
-            onBackupPath = { screenModel.dispatch(BackupConfigUiEvent.SelectBackupPath) },
+            bookSaveDirWarning = autoBackupNoDirWarning.takeIf { bookSaveDirPref.isNullOrBlank() },
             onWebDavBackup = { screenModel.dispatch(BackupConfigUiEvent.Backup) },
             onWebDavBackupLong = { screenModel.dispatch(BackupConfigUiEvent.BackupLocal) },
             onWebDavRestore = { screenModel.dispatch(BackupConfigUiEvent.Restore) },

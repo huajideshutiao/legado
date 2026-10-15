@@ -40,7 +40,7 @@ private object NativeRegexErrorHandler : RegexErrorHandler {
 
     override fun saveCrashInfo(exception: Throwable) {
         // 落盘走崩溃日志目录 (与 CrashHandler.saveCrashInfo2File 同目的地:
-        // {filesDir}/logs/crash, 用户可经系统"文件"App 取出), 同时进 AppLog 内存通道
+        // {filesDir}/log, 用户可经系统"文件"App 取出), 同时进 AppLog 内存通道
         runCatching {
             NativeCrashLogWriter.writeException(
                 kind = "regex-timeout",

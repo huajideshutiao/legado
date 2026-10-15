@@ -243,7 +243,7 @@ interface PlatformCapabilities {
     /** 显示崩溃日志 (对照 onShowCrashLogs / showDialogFragment<CrashLogsDialog>) */
     fun showCrashLogs() = unsupported("查看崩溃日志")
 
-    /** 保存日志到备份目录 (对照 onSaveLog / saveLog) */
+    /** 保存日志到书籍保存位置 (对照 onSaveLog / saveLog) */
     fun saveLog() = unsupported("保存日志")
 
     /** 创建堆转储 (对照 onCreateHeapDump / createHeapDump) */
@@ -509,26 +509,16 @@ interface PlatformCapabilities {
     fun toggleExportWebDav() = unsupported("切换 WebDav 导出")
 
     /**
-     * 选择导出文件夹 (对照 selectExportFolderMenu / selectExportFolder)。
-     *
-     * 选定结果落本机配置空间 [io.legado.app.help.config.rememberBookExportDir]
-     * (原版把同一个选择结果存在 ACache "exportBookPath" —— 缓存会被清理动作抹掉,
-     * 且选定的是本机目录/授权引用, 不能随备份走到别的设备); 导出流程在未选过时拉起本入口,
-     * 取值见 [io.legado.app.help.config.effectiveBookExportDir]。
-     */
-    fun selectExportFolder(books: List<Book>) = unsupported("选择导出目录")
-
-    /** 弹出导出配置对话框 (对照 showExportConfig) */
-    fun showExportConfig() = unsupported("导出配置")
-
-    /**
      * 弹出自定义导出章节配置对话框 (对照 app 端 configExportSection / dialog_select_section_export.xml):
      * 导出全部 / 自定义导出 (章节范围 + epub 分卷大小 + epub 文件名 JS 规则)。
      *
-     * @param path 已选定的导出目录
+     * @param path 已选定的导出目录 (书籍保存位置)
      * @param books 待导出书籍 (自定义导出时逐本按 epubScope/epubSize 启动导出)
      */
     fun showExportSectionConfig(path: String, books: List<Book>) = unsupported("自定义导出章节")
+
+    /** 弹出导出配置对话框 (对照 showExportConfig) */
+    fun showExportConfig() = unsupported("导出配置")
 
     /** "导出替换"开关当前值 (对照 AppConfig.exportUseReplace) */
     fun exportUseReplace(): Boolean = false
@@ -806,8 +796,16 @@ private suspend fun awaitBookTreeUriSelection(): String? {
  *
  * @return true = 保存位置已可用 (原本已设置, 或本次已选定); false = 用户取消
  */
-suspend fun ensureBookSaveDirSelected(): Boolean {
-    if (effectiveBookSaveDir() != null) return true
+suspend fun ensureBookSaveDirSelected(): Boolean =
+    effectiveBookSaveDir() != null || reselectBookSaveDir()
+
+/**
+ * 重新拉起"书籍保存位置"选择器并覆盖已记住的目录 —— 已设置但不可用/不可写 (目录被删、授权失效)
+ * 时用, 与各端"去设置目录"出口同一入口 ([PlatformCapabilities.pickBookTreeUri]) 与偏好键。
+ *
+ * @return true = 本次已选定新目录 (已覆盖旧值); false = 用户取消 (既有目录不动)
+ */
+suspend fun reselectBookSaveDir(): Boolean {
     val uri = awaitBookTreeUriSelection()?.takeIf { it.isNotBlank() } ?: return false
     PreferenceProviders.get().putString(PreferKey.defaultBookTreeUri, uri)
     return true

@@ -302,8 +302,8 @@ async function pickDirectoryNative(): Promise<FilePickerResponse> {
  * 选定目录后: 持久化 (READ_MODE | WRITE_MODE, 失败即本次选择失败) → fileUri 官方转换沙箱路径。
  * 转换不做路径校验 (官方约定), 可访问性由 Kotlin 侧真实检查。
  *
- * 该选择器被多个入口共用 (书籍保存位置/导入目录/备份路径/导出目录/图片保存目录), 其中备份、
- * 导出、书籍保存、图片保存都要往选定目录里写文件; 官方《授权持久化》写明 Picker 选文件或文件夹
+ * 该选择器被多个入口共用 (书籍保存位置/导入目录/单文件导出目录/图片保存目录), 其中导出、
+ * 书籍保存、图片保存都要往选定目录里写文件; 官方《授权持久化》写明 Picker 选文件或文件夹
  * 得到的授权是"临时读写权限", PolicyInfo.operationMode 可组合 READ_MODE | WRITE_MODE
  * (@ohos.fileshare.d.ts 的取值说明同), 故按读写一起持久化 —— 只持久化 READ_MODE 会让
  * 重启后激活到只读, 之后的写入被拒。

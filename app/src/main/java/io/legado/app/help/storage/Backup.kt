@@ -6,13 +6,13 @@ import androidx.core.net.toUri
 import io.legado.app.App
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.extension.MangaExtensionManager
 import io.legado.app.lib.theme.MonetColorExtract
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.copyToDocumentAtomically
+import io.legado.app.utils.createFolderIfNotExist
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
 import io.legado.app.utils.isContentScheme
@@ -42,7 +42,7 @@ object Backup {
      */
     @Suppress("UNUSED_PARAMETER")
     fun autoBack(context: Context) {
-        BackupShared.autoBack(AppConfig.backupPath)
+        BackupShared.autoBack()
     }
 
     @Suppress("UNUSED_PARAMETER")
@@ -57,7 +57,7 @@ object Backup {
     }
 
     /**
-     * 复制备份 zip 到 SAF 目录 (content scheme 专用)。
+     * 复制备份 zip 到 SAF 目录 (content scheme 专用) 下的 [subDir] 子目录 (不存在则建)。
      *
      * 目标名上已有同名旧文档时由 [copyToDocumentAtomically] 先把它挪成契约过渡件, 就位成功后删
      * 过渡件, 失败则改回目标名 —— 不会旧件已清而新件没写成。备份包含图集与封面, zip 体积
@@ -65,11 +65,14 @@ object Backup {
      * 时由该入口按既有回落直写 (目标名上可能出现半截)。
      */
     @Throws(Exception::class)
-    fun copyBackup(srcZipPath: String, uri: Uri, fileName: String) {
+    fun copyBackup(srcZipPath: String, uri: Uri, fileName: String, subDir: String) {
         val treeDoc = FileDoc.fromDir(uri)
+        // SAF 树引用不能拼路径: 子目录在树内建出 (提供方拒绝建目录时如实报失败)
+        val targetDir = runCatching { treeDoc.createFolderIfNotExist(subDir) }
+            .getOrElse { throw NoStackTraceException("创建备份目录失败: $subDir") }
         FileInputStream(srcZipPath).use { inputS ->
-            if (!copyToDocumentAtomically(App.instance, treeDoc.uri, fileName, inputS)) {
-                throw NoStackTraceException("写入备份目录失败: $fileName")
+            if (!copyToDocumentAtomically(App.instance, targetDir.uri, fileName, inputS)) {
+                throw NoStackTraceException("写入书籍保存位置失败: $fileName")
             }
         }
     }
@@ -90,10 +93,15 @@ object AndroidBackupRestoreHook : BackupRestoreHook {
         LocalConfig.lastBackup = System.currentTimeMillis()
     }
 
-    /** content:// 目录走 SAF 复制; 普通路径交回 shared 的文件复制。 */
-    override fun copyBackupTo(zipFilePath: String, destination: String, fileName: String): Boolean {
+    /** content:// 目录走 SAF 复制 (在树内建出备份子目录); 普通路径交回 shared 的文件复制。 */
+    override fun copyBackupTo(
+        zipFilePath: String,
+        destination: String,
+        fileName: String,
+        subDir: String,
+    ): Boolean {
         if (!destination.isContentScheme()) return false
-        Backup.copyBackup(zipFilePath, destination.toUri(), fileName)
+        Backup.copyBackup(zipFilePath, destination.toUri(), fileName, subDir)
         return true
     }
 

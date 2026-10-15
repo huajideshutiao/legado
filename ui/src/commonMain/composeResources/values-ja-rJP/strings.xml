@@ -4,8 +4,6 @@
     <string name="app_name_a">Legado·A</string>
     <string name="receiving_shared_label">Legado·search</string>
     <string name="tip_perm_request_storage">Legado needs storage access to find and read books. please go "App Settings" to allow "Storage permission".</string>
-    <string name="backup_path">Backup to</string>
-    <string name="select_backup_path">Please select a backup path.</string>
     <string name="dialog_title">Prompt</string>
     <string name="dialog_cancel">Cancel</string>
     <string name="dialog_setting">Go to Settings</string>
@@ -69,6 +67,7 @@
     <string name="pt_auto_refresh">Auto-refresh</string>
     <string name="ps_auto_refresh">Update books automatically when opening the software</string>
     <string name="backup_restore">Backup and restore</string>
+    <string name="auto_backup_no_book_save_dir">No book save location set; automatic backup will not run</string>
     <string name="web_dav_set">WebDav settings</string>
     <string name="web_dav_set_import_old">WebDav settings/Import legacy data</string>
     <string name="backup">Backup</string>
@@ -505,7 +504,6 @@
     <string name="background_image">Background image</string>
     <string name="copy_book_url">Copy book URL</string>
     <string name="copy_toc_url">Copy chapters URL</string>
-    <string name="export_folder">Export to a folder</string>
     <string name="export_charset">Exported text coding</string>
     <string name="export_to_web_dav">Export to WebDav</string>
     <string name="debug">Debug</string>

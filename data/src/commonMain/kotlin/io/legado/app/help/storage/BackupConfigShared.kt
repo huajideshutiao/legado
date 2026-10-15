@@ -83,7 +83,6 @@ object BackupConfigShared {
     private val ignorePrefKeys = arrayOf(
         PreferKey.defaultCover,
         PreferKey.defaultCoverDark,
-        PreferKey.backupPath,
         PreferKey.defaultBookTreeUri,
         PreferKey.webDavDeviceName,
         PreferKey.launcherIcon,

@@ -17,8 +17,6 @@ import io.legado.app.docsUriToMountPath
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.config.PreferenceProviders
-import io.legado.app.help.config.effectiveBookExportDir
-import io.legado.app.help.config.rememberBookExportDir
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.book.getExportFileName
@@ -53,6 +51,7 @@ import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.ensureBookSaveDirSelected
 import io.legado.app.ui.root.pushExportDispatch
+import io.legado.app.ui.root.reselectBookSaveDir
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.File
 import io.legado.app.utils.GSON
@@ -90,10 +89,10 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     override val capabilityScope: CoroutineScope get() = scope
 
     /**
-     * 保存日志到备份目录 (对照原版 `AboutFragment.saveLog` 的三段式: 未设备份目录则提示中止、
-     * 未开记录日志只提醒、写成功后提示"已保存至备份目录")。
+     * 保存日志到书籍保存位置 (对照原版 `AboutFragment.saveLog` 的三段式: 未设置则提示中止、
+     * 未开记录日志只提醒、写成功后提示"已保存至书籍保存位置")。
      *
-     * 打包与落盘见 nativeMain 的 [NativeSaveLog] —— 它要用备份目录的授权通道
+     * 打包与落盘见 nativeMain 的 [NativeSaveLog] —— 它要用书籍保存位置的授权通道
      * (`copyBackupIntoUserDir`), 那个声明在 nativeMain, 本源集可见。
      */
     override fun saveLog() {
@@ -488,21 +487,27 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
         services.notifications.cancelNotification(NotificationId.ExportBookService)
     }
 
-    // 导出书籍正文, 直接写进有效导出目录 (用户经目录选择器选定; 鸿蒙应用沙盒对文件管理器
-    // 不可见, 写进去用户找不着), 不经系统分享面板 (对照 app 端 ExportBookService 的落盘语义)
+    // 导出书籍正文, 直接写进"书籍保存位置" (与下载书籍/备份 zip 同一处; 未选过时先选目录),
+    // 本次新选定目录且开了自定义导出时先弹章节配置, 否则直接导出;
+    // 不经系统分享面板 (对照 app 端 ExportBookService 的落盘语义)
     override fun exportAllBooks(books: List<Book>) {
         if (books.isEmpty()) {
             Toasters.get().toast("书籍不能为空")
             return
         }
-        // 未选过目录时先选 (对照 BookshelfManageActivity.exportAll)
-        if (effectiveBookExportDir() == null) {
-            selectExportFolder(books)
-            return
+        scope.launch {
+            val hadDir = effectiveBookSaveDir() != null
+            // 未设置书籍保存位置时先选目录
+            if (!ensureBookSaveDirSelected()) return@launch
+            val dir = effectiveBookSaveDir() ?: return@launch
+            if (!hadDir && io.legado.app.utils.enableCustomExport()) {
+                showExportSectionConfig(dir, books)
+                return@launch
+            }
+            // 导出配置在此快照 (对照原版把 exportType 随 intent 传进服务)
+            val exportType = prefs.getInt(PreferKey.exportType, 0)
+            enqueueExport(books) { ExportMode.ByConfig(exportType) }
         }
-        // 导出配置在此快照 (对照原版把 exportType 随 intent 传进服务)
-        val exportType = prefs.getInt(PreferKey.exportType, 0)
-        enqueueExport(books) { ExportMode.ByConfig(exportType) }
     }
 
     /**
@@ -609,7 +614,7 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
                     currentCoroutineContext().ensureActive()
                     val exportDir = openExportDir()
                     if (exportDir == null) {
-                        // 目录不可用 (已提示并忘掉记忆目录): 本次不能导出, 剩余队列不再导
+                        // 目录不可用 (已拉起选择器重选仍不可用/用户取消): 本次不能导出, 剩余队列不再导
                         discardExportQueue()
                         break
                     }
@@ -655,54 +660,37 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     }
 
     /**
-     * 打开发送导出目录: 取有效导出目录 ([effectiveBookExportDir]) → 激活其持久化目录授权
-     * → 确保目录存在。
+     * 打开书籍保存目录: 激活其持久化目录授权 → 确保目录存在。
      *
      * 选定目录在应用沙盒之外, 按 POSIX 路径写入前必须先激活授权; 授权失效 (用户在系统里
-     * 撤销/换过目录) 时清掉记忆目录, 下次导出重新让用户选。
+     * 撤销/换过目录) 或目录建不出时, 拉起书籍保存位置选择器重选一次, 选中即继续本次导出;
+     * 用户取消则本次导出作罢。
      *
      * @return 可写目录; 已提示并返回 null 表示本次不能导出
      */
-    private fun openExportDir(): File? {
-        val path = effectiveBookExportDir() ?: return null
-        val dir = File(path)
-        val usable = try {
-            OhosDirAuthorizations.ensureActivatedFor(path, DirUsage.Export)
-            dir.isDirectory || dir.mkdirs()
-        } catch (e: Exception) {
-            AppLog.put("导出目录不可用\n${e.message}", e)
-            rememberBookExportDir(null)
-            Toasters.get().toast("导出目录不可用，请重新选择")
+    private suspend fun openExportDir(): File? {
+        tryOpenBookSaveDir()?.let { return it }
+        if (!reselectBookSaveDir()) {
+            Toasters.get().toast("书籍保存目录不可用，本次导出已取消")
             return null
         }
-        if (!usable) {
-            Toasters.get().toast("无法创建导出目录")
-            return null
+        return tryOpenBookSaveDir().also {
+            if (it == null) Toasters.get().toast("无法创建书籍保存目录")
         }
-        return dir
     }
 
-    /**
-     * 选择导出文件夹 (对照 BookshelfManageActivity.selectExportFolder 与 exportDir 回调):
-     * 复用 [PlatformServiceProviders] 的目录选择器选一个用户可见的公共目录
-     * (DocumentViewPicker + 授权持久化写模式 + 官方转换路径 + 记入授权表供重启后激活),
-     * 选中后记入设备本地配置空间 ([rememberBookExportDir]); 开了自定义导出章节先弹章节配置, 否则直接导出。
-     * 目录按 [DirUsage.Export] 登记: 只放行导出写入, 不放行书籍文件访问。
-     */
-    override fun selectExportFolder(books: List<Book>) {
-        scope.launch {
-            val path = services.files.pickDirectory(DirUsage.Export) ?: return@launch
-            rememberBookExportDir(path)
-            if (books.isEmpty()) return@launch
-            // 对照 BookshelfManageActivity.exportDir 回调的 enableCustomExport():
-            // 开关与"导出类型为 epub"两条相与 (同 [io.legado.app.utils.enableCustomExport], 不分第二份判据);
-            // 本类同名成员只是开关当前值 (菜单勾选态), 故走全限定名
-            if (io.legado.app.utils.enableCustomExport()) {
-                showExportSectionConfig(path, books)
-            } else {
-                exportAllBooks(books)
-            }
+    /** 单次尝试打开保存目录 (授权失效/目录建不出返回 null, 由调用方决定是否重选)。 */
+    private fun tryOpenBookSaveDir(): File? {
+        val path = effectiveBookSaveDir() ?: return null
+        val dir = File(path)
+        val usable = try {
+            OhosDirAuthorizations.ensureActivatedFor(path, DirUsage.BookTree)
+            dir.isDirectory || dir.mkdirs()
+        } catch (e: Exception) {
+            AppLog.put("书籍保存目录不可用\n${e.message}", e)
+            return null
         }
+        return dir.takeIf { usable }
     }
 
     /**
@@ -712,7 +700,7 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
      * 自绘对话框由 ArkTS 侧承载 (鸿蒙系统提示对话框只有标题/正文/按钮, 承载不了输入框, 见
      * SysDialogBridgeHandler.ets 的 form 能力)。
      *
-     * @param path 刚选定的导出目录; 两个导出分支都经 [effectiveBookExportDir] 重取
+     * @param path 书籍保存位置; 两个导出分支都经 [effectiveBookSaveDir] 重取
      *   (与本参数同值, 与 iOS 同项实现同口径)
      * @param books 待导出书籍
      */
@@ -791,10 +779,6 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
      */
     private fun exportCustomBooks(books: List<Book>, scopeChapters: Set<Int>, size: Int) {
         if (books.isEmpty()) return
-        if (effectiveBookExportDir() == null) {
-            selectExportFolder(books)
-            return
-        }
         enqueueExport(books, label = " (自定义章节)") { ExportMode.CustomEpub(scopeChapters, size) }
     }
 

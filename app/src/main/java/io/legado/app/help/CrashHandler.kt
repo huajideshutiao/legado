@@ -9,8 +9,10 @@ import androidx.webkit.WebViewCompat
 import io.legado.app.App
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.LOG_DIR_NAME
 import io.legado.app.constant.appInfo
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.crash.CrashLogWriter
 import io.legado.app.help.crash.CrashMarkerProviders
@@ -114,7 +116,7 @@ class CrashHandler(val context: Context) : Thread.UncaughtExceptionHandler {
         }
 
         /**
-         * 保存错误信息到文件中: 取一次快照, 配置的备份路径 (SAF) 与外部缓存各落一份。
+         * 保存错误信息到文件中: 取一次快照, 书籍保存位置的日志目录 (SAF) 与外部缓存各落一份。
          *
          * 参数头组装/cause 链拼接/文件名/7 天清理与桌面端同链路, 都在 [CrashLogWriter];
          * 两处落盘传同一份快照, 文件名一致 (列表侧按名去重与回读)。
@@ -122,17 +124,17 @@ class CrashHandler(val context: Context) : Thread.UncaughtExceptionHandler {
         fun saveCrashInfo2File(ex: Throwable) {
             val snapshot = CrashLogWriter.snapshot(ex, paramsMap)
             try {
-                val backupPath = AppConfig.backupPath
-                    ?: throw NoStackTraceException("备份路径未配置")
-                val uri = backupPath.toUri()
+                val savePath = effectiveBookSaveDir()
+                    ?: throw NoStackTraceException("书籍保存位置未配置")
+                val uri = savePath.toUri()
                 val fileDoc = FileDoc.fromUri(uri, true)
-                fileDoc.createFileIfNotExist(snapshot.fileName, "crash")
+                fileDoc.createFileIfNotExist(snapshot.fileName, LOG_DIR_NAME)
                     .writeText(snapshot.text)
             } catch (_: Exception) {
             }
             kotlin.runCatching {
                 App.instance.externalCacheDir?.let { rootFile ->
-                    CrashLogWriter.save(snapshot, listOf(File(rootFile, "crash")))
+                    CrashLogWriter.save(snapshot, listOf(File(rootFile, LOG_DIR_NAME)))
                 }
             }
         }

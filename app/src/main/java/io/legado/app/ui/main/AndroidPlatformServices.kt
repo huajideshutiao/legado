@@ -20,9 +20,10 @@ import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.DirUsage
+import io.legado.app.constant.LOG_DIR_NAME
 import io.legado.app.constant.PreferKey
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.crash.CRASH_LOG_FILE_PREFIX
+import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.config.resolveImagePath
 import io.legado.app.help.file.AndroidDirAuthorizations
 import io.legado.app.model.bakeCoverImageFile
@@ -740,7 +741,7 @@ private fun videoTargetOfUri(uri: Uri, mimeIsVideo: Boolean): VideoPlayTarget.Di
 /**
  * 崩溃日志提供者 Android 实现 (对照 app 端 CrashLogsDialog.CrashViewModel)。
  *
- * - loadCrashLogs: 从 externalCacheDir/crash 和备份路径收集崩溃日志文件
+ * - loadCrashLogs: 从 externalCacheDir/crash 和书籍保存位置收集崩溃日志文件
  * - readCrashLog: 读取单个崩溃日志文件内容
  * - clearCrashLogs: 删除所有崩溃日志文件
  * - shareCrashLog: 通过 Intent 分享文件
@@ -752,18 +753,18 @@ private class AndroidCrashLogProvider(
     override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> =
         withContext(Dispatchers.IO) {
             val list = arrayListOf<FileDoc>()
-            // 外部缓存目录 crash 子目录 (对照 CrashViewModel.initData)。
-            // 只收 crash- 前缀: 该目录还放着"上次异常退出"标记文件, 它不是崩溃现场, 不该进列表
-            activity.externalCacheDir?.getFile("crash")
+            // 外部缓存目录的日志目录 (对照 CrashViewModel.initData)。
+            // 只收 crash- 前缀: 该目录同时放着运行日志与"上次异常退出"标记文件, 都不是崩溃现场
+            activity.externalCacheDir?.getFile(LOG_DIR_NAME)
                 ?.listFiles { it.isFile && it.name.startsWith(CRASH_LOG_FILE_PREFIX) }
                 ?.forEach {
                     list.add(FileDoc.fromFile(it))
                 }
-            // 备份路径下的 crash 目录 (对照 CrashViewModel.initData backupPath 分支)
-            val backupPath = AppConfig.backupPath
-            if (!backupPath.isNullOrEmpty()) {
-                val uri = backupPath.toUri()
-                FileDoc.fromUri(uri, true).find("crash")?.list { !it.isDir }?.let {
+            // 书籍保存位置下的日志目录 (对照 CrashViewModel.initData backupPath 分支)
+            val savePath = effectiveBookSaveDir()
+            if (!savePath.isNullOrEmpty()) {
+                val uri = savePath.toUri()
+                FileDoc.fromUri(uri, true).find(LOG_DIR_NAME)?.list { !it.isDir }?.let {
                     list.addAll(it.filter { doc -> doc.name.startsWith(CRASH_LOG_FILE_PREFIX) })
                 }
             }
@@ -777,18 +778,18 @@ private class AndroidCrashLogProvider(
     }
 
     override suspend fun clearCrashLogs() = withContext(Dispatchers.IO) {
-        // 只删崩溃现场文件, 目录本身留着: 该目录还放着"上次异常退出"标记文件, 整目录删掉会把
+        // 只删崩溃现场文件, 目录本身留着: 该目录还放着运行日志与"上次异常退出"标记文件, 整目录删掉会把
         // 标记一起清掉, 下次启动就不再提示 (而用户清空日志并不等于否认刚才崩过)
-        activity.externalCacheDir?.getFile("crash")?.listFiles { it.isFile }?.forEach { file ->
+        activity.externalCacheDir?.getFile(LOG_DIR_NAME)?.listFiles { it.isFile }?.forEach { file ->
             if (file.name.startsWith(CRASH_LOG_FILE_PREFIX)) {
                 FileUtils.delete(file, false)
             }
         }
-        // 删备份路径下的 crash 目录里的崩溃现场 (SAF 侧只写崩溃日志, 无标记文件)
-        val backupPath = AppConfig.backupPath
-        if (!backupPath.isNullOrEmpty()) {
-            val uri = backupPath.toUri()
-            FileDoc.fromUri(uri, true).find("crash")?.list { !it.isDir }
+        // 删书籍保存位置下的日志目录里的崩溃现场 (SAF 侧只写崩溃日志, 无运行日志/标记文件)
+        val savePath = effectiveBookSaveDir()
+        if (!savePath.isNullOrEmpty()) {
+            val uri = savePath.toUri()
+            FileDoc.fromUri(uri, true).find(LOG_DIR_NAME)?.list { !it.isDir }
                 ?.filter { it.name.startsWith(CRASH_LOG_FILE_PREFIX) }
                 ?.forEach { it.delete() }
         }
@@ -801,17 +802,17 @@ private class AndroidCrashLogProvider(
         } ?: activity.share(fileDoc.uri, title = "share")
     }
 
-    /** 按 name 查找崩溃日志 FileDoc (先查缓存目录, 再查备份路径) */
+    /** 按 name 查找崩溃日志 FileDoc (先查缓存目录, 再查书籍保存位置) */
     private suspend fun findCrashFile(name: String): FileDoc? = withContext(Dispatchers.IO) {
         // 查缓存目录
-        activity.externalCacheDir?.getFile("crash")?.listFiles { it.isFile }
+        activity.externalCacheDir?.getFile(LOG_DIR_NAME)?.listFiles { it.isFile }
             ?.firstOrNull { it.name == name }
             ?.let { return@withContext FileDoc.fromFile(it) }
-        // 查备份路径
-        val backupPath = AppConfig.backupPath
-        if (!backupPath.isNullOrEmpty()) {
-            val uri = backupPath.toUri()
-            FileDoc.fromUri(uri, true).find("crash")?.list { !it.isDir }
+        // 查书籍保存位置
+        val savePath = effectiveBookSaveDir()
+        if (!savePath.isNullOrEmpty()) {
+            val uri = savePath.toUri()
+            FileDoc.fromUri(uri, true).find(LOG_DIR_NAME)?.list { !it.isDir }
                 ?.firstOrNull { it.name == name }
                 ?.let { return@withContext it }
         }

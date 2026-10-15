@@ -1,5 +1,6 @@
 package io.legado.app.help.log
 
+import io.legado.app.constant.LOG_DIR_NAME
 import io.legado.app.help.crash.NativeCrashLogWriter
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.utils.File
@@ -9,7 +10,7 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 
 /**
- * native (iOS/鸿蒙) 端运行日志落盘: `{filesDir}/logs/appLog-<epochMillis>.txt`。
+ * native (iOS/鸿蒙) 端运行日志落盘: `{filesDir}/log/appLog-<epochMillis>.txt`。
  *
  * 只用 [io.legado.app.utils.File] + [AppFilesDirs], 无平台专属 API, 故上提 nativeMain
  * 供 [NativeAppLogHost] 落盘用 (原实现在 ohosMain); host 侧只保留 toast 这个真正的平台差异。
@@ -19,7 +20,7 @@ object NativeAppLogStore {
     private val lock = SynchronizedObject()
 
     /** 运行日志目录 (filesDir 计算 getter, 晚注入也自愈; 供应端打包日志取源)。 */
-    val logDir: String get() = AppFilesDirs.get().filesDir + "/logs"
+    val logDir: String get() = AppFilesDirs.get().filesDir + "/" + LOG_DIR_NAME
 
     /** 当日日志缓冲 (native File 无 appendText, 覆盖写整文件; recordLog 门控下有界)。 */
     private val buffer = StringBuilder()
@@ -51,13 +52,13 @@ object NativeAppLogStore {
 /**
  * 崩溃日志存储 (两端 `CrashLogProvider` 的数据源)。
  *
- * 只收 `{filesDir}/logs/crash/crash-*.log` —— 真正的崩溃现场, 由
+ * 只收 `{filesDir}/log/crash-*.log` —— 真正的崩溃现场, 由
  * [io.legado.app.help.crash.NativeCrashLogWriter] 经未捕获异常钩子落盘
  * (不受"记录日志"开关门控, 默认就在写)。
  *
- * 运行日志 (`{filesDir}/logs/appLog-*.txt`) 不在本列表内: 对照 app 端
- * `CrashLogsDialog.CrashViewModel.initData` 只收集 crash 目录, 运行日志走
- * [io.legado.app.ui.about.AppLogDialog] 这条独立通道 (入口在各页面菜单)。
+ * 运行日志 (`{filesDir}/log/appLog-*.txt`) 与崩溃日志同目录, 靠文件名前缀区分, 不列入本列表
+ * (对照 app 端 `CrashLogsDialog.CrashViewModel.initData` 只收 crash- 前缀; 运行日志走
+ * [io.legado.app.ui.about.AppLogDialog] 这条独立通道)。
  */
 object NativeCrashLogs {
 
