@@ -1,6 +1,7 @@
 package io.legado.app.ui.file
 
 import android.net.Uri
+import androidx.core.os.BundleCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentManager
@@ -55,13 +56,36 @@ class HandleFileLauncher(
     private val fragmentManager: FragmentManager,
     private val callback: (HandleFileContract.Result) -> Unit
 ) {
+    /** 本入口专属的结果标识: 同一界面多个选择入口各自收自己的结果, 并发不串。 */
+    private val requestKey = "handleFile_${System.identityHashCode(this)}"
+
+    init {
+        fragmentManager.setFragmentResultListener(requestKey, lifecycleOwner) { _, bundle ->
+            val result = HandleFileContract.Result(
+                BundleCompat.getParcelable(bundle, "result", Uri::class.java),
+                bundle.getInt("requestCode"),
+                bundle.getString("value")
+            )
+            callback(result)
+        }
+    }
+
     fun launch(input: (HandleFileContract.HandleFileParam.() -> Unit)? = null) {
         val param = HandleFileContract.HandleFileParam()
         input?.invoke(param)
         if (param.mode == HandleFileContract.IMAGE && param.allowExtensions.isEmpty()) {
             param.allowExtensions = arrayOf("jpg", "png", "bmp", "webp")
         }
-        // 经声明式宿主 (HandleFileHost) 渲染, 结果仍走本回调 (原 Fragment 结果监听语义)
-        HandleFileRequests.request(param, lifecycleOwner, callback)
+        HandleFileDialog.show(
+            fragmentManager,
+            requestKey,
+            param.mode,
+            param.title,
+            param.allowExtensions,
+            param.otherActions,
+            param.fileData,
+            param.value,
+            param.requestCode
+        )
     }
 }

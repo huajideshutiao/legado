@@ -13,8 +13,6 @@ import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.Theme
 import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.toast.Toasters
-import io.legado.app.ui.compose.dialogs.ComposeAlertDialogHost
-import io.legado.app.ui.file.HandleFileHost
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.videoDirectTarget
 import io.legado.app.ui.root.AppRoute
@@ -148,11 +146,6 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
             // 纯导入 (勾选六型/readConfig/unknown): 只挂共享导入宿主与壳内弹窗宿主,
             // 不渲染主界面页面
             DeepLinkImportHost()
-            // 文件选择/导出对话框宿主 (FileAssociationFragment 经 HandleFileLauncher 发起)
-            HandleFileHost()
-            // alert/selector DSL 请求宿主: 壳内提示框 (如文件格式不支持) 由壳自己渲染。
-            // 不挂则请求被主界面宿主渲染, 而主界面在壳之下 —— 框透得出来却点不动。
-            ComposeAlertDialogHost()
             // 收壳: 先等到有导入请求, 再等它被消费 (对话框关闭) → 结束透明壳回到原应用。
             // 不能直接 "pending 为空即 finish": 文件关联走嗅探/权限申请, 期间 pending 恒空;
             // 深链路径 handleIntent 已在组合前置好 pending, 第一步立即通过, 语义不变。

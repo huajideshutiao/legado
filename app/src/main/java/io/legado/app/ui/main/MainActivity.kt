@@ -102,9 +102,7 @@ import io.legado.app.ui.book.video.VideoPlayPlatformProviders
 import io.legado.app.ui.browser.AndroidWebView
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.compose.dialogs.alert
-import io.legado.app.ui.compose.dialogs.ComposeAlertDialogHost
 import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.file.HandleFileHost
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.reader.ReaderDictWord
 import io.legado.app.ui.reader.ReaderImageActionMenu
@@ -604,10 +602,10 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
                     capabilities = capabilities,
                 )
             }
-            // 书源 JS 弹窗/深链导入/查词/文件选择/alert DSL 等全局对话框宿主区:
+            // 书源 JS 弹窗/深链导入/查词等全局对话框宿主区:
             // 统一包 AppTheme —— 这些宿主挂在 LegadoApp 主题作用域外, 而宿主正文
-            // (AppAlertDialogContent/HandleFileDialogContent 等) 直接读 AppTheme.colors,
-            // 不包则弹窗即抛 AppColors not provided 崩溃 (对照原版 ComposeDialog 基类自带主题)
+            // (AppAlertDialogContent 等) 直接读 AppTheme.colors, 不包则弹窗即抛
+            // AppColors not provided 崩溃
             AppTheme {
                 // 书源 JS 弹窗事件桥宿主 (对照 desktop Main.kt / iOS MainViewController):
                 // 订阅 FlowBus(SOURCE_UI_REQUEST) 弹共享登录/源变量/验证码对话框
@@ -642,10 +640,6 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
                 ReaderImageActionMenu.Host()
                 // 查词对话框 (选中词 → 词典查询, 本地/在线词典规则; 四端同一份, 见 shared ReaderDictWord)
                 ReaderDictWord.Host()
-                // 文件选择/导出对话框宿主 (原 HandleFileDialog/FilePickerDialog Fragment 的声明式形态)
-                HandleFileHost()
-                // alert/selector DSL 请求宿主 (原 ComposeDialog 窗口的声明式形态)
-                ComposeAlertDialogHost()
             }
         }
     }

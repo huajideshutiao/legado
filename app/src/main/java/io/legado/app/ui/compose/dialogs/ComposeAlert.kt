@@ -13,10 +13,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -25,14 +23,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
+import io.legado.app.base.ComposeDialog
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialogContent
-import io.legado.app.ui.compose.component.AppDialog
-import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppAutoCompleteField
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppRadioButton
@@ -42,10 +36,10 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * Compose 版 alert DSL，签名对齐 lib/dialogs 的 alert（供机械替换 import）。
- * 渲染宿主为 ComposeAlertDialogHost (挂主界面), 正文用 [AppAlertDialogContent]。
+ * 承载是窗口级对话框 [ComposeDialog]（挂在发起它的 Activity 上）, 正文用 [AppAlertDialogContent]。
  * customView 槽由 View `()->View` 改为 `@Composable`——迁移时 customView 内容需 Compose 化。
  *
- * 返回 [AlertDialogHandle]（是 DialogInterface），dismiss()/cancel() 与旧 AlertDialog 兼容。
+ * 返回 [ComposeDialog]（是 DialogInterface），dismiss()/cancel() 与旧 AlertDialog 兼容。
  */
 
 class AlertBuilder(val context: Context) {
@@ -60,8 +54,8 @@ class AlertBuilder(val context: Context) {
     private var onCancelListener: ((DialogInterface) -> Unit)? = null
     private var onDismissListener: ((DialogInterface) -> Unit)? = null
 
-    // 供按钮回调 dismiss 用 (原 ComposeDialog 实例, 现为声明式句柄)
-    internal lateinit var dialog: AlertDialogHandle
+    // 供按钮回调 dismiss 用
+    internal lateinit var dialog: ComposeDialog
 
     fun setTitle(title: CharSequence) {
         this.title = title
@@ -280,24 +274,24 @@ class AlertBuilder(val context: Context) {
         }
     }
 
-    internal fun build(): AlertDialogHandle {
-        val handle = AlertDialogHandle()
-        dialog = handle
-        val pending = AlertDialogPending(
-            title = title?.toString(),
-            message = message?.toString(),
-            okButton = okButton,
-            cancelButton = cancelButton,
-            neutralButton = neutralButton,
-            content = content,
-            handle = handle,
-            cancelable = cancelable,
-        )
-        handle.dequeue = { AlertDialogRequests.remove(pending) }
-        handle.onCancelled = onCancelListener?.let { l -> { l(handle) } }
-        handle.onDismissed = onDismissListener?.let { l -> { l(handle) } }
-        AlertDialogRequests.show(pending)
-        return handle
+    internal fun build(): ComposeDialog {
+        val d = ComposeDialog(context, applyFilletBackground = false)
+        dialog = d
+        d.setComposeContent {
+            AppAlertDialogContent(
+                onDismissRequest = { d.dismiss() },
+                title = title?.toString(),
+                message = message?.toString(),
+                okButton = okButton,
+                cancelButton = cancelButton,
+                neutralButton = neutralButton,
+                content = content,
+            )
+        }
+        d.setCancelable(cancelable)
+        onCancelListener?.let { l -> d.setOnCancelListener { l(it) } }
+        onDismissListener?.let { l -> d.setOnDismissListener { l(it) } }
+        return d
     }
 }
 
@@ -305,31 +299,31 @@ fun Context.alert(
     title: CharSequence? = null,
     message: CharSequence? = null,
     init: (AlertBuilder.() -> Unit)? = null
-): AlertDialogHandle {
+): ComposeDialog {
     val builder = AlertBuilder(this).apply {
         title?.let { setTitle(it) }
         message?.let { setMessage(it) }
         init?.invoke(this)
     }
-    return builder.build()
+    return builder.build().also { it.show() }
 }
 
 fun Context.alert(
     titleResource: Int? = null,
     messageResource: Int? = null,
     init: (AlertBuilder.() -> Unit)? = null
-): AlertDialogHandle {
+): ComposeDialog {
     val builder = AlertBuilder(this).apply {
         titleResource?.let { setTitle(it) }
         messageResource?.let { setMessage(it) }
         init?.invoke(this)
     }
-    return builder.build()
+    return builder.build().also { it.show() }
 }
 
-fun Context.alert(init: AlertBuilder.() -> Unit): AlertDialogHandle {
+fun Context.alert(init: AlertBuilder.() -> Unit): ComposeDialog {
     val builder = AlertBuilder(this).apply(init)
-    return builder.build()
+    return builder.build().also { it.show() }
 }
 
 fun Fragment.alert(
@@ -347,95 +341,4 @@ fun Fragment.alert(
 fun Fragment.alert(init: AlertBuilder.() -> Unit) = requireContext().alert(init)
 
 
-/**
- * alert DSL 的声明式句柄 (DialogInterface 兼容): 出队即关闭。
- *
- * 请求队列是显示的唯一来源, 故 dismiss/cancel 先出队再回调监听 (对照 DialogInterface 语义:
- * dismiss = onDismiss, cancel = onCancel + onDismiss)。
- */
-class AlertDialogHandle internal constructor() : DialogInterface {
-    internal var dequeue: () -> Unit = {}
-    internal var onDismissed: (() -> Unit)? = null
-    internal var onCancelled: (() -> Unit)? = null
 
-    override fun dismiss() {
-        dequeue()
-        onDismissed?.invoke()
-    }
-
-    override fun cancel() {
-        dequeue()
-        onCancelled?.invoke()
-        onDismissed?.invoke()
-    }
-}
-
-internal class AlertDialogPending(
-    val title: String?,
-    val message: String?,
-    val okButton: AlertButton?,
-    val cancelButton: AlertButton?,
-    val neutralButton: AlertButton?,
-    val content: (@Composable () -> Unit)?,
-    val handle: AlertDialogHandle,
-    /** 对照 setCancelable: false = 返回键与点外部都不关闭 */
-    val cancelable: Boolean,
-)
-
-/** alert DSL 请求队列: 调用方即时入队, [ComposeAlertDialogHost] 挂在主界面渲染。 */
-object AlertDialogRequests {
-
-    /** 在队请求: 旧机制每个 alert 是独立窗口、可叠放, 故用列表而非单槽。 */
-    internal val pending = mutableStateListOf<AlertDialogPending>()
-
-    internal fun show(pending: AlertDialogPending) {
-        this.pending.add(pending)
-    }
-
-    internal fun remove(pending: AlertDialogPending) {
-        this.pending.remove(pending)
-    }
-}
-
-/**
- * alert DSL 请求的渲染宿主 (挂各 Activity Content 尾部: 主界面 / 权限页 / 透明壳)。
- *
- * 只在当前界面处于前台时渲染。请求队列是进程级共享的, 各界面各挂一份宿主, 缺此前台判据时
- * 同一请求会被多份宿主同时画成多个窗口; 判据必须取 RESUMED: 权限页与透明壳都是半透明窗口,
- * 其下层界面只走 ON_PAUSE 不走 ON_STOP, 按 STARTED 判据时下层仍算前台而照旧重复。
- */
-@Composable
-fun ComposeAlertDialogHost() {
-    if (AlertDialogRequests.pending.isEmpty()) return
-    val lifecycleOwner = LocalLifecycleOwner.current
-    var resumed by remember { mutableStateOf(false) }
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            resumed = event == Lifecycle.Event.ON_RESUME
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        resumed = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-    if (!resumed) return
-    // 在队请求逐条渲染, 各成独立窗口 (与旧机制每请求一窗一致); 关闭只走句柄出队
-    AlertDialogRequests.pending.forEach { pending ->
-        AppDialog(
-            onDismissRequest = { pending.handle.cancel() },
-            properties = AppDialogSizes.properties(
-                dismissOnBackPress = pending.cancelable,
-                dismissOnClickOutside = pending.cancelable,
-            ),
-        ) {
-            AppAlertDialogContent(
-                onDismissRequest = { pending.handle.dismiss() },
-                title = pending.title,
-                message = pending.message,
-                okButton = pending.okButton,
-                cancelButton = pending.cancelButton,
-                neutralButton = pending.neutralButton,
-                content = pending.content,
-            )
-        }
-    }
-}
