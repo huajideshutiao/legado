@@ -32,6 +32,7 @@ import io.legado.app.ui.root.OrientationPolicy
 import io.legado.app.ui.root.PermissionService
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.PlatformServices
+import io.legado.app.ui.root.ReaderSystemBarAppearance
 import io.legado.app.ui.root.ShareService
 import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
@@ -294,6 +295,9 @@ private fun String.toIosPermission(): IosPermission? {
 // UIKit 窗口控制: KeepScreenOn 经 UIApplication.isIdleTimerDisabled (对照 Android FLAG_KEEP_SCREEN_ON);
 // 状态栏显隐由 SwiftUI 根视图 .statusBarHidden 控制 (iOS 13+, SwiftUI 下 VC 级 prefersStatusBarHidden
 // 不生效, 见 iosApp/iOSApp.swift 的 onReceive 监听), 经 NSNotificationCenter 桥接;
+// 状态栏图标明暗由 Compose 根容器控制器的 preferredStatusBarStyle 控制 (iOS 下状态栏底色
+// 应用无法设置, 只有图标明暗与显隐; .default 档位按界面风格选明暗, 阅读页深底 + 浅色界面
+// 时图标会看不清, 故由本应用显式指定), 同一套通知桥;
 // 方向经 UIWindowScene.requestGeometryUpdateWithPreferences 请求前台场景切换允许方向
 // (iOS 16+, 与视频页全屏共用 IosSceneOrientation.kt 一份实现; 阅读页/漫画页方向锁见 setOrientation)
 
@@ -302,6 +306,17 @@ internal const val IosStatusBarHiddenNotification = "legado.statusBarHidden"
 
 /** 通知 userInfo 中显隐布尔值的 key。 */
 internal const val IosStatusBarHiddenKey = "hidden"
+
+/** 状态栏样式通知名 (与 iosApp/ContentView.swift 的 Notification.Name 一致)。 */
+internal const val IosStatusBarStyleNotification = "legado.statusBarStyle"
+
+/** 通知 userInfo 中样式档位的 key (值见 [IosStatusBarStyleDefault] 等三个常量)。 */
+internal const val IosStatusBarStyleKey = "style"
+
+/** 状态栏图标明暗档位, 与 UIKit UIStatusBarStyle 取值对应 (0/1/2)。 */
+internal const val IosStatusBarStyleDefault = 0
+internal const val IosStatusBarStyleLightContent = 1
+internal const val IosStatusBarStyleDarkContent = 2
 
 private object IosWindowController : WindowController {
     override fun setFullscreen(enabled: Boolean) {
@@ -339,6 +354,43 @@ private object IosWindowController : WindowController {
             aName = IosStatusBarHiddenNotification,
             `object` = null,
             userInfo = mapOf(IosStatusBarHiddenKey to hidden),
+        )
+    }
+
+    /** 最后一次下发的样式 (镜像, 供覆盖层退出时恢复); 未下发过时为默认档。 */
+    private var currentStatusBarStyle: Int = IosStatusBarStyleDefault
+
+    /** 进入深色覆盖层前的样式; null = 当前无人持有。嵌套打开不重复存, 否则会抹掉真正的原值。 */
+    private var savedStatusBarStyle: Int? = null
+
+    override fun setLightIconOverlay(enabled: Boolean) {
+        if (enabled) {
+            if (savedStatusBarStyle == null) savedStatusBarStyle = currentStatusBarStyle
+            postStatusBarStyle(IosStatusBarStyleLightContent)
+        } else {
+            savedStatusBarStyle?.let { postStatusBarStyle(it) }
+            savedStatusBarStyle = null
+        }
+    }
+
+    override fun setReaderSystemBarAppearance(appearance: ReaderSystemBarAppearance?) {
+        // 阅读页按样式开关定图标明暗; 离开阅读页可见期交还默认档 (跟随界面风格)。
+        // 导航栏底色在 iOS 上不存在可设通道 (状态栏/导航条区域恒为内容透出)。
+        postStatusBarStyle(
+            when {
+                appearance == null -> IosStatusBarStyleDefault
+                appearance.lightStatusBarIcons -> IosStatusBarStyleDarkContent
+                else -> IosStatusBarStyleLightContent
+            }
+        )
+    }
+
+    private fun postStatusBarStyle(style: Int) {
+        currentStatusBarStyle = style
+        NSNotificationCenter.defaultCenter.postNotificationName(
+            aName = IosStatusBarStyleNotification,
+            `object` = null,
+            userInfo = mapOf(IosStatusBarStyleKey to style),
         )
     }
 }

@@ -109,9 +109,15 @@ object OhosPlatformServices : PlatformServices {
     // 窗口策略经 OhosNativeBridge tsfn 桥 dispatch 到 ArkTS @ohos.window (无 NDK C 接口);
     // 桥未就绪时记一条降级日志 (兼容 napi 未接入阶段)
     override val window: WindowController = object : WindowController {
+        /**
+         * 沉浸式布局由 ArkTS 宿主在启动时恒开 (内容铺满整个窗口, 避让交 Compose insets),
+         * 与 Android 15+ 强制边到边、iOS 安全区同一模型; 路由策略不再翻转它 ——
+         * 转场期间翻转会让仍在屏上的上一页整页重排 (同 Android 端注释)。
+         */
+        override val appliesPolicyFullscreen: Boolean get() = false
+
         override fun setFullscreen(enabled: Boolean) {
-            // window.setWindowLayoutFullScreen: 布局延伸到状态栏区域 (对照 Android immersive)
-            OhosNativeBridge.setWindowFullScreenLayout(enabled)
+            // 布局模式由宿主启动时统一建立, 此处 no-op; 保留空实现对齐 WindowController 契约
         }
 
         override fun setKeepScreenOn(enabled: Boolean) {
@@ -133,12 +139,17 @@ object OhosPlatformServices : PlatformServices {
         }
 
         override fun setSystemBars(policy: SystemBarsPolicy) {
-            // window.setWindowSystemBarEnable 仅支持整体显隐 (鸿蒙 API 无分栏参数),
-            // 故单栏策略 (HiddenStatusBar / HiddenNavigationBar) 降级为整体隐藏 ——
-            // 与原版"隐藏指定栏"意图一致但会连带另一栏, 属平台 API 限制;
+            // 分栏显隐 (对照 Android WindowInsetsController 分栏 show/hide):
+            // setSpecificSystemBarEnabled 支持 status / navigation / navigationIndicator 单栏控制,
+            // 宿主侧 'navigation' 与 'navigationIndicator' 跟随同一份导航栏可见性。
             // 桥未注册 (EntryAbility 未 registerWindowCallback) 时丢弃命令。
-            val visible = policy == SystemBarsPolicy.Default || policy == SystemBarsPolicy.Visible
-            OhosNativeBridge.setWindowSystemBarEnable(visible)
+            val statusVisible = policy != SystemBarsPolicy.Hidden &&
+                policy != SystemBarsPolicy.Immersive &&
+                policy != SystemBarsPolicy.HiddenStatusBar
+            val navigationVisible = policy != SystemBarsPolicy.Hidden &&
+                policy != SystemBarsPolicy.Immersive &&
+                policy != SystemBarsPolicy.HiddenNavigationBar
+            OhosNativeBridge.setWindowSystemBarEnable(statusVisible, navigationVisible)
         }
 
         override fun setReaderSystemBarAppearance(appearance: ReaderSystemBarAppearance?) {

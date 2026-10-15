@@ -118,9 +118,12 @@ const NOTIFICATION_ACTION_PARAM: string = 'action';
 
 /** 窗口策略命令 payload (与 OhosNativeBridge.kt WindowCommand 对齐)。 */
 interface WindowCommand {
-  action: string;  // 'setFullScreenLayout' | 'setKeepScreenOn' | 'setPreferredOrientation' | 'setSystemBarEnable' | 'setSystemBarProperties' | 'exitApplication' | 'showDialog'
+  action: string;  // 'setKeepScreenOn' | 'setPreferredOrientation' | 'setSystemBarEnable' | 'setSystemBarProperties' | 'exitApplication' | 'showDialog'
   enabled?: boolean;
   orientation?: number;
+  /** 'setSystemBarEnable' 专用: 状态栏/导航栏各自的可见性 (单栏显隐)。 */
+  statusBar?: boolean;
+  navigationBar?: boolean;
   /** 'showDialog' / 'setSystemBarProperties' 专用: 内层请求 JSON (OhosNativeBridge 同名字段)。 */
   payload?: string;
 }
@@ -1050,23 +1053,30 @@ export default class EntryAbility extends UIAbility {
       }
       console.info('[Legado] loadContent pages/Index succeed');
 
+      // 沉浸式布局恒开: 内容铺满整个窗口 (含状态栏与导航区域), 避让由 Compose 侧按
+      // 避让区域自行 padding —— 对照 Android 15+ 强制边到边与 iOS 安全区模型, 三端统一为
+      // "内容铺满 + 应用自行避让"。窗口策略不再翻转它 (KMP 侧 setFullscreen 已 no-op),
+      // 视频页全屏只控制系统栏显隐与方向。
+      windowStage.getMainWindow().then((win: window.Window) => {
+        win.setWindowLayoutFullScreen(true).catch((err: Error): void => {
+          console.error('[Legado] setWindowLayoutFullScreen failed: ' + JSON.stringify(err));
+        });
+      }).catch((err: Error): void => {
+        console.error('[Legado] getMainWindow failed: ' + JSON.stringify(err));
+      });
+
       // 窗口策略桥 (KMP → ArkTS @ohos.window): 注册 tsfn 回调。
       // C++ 侧 (legado_napi.cpp RegisterWindowCallback) 创建 napi_threadsafe_function 包装此回调,
       // 经 @CName legado_register_window_fn 注入 dispatch 指针到 Kotlin OhosNativeBridge.windowTsfn。
       // 此后 KMP WindowController.setFullscreen/setKeepScreenOn/setOrientation/setSystemBars
       // 的 JSON 命令跨线程 dispatch 到此回调, 由 ArkTS 在窗口上执行 @ohos.window API。
       // 未注册时 KMP 侧降级 println (见 OhosNativeBridge.sendWindowCommand)。
-      // 注: 单栏策略 (HiddenStatusBar/HiddenNavigationBar) 已由 KMP 侧映射为整体显隐
-      // (见 WindowPolicy.kt), 故此处只按 enabled 传"全显/全隐"两种 names 组合。
       try {
         legado.registerWindowCallback((json: string): void => {
           try {
             const cmd = JSON.parse(json) as WindowCommand;
             windowStage.getMainWindow().then((win: window.Window) => {
               switch (cmd.action) {
-                case 'setFullScreenLayout':
-                  win.setWindowLayoutFullScreen(cmd.enabled ?? false);
-                  break;
                 case 'setKeepScreenOn':
                   win.setWindowKeepScreenOn(cmd.enabled ?? false);
                   break;
@@ -1074,10 +1084,24 @@ export default class EntryAbility extends UIAbility {
                   win.setPreferredOrientation(cmd.orientation ?? 0);
                   break;
                 case 'setSystemBarEnable': {
-                  // names 为要显示的系统栏; 关闭时传空数组 (状态栏+导航栏全隐)
-                  const bars: Array<'status' | 'navigation'> =
-                    (cmd.enabled ?? true) ? ['status', 'navigation'] : [];
-                  win.setWindowSystemBarEnable(bars);
+                  // 单栏显隐 (对照 Android WindowInsetsController 分栏 show/hide)。
+                  // setWindowSystemBarEnable 自 API 12 起弃用, 官方替代是 setSpecificSystemBarEnabled;
+                  // 'navigation' 是三键导航栏, 'navigationIndicator' 是手势导航条, 两者跟随
+                  // 同一份"导航栏"可见性, 覆盖两种导航模式。
+                  const status = cmd.statusBar ?? true;
+                  const navigation = cmd.navigationBar ?? true;
+                  win.setSpecificSystemBarEnabled('status', status)
+                    .catch((err: Error): void => {
+                      console.error('[Legado] setSpecificSystemBarEnabled(status) failed: ' + JSON.stringify(err));
+                    });
+                  win.setSpecificSystemBarEnabled('navigation', navigation)
+                    .catch((err: Error): void => {
+                      console.error('[Legado] setSpecificSystemBarEnabled(navigation) failed: ' + JSON.stringify(err));
+                    });
+                  win.setSpecificSystemBarEnabled('navigationIndicator', navigation)
+                    .catch((err: Error): void => {
+                      console.error('[Legado] setSpecificSystemBarEnabled(navigationIndicator) failed: ' + JSON.stringify(err));
+                    });
                   break;
                 }
                 case 'setSystemBarProperties': {

@@ -134,8 +134,8 @@ object OhosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
     const val ARKUI_BUILDER_VIDEO_SURFACE: String = "legadoVideoSurface"
 
     override fun applyFullscreen(enabled: Boolean) {
-        OhosNativeBridge.setWindowFullScreenLayout(enabled)
-        OhosNativeBridge.setWindowSystemBarEnable(!enabled)
+        // 沉浸式布局恒开 (宿主启动时建立), 全屏只控制系统栏显隐
+        OhosNativeBridge.setWindowSystemBarEnable(!enabled, !enabled)
     }
 
     /**
@@ -149,8 +149,7 @@ object OhosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
     override fun applySystemFullScreen(enabled: Boolean) {
         // 横屏全屏: 2=LANDSCAPE / 0=UNSPECIFIED (枚举映射见 OhosPlatformServices.setOrientation)
         OhosNativeBridge.setWindowPreferredOrientation(if (enabled) 2 else 0)
-        OhosNativeBridge.setWindowFullScreenLayout(enabled)
-        OhosNativeBridge.setWindowSystemBarEnable(!enabled)
+        OhosNativeBridge.setWindowSystemBarEnable(!enabled, !enabled)
     }
 
     /**

@@ -16,7 +16,6 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
-import io.legado.app.ui.root.PlatformCapabilityProviders
 import kotlinx.coroutines.flow.filter
 
 // ---- 系统栏避让: 全 app 唯一数据源 = "该栏应当占的高度" ----
@@ -47,7 +46,7 @@ val LocalStatusBarPaddingEnabled = staticCompositionLocalOf { true }
 /**
  * 系统栏避让 padding: 按应有高度避让, 与系统栏当前可见性无关。
  *
- * @param avoidStatusBar false = 本页状态栏沉浸 (阅读页 hideStatusBar / 多窗口)
+ * @param avoidStatusBar false = 本页状态栏沉浸 (阅读页 hideStatusBar)
  * @param avoidNavigationBar false = 本页导航栏沉浸 (阅读页 hideNavigationBar)
  */
 @Composable
@@ -118,9 +117,7 @@ private fun readerBarConfig(): Pair<Boolean, Boolean> {
     // (同 PageViewComposable 的 tipRefreshTick 用法)
     return remember(configTick) {
         val cfg = ReadBookConfigProviders.getOrNull()
-        // 多窗口下窗口无真全屏语义, 原版 PageView.upStatusBar 让状态栏占位恒 gone
-        val inMultiWindow = PlatformCapabilityProviders.getOrNull()?.isInMultiWindow == true
-        ((cfg?.hideStatusBar == true) || inMultiWindow) to (cfg?.hideNavigationBar == true)
+        (cfg?.hideStatusBar == true) to (cfg?.hideNavigationBar == true)
     }
 }
 

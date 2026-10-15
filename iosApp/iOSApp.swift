@@ -310,7 +310,8 @@ struct iOSApp: App {
     /// 状态栏显隐: 阅读页 hideStatusBar 配置 / 全屏路由由 Kotlin 侧 IosWindowController.setSystemBars
     /// 经 NSNotificationCenter 桥接驱动 (Kotlin 常量: IosStatusBarHiddenNotification = "legado.statusBarHidden",
     /// userInfo key "hidden" = Bool)。SwiftUI 宿主下 VC 的 prefersStatusBarHidden 不生效,
-    /// .statusBarHidden modifier 是唯一可靠的系统栏控制方式 (iOS 13+)。
+    /// .statusBarHidden modifier 是唯一可靠的显隐控制方式 (iOS 13+)。
+    /// 图标明暗不走这里: 它由 Compose 根容器的 preferredStatusBarStyle 控制 (见 ContentView.swift)。
     @State private var statusBarHidden = false
 
     /// SwiftUI App 入口, 根视图为 ContentView。

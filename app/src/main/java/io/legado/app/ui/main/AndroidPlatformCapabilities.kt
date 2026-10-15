@@ -1186,9 +1186,6 @@ class AndroidPlatformCapabilities(
     // 对照原版 BaseReadBookActivity 的 isTv（阅读页首启引导的电视机型分支）
     override fun isTelevision(): Boolean = activity.isTv
 
-    // 对照原版 BaseActivity.isInMultiWindow: 多窗口下阅读页不避让状态栏、不进沉浸式布局
-    override val isInMultiWindow: Boolean get() = activity.isInMultiWindow
-
     // ===== 书架管理平台能力: 对照 BookshelfManageActivity 同名方法/状态 =====
 
     // 对照 BookshelfManageActivity.enableCustomExportChecked
