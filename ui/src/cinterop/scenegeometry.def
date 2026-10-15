@@ -1,0 +1,26 @@
+package = io.legado.app.platform.scenegeometry
+language = Objective-C
+---
+#import <UIKit/UIKit.h>
+
+// 窗口场景方向请求 (iOS 16+), 供 iosMain IosSceneOrientation.kt 调用。
+//
+// 必须由 clang 编译而不能在 Kotlin 里直接构造 UIWindowSceneGeometryPreferencesIOS:
+// Kotlin/Native 对高于部署目标 (iOS 14) 的类生成强引用, iOS 14/15 上 dyld 启动时
+// 绑定不到 _OBJC_CLASS_$_UIWindowSceneGeometryPreferencesIOS, 进程在执行任何代码前退出;
+// clang 按 API_AVAILABLE 把它做成弱引用, 再由 @available 在运行时挡住旧系统。
+//
+// 返回 NO 表示当前系统不支持 (未发起请求)。
+static inline BOOL legado_requestSceneGeometryUpdate(
+    UIWindowScene * _Nonnull scene,
+    UIInterfaceOrientationMask orientations,
+    void (^ _Nullable errorHandler)(NSError * _Nonnull error)
+) {
+    if (@available(iOS 16.0, *)) {
+        UIWindowSceneGeometryPreferencesIOS *preferences =
+            [[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:orientations];
+        [scene requestGeometryUpdateWithPreferences:preferences errorHandler:errorHandler];
+        return YES;
+    }
+    return NO;
+}

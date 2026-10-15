@@ -94,6 +94,12 @@ kotlin {
                         optimized = false
                     }
                 }
+                compilations.getByName("main").cinterops {
+                    // 高于部署目标的 UIKit API 交给 clang 编译 (弱链接), 见 def 内说明
+                    create("scenegeometry") {
+                        defFile(file("src/cinterop/scenegeometry.def"))
+                    }
+                }
             }
         }
         iosArm64(configureNativeCinterops)

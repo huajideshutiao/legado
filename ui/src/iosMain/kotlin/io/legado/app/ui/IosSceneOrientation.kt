@@ -3,6 +3,7 @@
 package io.legado.app.ui
 
 import io.legado.app.constant.AppLog
+import io.legado.app.platform.scenegeometry.legado_requestSceneGeometryUpdate
 import kotlinx.cinterop.useContents
 import platform.Foundation.NSProcessInfo
 import platform.UIKit.UIApplication
@@ -13,7 +14,6 @@ import platform.UIKit.UISceneActivationStateForegroundActive
 import platform.UIKit.UIDevice
 import platform.UIKit.UIUserInterfaceIdiomPad
 import platform.UIKit.UIWindowScene
-import platform.UIKit.UIWindowSceneGeometryPreferencesIOS
 
 // iOS 方向请求共用件: 视频页锁横屏 (IosVideoPlayPlatformProvider.applySystemFullScreen) 与
 // 阅读页/漫画页方向锁 (IosWindowController.setOrientation) 共用同一份, 不各写一遍。
@@ -25,7 +25,9 @@ import platform.UIKit.UIWindowSceneGeometryPreferencesIOS
 // 明确要求改用 requestGeometryUpdate), 故本端不走 UIDevice 那条路。
 //
 // 边界 (如实保留, 不静默):
-// - iOS 16 以下没有受支持的方向 API, 只落一条日志;
+// - iOS 16 以下没有受支持的方向 API, 只落一条日志; 偏好对象的构造与请求放在
+//   ui/src/cinterop/scenegeometry.def 里由 clang 编译 (Kotlin 直接构造会留下对 iOS 16 类的
+//   强引用, iOS 14/15 启动即被 dyld 终止, 详见该文件);
 // - 请求由系统裁决: 目标方向不在应用/场景允许集合内 (如 iPhone 的倒竖屏, Info.plist 未声明)、
 //   或 iPad 处于分屏多任务时会被拒, 拒绝原因由 errorHandler 落日志 (页面观感维持请求前方向)。
 
@@ -66,12 +68,13 @@ internal fun requestSceneOrientation(mask: ULong, context: String) {
         AppLog.put("iOS 找不到前台窗口场景, $context 方向请求未下发")
         return
     }
-    scene.requestGeometryUpdateWithPreferences(
-        UIWindowSceneGeometryPreferencesIOS(interfaceOrientations = mask),
-        errorHandler = { error ->
-            AppLog.put("iOS $context 方向请求被拒: ${error?.localizedDescription}")
-        },
-    )
+    // 不在 Kotlin 里构造 UIWindowSceneGeometryPreferencesIOS, 原因见 scenegeometry.def
+    val requested = legado_requestSceneGeometryUpdate(scene, mask) { error ->
+        AppLog.put("iOS $context 方向请求被拒: ${error?.localizedDescription}")
+    }
+    if (!requested) {
+        AppLog.put("iOS $osMajorVersion 无受支持的方向请求 API, $context 未生效")
+    }
 }
 
 /** `requestGeometryUpdateWithPreferences:errorHandler:` 的最低系统版本 (iOS 16.0)。 */
