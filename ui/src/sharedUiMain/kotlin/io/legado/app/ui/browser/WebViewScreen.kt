@@ -17,10 +17,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import io.legado.app.constant.AppPattern
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceVerificationHelpShared
+import io.legado.app.help.source.WebViewLoadSpec
+import io.legado.app.help.source.deriveWebViewLoadSpec
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.ui.association.LegadoDeepLinkHandler
@@ -46,8 +47,9 @@ import kotlin.coroutines.coroutineContext
  * 内置浏览器整屏实现, 全屏路由与半屏 Sheet 的**唯一**实现来源。
  *
  * 对照原 app 端 WebViewActivity + WebViewModel (origin/quickjs):
- * - [prepareWebViewData] = 原 WebViewModel.initData: 书源 headerMap 解析 (含 `,{...}` URL 级请求头)、
- *   POST body 预拉、data: 前缀解包、非 http 前缀视为原始 HTML;
+ * - 加载三态 (基准地址/请求头/待渲染内容) 由 [deriveWebViewLoadSpec] 推导, 与桌面端浏览器窗口
+ *   同源: 书源 headerMap 解析 (含 `,{...}` URL 级请求头)、POST body 预拉、data: 前缀解包、
+ *   非 http 前缀视为原始 HTML;
  * - 验证回传 (saveResult/refetchAfterSuccess) = 原 WebViewModel.saveVerificationResult:
  *   refetchAfterSuccess=true 走 IO 重拉页面 → setResult; false 走
  *   evaluateJavascript("document.documentElement.outerHTML") (平台侧已归一为纯文本:
@@ -82,7 +84,7 @@ internal fun WebViewScreen(
 ) {
     val scope = rememberCoroutineScope()
     val callbacks = remember { WebViewCallbacks() }
-    var loadState by remember { mutableStateOf<WebViewLoadState?>(null) }
+    var loadState by remember { mutableStateOf<WebViewLoadSpec?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var cloudflareChallenge by remember { mutableStateOf(false) }
     // 传入标题 (原 WebViewActivity 的 intent title); 登录页原版传
@@ -116,7 +118,17 @@ internal fun WebViewScreen(
         loadError = null
         loadState = null
         cloudflareChallenge = false
-        runCatching { withContext(IoDispatcher) { prepareWebViewData(spec) } }
+        runCatching {
+            withContext(IoDispatcher) {
+                deriveWebViewLoadSpec(
+                    url = spec.url,
+                    isLogin = spec.isLogin,
+                    sourceKey = spec.sourceKey,
+                    sourceType = spec.sourceType,
+                    coroutineContext = coroutineContext,
+                )
+            }
+        }
             .onSuccess { loadState = it }
             .onFailure { e -> loadError = e.message ?: "error" }
     }
@@ -219,7 +231,7 @@ internal fun WebViewScreen(
     // 优先平台实时 URL (跳转后最新, 含 SPA history 变化), 其次导航完成状态,
     // 最后回退预取/初始 URL
     fun currentUrl(): String =
-        callbacks.host?.getUrl() ?: pageUrl ?: loadState?.url ?: spec.url
+        callbacks.host?.getUrl() ?: pageUrl ?: loadState?.baseUrl ?: spec.url
 
     // 系统返回键: 视频全屏先退出 → 网页可后退则后退 → 退出全屏 → 关闭浏览器
     // (原 WebViewActivity 的 onBackPressedDispatcher 回调)。顶栏返回箭头不走这条链, 见下方调用点。
@@ -323,7 +335,7 @@ internal fun WebViewScreen(
                 else -> {
                     LocalWebViewSlot.current(
                         WebViewConfig(
-                            url = state.url,
+                            url = state.baseUrl,
                             headerMap = state.headerMap,
                             html = state.html,
                             isLogin = spec.isLogin,
@@ -367,37 +379,6 @@ internal fun WebViewScreen(
             },
         )
     }
-}
-
-/** 原 WebViewModel.initData 的结果: 实际加载 URL + 书源 headerMap + 预取 HTML。 */
-private data class WebViewLoadState(
-    val url: String,
-    val headerMap: Map<String, String>,
-    val html: String?,
-)
-
-/** 原 WebViewModel.initData 的 execute 块: 加载参数预取 (headerMap/POST/data:/原始 HTML)。 */
-private suspend fun prepareWebViewData(spec: AppRoute.WebView): WebViewLoadState {
-    val url = spec.url
-    // 原版: 非登录且非 data/http 前缀时, url 直接视为原始 HTML
-    if (!spec.isLogin && !url.startsWith("data") && !url.startsWith("http")) {
-        return WebViewLoadState(url, emptyMap(), url)
-    }
-    val source = SourceHelp.getSource(spec.sourceKey, spec.sourceType)
-    val analyzeUrl = AnalyzeUrlCore(
-        url,
-        source = source,
-        coroutineContext = coroutineContext,
-    )
-    val baseUrl = analyzeUrl.headerMap["Origin"] ?: analyzeUrl.url
-    var html: String? = null
-    if (analyzeUrl.isPost()) {
-        html = analyzeUrl.getStrResponseAwait(allowWebView = false).body
-    }
-    if (AppPattern.dataUriRegex.matches(analyzeUrl.url)) {
-        html = analyzeUrl.getByteArrayAwait().decodeToString()
-    }
-    return WebViewLoadState(baseUrl, analyzeUrl.headerMap, html)
 }
 
 /**

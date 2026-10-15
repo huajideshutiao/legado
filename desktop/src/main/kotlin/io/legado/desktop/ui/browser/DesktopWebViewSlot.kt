@@ -87,6 +87,7 @@ private fun EngineWindowSlot(
     fun open(): WebViewWindowHandle? = engine.openWindow(
         WebViewWindowRequest(
             url = url,
+            html = config.html,
             title = "legado",
             // 2026-08-06 功能保留: 登录/验证场景必须带 isLogin (窗口"确定"= cookie 确认,
             // 对照原版 WebViewActivity isLogin 分支) + cookieTag (cookie 按书源回写)

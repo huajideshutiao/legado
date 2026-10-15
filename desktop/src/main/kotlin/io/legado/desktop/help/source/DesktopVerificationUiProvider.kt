@@ -1,8 +1,6 @@
 package io.legado.desktop.help.source
 
-import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.AppPattern
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseSource
@@ -12,6 +10,7 @@ import io.legado.app.help.getUserAgent
 import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.source.VerificationUiProvider
 import io.legado.app.help.source.VerificationUiProviders
+import io.legado.app.help.source.deriveWebViewLoadSpec
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.utils.FlowBus
@@ -83,8 +82,8 @@ object DesktopVerificationUiProvider : VerificationUiProvider {
     /**
      * 开内置浏览器窗口 (登录 / 纯浏览 / 网页验证共用)。
      *
-     * 对照 WebViewModel.initData: 开窗前先算一次 AnalyzeUrl (含书源 header/登录头 JS),
-     * 成功后重拉复用同一份 headerMap, 避免重复 eval 且与原版传参一致;
+     * 加载三态与手机端浏览器页同源 ([deriveWebViewLoadSpec]): 开窗前先解析书源请求头
+     * (含登录头 JS) 与待渲染内容, 窗口与后续重拉复用同一份请求头; 原始 HTML 场景不解析地址。
      * [verification] 为 true 时窗口带"确定"按钮 (回传后关窗), 关窗同样触发验证结果回传,
      * 否则仅浏览 (窗口工具栏仅 返回/前进/刷新/关闭/标题/进度)。
      *
@@ -99,16 +98,43 @@ object DesktopVerificationUiProvider : VerificationUiProvider {
         refetchAfterSuccess: Boolean,
     ) {
         val sourceKey = source.getKey()
-        val analyzeUrl = runCatching {
-            AnalyzeUrlFactories.create(url, source = source)
+        // 原始 HTML 场景在这里直接返回, 不解析地址: 内容不是地址, 解析失败或把内容当历史
+        // 地址交给浏览器都会导致页面打不开。验证流程强制后台线程, 用 runBlocking 同步取回,
+        // 保持"引擎不可用 / 窗口打开失败"仍同步抛, 避免等待线程永久挂起。
+        val loadSpec = runCatching {
+            runBlocking {
+                deriveWebViewLoadSpec(
+                    url = url,
+                    isLogin = false,
+                    sourceKey = sourceKey,
+                    sourceType = source.getSourceType(),
+                )
+            }
+        }.onFailure {
+            // 对照原 WebViewModel.initData 的 execute.onError: 提示错误后继续 (原版文案 error\n...)
+            runCatching { Toasters.get().toast("error\n${it.localizedMessage}") }
+            AppLog.put("浏览器窗口加载参数解析失败", it)
         }.getOrNull()
-        val headerMap = analyzeUrl?.headerMap?.toMap()
+        val headerMap = loadSpec?.headerMap
+        val html = loadSpec?.html
         val engine = DesktopWebViewEngines.get(forceRefresh = true)
         if (engine == null) {
+            if (html != null) {
+                // 内容不是地址: 系统浏览器无法承载 (顶级 data: 导航被浏览器拦截), 只提示;
+                // 验证场景立即回填空结果, 不让等待线程挂到超时
+                runCatching {
+                    Toasters.get().toastLong("内置浏览器不可用, 无法显示该内容: $title")
+                }
+                if (verification) {
+                    SourceVerificationHelpShared.setResult(sourceKey, "")
+                    SourceVerificationHelpShared.notifyResultArrived(sourceKey)
+                }
+                return
+            }
             // 无内嵌引擎降级: 系统浏览器打开 + 提示
             // (对照 WebViewRoute 的 host==null 兜底分支; 系统浏览器 cookie 无法回收,
             // 但验证页本身无需回传源码时 (如站点二次确认/手动放行) 仍可走通)
-            browseUrl(url)
+            browseUrl(loadSpec?.baseUrl ?: url)
             if (verification) {
                 val msg = "已在系统浏览器打开验证页($title), 请完成验证; 稍后自动获取结果"
                 runCatching { Toasters.get().toastLong(msg) }
@@ -129,27 +155,9 @@ object DesktopVerificationUiProvider : VerificationUiProvider {
             }
             return
         }
-        // 与原版 baseUrl 取值一致: 有 Origin 头用 Origin, 否则用解析后的地址
-        // (rawUrl 可能带 ",{...}" 选项串, 直接丢给浏览器会导航到无效地址)
-        val baseUrl = headerMap?.get("Origin") ?: analyzeUrl?.url?.takeIf { it.isNotBlank() } ?: url
-        // 对照 WebViewModel.initData 的三条 html 分支 (窗口非登录态 = 原版 !isLogin):
-        // 非 http/data 的 url 本身就是 html; POST 先 HTTP 拉 body; dataUri 解码。
-        // 验证流程强制后台线程 (shared 侧 check), 用 runBlocking 同步取回, 保持
-        // "引擎不可用 / 窗口打开失败"仍同步抛, 避免等待线程永久挂起。
-        // 仅在 AWT EDT 上阻塞会冻结 UI, 此时跳过同步抓取 (退回纯 loadUrl)。
-        val onEdt = runCatching { java.awt.EventQueue.isDispatchThread() }.getOrDefault(false)
-        val html = if (onEdt) null else analyzeUrl?.let { au ->
-            when {
-                !url.startsWith("data", true) && !url.startsWith("http", true) -> url
-                au.isPost() -> runBlocking {
-                    runCatching { au.getStrResponseAwait(allowWebView = false).body }.getOrNull()
-                }
-                AppPattern.dataUriRegex.matches(au.url) -> runBlocking {
-                    runCatching { au.getByteArrayAwait().toString(Charsets.UTF_8) }.getOrNull()
-                }
-                else -> null
-            }
-        }
+        // 与原版 baseUrl 取值一致 (推导已给出): 有 Origin 头用 Origin, 否则用解析后的地址
+        // (rawUrl 可能带 ",{...}" 选项串, 直接丢给浏览器会导航到无效地址); 推导失败时退回原文本
+        val baseUrl = loadSpec?.baseUrl ?: url
         // 关窗回调里要用到句柄本身 (取网页源码), 故先声明再赋值
         var handle: WebViewWindowHandle? = null
         // 同一验证窗口只回传一次: "确定"按钮先抓 html 回传再关窗, 关窗回调不再重复回传
