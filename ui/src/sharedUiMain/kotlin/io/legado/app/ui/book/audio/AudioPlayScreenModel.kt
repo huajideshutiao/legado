@@ -8,6 +8,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookSource
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.isNotShelf
@@ -16,6 +17,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.model.Lrc
+import io.legado.app.model.audioCoverFallback
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.asBook
@@ -82,7 +84,7 @@ data class AudioPlayOverflowActions(
     val onEditBookSource: () -> Unit,
     val onAddBookmark: () -> Unit,
     val onShowAppLog: () -> Unit,
-    /** 是否显示登录项 (对照 source?.hasLogin()) */
+    /** 是否显示登录项 (取自页面状态, 随书源就绪刷新) */
     val hasLogin: Boolean,
 )
 
@@ -217,31 +219,37 @@ class AudioPlayScreenModel : ScreenModel {
                 // AudioPlayManager.loadPlayUrl 会静默 return 而界面死在"数据加载中"。
                 scope.launch {
                     val incoming = event.book.asBook()
+                    val isSearchBook = event.book is BookRef.Search
+                    // 书源按装载同一口径对账后取 (同一本书、同一次查询): 登录/评论入口进入页面
+                    // 即可见, 且在“搜索书并回异源书架行”时不会指向搜索源
+                    val shelfBook = BookChapterLoader.resolveShelfBook(incoming, isSearchBook)
+                    val preResolvedSource: BookSource? = AudioPlayShared.bookSourceOf(shelfBook)
+                    AudioPlayShared.bookSource = preResolvedSource
+                    _state.update { it.withSourceEntries() }
                     val payload = runCatching {
                         withTimeoutOrNull(DIRECTORY_FETCH_TIMEOUT_MS) {
                             BookChapterLoader.upBook(
                                 incoming,
-                                isSearchBook = event.book is BookRef.Search,
+                                isSearchBook = isSearchBook,
                             )
                         }
                     }.onFailure {
                         AppLog.put("加载书籍失败\n${it.message}", it)
                     }.getOrNull()
                     val book = payload?.book
-                        ?: BookChapterLoader.resolveShelfBook(
-                            incoming,
-                            event.book is BookRef.Search,
-                        )
+                        ?: BookChapterLoader.resolveShelfBook(incoming, isSearchBook)
+                    // 采用装载流程给出的书源 (与目录装载同一次查询)
+                    val loadedSource = payload?.source ?: preResolvedSource
                     AudioPlayShared.inBookshelf = !book.isNotShelf
                     val list = payload?.chapterList.orEmpty()
                     AudioPlayShared.chapterList = list.ifEmpty { null }
                     if (list.isNotEmpty()) AudioPlayShared.updateChapterList(list)
                     if (AudioPlayShared.book?.bookUrl == book.bookUrl) {
-                        AudioPlayShared.upData(book)
+                        AudioPlayShared.upData(book, loadedSource)
                     } else {
-                        AudioPlayShared.resetData(book)
+                        AudioPlayShared.resetData(book, loadedSource)
                         // 新书立即以书籍默认封面占位, 覆盖 sticky 旧书封面残留; 就绪后 musicCover 再覆盖
-                        book.getDisplayCover()?.takeIf { it.isNotBlank() }?.let {
+                        book.audioCoverFallback()?.let {
                             postEvent(EventBus.AUDIO_COVER, it)
                         }
                     }
@@ -249,12 +257,10 @@ class AudioPlayScreenModel : ScreenModel {
                         it.copy(
                             title = book.name,
                             inShelf = AudioPlayShared.inBookshelf,
-                            hasReview = AudioPlayShared.bookSource?.reviewRule
-                                ?.reviewUrl.isNullOrBlank() == false,
                             prevEnabled = AudioPlayShared.durChapterIndex > 0,
                             nextEnabled = AudioPlayShared.durChapterIndex <
                                 AudioPlayShared.simulatedChapterSize - 1,
-                        )
+                        ).withSourceEntries()
                     }
                     // 清理残留 LOADING=true (未在加载时转圈不该转)
                     if (AudioPlayShared.status == Status.STOP) {
@@ -328,15 +334,22 @@ class AudioPlayScreenModel : ScreenModel {
 
             AudioPlayUiEvent.CoverClick -> _state.update { it.copy(coverVisible = false) }
 
+            // 换源后书源已切换, 登录/评论入口显隐一并刷新
             is AudioPlayUiEvent.UpdateInShelf -> _state.update {
-                it.copy(
-                    inShelf = event.inShelf,
-                    // 换源后书源已切换, 评论入口显隐一并刷新
-                    hasReview = AudioPlayShared.bookSource?.reviewRule
-                        ?.reviewUrl.isNullOrBlank() == false,
-                )
+                it.copy(inShelf = event.inShelf).withSourceEntries()
             }
         }
+    }
+
+    /**
+     * 书源相关入口显隐 (登录/评论) 同源计算: 两处一起随当前书源刷新。
+     */
+    private fun AudioPlayUiState.withSourceEntries(): AudioPlayUiState {
+        val source = AudioPlayShared.bookSource
+        return copy(
+            hasLogin = source?.hasLogin() == true,
+            hasReview = source?.reviewRule?.reviewUrl.isNullOrBlank() == false,
+        )
     }
 
     /**
@@ -412,6 +425,8 @@ data class AudioPlayUiState(
     val inShelf: Boolean = true,
     /** 书源是否配置了评论规则 (reviewUrl 判空, 决定右上角评论入口显隐) */
     val hasReview: Boolean = false,
+    /** 书源是否配置了登录入口 (loginUrl/loginUi 非空, 决定右上角登录项显隐) */
+    val hasLogin: Boolean = false,
 )
 
 /** 音频播放 UI 事件 (对照 [AudioPlayScreenContent] onXxx 回调) */

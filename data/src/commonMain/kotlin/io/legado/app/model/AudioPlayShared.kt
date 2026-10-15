@@ -176,9 +176,9 @@ object AudioPlayShared {
         postEvent(EventBus.PLAY_MODE_CHANGED, playMode)
     }
 
-    suspend fun upData(book: Book) {
+    suspend fun upData(book: Book, source: BookSource?) {
         if (durChapterIndex != book.durChapterIndex || this.book?.bookUrl != book.bookUrl) {
-            resetData(book)
+            resetData(book, source)
             return
         }
         // 重进同书不走 resetData (它会 stop() 打断播放), 但书籍快照要换成新的。
@@ -200,7 +200,10 @@ object AudioPlayShared {
         postEvent(EventBus.AUDIO_PROGRESS, durChapterPos)
     }
 
-    suspend fun resetData(book: Book) {
+    /**
+     * @param source 书籍对应书源, 由调用方从书籍装载流程取得
+     */
+    suspend fun resetData(book: Book, source: BookSource?) {
         stop()
         status = Status.STOP
         this.book = book
@@ -213,7 +216,7 @@ object AudioPlayShared {
         }
         simulatedChapterSize =
             if (book.readSimulating()) book.simulatedTotalChapterNum() else chapterSize
-        bookSource = bookSourceOf(book)
+        bookSource = source
         durChapterIndex = book.durChapterIndex
         durChapterPos = book.durChapterPos
         durPlayUrl = ""
@@ -382,3 +385,11 @@ object AudioPlayShared {
     }
 
 }
+
+/**
+ * 音频页封面兜底值: 书籍封面 (空白视为无)。
+ *
+ * 封面地址由装载流程产生, 进入页面首帧拿不到; 界面层与页面状态层都以本值为兜底,
+ * 取值只此一处, 两处不会走偏。
+ */
+fun Book.audioCoverFallback(): String? = getDisplayCover()?.takeIf { it.isNotBlank() }
