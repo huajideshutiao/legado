@@ -38,6 +38,16 @@ object ReadAloud {
         return TTSReadAloudService::class.java
     }
 
+    /**
+     * 按当前引擎配置重取服务类与引擎实体, 不停正在运行的朗读。
+     *
+     * 正在使用的在线引擎被编辑后调用: 服务类不变, 但下载与缓存键读的是实体里的
+     * url/请求头, 不重取则重载后仍走旧配置。
+     */
+    fun refreshAloudClass() {
+        aloudClassOrNull = getReadAloudClass()
+    }
+
     fun upReadAloudClass() {
         stop(App.instance)
         aloudClassOrNull = getReadAloudClass()

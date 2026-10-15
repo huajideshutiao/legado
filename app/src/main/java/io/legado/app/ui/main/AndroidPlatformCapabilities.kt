@@ -68,9 +68,12 @@ import io.legado.app.lib.theme.MonetColorExtract
 import io.legado.app.model.BookCover
 import io.legado.app.model.CheckSource
 import io.legado.app.model.Debug
+import io.legado.app.model.ReadAloud
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.fileBook.importFromArchive
+import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.WebService
+import io.legado.app.service.defaultTtsEngineConfig
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.import.ImportBookDirHost
 import io.legado.app.ui.book.import.ImportDirRef
@@ -459,6 +462,17 @@ class AndroidPlatformCapabilities(
         AppNavigatorProviders.get().showOverlay(
             AppOverlay.Dialog("httpTtsEdit", payload = engine?.id?.toString())
         )
+    }
+
+    /** 引擎保存后重载正在播放的朗读 (与 iOS / 鸿蒙同语义, 对照原版 ReadAloudConfigDialog 保存后的重建)。 */
+    override fun onHttpTtsEdited(engine: HttpTTS) {
+        if (BaseReadAloudService.isRun && defaultTtsEngineConfig() == engine.id.toString()) {
+            // 先重取引擎实体: 服务类不变, 但下载与缓存键读的是实体里的 url/请求头,
+            // 不重取则重载后仍走旧配置
+            ReadAloud.refreshAloudClass()
+            // 正在朗读则重载; 暂停时记录重建位置, 继续朗读才启用新配置
+            ReadAloud.play(App.instance, play = !BaseReadAloudService.pause)
+        }
     }
 
     // 对照 app 端 FontSelectDialog.loadFontFiles: pref 字体目录 + externalFiles/font 合并去重排序
