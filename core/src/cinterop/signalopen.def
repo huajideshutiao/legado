@@ -1,0 +1,15 @@
+package = io.legado.app.platform.signalopen
+language = C
+noStringConversion = legado_signal_open
+---
+#include <fcntl.h>
+
+// 供 iosMain IosSignalMarker 的信号处理器打开标记文件。
+//
+// Kotlin/Native 的 platform.posix.open 把路径参数映射成 String, 传不进安装期备好的 C 字符串
+// (CPointer<ByteVar>); 改传 String 又会在处理器内临时分配 C 字符串, 其变参还要装箱。
+// 这里包一层非变参的 open, noStringConversion 让路径保持 C 指针, 处理器内只剩 open 本身
+// (async-signal-safe)。
+static inline int legado_signal_open(const char *path, int flags, mode_t mode) {
+    return open(path, flags, mode);
+}

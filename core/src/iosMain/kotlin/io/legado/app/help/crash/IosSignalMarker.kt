@@ -2,6 +2,7 @@
 
 package io.legado.app.help.crash
 
+import io.legado.app.platform.signalopen.legado_signal_open
 import io.legado.app.utils.File
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CFunction
@@ -23,7 +24,6 @@ import platform.posix.SIGSEGV
 import platform.posix.SIGSYS
 import platform.posix.SIGTRAP
 import platform.posix.close
-import platform.posix.open
 import platform.posix.signal
 import platform.posix.write
 
@@ -101,7 +101,8 @@ private val SigDfl: CPointer<CFunction<(Int) -> Unit>>? = null
 private fun onSignal(sig: Int) {
     val text = IosSignalMarker.markerText
     for (path in IosSignalMarker.markerPaths) {
-        val fd = open(path, O_WRONLY or O_CREAT or O_TRUNC, FILE_MODE)
+        // 不用 platform.posix.open: 其路径参数是 String, 原因见 signalopen.def
+        val fd = legado_signal_open(path, O_WRONLY or O_CREAT or O_TRUNC, FILE_MODE.toUShort())
         if (fd < 0) continue
         write(fd, text.refTo(0), text.size.toULong())
         close(fd)

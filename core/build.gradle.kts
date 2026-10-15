@@ -38,8 +38,16 @@ kotlin {
     }
 
     if (enableIosTarget) {
-        iosArm64()
-        iosSimulatorArm64()
+        listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+            if (isMacHost) {
+                target.compilations.getByName("main").cinterops {
+                    // 信号处理器以 C 字符串打开标记文件, 见 def 内说明
+                    create("signalopen") {
+                        defFile(file("src/cinterop/signalopen.def"))
+                    }
+                }
+            }
+        }
     }
 
     if (enableOhosTarget) {
