@@ -197,6 +197,10 @@ class AudioPlayService : BaseService(), AudioPlaySessionHost {
         super.onCreate()
         isRun = true
         instance = this
+        // 媒体会话与耳机监听随宿主建立: 会话可在宿主存活期内重启(起播失败后重新起播),
+        // 建在会话开始处会重复创建
+        initMediaSession()
+        noisyReceiver.register(this)
         session.ensureRunning()
     }
 
@@ -232,6 +236,16 @@ class AudioPlayService : BaseService(), AudioPlaySessionHost {
     override fun onDestroy() {
         super.onDestroy()
         session.endSession()
+        // 运行态随宿主销毁清理: 会话终结而宿主仍存活时它必须保持, 否则复用实例上的
+        // 暂停/恢复/进度/媒体键与对外播控态全部失效
+        isRun = false
+        instance = null
+        // 引擎与媒体会话随宿主销毁释放: 会话内部终结(起播链路失败)只停服务, 不动它们 ——
+        // 平台取消这次停止而复用同一实例时, 后续命令必须还能落在活着的引擎上
+        noisyReceiver.unregister(this)
+        exoPlayer.release()
+        mediaSessionCompat?.release()
+        notificationHost.cancelOnDestroy()
     }
 
     /** 暂停: 先放掉唤醒锁与音频焦点, 再交会话落状态。 */
@@ -292,8 +306,6 @@ class AudioPlayService : BaseService(), AudioPlaySessionHost {
     }
 
     override fun onSessionStart() {
-        initMediaSession()
-        noisyReceiver.register(this)
         armLrcWatch()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
         loadCover(AudioPlay.durCoverUrl)
@@ -303,16 +315,12 @@ class AudioPlayService : BaseService(), AudioPlaySessionHost {
         playbackLock.release()
         lrcWatchJob?.cancel()
         lrcWatchJob = null
-        isRun = false
-        instance = null
         audioFocus.abandon()
-        noisyReceiver.unregister(this)
-        // 先上报最终播放态再释放: 位置与 MediaSession 都还在, 置 STOPPED 才落得下去
-        // (引擎位置已由 AudioPlaySession.endSession 先存); 释放后写的是已释放对象, 等于没写
+        // 先上报最终播放态再收尾: 位置与媒体会话都还在, 置 STOPPED 才落得下去
+        // (引擎位置已由 AudioPlaySession.endSession 先存)。通知刷新只对"会话内部终结而
+        // 宿主仍存活"这条路径有效: 从 onDestroy 进来时作用域已取消, 它不会执行
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_STOPPED)
-        exoPlayer.release()
-        mediaSessionCompat?.release()
-        notificationHost.cancelOnDestroy()
+        upAudioPlayNotification()
         // 会话内部终结 (起播链路失败) 也要停服务; 本就从 onDestroy 进来时 stopSelf 是空操作
         stopSelf()
     }

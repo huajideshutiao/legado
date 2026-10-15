@@ -253,7 +253,9 @@ object AudioPlayShared {
      * @param source 书籍对应书源, 由调用方从书籍装载流程取得
      */
     suspend fun resetData(book: Book, source: BookSource?) {
-        stop()
+        // 换书/换源只停当前播放, 服务保持存活接着装新书: 停服务会让平台在销毁回调与下一条命令
+        // 之间复用同一个服务实例, 而播放器已随销毁释放, 后续装载与起播会全部落在已释放的播放器上
+        stopPlay()
         status = Status.STOP
         this.book = book
         ReadTimeRecorder.setBook(ReadTimeRecorder.Source.AUDIO, book.name)
