@@ -76,14 +76,17 @@ object LyricPublisher {
     private var lastPublishedIndex: Int = -1
     private var lastPublishedText: String? = null
 
+    /** 跳转目标追踪器: 跳转当帧按目标定位, 其余轮回回读位置真源 (跨会话重建沿用同一份纪元记忆)。 */
+    private val seekTracker = AudioPlayShared.SeekTargetTracker()
+
     /** 宿主启动早期注册。四端各一个 (Android 进 MediaSession metadata, 其余端进 now-playing)。 */
     fun register(sink: LyricSink) {
         sinks = sinks + sink
     }
 
-    /** seek 后重算 (由 [AudioPlayManager.onSeekTo] 统一调用, 四端只此一处)。 */
-    fun invalidate() {
-        AudioPlayShared.seekEpoch.update { it + 1 }
+    /** 跳转落地后重算 (由 [AudioPlayManager.onSeekTo] 统一调用, 四端只此一处); [targetMs] 为引擎接受的目标位置。 */
+    fun invalidate(targetMs: Int) {
+        AudioPlayShared.seekSignal.update { AudioPlayShared.SeekSignal(it.epoch + 1, targetMs) }
     }
 
     /**
@@ -105,8 +108,10 @@ object LyricPublisher {
                 statusFlow(),
                 speedFlow(),
                 enabledFlow(),
-                AudioPlayShared.seekEpoch,
-            ) { lrc, status, speed, enabled, _ -> Drive(lrc, status, speed, enabled) }
+                AudioPlayShared.seekSignal,
+            ) { lrc, status, speed, enabled, signal ->
+                Drive(lrc, status, speed, enabled, signal)
+            }
                 // 输入变了就重算: 换章 / 播放态 / 倍速 / 开关 / seek, 一律取消上一轮重入
                 .collectLatest { publishLoop(it, positionMs) }
         }
@@ -137,9 +142,13 @@ object LyricPublisher {
         val status: Int,
         val speed: Float,
         val enabled: Boolean,
+        /** 本次重算对应的跳转信号 (纪元 + 目标位置) */
+        val signal: AudioPlayShared.SeekSignal,
     )
 
     private suspend fun publishLoop(drive: Drive, positionMs: () -> Int) {
+        // 跳转当帧的首次取样用目标位置, 之后回读位置真源 (纪元在此登记, 与后续是否发布无关)
+        var pendingSeekMs = seekTracker.targetOf(drive.signal)
         val lrc = drive.lrc
         if (!drive.enabled || lrc == null || !lrc.hasTimeline || drive.status == Status.STOP) {
             clear()
@@ -151,7 +160,9 @@ object LyricPublisher {
             lastPublishedText = null
         }
         while (true) {
-            val now = positionMs() + Lrc.OFFSET_MS
+            val truth = positionMs()
+            val now = (pendingSeekMs ?: truth) + Lrc.OFFSET_MS
+            pendingSeekMs = null
             val index = lrc.indexAt(now)
             if (index != lastPublishedIndex) {
                 lastPublishedIndex = index
@@ -166,7 +177,13 @@ object LyricPublisher {
             // 暂停/缓冲: 停在当前行, 等状态变化由 collectLatest 重入
             if (drive.status != Status.PLAY) return
             val next = lrc.timeAfter(index) ?: return
-            delay(((next - now) / drive.speed).toLong().coerceAtLeast(1))
+            delay(
+                AudioPlayShared.lyricWakeUpMs(
+                    ((next - now) / drive.speed).toLong().coerceAtLeast(1),
+                    truth,
+                    drive.signal.targetMs,
+                )
+            )
         }
     }
 

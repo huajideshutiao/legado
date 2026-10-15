@@ -329,7 +329,7 @@ class AudioPlayScreenModel : ScreenModel {
             is AudioPlayUiEvent.LrcClick -> {
                 AudioPlayShared.adjustProgress(event.time)
                 if (AudioPlayShared.status == Status.PAUSE) AudioPlayShared.resume()
-                // 不需要本地立即高亮: seek 目标已写进位置真源, 下一帧求值就是新行
+                // 跳转目标随跳转信号一并发布, 歌词调度当帧即按目标位置重定位
             }
 
             AudioPlayUiEvent.CoverClick -> _state.update { it.copy(coverVisible = false) }

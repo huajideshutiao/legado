@@ -114,9 +114,58 @@ object AudioPlayShared {
     val durLrc = MutableStateFlow<Lrc?>(null)
 
     /**
-     * seek 重算纪元 (进度跳转时自增, 驱动歌词调度与车载发布循环立即重定位)。
+     * 界面当前歌词所属的书与章。
+     *
+     * 同一章被重复装载 (播放出错重试等) 时据此免去重复清空: 清空再发布同一份歌词会让界面
+     * 把歌词行表与高亮索引整体重建 (表现为歌词闪一下)。
      */
-    val seekEpoch = MutableStateFlow(0)
+    private var publishedLrcKey: Pair<String, Int>? = null
+
+    /**
+     * 跳转信号: [epoch] 每次跳转自增 (驱动歌词调度与车载发布循环重算),
+     * [targetMs] 是本次跳转的目标位置 (null = 无跳转目标)。
+     *
+     * 目标位置与信号同源发布: 播放侧的位置真源要等跳转命令送达才带上目标值, 歌词调度据此在
+     * 跳转当帧就按目标定位 (见 [SeekTargetTracker])。
+     */
+    data class SeekSignal(val epoch: Int, val targetMs: Int? = null)
+
+    val seekSignal = MutableStateFlow(SeekSignal(0))
+
+    /**
+     * 跳转目标追踪器 (歌词调度用): 本次重算由新跳转引起时给出目标位置, 其余情况给出 null
+     * (调用方回读位置真源)。
+     *
+     * 纪元与上次相同即该次重算与跳转无关 (暂停/变速/换章/歌词到货); 首次见到信号只记纪元
+     * (那是页面/会话打开前留下的目标位置)。
+     */
+    class SeekTargetTracker {
+        private var epoch: Int? = null
+
+        /** [signal] 是新跳转时返回其目标位置, 否则 null。 */
+        fun targetOf(signal: SeekSignal): Int? {
+            val previous = epoch
+            epoch = signal.epoch
+            return signal.targetMs.takeIf { previous != null && previous != signal.epoch }
+        }
+    }
+
+    /** 跳转未落地期间的重算间隔 (毫秒): 位置真源被跳转目标钉住时的唤醒上限。 */
+    const val SEEK_POLL_MS = 250L
+
+    /**
+     * 歌词调度的下一次唤醒时长 (毫秒): [remainMs] 为到下一行的墙上等待。
+     *
+     * 跳转尚未被位置真源采纳 ([truthMs] 仍停在 [seekTargetMs]) 时封顶为 [SEEK_POLL_MS] ——
+     * 真源抖动或落地判定走超时兜底都能在一个短间隔内被发现; 真源反映引擎真实位置后按行精准睡眠。
+     */
+    fun lyricWakeUpMs(remainMs: Long, truthMs: Int, seekTargetMs: Int?): Long =
+        if (seekTargetMs != null && truthMs == seekTargetMs) {
+            remainMs.coerceAtMost(SEEK_POLL_MS)
+        } else {
+            remainMs
+        }
+
     var durAudioSize = 0
     var inBookshelf = false
     var bookSource: BookSource? = null
@@ -141,7 +190,7 @@ object AudioPlayShared {
 
     fun adjustProgress(position: Int) {
         durChapterPos = position
-        seekEpoch.update { it + 1 }
+        seekSignal.update { SeekSignal(it.epoch + 1, position) }
         AudioPlayCommanders.get().adjustProgress(position)
     }
 
@@ -254,7 +303,11 @@ object AudioPlayShared {
             resolveChapter(book, durChapterIndex, chapterList)
         }
         durAudioSize = durChapter?.end?.toInt() ?: 0
-        durLrc.value = null
+        val lrcKey = book.bookUrl to durChapterIndex
+        if (publishedLrcKey != lrcKey) {
+            publishedLrcKey = lrcKey
+            durLrc.value = null
+        }
         val title = durChapter?.title ?: appString(AppStringKey.data_loading)
         postEvent(EventBus.AUDIO_SUB_TITLE, title)
         postEvent(EventBus.AUDIO_SIZE, durAudioSize)

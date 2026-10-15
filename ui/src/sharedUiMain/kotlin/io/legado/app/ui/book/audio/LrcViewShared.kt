@@ -36,9 +36,11 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
@@ -59,6 +61,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -118,11 +121,21 @@ fun LrcViewShared(
     val scope = rememberCoroutineScope()
     val lineMarginPx = with(LocalDensity.current) { LINE_MARGIN.toPx() }
     val hPaddingPx = with(LocalDensity.current) { H_PADDING.toPx() }
+    // 歌词统一字号样式: 逐字放大要用同一样式重测当前行
+    val lrcTextStyle = remember { TextStyle(fontSize = FONT_SIZE, textAlign = TextAlign.Center) }
 
     var viewportW by remember { mutableIntStateOf(0) }
+    // 左右留白就是当前行 1.05 倍缩放的溢出余量 (复刻原版 availableWidth = 宽 - 左右 padding,
+    // 裁剪留在全宽); 16dp 兜不住 5% 的超宽面板按视口比例抬升
+    val measureW = remember(viewportW, hPaddingPx) {
+        val inset = max(hPaddingPx, viewportW * SCALE_INSET_RATIO)
+        (viewportW - inset * 2).roundToInt()
+    }
     // 单实例运行态 (对齐原版 LrcView 的字段模型): 不随数据换实例, 复位走显式 reset。
     // 以换实例代替复位会让所有持旧引用的 effect/手势断供 (行表空 → 点击/拖动静默失效)
     val lrc = remember { LrcRuntime() }
+    // 逐字填充的跳转目标追踪器: 与高亮调度同一口径 (跳转当帧按目标定位), 独立一份纪元记忆
+    val fillSeekTracker = remember { AudioPlayShared.SeekTargetTracker() }
 
     // 控件退出时取消动画 Job，避免泄漏
     DisposableEffect(lrc) {
@@ -136,13 +149,8 @@ fun LrcViewShared(
     // textMeasurer 随 density/fontScale/layoutDirection/字体解析器重建, 拿它当 key 就覆盖了
     // lineMarginPx 与 sp→px 的换算依赖。
     // lrcProgress 刻意不当 key: 只需要重排那一刻的值用于定位, 加进 key 会让每次切行都重测全部行
-    val lines = remember(lrcData, viewportW, textMeasurer) {
-        // 左右留白就是当前行 1.05 倍缩放的溢出余量 (复刻原版 availableWidth = 宽 - 左右 padding,
-        // 裁剪留在全宽); 16dp 兜不住 5% 的超宽面板按视口比例抬升
-        val inset = max(hPaddingPx, viewportW * SCALE_INSET_RATIO)
-        measureLrcLines(
-            lrcData, (viewportW - inset * 2).roundToInt(), textMeasurer, lineMarginPx
-        )
+    val lines = remember(lrcData, measureW, textMeasurer) {
+        measureLrcLines(lrcData, measureW, textMeasurer, lineMarginPx, lrcTextStyle)
     }
 
     // 歌词数据变化 → 显式复位 (复刻原版 setLrcData: 索引归位/停滚动动画/回中)。
@@ -195,9 +203,15 @@ fun LrcViewShared(
     // 3. 句前等待段 (前奏/空隙) 精准 delay 到首字开唱, 避免无效空转刷帧;
     // 4. 整句唱完后固定 100% 填满并挂起停帧, 避免等待下一行期间持续无效重绘;
     // 5. 仅在真正的唱词区间以 withFrameNanos 高刷驱动平滑变色;
-    // 6. seekEpoch 联动: 句内 seek 立即打断睡眠/停帧重定位。
+    // 6. 跳转信号联动: 句内 seek 立即打断睡眠/停帧, 并按信号里的目标位置重定位。
     LaunchedEffect(lines, isPlaying, playSpeed) {
-        snapshotFlow { lrc.currentIndex to AudioPlayShared.seekEpoch.value }.collectLatest { (index, _) ->
+        // 输入 = 当前行 (快照状态) + 跳转信号 (StateFlow): 任一变化都重启本轮填充
+        combine(
+            snapshotFlow { lrc.currentIndex },
+            AudioPlayShared.seekSignal,
+        ) { index, signal -> index to signal }.collectLatest { (index, signal) ->
+            // 跳转当帧的首次取样用目标位置, 之后回读位置真源
+            var pendingSeekMs = fillSeekTracker.targetOf(signal)
             val words = lines.getOrNull(index)?.words
             if (words.isNullOrEmpty()) return@collectLatest
             val firstWordTime = words.first().timeMs
@@ -205,7 +219,9 @@ fun LrcViewShared(
             val speed = playSpeed.coerceAtLeast(0.1f)
 
             while (isActive) {
-                val now = positionNowMs() + Lrc.OFFSET_MS
+                val truth = positionNowMs()
+                val now = (pendingSeekMs ?: truth) + Lrc.OFFSET_MS
+                pendingSeekMs = null
                 lrc.fillClockMs = now - Lrc.OFFSET_MS
 
                 if (!isPlaying) {
@@ -214,8 +230,12 @@ fun LrcViewShared(
                 }
 
                 if (now < firstWordTime) {
-                    // 句前等待段: 尚未开唱, 精准延时到首字开唱时刻
-                    val waitMs = ((firstWordTime - now) / speed).toLong()
+                    // 句前等待段: 尚未开唱, 精准延时到首字开唱时刻 (跳转未落地时短间隔重算)
+                    val waitMs = AudioPlayShared.lyricWakeUpMs(
+                        ((firstWordTime - now) / speed).toLong(),
+                        truth,
+                        signal.targetMs,
+                    )
                     if (waitMs > 0) {
                         delay(waitMs)
                         continue
@@ -409,34 +429,57 @@ fun LrcViewShared(
                 isLast -> lerp(primaryColor, secondaryColor, colorProgress)
                 else -> secondaryColor
             }
-            // 缩放 (复刻 withScale: 1→1.05 / 1.05→1, 锚点行中心)
+            // 缩放 (复刻 withScale: 1→1.05 / 1.05→1, 锚点行中心)。
+            // 逐字放大用同一个倍率, 所以行唱完时字级与行级大小本就相等, 收尾直接走原版分支
             val scaleFactor = when {
-                isCurrent -> 1f + 0.05f * colorProgress
-                isLast -> 1.05f - 0.05f * colorProgress
+                isCurrent -> 1f + WORD_SCALE_DELTA * colorProgress
+                isLast -> 1f + WORD_SCALE_DELTA - WORD_SCALE_DELTA * colorProgress
                 else -> 1f
             }
             val lineCenterY = lineY + line.height / 2f
             val layout = line.layout
+            val karaoke = isCurrent && line.words.isNotEmpty()
+            val sungChars = if (karaoke) line.charProgressAt(fillClockMs + Lrc.OFFSET_MS) else 0f
+            // 逐字放大: 已唱过的字保持放大不缩回, 正在唱的那个字按字内进度平滑变大
+            // (瞬变会看成叠层/抖动); 整行要重测, 否则放大的字会直接压住相邻字。
+            // 只作用于当前行: 唱完就是普通行, 收尾交给上面的行缩放
+            val drawLayout = if (karaoke) {
+                val text = layout.layoutInput.text
+                val boundary = sungChars.toInt()
+                val frac = (sungChars - boundary).coerceIn(0f, 1f)
+                val styled = buildAnnotatedString {
+                    append(text)
+                    for (k in text.indices) {
+                        val s = when {
+                            k < boundary -> 1f + WORD_SCALE_DELTA
+                            k == boundary -> 1f + WORD_SCALE_DELTA * frac
+                            else -> 1f
+                        }
+                        if (s > 1.001f) addStyle(SpanStyle(fontSize = FONT_SIZE * s), k, k + 1)
+                    }
+                }
+                textMeasurer.measure(
+                    styled, lrcTextStyle, constraints = Constraints(maxWidth = measureW)
+                )
+            } else layout
             // 原版: withTranslation(contentCenterX - layout.width / 2f, layoutY)
             // —— Compose 文本块宽度自适应 (短文本 < 视口宽), 需按块宽居中
             val topLeft = Offset(
-                contentCenterX - layout.size.width / 2f,
-                lineY + (line.height - layout.size.height) / 2f,
+                contentCenterX - drawLayout.size.width / 2f,
+                lineY + (line.height - drawLayout.size.height) / 2f,
             )
             // 透明度 (复刻 calculateAlpha: 上下 0.35h 边界线性 1→40/255), 交给 drawText 内部 modulate
             val fade = calculateAlpha(lineCenterY, size.height)
 
             // 逐字行: 未唱的部分留在 secondaryColor, 已唱的前缀盖 primaryColor;
             // 整行 secondary→primary 的渐变只留给没有字标签的歌词, 否则会把填充对比冲掉
-            val karaoke = isCurrent && line.words.isNotEmpty()
             val bodyColor = if (karaoke) secondaryColor else baseColor
-            val sungChars = if (karaoke) line.charProgressAt(fillClockMs + Lrc.OFFSET_MS) else 0f
             // 只有当前/上一行会缩放, 其余行跳过 scale{} 的 save/concat/restore
             if (scaleFactor == 1f) {
-                drawLrcLine(line, topLeft, bodyColor, fade, sungChars, primaryColor)
+                drawLrcLine(drawLayout, topLeft, bodyColor, fade, sungChars, primaryColor)
             } else {
                 scale(scaleFactor, scaleFactor, pivot = Offset(contentCenterX, lineCenterY)) {
-                    drawLrcLine(line, topLeft, bodyColor, fade, sungChars, primaryColor)
+                    drawLrcLine(drawLayout, topLeft, bodyColor, fade, sungChars, primaryColor)
                 }
             }
         }
@@ -449,11 +492,12 @@ fun LrcViewShared(
  * 对齐原版 AudioPlayService.upPlayProgressForLrc 的节能策略:
  * 1. 响应式驱动: 状态变化 (换歌/切章/seek/换速/暂停/播放) 立即重算定位;
  * 2. 精确 delay: 播放时按下一句歌词时间差精准挂起休眠, 一首歌仅在切行时刻唤醒 N 次,
- *    杜绝每秒 60~120 次的死循环帧轮询;
+ *    杜绝每秒 60~120 次的死循环帧轮询; 跳转未落地期间按 [AudioPlayShared.SEEK_POLL_MS]
+ *    短间隔重算, 位置真源反映引擎真实位置后恢复按行精准休眠;
  * 3. 暂停休眠: 暂停/缓冲时完全挂起零开销, 拖动进度条或恢复播放时即时响应。
  *
  * 对外发布 (车载歌词) 是另一个消费者, 走 [io.legado.app.model.audio.LyricPublisher]:
- * 它需要息屏后台也推进, 共用 [AudioPlayShared.seekEpoch] 与 [Lrc.indexAt] 同一份判定。
+ * 它需要息屏后台也推进, 共用 [AudioPlayShared.seekSignal] 与 [Lrc.indexAt] 同一份判定。
  */
 @Composable
 fun rememberLrcIndex(
@@ -465,13 +509,20 @@ fun rememberLrcIndex(
     // 否则会先居中第一行, 下一帧再 snap 过去 —— 肉眼是闪一下
     val key = lrcData to AudioPlayShared.durChapterIndex
     var index by remember(key) { mutableIntStateOf(lrcData.indexNow()) }
+    // 跳转目标追踪器: 只认新纪元, 跳转当帧按目标定位
+    val seekTracker = remember { AudioPlayShared.SeekTargetTracker() }
     LaunchedEffect(key, isPlaying, playSpeed) {
-        if (lrcData == null || !lrcData.hasTimeline) return@LaunchedEffect
-        // 观察 seek 重算纪元 (进度跳转时立即打断 delay 并重新校准)
-        snapshotFlow { AudioPlayShared.seekEpoch.value }.collectLatest {
+        // 观察跳转信号 (StateFlow 直接收集): 进度跳转当帧立即打断 delay 并按目标位置重新校准
+        AudioPlayShared.seekSignal.collectLatest { signal ->
+            // 跳转当帧的首次取样用目标位置, 之后回读位置真源
+            var pendingSeekMs = seekTracker.targetOf(signal)
+            val lrc = lrcData ?: return@collectLatest
+            if (!lrc.hasTimeline) return@collectLatest
             while (isActive) {
-                val now = positionNowMs() + Lrc.OFFSET_MS
-                val targetIndex = lrcData.indexAt(now)
+                val truth = positionNowMs()
+                val now = (pendingSeekMs ?: truth) + Lrc.OFFSET_MS
+                pendingSeekMs = null
+                val targetIndex = lrc.indexAt(now)
                 if (index != targetIndex) {
                     index = targetIndex
                 }
@@ -479,9 +530,13 @@ fun rememberLrcIndex(
                     // 暂停/非播放中: 停在当前行, 挂起等待状态或 seek 唤醒
                     break
                 }
-                val nextTime = lrcData.timeAfter(targetIndex) ?: break
+                val nextTime = lrc.timeAfter(targetIndex) ?: break
                 val speed = playSpeed.coerceAtLeast(0.1f)
-                val remainWallMs = ((nextTime - now) / speed).toLong()
+                val remainWallMs = AudioPlayShared.lyricWakeUpMs(
+                    ((nextTime - now) / speed).toLong(),
+                    truth,
+                    signal.targetMs,
+                )
                 if (remainWallMs <= 0) {
                     // 临界时间微延时防紧密循环
                     delay(16)
@@ -563,14 +618,13 @@ private fun MeasuredLrcLine.charProgressAt(positionMs: Int): Float {
  * [sungChars] 不为正时只打底, 与逐字歌词落地前逐像素一致。
  */
 private fun DrawScope.drawLrcLine(
-    line: MeasuredLrcLine,
+    layout: TextLayoutResult,
     topLeft: Offset,
     bodyColor: Color,
     fade: Float,
     sungChars: Float,
     sungColor: Color,
 ) {
-    val layout = line.layout
     drawText(layout, bodyColor, topLeft, alpha = fade)
     if (sungChars <= 0f) return
     val boundary = sungChars.toInt()
@@ -594,6 +648,9 @@ private fun DrawScope.drawLrcLine(
         drawText(layout, sungColor, topLeft, alpha = fade)
     }
 }
+
+/** 当前行/当前字的放大增量: 两者用同一倍率, 逐字与非逐字的观感才一致。 */
+private const val WORD_SCALE_DELTA = 0.05f
 
 /**
  * 歌词运行态 (复刻原版 LrcView 的可变字段): 滚动/高亮/动画。滚动与颜色进度只被绘制、手势与
@@ -675,10 +732,10 @@ private fun measureLrcLines(
     availableW: Int,
     measurer: TextMeasurer,
     marginPx: Float,
+    style: TextStyle,
 ): List<MeasuredLrcLine> {
     val src = data?.lines
     if (availableW <= 0 || src.isNullOrEmpty()) return emptyList()
-    val style = TextStyle(fontSize = FONT_SIZE, textAlign = TextAlign.Center)
     var offset = 0f
     return src.mapIndexed { i, line ->
         val layout = measurer.measure(

@@ -199,8 +199,8 @@ class AudioPlayManager(
             NO_SEEK
         }
         publishSeek(target, origin)
-        // 发布循环可能正睡在"旧的下一行"时间点上, 叫醒它重算 (界面走帧驱动, 下一帧自会正确)
-        LyricPublisher.invalidate()
+        // 叫醒歌词调度: 发布循环可能正睡在"旧的下一行"时间点上, 界面按信号里的目标位置当帧重定位
+        LyricPublisher.invalidate(target)
     }
 
     /** 清理未完成的 seek 目标 (切章 / 停播 / 播放结束时调用)。 */
@@ -440,7 +440,6 @@ class AudioPlayManager(
                 // 开解当前章前先作废上一轮预解析: 两者共用书源, 并行跑会拖慢用户等的这一章
                 preloader.cancel()
                 AudioPlayShared.durCoverUrl = null
-                AudioPlayShared.durLrc.value = null
                 session.onResetCoverCache()
                 val cover = loadCoverUrl(bookSource, book, chapter)
                 chapterLoad.casUpdate { it.copy(cover = cover) }
@@ -593,9 +592,13 @@ class AudioPlayManager(
         }.onSuccess {
             // 防旧章节歌词异步晚到污染当前章节
             if (chapter.index != AudioPlayShared.durChapterIndex) return@onSuccess
-            if (it == null || it.lines.isEmpty()) return@onSuccess
+            val lrc = it ?: return@onSuccess
+            if (lrc.lines.isEmpty()) return@onSuccess
+            // 同一份歌词被重复装载时不再发布: 歌词数据按引用比较, 重复发布会让界面把
+            // 行表与高亮索引整体重建 (切章 / 缓冲完成时表现为歌词闪一下)
+            if (AudioPlayShared.durLrc.value?.lines == lrc.lines) return@onSuccess
             // 只发布数据; 当前行由消费方按播放位置求值 (界面按帧, 对外发布按行唤醒)
-            AudioPlayShared.durLrc.value = it
+            AudioPlayShared.durLrc.value = lrc
         }.onError {
             AppLog.put("获取歌词出错\n$it", it, true)
         }
