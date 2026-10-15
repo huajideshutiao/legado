@@ -49,8 +49,7 @@ import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.widget.dialog.HelpDialog
 import io.legado.app.ui.widget.dialog.OnlineImportUrlDialog
-import io.legado.app.utils.GSON
-import io.legado.app.utils.toJson
+import io.legado.app.utils.toExportJsonText
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.ui.generated.resources.Res
@@ -148,7 +147,7 @@ fun ReplaceRuleRoute(
         onExport = { rules ->
             pushExportDispatch(
                 fileName = "exportReplaceRule.json",
-                content = GSON.toJson(rules),
+                content = rules.toExportJsonText(),
                 contentType = "application/json",
             )
         },

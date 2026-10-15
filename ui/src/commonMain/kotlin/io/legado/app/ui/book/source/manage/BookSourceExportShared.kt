@@ -3,8 +3,10 @@ package io.legado.app.ui.book.source.manage
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.utils.cnCompare
+import io.legado.app.utils.toExportJsonText
 
 /**
  * 书源导出编排 (commonMain, 四端共用)。
@@ -69,4 +71,23 @@ suspend fun getExportBookSources(
     }
     sources.forEach { if (it.enableDangerousApi == true) it.enableDangerousApi = false }
     return sources
+}
+
+/**
+ * 选中书源转导出 JSON (四端共用): 取数 + 排序 + 比例分流 + 危险 API 开关清理走
+ * [getExportBookSources], 失败 toast 并返回 null (调用方静默结束)。
+ */
+suspend fun selectedSourcesJson(
+    selection: List<BookSourcePart>,
+    allCount: Int,
+    sortAscending: Boolean,
+    sort: BookSourceSort
+): String? {
+    val sources = runCatching {
+        getExportBookSources(selection, allCount, sortAscending, sort)
+    }.getOrElse {
+        Toasters.get().toast("导出书源失败\n${it.message}")
+        return null
+    }
+    return sources.toExportJsonText()
 }

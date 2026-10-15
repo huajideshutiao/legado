@@ -5,6 +5,7 @@ import io.legado.app.constant.DirUsage
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.resolveImagePath
 import io.legado.app.help.crash.CRASH_LOG_FILE_PREFIX
+import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.DesktopTrayNotifier
 import io.legado.app.help.writeBytesAtomically
@@ -83,7 +84,25 @@ private class DesktopFilePickerService : FilePickerService {
         FileDialogs.pickOpenFiles(extensions = filter.extensions).map { it.absolutePath }
 
     // 调用方没给目录时起始目录用用户可见产物目录 (桌面/legado), 别落在应用数据目录
-    override fun saveFile(suggestedName: String, defaultDir: String?): String? =
+    override fun saveText(suggestedName: String, text: String, defaultDir: String?): String? {
+        val dest = pickSaveFile(suggestedName, defaultDir) ?: return null
+        // 整份就位: 覆盖写被打断会在用户目录留下半截文件
+        check(writeBytesAtomically(dest, text.encodeToByteArray())) { "写入文件失败: $dest" }
+        return dest
+    }
+
+    /** 同上, 内容按整份复制到选定位置。 */
+    override fun saveFromFile(
+        srcPath: String,
+        suggestedName: String,
+        defaultDir: String?,
+    ): String? {
+        val dest = pickSaveFile(suggestedName, defaultDir) ?: return null
+        BackupFileOps.copyFile(srcPath, dest)
+        return dest
+    }
+
+    private fun pickSaveFile(suggestedName: String, defaultDir: String?): String? =
         FileDialogs.pickSaveFile(
             defaultName = suggestedName,
             initialDir = (defaultDir ?: userExportDir())?.let(::File)?.takeIf { it.isDirectory },

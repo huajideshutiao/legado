@@ -14,9 +14,9 @@ import io.legado.app.ui.dict.rule.DictRuleUiEvent
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.pushExportDispatch
 import io.legado.app.ui.root.ScreenModelStore
-import io.legado.app.utils.GSON
-import io.legado.app.utils.toJson
+import io.legado.app.utils.toExportJsonText
 
 /**
  * 字典规则管理路由入口 (shared 下沉版)。
@@ -115,10 +115,10 @@ fun DictRuleRoute(
                 screenModel.dispatch(DictRuleUiEvent.DisableSelection(screenModel.selection()))
             }
 
-            // payload 为选中规则 JSON, 平台走 HandleFileContract.EXPORT + showExportSuccess
+            // 选中规则转 JSON 后弹共享导出分发框
             override fun onExportSelection() {
-                val json = GSON.toJson(screenModel.selection())
-                navigator.showOverlay(AppOverlay.Dialog(key = "dictRuleExport", payload = json))
+                val json = screenModel.selection().toExportJsonText()
+                pushExportDispatch("exportDictRule.json", json, "application/json")
             }
         }
     }

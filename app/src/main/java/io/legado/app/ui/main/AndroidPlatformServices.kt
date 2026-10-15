@@ -58,6 +58,7 @@ import io.legado.app.utils.ActivityResultLauncherAwait
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.checkWrite
+import io.legado.app.utils.copyToDocumentAtomically
 import io.legado.app.utils.delete
 import io.legado.app.utils.displayName
 import io.legado.app.utils.find
@@ -144,9 +145,37 @@ private class AndroidFilePickerService(
             .mapNotNull(::materializeUri)
     }
 
-    override fun saveFile(suggestedName: String, defaultDir: String?): String? = runBlocking {
-        // CreateDocument 由系统决定保存位置, defaultDir 不支持指定
-        withContext(Dispatchers.Main) { createDocumentPicker.launch(suggestedName) }?.toString()
+    /**
+     * 弹 SAF 单文件另存为并写入文本。引用是 `content://` 文档地址 —— 只能经文档写入通道写,
+     * 拿它当文件路径写会失败。
+     */
+    override fun saveText(suggestedName: String, text: String, defaultDir: String?): String? =
+        runBlocking {
+            // CreateDocument 由系统决定保存位置, defaultDir 不支持指定
+            val uri = withContext(Dispatchers.Main) { createDocumentPicker.launch(suggestedName) }
+                ?: return@runBlocking null
+            // 目标所在目录允许整份就位时先写临时文档再改名, 否则直写
+            check(
+                writeDocumentBytesAtomically(
+                    App.instance, uri, suggestedName, text.encodeToByteArray()
+                )
+            ) { "写入文件失败: $suggestedName" }
+            uri.toString()
+        }
+
+    /** 同上, 内容按流复制 (大体积内容不整份读入内存)。 */
+    override fun saveFromFile(
+        srcPath: String,
+        suggestedName: String,
+        defaultDir: String?
+    ): String? = runBlocking {
+        val uri = withContext(Dispatchers.Main) { createDocumentPicker.launch(suggestedName) }
+            ?: return@runBlocking null
+        val written = File(srcPath).inputStream().use {
+            copyToDocumentAtomically(App.instance, uri, suggestedName, it)
+        }
+        check(written) { "写入文件失败: $suggestedName" }
+        uri.toString()
     }
 
     // 图集导入 + 按真实屏幕尺寸烘焙清晰产物 (启动图与主题背景图共用)。

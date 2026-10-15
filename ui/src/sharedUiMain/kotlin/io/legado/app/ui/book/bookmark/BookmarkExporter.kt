@@ -7,7 +7,6 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.dao.sortedByLocalizedOrder
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -53,9 +52,8 @@ object BookmarkExporter {
      * 导出惯例 (bookmark-书名-时间戳.png)。
      *
      * 渲染由调用方完成 (预览对话框经 GraphicsLayer 录制 [BookmarkShareCard], 预览与
-     * 烘焙共用同一 Composable), 本入口只负责编码与落盘。不走 files.saveFile: Android 端
-     * 它返回 content:// Uri (SAF) 而 common 层无字节写入通道 (BackupFileOps 仅有
-     * writeText), 故用 saveImageBytes —— 四端已验证的图片字节保存通道
+     * 烘焙共用同一 Composable), 本入口只负责编码与落盘。图片字节走 [saveImageBytes] 的
+     * 图片落点 (各端不同: 相册 / 图片目录), 与文本导出的保存入口分开
      * (对照图片查看器长按保存: true=写入成功 / false=写入失败 / null=用户取消)。
      *
      * @return 是否已保存 (用户取消返回 false 且静默, 不 toast)
@@ -91,15 +89,12 @@ object BookmarkExporter {
         }
     }
 
-    /** 文件选择器取目标路径 (用户取消返回 null 静默结束), 写入成功 toast, 失败 toast + 记 AppLog。 */
+    /** 平台弹保存入口并写入 (用户取消静默结束), 写入成功 toast, 失败 toast + 记 AppLog。 */
     private suspend fun export(fileName: String, content: suspend () -> String) {
         try {
             val files = PlatformServiceProviders.get().files
-            val path = withContext(IoDispatcher) { files.saveFile(sanitizeFileName(fileName)) }
+            withContext(IoDispatcher) { files.saveText(sanitizeFileName(fileName), content()) }
                 ?: return
-            withContext(IoDispatcher) {
-                BackupFileOps.writeText(path, content())
-            }
             Toasters.get().toast("导出成功")
         } catch (e: CancellationException) {
             throw e

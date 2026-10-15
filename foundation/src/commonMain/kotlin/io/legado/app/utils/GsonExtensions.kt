@@ -37,6 +37,27 @@ val GSONStrict: Json get() = KS_JSON_STRICT
  */
 fun Json.toJson(obj: Any?): String = obj.toJsonElement().toString()
 
+/**
+ * 导出文件用的 JSON 格式: 原版 Gson `setPrettyPrinting()` 的形制 (2 空格缩进 + `": "` 分隔)。
+ */
+@OptIn(ExperimentalSerializationApi::class)
+private val exportJsonFormat = Json {
+    prettyPrint = true
+    prettyPrintIndent = "  "
+}
+
+/** [JsonElement] 按导出形制序列化。 */
+fun exportJsonText(element: JsonElement): String =
+    exportJsonFormat.encodeToString(JsonElement.serializer(), element)
+
+/**
+ * 导出文件用的 JSON 文本 (任意对象, 经 [toJsonElement] 转换后按导出形制输出)。
+ *
+ * 只对齐缩进形制; 字段取舍仍走既有 kotlinx 兼容层 (等于默认值的字段省略、null 字段显式写出),
+ * 与原版 Gson 的这两项差异属仓库既有的序列化迁移差异, 不在本入口处理。
+ */
+fun Any?.toExportJsonText(): String = exportJsonText(toJsonElement())
+
 /** 复刻原 GsonExtensions.shared.kt 的 fromJsonObject<T>(json): Result<T>, 接受 String? */
 inline fun <reified T> Json.fromJsonObject(json: String?): Result<T> = runCatching {
     if (json.isNullOrEmpty()) throw SerializationException("json is null or empty")

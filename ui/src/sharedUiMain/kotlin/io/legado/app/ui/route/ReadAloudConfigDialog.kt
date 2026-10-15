@@ -20,7 +20,6 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.tts.OneShotTts
-import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.read.config.ReadAloudConfigScreen
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
 import io.legado.app.ui.compose.component.AppDialogScaffold
@@ -30,6 +29,7 @@ import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.pushExportDispatch
 import io.legado.app.ui.association.DeepLinkImportType
 import io.legado.app.ui.widget.dialog.OnlineImportUrlDialog
 import io.legado.app.utils.GSON
@@ -45,7 +45,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.aloud_config
-import legado.ui.generated.resources.export_success
 import legado.ui.generated.resources.system_tts
 import org.jetbrains.compose.resources.stringResource
 
@@ -116,7 +115,6 @@ private fun ReadAloudConfigContent(
     }
     // 试听文本 = 固定双语探针 (中文+英文, 先中文, 不随应用语言)
     val testSpeakText = OneShotTts.TEST_TEXT
-    val exportSuccessText = stringResource(Res.string.export_success)
 
     // 统一 TTS 源导入入口: 文本/URL 交共享勾选导入对话框 (深链导入同一条链)
     fun showTtsImport(sourceText: String) {
@@ -188,14 +186,8 @@ private fun ReadAloudConfigContent(
                 }
             },
             onExport = {
-                scope.launch {
-                    val json = GSON.toJson(engines)
-                    val path = withContext(IoDispatcher) {
-                        PlatformServiceProviders.get().files.saveFile("httpTts.json")
-                    } ?: return@launch
-                    withContext(IoDispatcher) { BackupFileOps.writeText(path, json) }
-                    Toasters.get().toast(exportSuccessText)
-                }
+                // 与其余导出入口同形制: 交共享导出分发框 (上传 URL / 保存到文件 → 导出成功框)
+                pushExportDispatch("httpTts.json", GSON.toJson(engines), "application/json")
             },
             onDismiss = { showSpeakEngineDialog = false },
         )

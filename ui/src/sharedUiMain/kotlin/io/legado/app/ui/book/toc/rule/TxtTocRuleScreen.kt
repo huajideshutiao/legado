@@ -85,11 +85,11 @@ data class TxtTocRuleUiState(
  *
  * 宿主端 [TxtTocRuleRoute] 内以匿名对象实现本接口, 委托
  * [TxtTocRuleScreenModel] dispatch 与 navigator 跳转, 平台专属依赖
- * (HandleFileContract/showExportSuccess 等) 由 Overlay 渲染层承载。
+ * (本地导入/编辑规则对话框等) 由 Overlay 渲染层承载。
  *
  * 设计: 返回式回调, 无 Android Context 依赖。所有需要 Android 专属 API 的动作
- * (如 [onBack] 调 finish、[onImportLocal] 走 HandleFileContract、
- * [onEditRule] 走 showDialogFragment、[onExportSelection] 走 HandleFileContract.EXPORT)
+ * (如 [onBack] 调 finish、[onImportLocal] 走文件选择器、
+ * [onEditRule] 走对话框、[onExportSelection] 弹导出分发框)
  * 由 app 端实现内部桥接到 Activity。删除确认对话框由 shared 端 [TxtTocRuleScreen]
  * 用 [AppAlertDialog] 统一呈现, [onDel]/[onDelSelection] 仅负责实际删除动作。
  */

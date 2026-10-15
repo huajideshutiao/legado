@@ -10,7 +10,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.core.net.toUri
 import androidx.fragment.app.FragmentManager
-import androidx.fragment.app.viewModels
 import io.legado.app.App
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.AppLog
@@ -43,7 +42,6 @@ class HandleFileDialog : BaseComposeDialogFragment(), FilePickerDialog.CallBack 
             title: String? = null,
             allowExtensions: Array<String>? = null,
             otherActions: ArrayList<SelectItem<Int>>? = null,
-            fileData: HandleFileContract.FileData? = null,
             value: String? = null,
             requestCode: Int = 0
         ) {
@@ -54,7 +52,6 @@ class HandleFileDialog : BaseComposeDialogFragment(), FilePickerDialog.CallBack 
                     putString("title", title)
                     putStringArray("allowExtensions", allowExtensions)
                     putSerializable("otherActions", otherActions)
-                    putSerializable("fileData", fileData)
                     putString("value", value)
                     putInt("requestCode", requestCode)
                 }
@@ -69,7 +66,6 @@ class HandleFileDialog : BaseComposeDialogFragment(), FilePickerDialog.CallBack 
     private lateinit var requestKey: String
     private var allowExtensions: Array<String>? = null
     private var selectList: ArrayList<SelectItem<Int>> = arrayListOf()
-    private val viewModel by viewModels<HandleFileViewModel>()
 
     private val selectDocTree =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -111,11 +107,6 @@ class HandleFileDialog : BaseComposeDialogFragment(), FilePickerDialog.CallBack 
         requestKey = requireNotNull(arguments?.getString("requestKey"))
         allowExtensions = arguments?.getStringArray("allowExtensions")
 
-        viewModel.errorLiveData.observe(this) {
-            toastOnUi(it)
-            dismiss()
-        }
-
         @Suppress("DEPRECATION", "UNCHECKED_CAST")
         val otherActions =
             arguments?.getSerializable("otherActions") as? ArrayList<SelectItem<Int>>
@@ -127,7 +118,6 @@ class HandleFileDialog : BaseComposeDialogFragment(), FilePickerDialog.CallBack 
     @Composable
     override fun Content() {
         val title = arguments?.getString("title") ?: when (mode) {
-            HandleFileContract.EXPORT -> rememberString("export")
             HandleFileContract.DIR -> rememberString("select_folder")
             HandleFileContract.IMAGE -> rememberString("select_image")
             else -> rememberString("select_file")
@@ -158,15 +148,6 @@ class HandleFileDialog : BaseComposeDialogFragment(), FilePickerDialog.CallBack 
         HandleFileContract.DIR_SYS -> getDirActions(true)
         HandleFileContract.DIR -> getDirActions()
         HandleFileContract.FILE -> getFileActions()
-        HandleFileContract.EXPORT -> arrayListOf(
-            SelectItem(
-                androidAppString("upload_url"),
-                111
-            )
-        ).apply {
-            addAll(getDirActions())
-        }
-
         HandleFileContract.IMAGE -> getImageActions()
         else -> arrayListOf()
     }
@@ -215,12 +196,6 @@ class HandleFileDialog : BaseComposeDialogFragment(), FilePickerDialog.CallBack 
                     mode = HandleFileContract.FILE,
                     allowExtensions = allowExtensions
                 )
-            }
-
-            111 -> getFileData()?.let { fileData ->
-                viewModel.upload(fileData.name, fileData.data, fileData.type) { url ->
-                    deliverResult(url.toUri())
-                }
             }
 
             112 -> showInputDirectoryDialog()
@@ -296,11 +271,6 @@ class HandleFileDialog : BaseComposeDialogFragment(), FilePickerDialog.CallBack 
         return false
     }
 
-    private fun getFileData(): HandleFileContract.FileData? {
-        @Suppress("DEPRECATION")
-        return arguments?.getSerializable("fileData") as? HandleFileContract.FileData
-    }
-
     private fun checkPermissions(success: (() -> Unit)?) {
         PermissionsCompat.Builder().addPermissions(*Permissions.Group.STORAGE)
             .rationale(androidAppString("tip_perm_request_storage"))
@@ -313,14 +283,6 @@ class HandleFileDialog : BaseComposeDialogFragment(), FilePickerDialog.CallBack 
 
     private fun onResult(uri: Uri?) {
         if (!isAdded) return
-        if (mode == HandleFileContract.EXPORT && uri != null) {
-            getFileData()?.let { fileData ->
-                viewModel.saveToLocal(uri, fileData.name, fileData.data) { savedUri ->
-                    deliverResult(savedUri)
-                }
-                return
-            }
-        }
         deliverResult(uri)
     }
 

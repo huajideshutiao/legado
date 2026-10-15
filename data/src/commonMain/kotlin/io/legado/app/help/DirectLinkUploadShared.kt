@@ -257,10 +257,7 @@ fun getRuleShared(): DirectLinkUploadRule {
 }
 
 /**
- * 获取当前规则的摘要文本 (跨平台访问点)。
- *
- * 与 app 端 [io.legado.app.help.DirectLinkUpload.getSummary] 同语义:
- * `getSummary() = getRule().summary`。
+ * 获取当前规则的摘要文本 (跨平台访问点): `getRuleShared().summary`。
  */
 fun getSummaryShared(): String = getRuleShared().summary
 

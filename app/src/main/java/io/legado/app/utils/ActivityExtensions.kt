@@ -5,9 +5,7 @@ package io.legado.app.utils
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.graphics.Color
-import android.net.Uri
 import android.os.Build
-import android.os.Bundle
 import android.util.DisplayMetrics
 import android.view.View
 import android.view.WindowInsets
@@ -19,9 +17,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-import androidx.fragment.app.DialogFragment
-import io.legado.app.help.i18n.androidAppString
-import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 
@@ -215,34 +210,4 @@ fun AppCompatActivity.showHelp(fileName: String) {
     AppNavigatorProviders.get().showOverlay(
         AppOverlay.Dialog(key = "help", payload = fileName)
     )
-}
-
-/**
- * 显示导出成功对话框
- */
-fun Activity.showExportSuccess(uri: Uri) {
-    alert(androidAppString("export_success")) {
-        if (uri.toString().isAbsUrl()) {
-            setMessage(io.legado.app.help.DirectLinkUpload.getSummary())
-        }
-        editTextView(hint = androidAppString("path"), text = uri.toString())
-        okButton {
-            sendToClip(uri.toString())
-        }
-    }
-}
-
-/**
- * 显示导出成功对话框 (Fragment版本)
- */
-fun androidx.fragment.app.Fragment.showExportSuccess(uri: Uri) {
-    alert(androidAppString("export_success")) {
-        if (uri.toString().isAbsUrl()) {
-            setMessage(io.legado.app.help.DirectLinkUpload.getSummary())
-        }
-        editTextView(hint = androidAppString("path"), text = uri.toString())
-        okButton {
-            requireContext().sendToClip(uri.toString())
-        }
-    }
 }

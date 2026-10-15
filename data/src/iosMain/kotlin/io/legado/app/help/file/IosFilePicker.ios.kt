@@ -5,6 +5,7 @@ package io.legado.app.help.file
 import io.legado.app.help.topMostViewController
 import kotlinx.cinterop.readBytes
 import kotlinx.coroutines.suspendCancellableCoroutine
+import okio.IOException
 import platform.Foundation.NSData
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
@@ -16,6 +17,7 @@ import platform.darwin.NSObject
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import io.legado.app.utils.File
 
 /**
@@ -173,41 +175,43 @@ suspend fun pickDirectory(): NSURL? = suspendCancellableCoroutine { block ->
 }
 
 /**
- * 导出字节到用户选择的位置 (对照 app 端 [HandleFileContract.EXPORT] / desktop `FileDialog(SAVE)`)。
+ * 弹系统"文件"面板把内容导出到用户选定位置 (对照 desktop `FileDialog(SAVE)`)。
  *
- * 两步: 先把 [bytes] 写进沙盒临时目录 (`NSTemporaryDirectory()/legado-export/<fileName>`),
+ * 两步: 先由 [write] 把内容写进沙盒临时目录 (`NSTemporaryDirectory()/legado-export/<fileName>`),
  * 再弹 `UIDocumentPickerViewController(forExportingURLs:)` 让用户挑目标位置 (iOS "文件" app,
  * 含 iCloud Drive / 本机 / 第三方网盘)。系统把临时文件**拷贝**到目标位置, 临时文件仍归我们管,
  * 弹窗关闭后即刻删除。
  *
  * 与 [pickDocuments] 的结构差异:
  * - **模式**: `forExportingURLs:` 专用构造器 (非 documentTypes/inMode), 无需声明 UTI;
- * - **回调语义**: 用户完成保存时 `didPickDocumentsAtURLs` 带回目标 URL (视为成功),
- *   取消时 `documentPickerDidCancel` (视为失败, 调用方降级到剪贴板)。
+ * - **回调语义**: 用户完成保存时 `didPickDocumentsAtURLs` 带回目标 URL, 取消时
+ *   `documentPickerWasCancelled`。
  *
- * @param fileName 建议文件名 (含扩展名, 如 "exportTxtTocRule.json"; 与 app 端 FileData.fileName 一致)
- * @param bytes 待写出的字节内容
- * @return true=用户完成保存; false=用户取消 / 临时文件写入失败 / 拿不到 root vc
+ * @param fileName 建议文件名 (含扩展名, 如 "bookSource.json")
+ * @param write 把内容写进给定的临时文件 (系统随后按用户选择拷贝出去)
+ * @return 保存后的目标地址 (目标 URL 串); 用户取消返回 null
+ * @throws IOException 临时文件准备失败或拿不到顶层视图 (无法弹出面板)
  */
-suspend fun exportFile(fileName: String, bytes: ByteArray): Boolean {
+suspend fun exportToUser(fileName: String, write: (File) -> Unit): String? {
     // 1. 写沙盒临时文件 (kotlin.io.File 走 POSIX fs, 与 nativeMain FileDownloader 同模式)
     val tmpDir = File(NSTemporaryDirectory().trimEnd('/') + "/legado-export")
     val tmpFile = File(tmpDir.path + "/" + fileName)
-    val prepared = runCatching {
+    runCatching {
         tmpDir.mkdirs()
-        tmpFile.writeBytes(bytes)
-    }.isSuccess
-    if (!prepared) return false
+        write(tmpFile)
+    }.getOrElse { throw IOException("准备导出文件失败: ${it.message}", it) }
 
     // 2. 弹系统保存器 (结构照抄 pickDocuments: 主线程 present + activeDelegates 强引用 + 取消 dismiss)
-    val saved = suspendCancellableCoroutine<Boolean> { block ->
+    val saved = suspendCancellableCoroutine<String?> { block ->
         var pickerRef: UIDocumentPickerViewController? = null
         var delegateRef: DocumentPickerDelegate? = null
         dispatch_async(dispatch_get_main_queue()) {
             if (!block.isActive) return@dispatch_async
             val vc = topMostViewController()
             if (vc == null) {
-                if (block.isActive) block.resume(false)
+                if (block.isActive) {
+                    block.resumeWithException(IOException("拿不到顶层视图, 无法弹出导出面板"))
+                }
                 return@dispatch_async
             }
             val srcUrl = NSURL.fileURLWithPath(tmpFile.path)
@@ -215,14 +219,14 @@ suspend fun exportFile(fileName: String, bytes: ByteArray): Boolean {
             pickerRef = picker
             val holder = mutableListOf<Any?>()
             val delegate = DocumentPickerDelegate(
-                // 导出完成: 系统回传目标 URL, 内容不再关心, 只取"成功"语义
-                onPick = {
+                // 导出完成: 系统回传目标 URL
+                onPick = { urls ->
                     holder.firstOrNull()?.let { activeDelegates.remove(it) }
-                    if (block.isActive) block.resume(true)
+                    if (block.isActive) block.resume(urls.firstOrNull()?.absoluteString)
                 },
                 onCancel = {
                     holder.firstOrNull()?.let { activeDelegates.remove(it) }
-                    if (block.isActive) block.resume(false)
+                    if (block.isActive) block.resume(null)
                 },
             )
             delegateRef = delegate

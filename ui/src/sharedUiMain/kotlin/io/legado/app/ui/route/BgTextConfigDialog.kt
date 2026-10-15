@@ -14,7 +14,6 @@ import io.legado.app.help.config.ReadConfigDefaults
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.http.newCallResponseBody
-import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.bakeReadingBgImage
 import io.legado.app.ui.book.read.ReadBookEvents
@@ -204,7 +203,7 @@ fun BgTextConfigContent(
             }
         }
 
-        // 导出配置 zip: exportConfigZip 生成临时 zip → 平台文件选择器选保存路径 → 复制 → 提示
+        // 导出配置 zip: exportConfigZip 生成临时 zip → 平台弹保存入口并复制过去 → 提示
         override fun onExportConfig() {
             val services = PlatformServiceProviders.get()
             scope.launch {
@@ -217,12 +216,9 @@ fun BgTextConfigContent(
                     val tempZipPath = withContext(IoDispatcher) {
                         readBookConfig.exportConfigZip()
                     }
-                    val savePath = withContext(IoDispatcher) {
-                        services.files.saveFile(exportFileName)
-                    } ?: return@launch
                     withContext(IoDispatcher) {
-                        BackupFileOps.copyFile(tempZipPath, savePath)
-                    }
+                        services.files.saveFromFile(tempZipPath, exportFileName)
+                    } ?: return@launch
                 }.onSuccess {
                     Toasters.get().toast("导出成功")
                 }.onFailure {

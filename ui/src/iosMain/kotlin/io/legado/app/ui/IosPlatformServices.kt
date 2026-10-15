@@ -6,6 +6,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.DirUsage
 import io.legado.app.constant.NotificationId
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.file.exportToUser
 import io.legado.app.help.file.pickDocuments
 import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
 import io.legado.app.help.log.NativeCrashLogs
@@ -128,21 +129,27 @@ private object IosFilePickerService : FilePickerService {
             .orEmpty().mapNotNull { it.path }
 
     /**
-     * iOS 无"先选路径后写入"的系统面板 (UIDocumentPicker 导出需先有文件),
-     * 故返回沙盒 Documents 下的可写路径; Info.plist 开启文件共享后用户可在"文件" app 中取用。
+     * iOS 没有"先选路径后写入"的系统面板: 先把内容写进沙盒临时件, 再弹系统"文件"面板让用户挑
+     * 目标位置 (系统把临时件拷贝过去), 返回目标地址。
      */
-    override fun saveFile(suggestedName: String, defaultDir: String?): String? {
-        val dir = defaultDir ?: (AppFilesDirs.get().filesDir + "/export")
-        return runCatching {
-            File(dir).mkdirs()
-            "$dir/$suggestedName"
-        }.getOrNull()
+    override fun saveText(suggestedName: String, text: String, defaultDir: String?): String? =
+        runBlocking { exportToUser(suggestedName) { it.writeText(text) } }
+
+    /** 同上, 内容按整份复制到临时件。 */
+    override fun saveFromFile(
+        srcPath: String,
+        suggestedName: String,
+        defaultDir: String?,
+    ): String? = runBlocking {
+        exportToUser(suggestedName) { tmp -> File(srcPath).copyTo(tmp, overwrite = true) }
     }
 
     override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? {
-        val path = saveFile(suggestedName) ?: return null
+        // 图片落沙盒导出目录: Info.plist 开启文件共享后用户可在"文件" app 中取用
+        val dir = AppFilesDirs.get().filesDir + "/export"
+        File(dir).mkdirs()
         // 落盘整份归位: 覆盖写被打断会在用户可见的导出目录留下半张图
-        return writeBytesAtomically(path, bytes)
+        return writeBytesAtomically("$dir/$suggestedName", bytes)
     }
 
     /**

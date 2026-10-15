@@ -13,9 +13,9 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.RssToolbarActions
 import io.legado.app.help.book.bookLogDirOrNull
+import io.legado.app.help.book.bookshelfJson
 import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.book.isImage
-import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.mainDispatcher
@@ -34,7 +34,7 @@ import io.legado.app.ui.book.info.WebFileImportShared
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
-import io.legado.app.ui.book.source.manage.getExportBookSources
+import io.legado.app.ui.book.source.manage.selectedSourcesJson
 import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.config.MODE_EDIT_CONFIG
 import io.legado.app.ui.config.MODE_EDIT_PREFS
@@ -55,13 +55,13 @@ import io.legado.app.ui.root.reselectBookSaveDir
 import io.legado.app.ui.root.pushExportDispatch
 import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.toRouteRef
-import io.legado.app.utils.GSON
+import io.legado.app.ui.root.pushExportSectionConfig
 import io.legado.app.utils.browseUrl
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.atomicWriteTempPath
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.openFileWithSystem
-import io.legado.app.utils.toJson
+import io.legado.app.utils.toExportJsonText
 import io.legado.desktop.constant.DesktopAppInfo
 import io.legado.desktop.help.DesktopCrashLogDirs
 import io.legado.desktop.help.applyDesktopLanguagePref
@@ -732,7 +732,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
                 Toasters.get().toast("导出所用书源失败\n${it.message}")
                 return@launch
             }
-            val json = GSON.toJson(sources)
+            val json = sources.toExportJsonText()
             withContext(Dispatchers.Main) {
                 pushExportDispatch("bookSource.json", json, "application/json")
             }
@@ -742,10 +742,10 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     // 导出书架 JSON (字段清单与 app 端 exportBookshelf 一致)
     override fun exportBookshelf(books: List<Book>) {
         if (books.isEmpty()) {
-            Toasters.get().toast("书籍不能为空")
+            Toasters.get().toast("导出书籍出错\n书籍不能为空")
             return
         }
-        val json = GSON.toJson(books.map { it.toShelfJsonMap() })
+        val json = bookshelfJson(books)
         pushExportDispatch("bookshelf.json", json, "application/json")
     }
 
@@ -754,7 +754,10 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     // 未设置先拉选择器; 已设置但目录不存在且建不出 (被删/盘符失效) 同样重新选一次, 取消则本次导出作罢;
     // 本次新选定目录且开了自定义导出时先弹章节配置 (对照原版 exportDir 回调), 否则直接导出
     override fun exportAllBooks(books: List<Book>) {
-        if (books.isEmpty()) return
+        if (books.isEmpty()) {
+            Toasters.get().toast(syncGetString("no_book"))
+            return
+        }
         scope.launch {
             var freshlySelected = effectiveBookSaveDir() == null
             if (freshlySelected && !ensureBookSaveDirSelected()) return@launch
@@ -765,7 +768,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
                 freshlySelected = true
             }
             if (freshlySelected && io.legado.app.utils.enableCustomExport()) {
-                showExportSectionConfig(dir, books)
+                showExportSectionConfig(books)
             } else {
                 startExport(dir, books)
             }
@@ -774,45 +777,21 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
 
     // 导出配置弹窗 (对照 app 端 showExportConfig / dialog_export_config.xml 全量字段):
     // 导出文件名 JS 规则 / 导出类型 txt|epub / 导出编码 / TXT 不导出章节名
-    // (cbz 按 app 端语义由图片书自动选择, 无需用户配置)
+    // (cbz 按 app 端语义由图片书自动选择, 无需用户配置); 弹共享实现 (与鸿蒙同一形制)
     override fun showExportConfig() {
-        DesktopDialogs.show(
-            DesktopDialogRequest.ExportConfig(
-                currentType = prefs.getInt(PreferKey.exportType, 0),
-                currentFileName = prefs.getString(PreferKey.bookExportFileName, ""),
-                currentCharset = prefs.getString(PreferKey.exportCharset, ""),
-                currentNoChapterName = prefs.getBoolean(PreferKey.exportNoChapterName, false),
-                onConfirm = { type, fileName, charset, noChapterName ->
-                    prefs.putInt(PreferKey.exportType, type)
-                    prefs.putString(PreferKey.bookExportFileName, fileName)
-                    prefs.putString(PreferKey.exportCharset, charset)
-                    prefs.putBoolean(PreferKey.exportNoChapterName, noChapterName)
-                },
-            )
-        )
+        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("book_export_format"))
     }
 
-    // 自定义导出章节配置弹窗 (对照 app 端 configExportSection / dialog_select_section_export.xml):
-    // 导出所有 / 自定义导出 (章节范围 + epub 分卷大小 + epub 文件名 JS 规则)
-    override fun showExportSectionConfig(path: String, books: List<Book>) {
-        DesktopDialogs.show(
-            DesktopDialogRequest.ExportSectionConfig(
-                path = path,
-                books = books,
-                currentFileName = prefs.getString(PreferKey.episodeExportFileName, ""),
-                onConfirm = { all, scope, size, fileName ->
-                    // 分卷文件名 JS 规则仅在合法时持久化 (对照 etEpubFilename 失焦校验)
-                    if (tryParesExportFileName(fileName)) {
-                        prefs.putString(PreferKey.episodeExportFileName, fileName)
-                    }
-                    if (all) {
-                        startExport(path, books)
-                    } else {
-                        startCustomExport(path, books, scope, size)
-                    }
-                },
-            )
-        )
+    // 自定义章节导出配置弹窗: 弹共享实现 (四端同一份)
+    // (导出全部 / 自定义导出: 章节范围 + epub 分卷大小 + epub 文件名 JS 规则)
+    override fun showExportSectionConfig(books: List<Book>) {
+        pushExportSectionConfig(books)
+    }
+
+    // 对照原版 configExportSection 的自定义分支: 逐本按 epubScope/epubSize 导出
+    override fun exportCustomBooks(books: List<Book>, epubSize: Int, epubScope: String) {
+        val dir = effectiveBookSaveDir() ?: return
+        startCustomExport(dir, books, epubScope, epubSize)
     }
 
     private fun startCustomExport(path: String, books: List<Book>, range: String, size: Int) {
@@ -1240,38 +1219,5 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         runCatching { File(URI(bookUrl)) }.getOrElse { File(bookUrl.removePrefix("file:")) }
     } else {
         File(bookUrl)
-    }
-
-    /** 选中书源转 JSON, 取数+排序+比例分流+危险 API 清理走 commonMain 编排。 */
-    private suspend fun selectedSourcesJson(
-        selection: List<BookSourcePart>,
-        allCount: Int,
-        sortAscending: Boolean,
-        sort: BookSourceSort
-    ): String? {
-        val sources = runCatching {
-            getExportBookSources(selection, allCount, sortAscending, sort)
-        }.getOrElse {
-            Toasters.get().toast("导出书源失败\n${it.message}")
-            return null
-        }
-        return GSON.toJson(sources)
-    }
-
-    /** 书架导出字段 (与 app 端 exportBookshelf 的 13 个字段一致)。 */
-    private fun Book.toShelfJsonMap(): Map<String, Any?> = buildMap {
-        put("bookUrl", bookUrl)
-        put("tocUrl", tocUrl)
-        put("origin", origin)
-        put("originName", originName)
-        put("name", name)
-        put("author", author)
-        kind?.let { put("kind", it) }
-        coverUrl?.let { put("coverUrl", it) }
-        customCoverUrl?.let { put("customCoverUrl", it) }
-        intro?.let { put("intro", it) }
-        customIntro?.let { put("customIntro", it) }
-        put("type", type)
-        wordCount?.let { put("wordCount", it) }
     }
 }

@@ -74,10 +74,6 @@ object DirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUploadDefault
 
     override fun getDefaultRules(): List<DirectLinkUploadRule> = defaultRulesCache
 
-    fun getSummary(): String {
-        return getRule().summary
-    }
-
 }
 
 /**

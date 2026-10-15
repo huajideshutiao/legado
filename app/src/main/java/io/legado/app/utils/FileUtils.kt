@@ -8,7 +8,6 @@ import io.legado.app.App
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.fileNameFormat
-import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.copyToFileAtomically
 import io.legado.app.help.writeBytesAtomically
 import java.io.Closeable
@@ -340,44 +339,5 @@ object FileUtils {
                 null
             }
         }
-    }
-
-    /**
-     * 将数据导出到指定目录（不带上传）
-     *
-     * content:// 目录走 SAF 临时文档 + 改名就位 ([writeDocumentBytesAtomically]): 目标名上已有
-     * 同名旧文档时先把它挪成契约过渡件, 就位成功后删过渡件, 失败则把过渡件改回目标名; file:// 目录
-     * 走同目录唯一临时件 + 改名 ([writeBytesAtomically])。就位成立时写入期间目标名上是完整的旧件或
-     * 新件; 提供方不支持同目录就位时直写回落, 写入被打断时目标名上可能是半截。导出目录是用户选定
-     * 目录, 没有孤儿临时件的回收方, 两条通道都在各自的每条退出路径上清掉中间件, 只有进程被强杀会
-     * 残留契约名可识别的临时件。
-     *
-     * @param dirUri 目标目录Uri (content:// 或 file://)
-     * @param fileName 保存的文件名
-     * @param data 数据，支持 File/ByteArray/String/其他对象(自动JSON序列化)
-     * @return 保存后的文件Uri
-     */
-    fun exportFile(dirUri: Uri, fileName: String, data: Any): Uri {
-        val bytes = when (data) {
-            is File -> data.readBytes()
-            is ByteArray -> data
-            is String -> data.toByteArray()
-            // GSON.toJson(data) 反射序列化 Any → toJsonElement().toString() 处理任意类型
-            else -> data.toJsonElement().toString().toByteArray()
-        }
-        if (dirUri.isContentScheme()) {
-            val dirDoc = FileDoc.fromDir(dirUri)
-            check(writeDocumentBytesAtomically(App.instance, dirUri, fileName, bytes)) {
-                "导出文件失败: $fileName"
-            }
-            // 保存后的文件 Uri = 目录里该名字对应的文档 (就位时它就是刚被改名就位的那份);
-            // 目录子项按显示名直接查 (FileDocIo 走一次子项查询, 不逐个 DocumentFile 探测)
-            return dirDoc.find(fileName)?.uri
-                ?: throw NoStackTraceException("导出文件失败: 目标目录里没有 $fileName")
-        }
-        val file = File(dirUri.path ?: dirUri.toString())
-        val newFile = File(file, fileName)
-        check(writeBytesAtomically(newFile.path, bytes)) { "导出文件失败: $fileName" }
-        return Uri.fromFile(newFile)
     }
 }

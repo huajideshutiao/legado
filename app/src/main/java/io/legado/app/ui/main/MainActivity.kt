@@ -125,7 +125,6 @@ import io.legado.app.utils.FileUtils
 import io.legado.app.utils.keepScreenOn
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.registerForActivityResult
-import io.legado.app.utils.showExportSuccess
 import io.legado.app.utils.startService
 import io.legado.app.utils.sysScreenOffTime
 import io.legado.app.utils.toastOnUi
@@ -237,22 +236,6 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     fun launchBookTreeUriPicker() = bookTreeUriSelect.launch {
         title = androidAppString("select_book_folder")
         mode = HandleFileContract.DIR_SYS
-    }
-
-    /** 书架管理导出: HandleFileContract (对照 BookshelfManageActivity.exportDir 的文件导出分支)。 */
-    private val exportDir by lazy {
-        registerHandleFile { result ->
-            // 文件导出: 显示成功
-            result.uri?.let { showExportSuccess(it) }
-        }
-    }
-
-    /** 暴露给 [AndroidPlatformCapabilities] 启动导出文件选择器 (EXPORT 模式, 对照 exportDir.launch EXPORT)。 */
-    fun launchExportDir(name: String, file: java.io.File, type: String) {
-        exportDir.launch {
-            mode = HandleFileContract.EXPORT
-            fileData = HandleFileContract.FileData(name, file, type)
-        }
     }
 
     /** 启动 ExportBookService 批量导出 (对照 BookshelfManageActivity.startExport)。 */

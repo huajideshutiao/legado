@@ -13,10 +13,10 @@ import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.pushExportDispatch
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.ScreenModelStore
-import io.legado.app.utils.GSON
-import io.legado.app.utils.toJson
+import io.legado.app.utils.toExportJsonText
 
 /**
  * AppRoute.SourceFilterRule 路由下沉入口: 桥接 [SourceFilterRuleScreenModel] 状态与
@@ -99,16 +99,10 @@ fun SourceFilterRuleRoute(
                 screenModel.dispatch(SourceFilterRuleUiEvent.BottomSelect)
             }
 
-            // payload 为选中规则 JSON, 平台走 HandleFileContract.EXPORT + showExportSuccess
-            // (对照 app 端 SourceFilterRuleActivity.onExportSelection)
+            // 选中规则转 JSON 后弹共享导出分发框 (对照 app 端 SourceFilterRuleActivity.onExportSelection)
             override fun onExportSelection() {
-                val json = GSON.toJson(screenModel.selection())
-                navigator.showOverlay(
-                    AppOverlay.Dialog(
-                        key = "sourceFilterRuleExport",
-                        payload = json
-                    )
-                )
+                val json = screenModel.selection().toExportJsonText()
+                pushExportDispatch("exportSourceFilterRule.json", json, "application/json")
             }
 
             // payload 传规则 id, 平台据此初始化编辑弹窗

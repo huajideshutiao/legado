@@ -53,9 +53,9 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.pushExportDispatch
 import io.legado.app.ui.root.ScreenModelStore
-import io.legado.app.utils.GSON
-import io.legado.app.utils.toJson
+import io.legado.app.utils.toExportJsonText
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
@@ -172,10 +172,10 @@ fun TxtTocRuleRoute(
                 screenModel.dispatch(TxtTocRuleUiEvent.EnableRule(item, enabled))
             }
 
-            // payload 为选中规则 JSON, 平台走 HandleFileContract.EXPORT + showExportSuccess
+            // 选中规则转 JSON 后弹共享导出分发框
             override fun onExportSelection() {
-                val json = GSON.toJson(screenModel.selection())
-                navigator.showOverlay(AppOverlay.Dialog(key = "txtTocRuleExport", payload = json))
+                val json = screenModel.selection().toExportJsonText()
+                pushExportDispatch("exportTxtTocRule.json", json, "application/json")
             }
         }
     }

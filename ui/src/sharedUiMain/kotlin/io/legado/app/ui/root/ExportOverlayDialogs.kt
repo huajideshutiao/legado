@@ -24,10 +24,10 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.IntentData
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.getSummaryShared
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppAutoCompleteField
@@ -42,6 +42,7 @@ import io.legado.app.utils.encodeStringMap
 import io.legado.app.utils.isAbsUrl
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.cancel
+import legado.ui.generated.resources.copy
 import legado.ui.generated.resources.export
 import legado.ui.generated.resources.export_charset
 import legado.ui.generated.resources.export_config
@@ -191,26 +192,29 @@ internal fun BookExportFormatDialogContent(overlay: AppOverlay.Dialog, navigator
 /**
  * 导出分发 Overlay (key="exportDispatch") + 导出成功 Overlay (key="exportSuccess")。
  *
- * 对照 app 端 `HandleFileContract.EXPORT → HandleFileDialog`: 导出落盘前弹「上传 URL / 保存到文件」,
- * 上传成功后 `showExportSuccess` (直链 + 规则注释 + 确定复制)。桌面端书源/书架导出与规则类导出
- * 经此统一; 安卓书源/书架 3 处仍走原版 HandleFileDialog, 本对话框不改变其行为。
+ * 四端导出的唯一入口: 导出落盘前弹「上传 URL / 保存到文件」, 选完弹导出成功框
+ * (直链或保存位置 + 直链规则注释 + 复制/取消)。保存到文件由平台自己弹保存入口并写盘
+ * (见 [io.legado.app.ui.root.FilePickerService.saveText])。
  *
- * payload 格式: [encodeStringMap] 编码的 map
- * (分发 = {fileName, content, contentType}, 成功 = {value})。
+ * 待导出内容不进弹窗载荷: 载荷会随导航栈进界面快照 (退后台/系统重建时交给系统),
+ * 上千条书源/书架导出的整份 JSON 可达数 MB, 超系统 Bundle 预算会崩。内容走
+ * [IntentData] 进程内一次性通道, 载荷只放键; 进程重建后内容已随进程消失, 内容组件直接关框。
  */
+
+/** 导出分发载荷 (进程内一次性通道的数据体)。 */
+internal data class ExportDispatchPayload(
+    val fileName: String,
+    val content: String,
+    val contentType: String,
+)
 
 /** 构造导出分发 Overlay (key="exportDispatch")。调用方须在主线程 (showOverlay 是 UI 操作)。 */
 fun pushExportDispatch(fileName: String, content: String, contentType: String) {
+    val key = IntentData.put(ExportDispatchPayload(fileName, content, contentType))
     AppNavigatorProviders.get().showOverlay(
         AppOverlay.Dialog(
             key = "exportDispatch",
-            payload = encodeStringMap(
-                buildMap {
-                    put("fileName", fileName)
-                    put("content", content)
-                    put("contentType", contentType)
-                }
-            ),
+            payload = key,
         )
     )
 }
@@ -254,20 +258,16 @@ fun ExportDispatchDialog(
                         onDismiss()
                         url?.let(::pushExportSuccess)
                     }
-                    // 保存到文件: 平台 files.saveFile + 写盘 (对照原版目录分支落盘)。
+                    // 保存到文件: 平台自己弹保存入口并写盘 (各端保存目标不同, 写盘归平台实现)。
                     // 用 [Coroutine.async] 而不是 rememberCoroutineScope: 上面已 onDismiss(),
-                    // 组合子树随即 dispose, 挂在组合上的 scope 会把「选路径 + 写盘」整段取消
+                    // 组合子树随即 dispose, 挂在组合上的 scope 会把「选目标 + 写盘」整段取消
                     // → 文件不落盘、成功框也不弹。async 自带进程级 scope, IO 执行、主线程回调。
                     else -> {
                         onDismiss()
                         Coroutine.async {
-                            PlatformServiceProviders.get().files.saveFile(fileName)
-                                ?.let { path ->
-                                    BackupFileOps.writeText(path, content)
-                                    path
-                                }
-                        }.onSuccess { path ->
-                            path?.let(::pushExportSuccess)
+                            PlatformServiceProviders.get().files.saveText(fileName, content)
+                        }.onSuccess { saved ->
+                            saved?.let(::pushExportSuccess)
                         }.onError { error ->
                             AppLog.put("导出失败\n${error.message}", error, true)
                         }
@@ -281,42 +281,52 @@ fun ExportDispatchDialog(
 /** 导出分发框 Overlay 内容 (key="exportDispatch")。 */
 @Composable
 internal fun ExportDispatchDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
-    val payload = remember(overlay.payload) { decodeStringMapOrNull(overlay.payload.orEmpty()) }
+    // 一次性通道取内容 (取走即删); 进程重建后取不到 → 直接关框, 不弹空框
+    val payload = remember(overlay.payload) {
+        IntentData.get<ExportDispatchPayload>(overlay.payload)
+    }
     if (payload == null) {
         LaunchedEffect(overlay.key) { navigator.dismissOverlay(overlay.key) }
         return
     }
     ExportDispatchDialog(
-        fileName = payload["fileName"].orEmpty(),
-        content = payload["content"].orEmpty(),
-        contentType = payload["contentType"].orEmpty(),
+        fileName = payload.fileName,
+        content = payload.content,
+        contentType = payload.contentType,
         onDismiss = { navigator.dismissOverlay(overlay.key) },
     )
 }
 
-/** 导出成功框 Overlay 内容 (key="exportSuccess", 对照 app 端 showExportSuccess)。 */
+/** 导出成功框 Overlay 内容 (key="exportSuccess")。 */
 @Composable
 internal fun ExportSuccessDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
     val value = remember(overlay.payload) {
         decodeStringMapOrNull(overlay.payload.orEmpty())?.get("value").orEmpty()
     }
-    var text by remember { mutableStateOf(value) }
     AppAlertDialog(
         onDismissRequest = { navigator.dismissOverlay(overlay.key) },
         title = stringResource(Res.string.export_success),
-        // 对照原版: 仅直链时消息区显示直链上传规则注释 (DirectLinkUpload.getSummary)
+        // 仅直链时消息区显示直链上传规则注释
         message = value.takeIf { it.isAbsUrl() }?.let { getSummaryShared() },
-        okButton = AlertButton(text = stringResource(Res.string.ok)) {
-            // 原版 sendToClip(uri) 复制原始值, 编辑框可编辑却编辑无效 (原版缺陷);
-            // 修正为复制编辑框当前文本
-            PlatformCapabilityProviders.get().copyToClipboard(text)
+        okButton = AlertButton(text = stringResource(Res.string.copy)) {
+            PlatformCapabilityProviders.get().copyToClipboard(value)
         },
+        cancelButton = AlertButton(text = stringResource(Res.string.cancel)),
         content = {
-            AppTextField(
-                value = text,
-                onValueChange = { text = it },
-                label = stringResource(Res.string.path),
-            )
+            // 结果只作展示 (直链或本地路径, 可超长): 纵向滚动 + 自动换行
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    stringResource(Res.string.path),
+                    color = AppTheme.colors.primaryText,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(bottom = DesignTokens.spacingXs),
+                )
+                Text(
+                    value,
+                    color = AppTheme.colors.primaryText,
+                    fontSize = 15.sp,
+                )
+            }
         },
     )
 }

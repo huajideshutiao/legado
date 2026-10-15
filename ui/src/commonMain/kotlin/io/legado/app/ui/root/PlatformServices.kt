@@ -54,13 +54,28 @@ interface FilePickerService {
     fun pickFiles(filter: FileFilter): List<String>
 
     /**
-     * 取一个可写目标路径 (调用方自行写盘)。各端按平台形制决定怎么取得:
-     * 安卓 SAF 单文件另存为 / 桌面保存对话框 / iOS 沙盒可见目录 / 鸿蒙选目录
-     * (原版导出形制是选目录后把文件写进该目录, 见 HandleFileContract.EXPORT + FileUtils.exportFile)。
+     * 弹本端"保存到文件"入口, 由平台把 [text] 写进用户选定的目标, 返回保存后的引用。
      *
-     * @return 用户取消选择返回 null (调用方静默)
+     * 写盘归平台: 各端的"保存目标"不是同一种东西 —— 安卓 SAF 单文件另存为给的是文档地址
+     * (`content://`, 只能经文档写入通道写), 桌面/iOS/鸿蒙给的是普通文件路径。调用方拿到的引用
+     * 只用于展示与复制, 不自己写盘。
+     *
+     * 各端形制: 安卓 CreateDocument + 文档写入 / 桌面保存对话框 + 文件写 /
+     * iOS 系统"文件"面板 (面板自选目标, 忽略 [defaultDir]) / 鸿蒙选目录 + 文件写。
+     *
+     * 阻塞 IO + 可能弹平台选择器 (实现内部等主线程回调), 必须在 IO 线程调用。
+     *
+     * @param defaultDir 调用方指定的落点 (无系统保存面板的端用作起始位置); 传了就不再询问用户
+     * @return 保存后的引用 (安卓为 `content://` 地址, iOS 为系统面板回传的目标地址,
+     *   桌面与鸿蒙为路径); 用户取消返回 null (调用方静默)
+     * @throws 写入失败 (含临时件准备失败) 抛出, 调用方如实报失败
      */
-    fun saveFile(suggestedName: String, defaultDir: String? = null): String?
+    fun saveText(suggestedName: String, text: String, defaultDir: String? = null): String?
+
+    /**
+     * 同 [saveText], 内容来源是本地文件 [srcPath] (整份复制, 流式不整份读入内存)。
+     */
+    fun saveFromFile(srcPath: String, suggestedName: String, defaultDir: String? = null): String?
 
     /**
      * 保存图片字节到本端的图片落点 (书签分享卡片导出; 图片查看器长按保存在

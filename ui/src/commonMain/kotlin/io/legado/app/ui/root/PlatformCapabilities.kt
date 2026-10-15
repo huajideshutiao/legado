@@ -157,7 +157,7 @@ interface PlatformCapabilities {
 
     fun getClipboardText(): String? = null
 
-    // 导出分发: 上传文件到直链上传规则接口并解析直链 (对照 app 端 HandleFileViewModel.upload → DirectLinkUpload.upLoad)
+    // 导出分发: 上传文件到直链上传规则接口并解析直链 (对照原版 DirectLinkUpload.upLoad)
     // onResult 传 null 表失败 (失败提示由实现内 toast, 对照原版 errorLiveData → toastOnUi)
     fun upLoadFile(fileName: String, file: Any, contentType: String, onResult: (String?) -> Unit) =
         unsupported("上传文件")
@@ -515,7 +515,17 @@ interface PlatformCapabilities {
      * @param path 已选定的导出目录 (书籍保存位置)
      * @param books 待导出书籍 (自定义导出时逐本按 epubScope/epubSize 启动导出)
      */
-    fun showExportSectionConfig(path: String, books: List<Book>) = unsupported("自定义导出章节")
+    /** 弹出自定义导出章节配置对话框 (对照 configExportSection / dialog_select_section_export.xml) */
+    fun showExportSectionConfig(books: List<Book>) = unsupported("自定义导出章节")
+
+    /**
+     * 按章节范围分卷导出 (对照原版 configExportSection 的自定义分支: 逐本按 epubScope/epubSize 导出)。
+     *
+     * @param epubSize 每卷章节数
+     * @param epubScope 章节范围文本 (如 `1-5,8`, 与导出入口同一表示; 由各端自行解析)
+     */
+    fun exportCustomBooks(books: List<Book>, epubSize: Int, epubScope: String) =
+        unsupported("自定义章节导出")
 
     /** 弹出导出配置对话框 (对照 showExportConfig) */
     fun showExportConfig() = unsupported("导出配置")

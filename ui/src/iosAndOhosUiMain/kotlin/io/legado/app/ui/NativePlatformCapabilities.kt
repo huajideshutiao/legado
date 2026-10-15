@@ -18,7 +18,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.help.upLoadToDirectLink
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.source.BookSourceSort
-import io.legado.app.ui.book.source.manage.getExportBookSources
+import io.legado.app.ui.book.source.manage.selectedSourcesJson
 import io.legado.app.ui.config.MODE_EDIT_CONFIG
 import io.legado.app.ui.config.MODE_EDIT_PREFS
 import io.legado.app.ui.config.MODE_NEW_CONFIG
@@ -28,8 +28,6 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.SharedPlatformCapabilities
-import io.legado.app.utils.GSON
-import io.legado.app.utils.toJson
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okio.FileSystem
@@ -201,25 +199,4 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
             }
             ?.let { "file://$it" }
     }
-}
-
-/**
- * 选中书源转 JSON: 取数+排序+比例分流+危险 API 开关清理走 commonMain 编排。
- *
- * `internal` 而非文件私有: iOS/鸿蒙各自的 `exportBookSourceSelection` (落盘方式不同, 未合并)
- * 也要用它。
- */
-internal suspend fun selectedSourcesJson(
-    selection: List<BookSourcePart>,
-    allCount: Int,
-    sortAscending: Boolean,
-    sort: BookSourceSort
-): String? {
-    val sources = runCatching {
-        getExportBookSources(selection, allCount, sortAscending, sort)
-    }.getOrElse {
-        Toasters.get().toast("导出书源失败\n${it.message}")
-        return null
-    }
-    return GSON.toJson(sources)
 }

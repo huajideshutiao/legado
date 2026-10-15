@@ -891,8 +891,6 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
         "dictRuleImportOnline" ->
             RuleImportOnlineDialogContent(overlay, navigator, RuleImportKind.DICT)
 
-        "dictRuleExport" -> RuleExportDialogContent(overlay, navigator, "exportDictRule.json")
-
         // TXT 目录规则
         "txtTocRuleEdit" -> TxtTocRuleEditDialogContent(overlay, navigator)
         "txtTocRuleImportLocal" ->
@@ -900,8 +898,6 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
 
         "txtTocRuleImportOnline" ->
             RuleImportOnlineDialogContent(overlay, navigator, RuleImportKind.TXT_TOC)
-
-        "txtTocRuleExport" -> RuleExportDialogContent(overlay, navigator, "exportTxtTocRule.json")
 
         // 筛选规则
         "sourceFilterRuleEdit" -> SourceFilterEditDialogContent(overlay, navigator)
@@ -912,12 +908,11 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
         "sourceFilterRuleImportOnline" ->
             RuleImportOnlineDialogContent(overlay, navigator, RuleImportKind.SOURCE_FILTER)
 
-        "sourceFilterRuleExport" ->
-            RuleExportDialogContent(overlay, navigator, "exportSourceFilterRule.json")
-
-        // 导出分发 (上传 URL / 保存到文件, 对照 app 端 HandleFileContract.EXPORT) + 导出成功
+        // 导出分发 (上传 URL / 保存到文件) + 导出成功
         "exportDispatch" -> ExportDispatchDialogContent(overlay, navigator)
         "exportSuccess" -> ExportSuccessDialogContent(overlay, navigator)
+        // 自定义章节导出配置 (四端共用)
+        "exportSectionConfig" -> ExportSectionConfigDialogContent(overlay, navigator)
 
         else -> FallbackDialogContent(overlay, navigator)
     }

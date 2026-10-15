@@ -9,6 +9,7 @@ import io.legado.app.help.file.pickDocumentContent
 import io.legado.app.help.file.pickDocuments
 import io.legado.app.help.file.pickDirectory as pickDirectoryPolicy
 import io.legado.app.help.file.saveImageToAlbum
+import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.log.NativeCrashLogs
 import io.legado.app.help.openURL
 import io.legado.app.help.toast.Toasters
@@ -397,9 +398,8 @@ private object OhosFilePickerService : FilePickerService {
             .mapNotNull(::materialize)
 
     /**
-     * 单文件导出取目标路径: 弹目录选择器 ([pickDirectory], 对照原版导出形制 —— 先选目录,
-     * 再把文件写进该目录, 见 HandleFileContract.EXPORT + FileUtils.exportFile), 返回该目录下的
-     * 目标文件路径, 由调用方写盘。
+     * 弹目录选择器 ([pickDirectory], 对照原版导出形制 —— 先选目录, 再把文件写进该目录),
+     * 写入文本后返回目标文件路径。
      *
      * 写入用的是选择器当场给的临时授权 (授权持久化与 URI→路径转换在 [pickDirectory] 内完成),
      * 后续访问才需激活。目录按 [DirUsage.Export] 登记: 为导出一个 json 选的目录只放行导出写入,
@@ -408,9 +408,23 @@ private object OhosFilePickerService : FilePickerService {
      * @param defaultDir 调用方指定的落点; 传了就不再询问用户
      * @return 用户取消选目录返回 null (调用方静默)
      */
-    override fun saveFile(suggestedName: String, defaultDir: String?): String? {
+    override fun saveText(suggestedName: String, text: String, defaultDir: String?): String? {
         val dir = defaultDir ?: pickDirectory(DirUsage.Export) ?: return null
-        return "$dir/$suggestedName"
+        val path = "$dir/$suggestedName"
+        BackupFileOps.writeText(path, text)
+        return path
+    }
+
+    /** 同上, 内容按整份复制到选定目录。 */
+    override fun saveFromFile(
+        srcPath: String,
+        suggestedName: String,
+        defaultDir: String?,
+    ): String? {
+        val dir = defaultDir ?: pickDirectory(DirUsage.Export) ?: return null
+        val path = "$dir/$suggestedName"
+        BackupFileOps.copyFile(srcPath, path)
+        return path
     }
 
     /**

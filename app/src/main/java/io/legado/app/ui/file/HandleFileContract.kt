@@ -14,7 +14,6 @@ class HandleFileContract {
         const val DIR = 0
         const val FILE = 1
         const val DIR_SYS = 2
-        const val EXPORT = 3
         const val IMAGE = 4
     }
 
@@ -24,7 +23,6 @@ class HandleFileContract {
         var title: String? = null,
         var allowExtensions: Array<String> = arrayOf(),
         var otherActions: ArrayList<SelectItem<Int>>? = null,
-        var fileData: FileData? = null,
         var requestCode: Int = 0,
         var value: String? = null
     )
@@ -34,12 +32,6 @@ class HandleFileContract {
         val requestCode: Int,
         val value: String?
     )
-
-    data class FileData(
-        val name: String,
-        val data: Any,
-        val type: String
-    ) : java.io.Serializable
 
 }
 
@@ -83,7 +75,6 @@ class HandleFileLauncher(
             param.title,
             param.allowExtensions,
             param.otherActions,
-            param.fileData,
             param.value,
             param.requestCode
         )

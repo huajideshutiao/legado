@@ -1,15 +1,8 @@
 package io.legado.desktop.ui
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.Icon
-import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -19,32 +12,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
-import io.legado.app.data.entities.Book
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.StartupMaintenanceShared
-import io.legado.app.help.book.getExportFileName
-import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.component.AppCheckbox
-import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSelectorList
 import io.legado.app.ui.compose.component.AppTextButton
-import io.legado.app.ui.compose.component.AppTextField
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.dialog.TextInputDialog
-import io.legado.app.utils.verificationField
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -111,38 +91,7 @@ sealed interface DesktopDialogRequest {
         val onConfirm: () -> Unit,
     ) : DesktopDialogRequest
 
-    /**
-     * 导出配置 (对照 app 端 showExportConfig / dialog_export_config.xml 全量字段)。
-     *
-     * @param currentType 0=txt 1=epub (与 app 端 AppConfig.exportType 取值一致);
-     *    cbz 由图片书自动选择, 不在此配置
-     * @param currentFileName 导出文件名 JS 规则 (对照 AppConfig.bookExportFileName)
-     * @param currentCharset 导出编码 (对照 AppConfig.exportCharset)
-     * @param currentNoChapterName TXT 不导出章节名 (对照 AppConfig.exportNoChapterName)
-     */
-    data class ExportConfig(
-        val currentType: Int,
-        val currentFileName: String,
-        val currentCharset: String,
-        val currentNoChapterName: Boolean,
-        val onConfirm: (type: Int, fileName: String, charset: String, noChapterName: Boolean) -> Unit,
-    ) : DesktopDialogRequest
 
-    /**
-     * 自定义导出章节配置 (对照 app 端 configExportSection / dialog_select_section_export.xml)。
-     *
-     * @param path 书籍保存位置
-     * @param books 待导出书籍
-     * @param currentFileName 已保存的分卷文件名 JS 规则 (对照 AppConfig.episodeExportFileName 预填)
-     * @param onConfirm all=true → 普通导出 (txt/epub 按导出配置); all=false → 按 scope/size 自定义 epub 导出。
-     *    fileName 为 epub 分卷文件名 JS 规则 (仅在合法时由宿主持久化)
-     */
-    data class ExportSectionConfig(
-        val path: String,
-        val books: List<Book>,
-        val currentFileName: String,
-        val onConfirm: (all: Boolean, scope: String, size: Int, fileName: String) -> Unit,
-    ) : DesktopDialogRequest
 }
 
 /** 对话框请求队列 (单槽, 后到的请求覆盖未消费的前一个)。 */
@@ -262,287 +211,6 @@ fun DesktopDialogHost() {
             request = current,
             onDismiss = { DesktopDialogs.dismiss() },
         )
-
-        is DesktopDialogRequest.ExportConfig -> ExportConfigDialog(
-            request = current,
-            onDismiss = { DesktopDialogs.dismiss() },
-        )
-
-        is DesktopDialogRequest.ExportSectionConfig -> ExportSectionConfigDialog(
-            request = current,
-            onDismiss = { DesktopDialogs.dismiss() },
-        )
-    }
-}
-
-/**
- * 导出文件设置 (对照 app 端 showExportConfig / dialog_export_config.xml 全量字段):
- * 导出文件名 JS 规则 / 导出格式 txt|epub / 导出编码 / TXT 不导出章节名。
- * 导出落点固定为书籍保存位置; 图片书自动走 cbz。
- */
-@Composable
-private fun ExportConfigDialog(
-    request: DesktopDialogRequest.ExportConfig,
-    onDismiss: () -> Unit,
-) {
-    var type by remember { mutableStateOf(request.currentType) }
-    var fileName by remember { mutableStateOf(request.currentFileName) }
-    var charset by remember { mutableStateOf(request.currentCharset) }
-    var noChapterName by remember { mutableStateOf(request.currentNoChapterName) }
-    AppAlertDialog(
-        onDismissRequest = onDismiss,
-        title = syncGetString("export_config"),
-        okButton = AlertButton(text = "确认") {
-            request.onConfirm(type, fileName, charset, noChapterName)
-            onDismiss()
-        },
-        cancelButton = AlertButton(text = "取消") { onDismiss() },
-    ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = DesignTokens.spacingDefault),
-        ) {
-            // 导出文件名 (对照 et_file_name, Variable: name, author)
-            Text(
-                syncGetString("export_file_name"),
-                color = AppTheme.colors.primaryText,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(bottom = DesignTokens.spacingXs),
-            )
-            AppTextField(
-                value = fileName,
-                onValueChange = { fileName = it },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            // 导出格式 (对照 rg_export_type)
-            Text(
-                syncGetString("export_type"),
-                color = AppTheme.colors.primaryText,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(top = DesignTokens.spacingMd, bottom = DesignTokens.spacingXs),
-            )
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .selectableGroup(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                listOf("txt" to 0, "epub" to 1).forEach { (label, value) ->
-                    Row(
-                        Modifier
-                            .selectable(
-                                selected = type == value,
-                                role = Role.RadioButton,
-                                onClick = { type = value },
-                            )
-                            .padding(top = DesignTokens.spacingXs, end = DesignTokens.spacingLg, bottom = DesignTokens.spacingXs),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        AppRadioButton(selected = type == value, onClick = null)
-                        Text(label, modifier = Modifier.padding(start = DesignTokens.spacingDefault))
-                    }
-                }
-            }
-            // 导出编码 (对照 et_charset)
-            Text(
-                syncGetString("export_charset"),
-                color = AppTheme.colors.primaryText,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(top = DesignTokens.spacingMd, bottom = DesignTokens.spacingXs),
-            )
-            AppTextField(
-                value = charset,
-                onValueChange = { charset = it },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            // TXT 不导出章节名 (对照 cb_no_chapter_name)
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .toggleable(
-                        value = noChapterName,
-                        role = Role.Checkbox,
-                        onValueChange = { noChapterName = it },
-                    )
-                    .padding(vertical = DesignTokens.spacingDefault),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                AppCheckbox(checked = noChapterName, onCheckedChange = null)
-                Text(
-                    syncGetString("export_no_chapter_name"),
-                    color = AppTheme.colors.primaryText,
-                    modifier = Modifier.padding(start = DesignTokens.spacingDefault),
-                )
-            }
-        }
-    }
-}
-
-/**
- * 自定义导出章节配置 (对照 app 端 configExportSection / dialog_select_section_export.xml):
- * 导出所有 / 自定义导出 (epub 文件名 JS 规则 + 分卷大小 + 章节范围)。
- * 范围非法时点确定不关闭对话框 (对照 getButton(POSITIVE) 手动 hide 语义)。
- */
-@Composable
-private fun ExportSectionConfigDialog(
-    request: DesktopDialogRequest.ExportSectionConfig,
-    onDismiss: () -> Unit,
-) {
-    // 默认选中自定义导出 (对照 cbSelectExport.callOnClick())
-    var all by remember { mutableStateOf(false) }
-    var custom by remember { mutableStateOf(true) }
-    var fileName by remember { mutableStateOf(request.currentFileName) }
-    var size by remember { mutableStateOf("1") }
-    var scope by remember { mutableStateOf("") }
-    var scopeError by remember { mutableStateOf<String?>(null) }
-    var fileNameHelper by remember { mutableStateOf("") }
-    AppAlertDialog(
-        onDismissRequest = onDismiss,
-        title = syncGetString("select_section_export"),
-        okButton = AlertButton(text = "确认") {
-            if (all) {
-                request.onConfirm(true, "", 1, fileName)
-                onDismiss()
-            } else {
-                val scopeText = scope.trim()
-                if (!verificationField(scopeText)) {
-                    scopeError = syncGetString("error_scope_input")
-                } else {
-                    request.onConfirm(false, scopeText, size.toIntOrNull() ?: 1, fileName)
-                    onDismiss()
-                }
-            }
-        },
-        cancelButton = AlertButton(text = "取消") { onDismiss() },
-    ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = DesignTokens.spacingDefault),
-        ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = DesignTokens.spacingXs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    Modifier
-                        .weight(1f)
-                        .toggleable(
-                            value = all,
-                            role = Role.Checkbox,
-                            onValueChange = {
-                                all = it
-                                custom = !it
-                                if (it) scopeError = null
-                            },
-                        )
-                        .padding(vertical = DesignTokens.spacingDefault),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    AppCheckbox(checked = all, onCheckedChange = null)
-                    Text(
-                        syncGetString("export_all"),
-                        color = AppTheme.colors.primaryText,
-                        modifier = Modifier.padding(start = DesignTokens.spacingDefault),
-                    )
-                }
-                Row(
-                    Modifier
-                        .weight(1f)
-                        .toggleable(
-                            value = custom,
-                            role = Role.Checkbox,
-                            onValueChange = {
-                                custom = it
-                                all = !it
-                            },
-                        )
-                        .padding(vertical = DesignTokens.spacingDefault),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    AppCheckbox(checked = custom, onCheckedChange = null)
-                    Text(
-                        syncGetString("custom_export"),
-                        color = AppTheme.colors.primaryText,
-                        modifier = Modifier.padding(start = DesignTokens.spacingDefault),
-                    )
-                }
-            }
-            // epub 文件名 JS 规则 (分卷, 对照 ly_et_epub_filename / et_epub_filename)
-            Text(
-                syncGetString("export_file_name"),
-                color = AppTheme.colors.primaryText,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(top = DesignTokens.spacingDefault, bottom = DesignTokens.spacingXs),
-            )
-            AppTextField(
-                value = fileName,
-                onValueChange = { fileName = it },
-                enabled = custom,
-                singleLine = true,
-                placeholder = "Variable: name, author, epubIndex",
-                trailingIcon = {
-                    // 解析示例按钮 (对照 ly_et_epub_filename 的 endIcon 点击)
-                    IconButton(onClick = {
-                        fileNameHelper = if (tryParesExportFileName(fileName)) {
-                            request.books.firstOrNull()?.let { book ->
-                                syncGetString("result_analyzed") + ": " +
-                                    book.getExportFileName("epub", 1, fileName)
-                            } ?: syncGetString("result_analyzed")
-                        } else {
-                            "Error"
-                        }
-                    }) {
-                        Icon(
-                            painter = rememberPainter("ic_play_24dp"),
-                            contentDescription = "Execute script",
-                            tint = AppTheme.colors.primaryText,
-                        )
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            if (fileNameHelper.isNotEmpty()) {
-                Text(
-                    fileNameHelper,
-                    color = AppTheme.colors.secondaryText,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-            // 分卷大小 (对照 ly_et_epub_size / et_epub_size, 默认 1)
-            AppTextField(
-                value = size,
-                onValueChange = { new ->
-                    if (new.length <= 6 && new.all { it.isDigit() }) size = new
-                },
-                enabled = custom,
-                singleLine = true,
-                label = syncGetString("file_contains_number"),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            // 章节范围 (对照 ly_et_input_scope / et_input_scope, 占位 "1-5,8,10-18")
-            AppTextField(
-                value = scope,
-                onValueChange = {
-                    scope = it
-                    scopeError = null
-                },
-                enabled = custom,
-                singleLine = true,
-                label = syncGetString("export_chapter_index"),
-                placeholder = "1-5,8,10-18",
-                isError = scopeError != null,
-                errorMessage = scopeError,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
     }
 }
 

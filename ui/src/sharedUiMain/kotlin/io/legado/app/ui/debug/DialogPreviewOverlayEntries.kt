@@ -11,6 +11,7 @@ import io.legado.app.ui.association.OpenUrlConfirmPayload
 import io.legado.app.ui.book.manga.extension.MangaExtensionServiceProviders
 import io.legado.app.ui.config.MODE_EDIT_PREFS
 import io.legado.app.ui.root.AppOverlay
+import io.legado.app.ui.root.ExportDispatchPayload
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.encodeBookVariableOverlayPayload
 import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
@@ -113,13 +114,14 @@ internal suspend fun buildOverlayEntries(): List<DialogPreviewEntry.Overlay> {
     dialog("import_file_name", titleOf(Res.string.import_file_name), "import_file_name") { AppOverlay.Dialog(it) }
     dialog("book_export_format", titleOf(Res.string.export_config), "book_export_format") { AppOverlay.Dialog(it) }
     dialog("export_dispatch", titleOf(Res.string.export), "exportDispatch") {
+        // 内容走进程内一次性通道 (与 pushExportDispatch 同一形制), 载荷只放键
         AppOverlay.Dialog(
             it,
-            payload = encodeStringMap(
-                mapOf(
-                    "fileName" to "legado_preview.json",
-                    "content" to """{"preview":true}""",
-                    "contentType" to "application/json",
+            payload = IntentData.put(
+                ExportDispatchPayload(
+                    fileName = "legado_preview.json",
+                    content = """{"preview":true}""",
+                    contentType = "application/json",
                 )
             ),
         )
