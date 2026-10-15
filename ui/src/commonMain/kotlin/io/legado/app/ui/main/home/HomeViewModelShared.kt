@@ -62,7 +62,7 @@ class HomeViewModelShared(
         var infiniteLoading: Boolean = false
 
         // 按 bookUrl 去重 (理由同 ExploreShowViewModelShared.books): SearchBook 已改结构相等,
-        // Set 去重恒不命中会让 HomeScreen 的 g_<bookUrl> key 撞重复 key 崩溃
+        // Set 去重恒不命中会让 HomeScreen 的 g_<sectionId>_<origin>_<bookUrl> key 撞重复 key 崩溃
         val infiniteBookMap = LinkedHashMap<String, SearchBook>()
     }
 
