@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.LocalDialogAnchorSize
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
+import io.legado.app.ui.compose.platform.ProvidePlatformImeEditCommands
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.ThemeStoreProvider
 import io.legado.app.ui.compose.platform.platformTextStyleNoFontPadding
@@ -270,15 +271,19 @@ fun AppTheme(
         LocalEInk provides appConfig.isEInkMode,
         LocalDialogAnchorSize provides dialogAnchor,
     ) {
-        // 文本选择菜单: 自绘澎湃样式弹层, 顶掉 Android 的平台 ActionMode (见 AppTextToolbar)
-        ProvideAppTextToolbar {
-            MaterialTheme(
-                colors = colors.toColors(),
-                shapes = AppTheme.DesignTokens.shapes,
-            ) {
-                // 直接 provides 整体替换(ProvideTextStyle 是 merge, 压不掉默认 body 样式的行高/字距)
-                CompositionLocalProvider(LocalTextStyle provides AppTheme.DesignTokens.defaultTextStyle) {
-                    content()
+        // 输入法的编辑命令通道: Android 上输入法的复制/剪切/粘贴键走输入连接, 框架只合成按键
+        // 事件并恒报失败, 故由本应用接管 (见 ProvidePlatformImeEditCommands)
+        ProvidePlatformImeEditCommands {
+            // 文本选择菜单: 自绘澎湃样式弹层, 顶掉 Android 的平台 ActionMode (见 AppTextToolbar)
+            ProvideAppTextToolbar {
+                MaterialTheme(
+                    colors = colors.toColors(),
+                    shapes = AppTheme.DesignTokens.shapes,
+                ) {
+                    // 直接 provides 整体替换(ProvideTextStyle 是 merge, 压不掉默认 body 样式的行高/字距)
+                    CompositionLocalProvider(LocalTextStyle provides AppTheme.DesignTokens.defaultTextStyle) {
+                        content()
+                    }
                 }
             }
         }
