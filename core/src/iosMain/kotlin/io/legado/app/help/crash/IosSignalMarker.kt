@@ -2,6 +2,7 @@
 
 package io.legado.app.help.crash
 
+import io.legado.app.signalposix.lg_open_write
 import io.legado.app.utils.File
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CFunction
@@ -11,9 +12,6 @@ import kotlinx.cinterop.allocArrayOf
 import kotlinx.cinterop.nativeHeap
 import kotlinx.cinterop.refTo
 import kotlinx.cinterop.staticCFunction
-import platform.posix.O_CREAT
-import platform.posix.O_TRUNC
-import platform.posix.O_WRONLY
 import platform.posix.SIGABRT
 import platform.posix.SIGBUS
 import platform.posix.SIGFPE
@@ -101,7 +99,7 @@ private val SigDfl: CPointer<CFunction<(Int) -> Unit>>? = null
 private fun onSignal(sig: Int) {
     val text = IosSignalMarker.markerText
     for (path in IosSignalMarker.markerPaths) {
-        val fd = open(path, O_WRONLY or O_CREAT or O_TRUNC, FILE_MODE)
+        val fd = lg_open_write(path, FILE_MODE)
         if (fd < 0) continue
         write(fd, text.refTo(0), text.size.toULong())
         close(fd)

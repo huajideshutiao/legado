@@ -1,0 +1,21 @@
+package = io.legado.app.signalposix
+
+// 信号处理器可用的 POSIX 文件打开面。
+//
+// 为什么不用 platform.posix 的 open: cinterop 把 `const char *` 绑定为 Kotlin `String?`,
+// 调用点会插入 encodeToUtf8 + memScoped 分配 (见 kotlinx.cinterop CString / ArenaBase);
+// 信号处理器内分配不是 async-signal-safe (SIGABRT 常由堆损坏触发, malloc 可能已持锁)。
+// 故此处按 quickjs.def 的 qjs_ReadBytecode 同款模式把路径写成数组形参 `const char path[]`
+// (cinterop 映射为 CValuesRef<ByteVar>, 可直接接收调用方的 CPointer<ByteVar>, 零转换),
+// 处理器内保持只走 open/write/close 三个 async-signal-safe 调用。
+headers = fcntl.h unistd.h
+
+---
+
+#include <fcntl.h>
+#include <unistd.h>
+
+// 以 O_WRONLY|O_CREAT|O_TRUNC 打开; 失败返回 -1 (与 POSIX open 同)。
+int lg_open_write(const char path[], int mode) {
+    return open(path, O_WRONLY | O_CREAT | O_TRUNC, (mode_t)mode);
+}
