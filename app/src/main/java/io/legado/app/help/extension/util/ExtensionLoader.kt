@@ -380,7 +380,7 @@ internal object ExtensionLoader {
         // 校验扩展库版本; metadata 未声明时回退 versionName 前两段 (视频扩展实测无 tachiyomix.* 元数据,
         // 版本名即 lib 代系: "14.10"→14.0)
         val declaredLibVersion = ExtensionManifestContract.parseLibVersion(
-            metaData?.getFloat(ExtensionManifestContract.METADATA_EXTENSION_LIB), versionName
+            metaData.getFloat(ExtensionManifestContract.METADATA_EXTENSION_LIB), versionName
         )
         val libVersion = ExtensionManifestContract.supportedLibVersion(kind, declaredLibVersion)
         if (libVersion == null) {
