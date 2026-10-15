@@ -17,6 +17,7 @@ import io.legado.app.help.book.addType
 import io.legado.app.help.book.getFolderNameNoCache
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isImage
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfigProviders
@@ -230,6 +231,21 @@ data class Book(
                 AppDbProviders.get().bookDao.update(this@Book)
             } else {
                 AppDbProviders.get().bookDao.insert(this@Book)
+            }
+        }
+    }
+
+    /**
+     * 保存书籍信息但不改变书架归属。
+     *
+     * 未入架的书直接返回: 它本就不该有库记录, 写库还会改变书架归属;
+     * 在架书只更新已有记录, 不新建。
+     */
+    fun saveWithoutShelfChange() {
+        if (isNotShelf) return
+        runBlocking {
+            if (AppDbProviders.get().bookDao.has(bookUrl)) {
+                AppDbProviders.get().bookDao.update(this@Book)
             }
         }
     }

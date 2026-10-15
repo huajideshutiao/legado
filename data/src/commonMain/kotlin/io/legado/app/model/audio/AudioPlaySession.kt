@@ -177,7 +177,8 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
         manager.cancelChapterLoad()
         manager.clearPendingSeek()
         AudioPlayShared.status = Status.STOP
-        AudioPlayShared.book?.save()
+        // 切章/停止/目录末尾共用本路径: 只保存书籍信息, 未入架的书保持未入架
+        AudioPlayShared.book?.saveWithoutShelfChange()
         postEvent(EventBus.AUDIO_STATE, Status.STOP)
         manager.clearLoading()
         // 会话还活着 (切章也走这里), 只更新播放态不撤会话。
