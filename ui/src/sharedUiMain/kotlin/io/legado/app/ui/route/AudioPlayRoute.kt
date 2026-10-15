@@ -330,9 +330,18 @@ fun AudioPlayRoute(
     // 大图 token 由本页自签 (见 [LocalSharedCoverBinding] 的说明)
     val coverBinding = rememberSharedCoverDestinationBinding(entry.id.value, entry.sharedToken)
 
+    // 状态里的封面地址由异步初始化写入, 为空时回落到本次进入携带的书籍快照封面:
+    // 共享封面端点以"封面非空"为建立条件, 端点晚建会把共享转场推迟到封面地址到达之后
+    val pageState = if (state.coverUrl.isNullOrBlank()) {
+        book.getDisplayCover()?.takeIf { it.isNotBlank() }
+            ?.let { state.copy(coverUrl = it) } ?: state
+    } else {
+        state
+    }
+
     CompositionLocalProvider(LocalSharedCoverBinding provides coverBinding) {
     platform.Content(
-        state = state,
+        state = pageState,
         onBack = onBack,
         onOpenChangeSource = {
             // 对照原版 menu_change_source → showDialogFragment(ChangeBookSourceDialog) 全高底部弹窗
