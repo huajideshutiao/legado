@@ -1,0 +1,27 @@
+package = io.legado.app.platform.sceneorientation
+language = Objective-C
+---
+#import <UIKit/UIKit.h>
+
+// 窗口场景方向请求 (iOS 16 起) 的包装: 偏好对象的构造与请求都在这里由 clang 编译。
+//
+// 依据 Kotlin/Native 官方互操作文档 "Strong linking" 一节: Kotlin 源码里用到某个 ObjC 类,
+// 产物就会留下对它的强引用, 系统在启动时按符号绑定, 类在目标系统版本上不存在时进程在任何
+// 代码执行前被终止 —— 该节给出的解法即 "用 Objective-C 包装 + 在包装内判断可用性"。
+// 本端最低支持 iOS 14, 而方向偏好对象与请求方法都从 iOS 16 起才有, 故不能留在 Kotlin 里。
+//
+// clang 按 API_AVAILABLE 把该类的引用做成弱引用, @available 在运行时挡住旧系统;
+// 旧系统上返回 NO (未发起请求), 由调用方落日志。
+static inline BOOL lg_request_scene_orientation(
+    UIWindowScene * _Nonnull scene,
+    UIInterfaceOrientationMask orientations,
+    void (^ _Nullable errorHandler)(NSError * _Nonnull error)
+) {
+    if (@available(iOS 16.0, *)) {
+        UIWindowSceneGeometryPreferencesIOS *preferences =
+            [[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:orientations];
+        [scene requestGeometryUpdateWithPreferences:preferences errorHandler:errorHandler];
+        return YES;
+    }
+    return NO;
+}

@@ -3,6 +3,7 @@
 package io.legado.app.ui
 
 import io.legado.app.constant.AppLog
+import io.legado.app.platform.sceneorientation.lg_request_scene_orientation
 import kotlinx.cinterop.useContents
 import platform.Foundation.NSProcessInfo
 import platform.UIKit.UIApplication
@@ -13,7 +14,6 @@ import platform.UIKit.UISceneActivationStateForegroundActive
 import platform.UIKit.UIDevice
 import platform.UIKit.UIUserInterfaceIdiomPad
 import platform.UIKit.UIWindowScene
-import platform.UIKit.UIWindowSceneGeometryPreferencesIOS
 
 // iOS 方向请求共用件: 视频页锁横屏 (IosVideoPlayPlatformProvider.applySystemFullScreen) 与
 // 阅读页/漫画页方向锁 (IosWindowController.setOrientation) 共用同一份, 不各写一遍。
@@ -25,7 +25,9 @@ import platform.UIKit.UIWindowSceneGeometryPreferencesIOS
 // 明确要求改用 requestGeometryUpdate), 故本端不走 UIDevice 那条路。
 //
 // 边界 (如实保留, 不静默):
-// - iOS 16 以下没有受支持的方向 API, 只落一条日志;
+// - iOS 16 以下没有受支持的方向 API, 只落一条日志; 偏好对象的构造与请求本身由
+//   src/cinterop/sceneorientation.def 编译 (Kotlin 里直接构造会让产物留下对 iOS 16 类的
+//   强引用, iOS 14/15 启动时符号绑定失败, 进程在任何代码执行前就被终止);
 // - 请求由系统裁决: 目标方向不在应用/场景允许集合内 (如 iPhone 的倒竖屏, Info.plist 未声明)、
 //   或 iPad 处于分屏多任务时会被拒, 拒绝原因由 errorHandler 落日志 (页面观感维持请求前方向)。
 
@@ -52,13 +54,6 @@ internal fun appSupportedOrientationMask(): ULong =
  * @param context 落日志用的场景名 ("视频全屏" / "阅读页方向"), 便于区分调用方
  */
 internal fun requestSceneOrientation(mask: ULong, context: String) {
-    val osMajorVersion = NSProcessInfo.processInfo.operatingSystemVersion.useContents {
-        majorVersion
-    }
-    if (osMajorVersion < IOS_SCENE_GEOMETRY_MIN_VERSION) {
-        AppLog.put("iOS $osMajorVersion 无受支持的方向请求 API, $context 未生效")
-        return
-    }
     val scene = UIApplication.sharedApplication().connectedScenes
         .filterIsInstance<UIWindowScene>()
         .firstOrNull { it.activationState == UISceneActivationStateForegroundActive }
@@ -66,13 +61,14 @@ internal fun requestSceneOrientation(mask: ULong, context: String) {
         AppLog.put("iOS 找不到前台窗口场景, $context 方向请求未下发")
         return
     }
-    scene.requestGeometryUpdateWithPreferences(
-        UIWindowSceneGeometryPreferencesIOS(interfaceOrientations = mask),
-        errorHandler = { error ->
-            AppLog.put("iOS $context 方向请求被拒: ${error?.localizedDescription}")
-        },
-    )
+    // 构造与请求都在 cinterop 包装里, 原因见 src/cinterop/sceneorientation.def
+    val requested = lg_request_scene_orientation(scene, mask) { error ->
+        AppLog.put("iOS $context 方向请求被拒: ${error?.localizedDescription}")
+    }
+    if (!requested) {
+        val osMajorVersion = NSProcessInfo.processInfo.operatingSystemVersion.useContents {
+            majorVersion
+        }
+        AppLog.put("iOS $osMajorVersion 无受支持的方向请求 API, $context 未生效")
+    }
 }
-
-/** `requestGeometryUpdateWithPreferences:errorHandler:` 的最低系统版本 (iOS 16.0)。 */
-internal const val IOS_SCENE_GEOMETRY_MIN_VERSION = 16L

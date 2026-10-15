@@ -94,6 +94,12 @@ kotlin {
                         optimized = false
                     }
                 }
+                // 方向请求的高版本 UIKit API 由 clang 编译 (弱链接), 见 src/cinterop/sceneorientation.def
+                compilations.getByName("main").cinterops {
+                    create("sceneorientation") {
+                        defFile(file("src/cinterop/sceneorientation.def"))
+                    }
+                }
             }
         }
         iosArm64(configureNativeCinterops)
