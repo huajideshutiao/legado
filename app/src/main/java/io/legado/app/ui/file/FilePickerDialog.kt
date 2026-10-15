@@ -127,6 +127,8 @@ class FilePickerDialog : BaseComposeDialogFragment() {
                 FastScrollLazyColumn(
                     state = rememberLazyListState(),
                     modifier = Modifier.fillMaxWidth(),
+                    // 目录/文件少时列表随内容收缩 (对照原版对话框的自适应高度)
+                    wrapContentHeight = true,
                 ) {
                     items(items, key = { it.file.toString() }) { item ->
                         ImportFileRow(
