@@ -48,13 +48,6 @@ import kotlinx.coroutines.CoroutineScope
  * - desktop 端在 Compose `remember` 中构造本类, 注入应用 scope;
  * - 仅注入 [scope] 一个参数, 调用方 (BookSourceActivity 等) 代码零改动。
  *
- * 注: 同模块已有 [io.legado.app.ui.book.source.BookSourceListViewModel]
- * (位于 `book.source` 包, 非 `manage` 子包), 该类是早期独立下沉的 KMP VM, 自带
- * flowSources/flowGroups 等数据流接口供 desktop/Compose 宿主直接订阅; 本类
- * (Shared) 走组合委托模式专供 app 端 BookSourceViewModel 包装, 与同模块
- * ReplaceEditViewModelShared / GroupViewModelShared 一致, 便于宿主接管生命周期。
- * 二者方法签名相同, 实现等价, 互不引用, 维护时请同步修改。
- *
  * @param scope 协程作用域, actual 平台注入
  *   (Android = `viewModelScope` / 桌面 = 应用主作用域 / 窗口 scope)
  */
@@ -256,8 +249,7 @@ class BookSourceViewModelShared(
      *
      * 注: 原 app 端实现为嵌套 `execute { execute { ... } }` 结构, 外层 execute 仅启动
      * 一个协程跑内层 execute, 内层 execute 才真正跑 DAO 业务; 二者均无 onSuccess/onError
-     * 回调, 行为上等价于单次 execute。下沉后合并为单层 [Coroutine.async], 与同模块
-     * [io.legado.app.ui.book.source.BookSourceListViewModel.delGroup] 实现一致,
+     * 回调, 行为上等价于单次 execute。下沉后合并为单层 [Coroutine.async],
      * 行为等价 (取消外层空壳协程, 不改变 DAO 操作语义)。
      */
     fun delGroup(group: String) {
