@@ -659,8 +659,18 @@ fun AppBottomSheetDialog(
                 val distance = expandDistance()
                 if (distance <= 0f) 0f else (-dragOffset / distance).coerceIn(0f, 1f)
             }
-            // 面板顶已进入装饰带的量 = 正文下移量 (面板铺到窗口顶时等于整条装饰带高)
-            val topOverlapPx = (topBandPx - (fullAnchorPx - sheetHeightPx)).coerceAtLeast(0)
+            // 拖拽态面板高 (px): 与传给骨架的高度同源同式。面板顶下移量与正文下移量必须
+            // 同源相消, 换成上一帧实测高就与同帧的位移高差一帧 —— 每帧正文相对面板多偏
+            // 一段等于该帧手指位移的距离 (全屏态轻微下拉时正文抖动)
+            val dragHeightPx = if (dragOffset != 0f) {
+                (defaultAnchorPx - dragOffset.coerceAtMost(0f)).roundToInt()
+            } else {
+                null
+            }
+            // 面板顶已进入装饰带的量 = 正文下移量 (面板铺到窗口顶时等于整条装饰带高):
+            // 静止态取实测高, 拖拽态取同帧位移高
+            val topOverlapPx =
+                (topBandPx - (fullAnchorPx - (dragHeightPx ?: sheetHeightPx))).coerceAtLeast(0)
             // 回弹/吸附动画: 从当前位移续播到目标锚点 (新拖拽开始时由 drag 路径取消 bounceJob)
             val animateDragTo: (Float) -> Unit = { target ->
                 bounceJob?.cancel()
@@ -778,8 +788,15 @@ fun AppBottomSheetDialog(
                         bounceJob?.cancel()
                         bounceJob = null
                         // 只向正方向累积, 无需再夹展开下限 (展开态起步时先缩回到 0 再下移)
+                        val previousOffset = dragOffset
                         dragOffset += available.y * DragResistance
-                        return Offset.Zero
+                        // 如实上报本次吃掉的手指位移 (与上推路径同一换算): 不上报就等于没人消费,
+                        // 剩余位移会落到内部列表的越界回弹上 (面板位移与列表橡胶带叠加成双份)
+                        return Offset(
+                            0f,
+                            ((dragOffset - previousOffset) / DragResistance)
+                                .coerceAtMost(available.y),
+                        )
                     }
 
                     override suspend fun onPreFling(available: Velocity): Velocity {
@@ -875,9 +892,7 @@ fun AppBottomSheetDialog(
                 // 拖拽中面板高度改由状态驱动: 上推变高 (dragOffset 负), 下拉保持默认
                 // 锚点高并整体下移 (dragOffset 正); 回到默认锚点 (dragOffset == 0) 恢复
                 // wrap 布局, 高度连续无跳变
-                heightPx = if (dragOffset != 0f) {
-                    (defaultAnchorPx - dragOffset.coerceAtMost(0f)).roundToInt()
-                } else null,
+                heightPx = dragHeightPx,
                 modifier = Modifier
                     .onSizeChanged {
                         sheetHeightPx = it.height
