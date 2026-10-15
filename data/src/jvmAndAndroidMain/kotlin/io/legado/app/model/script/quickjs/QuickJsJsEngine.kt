@@ -56,27 +56,20 @@ object QuickJsJsEngine : JsEngine {
         return QuickJsJsCompiledScript(QuickJsEngine.compile(script, qScope.ctx))
     }
 
-    override fun wrapJsForEval(jsStr: String): String = QuickJsEngine.wrapJsForEval(jsStr)
-
-    override fun compileForSubScope(jsStr: String): JsCompiledScript =
-        QuickJsJsCompiledScript(QuickJsEngine.compileForSubScope(jsStr))
-
     /**
-     * 在共享 topScope 上执行包装后的 compiled, bindings 走 [QuickJsEngine.evalInSubScope]
-     * 的子 scope 栈隔离 (对齐 rhino childScope.prototype=topScope)。
+     * 在共享 topScope 上执行用户脚本, bindings 走 [QuickJsEngine.evalInSubScope] 的子 scope 栈隔离
+     * (对齐 rhino childScope.prototype=topScope)。
      */
     override fun evalInSubScope(
-        compiled: JsCompiledScript,
+        jsStr: String,
         scope: JsScope,
         bindings: JsBindings,
         coroutineContext: CoroutineContext?
     ): Any? {
         val qScope = scope as? QuickJsJsScope
             ?: error("QuickJsJsEngine.evalInSubScope requires QuickJsJsScope, got ${scope::class}")
-        val qCompiled = (compiled as? QuickJsJsCompiledScript)?.delegate
-            ?: error("QuickJsJsEngine.evalInSubScope requires QuickJsJsCompiledScript, got ${compiled::class}")
         return QuickJsEngine.evalInSubScope(
-            qCompiled,
+            jsStr,
             qScope.ctx,
             toQuickJsBindings(bindings),
             coroutineContext

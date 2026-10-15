@@ -3,8 +3,7 @@ package io.legado.app.utils
 import io.legado.app.exception.RegexTimeoutException
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.runBlockingInScope
-import io.legado.app.model.script.JsBindings
-import io.legado.app.model.script.JsEngines
+import io.legado.app.model.script.JsReplacementEvaluator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.IO
@@ -62,26 +61,14 @@ object NativeRegexReplacer : RegexReplacer {
                     val job = launch {
                         try {
                             val result = if (isJs) {
-                                // isJs 路径: 循环外创建共享 scope + 预编译, 逐匹配注入 result 求值
-                                val bindings = JsBindings().apply { this["result"] = "" }
-                                val scope = JsEngines.get().getRuntimeScope(bindings)
-                                val compiled = JsEngines.get().compile(
-                                    JsEngines.get().wrapJsForEval(replacement1), scope
-                                )
+                                // isJs 路径: 循环外建共享作用域, 逐匹配注入 result 求值
+                                val evaluator = JsReplacementEvaluator(replacement1)
                                 try {
                                     replaceWithJsEvaluator(
-                                        source, pattern, multiline, timeout
-                                    ) { matchValue ->
-                                        val b = JsBindings().apply {
-                                            this["result"] = matchValue
-                                            dangerousApi = false
-                                        }
-                                        JsEngines.get().injectBindings(scope, b)
-                                        // transform 返回值按字面量插入 (等价 Matcher.quoteReplacement)
-                                        compiled.eval(scope, null)?.toString() ?: ""
-                                    }
+                                        source, pattern, multiline, timeout, evaluator::evaluate
+                                    )
                                 } finally {
-                                    scope.close()
+                                    evaluator.close()
                                 }
                             } else {
                                 // 编译与匹配都交给 [RuleRegexes] 的平台实现 (iOS 走 ICU 引擎,

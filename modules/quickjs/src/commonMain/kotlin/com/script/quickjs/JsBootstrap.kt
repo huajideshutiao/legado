@@ -6,8 +6,9 @@ package com.script.quickjs
  * 2. `JavaImporter` / `importClass` / `importPackage` —— rhino LiveConnect 兼容 API。
  * 3. `JavaAdapter` —— 走 `__newJavaAdapter` 创建 java.lang.reflect.Proxy。
  * 4. `__wrapClass` —— Class 句柄的 JS 包装 (构造 + 静态成员)。
- * 5. `__bindingsStack__` + `__enterBindings` / `__exitBindings` / `__currentBindings` ——
- *    [evalInSubScope] 用的子 scope 栈, 必须保留在 JS 层 (with 语句需要 JS 对象)。
+ * 5. `__bindingsStack__` + `__enterBindings` / `__exitBindings` / `__currentBindings` +
+ *    `__evalUserScript` —— [evalInSubScope] 用的子 scope 栈与用户脚本执行器, 必须保留在 JS 层
+ *    (with 语句需要 JS 对象; 执行器固定包装源码以值参数传入, 免字符串转义)。
  *
  * 精简版 (方案B): 移除 __dangerousApi__ 全局变量和 __cleanupBindings/__bootstrapGlobals__。
  * - dangerousApi 从 native ctx opaque 读取 (native binding __getDangerousApi, JS 层不定义 stub,
@@ -32,13 +33,22 @@ object JsBootstrap {
 
     val code: String = """
 // ============ bindings 子 scope 栈 ============
-// evalInSubScope 把 bindings 装入独立 JS 对象压栈, wrapJsForEval 的 with(__currentBindings())
+// evalInSubScope 把 bindings 装入独立 JS 对象压栈, __evalUserScript 的 with(__currentBindings())
 // 让 user JS 以标识符 (java/cache/source) 命中. 空栈时穿透到 globalThis.
 // 必须保留在 JS 层: with 语句需要 JS 对象作为目标。
 var __bindingsStack__ = [];
 
 function __currentBindings() {
     return __bindingsStack__[__bindingsStack__.length - 1] || {};
+}
+
+// 用户脚本执行器: 固定包装, 源码以值参数传入 (免字符串转义, 包装只编译一次)。
+// with 让 bindings 标识符命中栈顶对象; eval 承载末尾表达式完成值
+// (完成值是 eval/script 目标特有语义, 函数调用只认显式 return, 故求值离不开 eval)。
+function __evalUserScript(__src__) {
+    with (__currentBindings()) {
+        return eval(__src__);
+    }
 }
 
 // 变长参数 (k1,v1,k2,v2,...), 组新对象压栈.

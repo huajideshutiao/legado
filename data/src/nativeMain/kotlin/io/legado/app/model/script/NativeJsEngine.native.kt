@@ -304,7 +304,7 @@ object NativeJsEngine : JsEngine {
     }
 
     /**
-     * 编译 JS 为 bytecode (供 compile / compile(script, scope) / compileForSubScope 复用)。
+     * 编译 JS 为 bytecode (供 compile / compile(script, scope) 复用)。
      *
      * JS_Eval(COMPILE_ONLY) → JS_WriteObject 序列化 → ByteArray; 序列化缓冲区 js_free 释放。
      * 先 JS_UpdateStackTop: compilerCtx 会被多线程复用, 栈检查需基于当前线程栈 (对齐 JVM
@@ -354,38 +354,19 @@ object NativeJsEngine : JsEngine {
     // ============ quickjs 独有 API 的统一抽象 ============
 
     /**
-     * 把 JS 包成可子 scope 执行的形式。
+     * 在共享 topScope 上执行用户脚本, bindings 走 __enterBindings / __exitBindings 的子 scope 栈隔离
+     * (对齐 JVM evalInSubScope 的 __bindingsStack__ 语义)。
      *
-     * 复用 quickjs 的三层包装: `(function(){with(__currentBindings()){return eval(<源码>);}})()`
-     * - with(__currentBindings()): bindings 走 [evalInSubScope] 压栈成栈顶对象, user JS 里
-     *   `java`/`cache`/`source` 走 with 命中; 空栈时穿透到 globalThis。
-     * - IIFE 隔离 let/const/var, 不污染 topScope。
-     * - eval + return: 返回末尾表达式值 (对齐 rhino script.exec)。完成值是 eval/script 目标
-     *   特有语义, 函数调用只认显式 return, 故源码无法逐字嵌入函数体 (对齐 JVM 实证结论)。
-     * - 已知限制: user JS 顶层 return 落在 eval 里, 报 "Illegal return statement"。
-     */
-    override fun wrapJsForEval(jsStr: String): String {
-        val jsLiteral = escapeJsString(jsStr)
-        return "(function(){with(__currentBindings()){return eval($jsLiteral);}})()"
-    }
-
-    /** [wrapJsForEval] 包装后编译为 bytecode, 供 [evalInSubScope] 执行 (对齐 JVM compileForSubScope)。 */
-    override fun compileForSubScope(jsStr: String): JsCompiledScript = compile(wrapJsForEval(jsStr))
-
-    /**
-     * 在共享 topScope 上执行包装后的 compiled, bindings 走 __enterBindings / __exitBindings
-     * 的子 scope 栈隔离 (对齐 quickjs evalInSubScope 的 __bindingsStack__ 语义)。
+     * 源码以值参数交给 bootstrap 的 __evalUserScript, 免字符串转义。
      */
     override fun evalInSubScope(
-        compiled: JsCompiledScript,
+        jsStr: String,
         scope: JsScope,
         bindings: JsBindings,
         coroutineContext: CoroutineContext?
     ): Any? {
         val nativeScope = scope as? NativeJsScope
             ?: error("NativeJsEngine.evalInSubScope requires NativeJsScope, got ${scope::class}")
-        val nativeCompiled = compiled as? NativeJsCompiledScript
-            ?: error("NativeJsEngine.evalInSubScope requires NativeJsCompiledScript, got ${compiled::class}")
         val nativeCtx = nativeScope.ctx!!
         // 同步 dangerousApi (native 上语义为 no-op, 保留字段对齐)
         nativeScope.dangerousApi = bindings.dangerousApi
@@ -403,8 +384,7 @@ object NativeJsEngine : JsEngine {
                 // 进入子 scope: JS_Call 值参数压栈 bindings (免字符串 eval)
                 enterBindingsWithValues(nativeCtx, kvs)
                 return try {
-                    // bytecode 优先, 读回失败 fallback 源码 (evalCompiledInContext 内部处理)
-                    evalCompiledInContext(nativeCompiled, nativeScope)
+                    callEvalUserScript(nativeCtx, jsStr)
                 } finally {
                     // 退出子 scope: 弹栈 bindings (即使中途异常也要弹栈)
                     evalInternal(nativeCtx, "__exitBindings()", "<exitBindings>", checkException = false)
@@ -419,6 +399,56 @@ object NativeJsEngine : JsEngine {
             nativeScope.recursiveCount--
             nativeScope.coroutineContext = null
             threadLocalScope.value = prevScope
+        }
+    }
+
+    /**
+     * 调 bootstrap 的 `__evalUserScript(源码)`: 源码以值参数传入, 免字符串转义。
+     *
+     * 调用方须已 [enterBindingsWithValues] (bindings 已在栈顶与 globalThis)。
+     */
+    private fun callEvalUserScript(ctx: CPointer<JSContext>, jsStr: String): Any? {
+        memScoped {
+            val global = JS_GetGlobalObject(ctx)
+            try {
+                val func = JS_GetPropertyStr(ctx, global, "__evalUserScript")
+                try {
+                    if (qjs_IsException(func) != 0) {
+                        throw NativeScriptException("Failed to get __evalUserScript")
+                    }
+                    val srcVal = qjs_NewString(ctx, jsStr)
+                    try {
+                        val argv = allocArray<JSValue>(1)
+                        srcVal.useContents {
+                            memcpy(
+                                interpretCPointer<ByteVar>(argv[0].rawPtr),
+                                interpretCPointer<ByteVar>(this.rawPtr),
+                                sizeOf<JSValue>().toULong()
+                            )
+                        }
+                        val result = JS_Call(ctx, func, global, 1, argv)
+                        try {
+                            if (qjs_IsException(result) != 0) {
+                                val exc = JS_GetException(ctx)
+                                try {
+                                    throw NativeScriptException(exceptionToString(ctx, exc))
+                                } finally {
+                                    JS_FreeValue(ctx, exc)
+                                }
+                            }
+                            return fromJsValue(ctx, result)
+                        } finally {
+                            JS_FreeValue(ctx, result)
+                        }
+                    } finally {
+                        JS_FreeValue(ctx, srcVal)
+                    }
+                } finally {
+                    JS_FreeValue(ctx, func)
+                }
+            } finally {
+                JS_FreeValue(ctx, global)
+            }
         }
     }
 
@@ -637,8 +667,7 @@ object NativeJsEngine : JsEngine {
     /**
      * 在指定 scope 上执行 compiled 脚本 (bytecode 优先, 读回失败 fallback 源码 eval)。
      *
-     * 带完整 eval 上下文 (withEvalContext), 供 [NativeJsCompiledScript.eval] 使用;
-     * [evalInSubScope] 已自行建立上下文, 直接调 [evalCompiledInContext]。
+     * 带完整 eval 上下文 (withEvalContext), 供 [NativeJsCompiledScript.eval] 使用。
      */
     internal fun evalCompiled(
         compiled: NativeJsCompiledScript,
@@ -650,7 +679,7 @@ object NativeJsEngine : JsEngine {
 
     /**
      * 执行 compiled 脚本 (bytecode 优先, 读回失败 fallback 源码 eval)。
-     * 调用方需已建立 eval 上下文 (withEvalContext 或 evalInSubScope 手动栈)。
+     * 调用方需已建立 eval 上下文 (withEvalContext)。
      * fallback 只兜 bytecode 反序列化失败 (quickjs 版本不兼容/损坏), 不吞运行期 JS 异常。
      */
     private fun evalCompiledInContext(compiled: NativeJsCompiledScript, scope: NativeJsScope): Any? {
@@ -1304,6 +1333,14 @@ function __currentBindings() {
     return __bindingsStack__[__bindingsStack__.length - 1] || {};
 }
 
+// 用户脚本执行器: 固定包装, 源码以值参数传入 (免字符串转义, 包装只编译一次)。
+// with 让 bindings 标识符命中栈顶对象; eval 承载末尾表达式完成值。
+function __evalUserScript(__src__) {
+    with (__currentBindings()) {
+        return eval(__src__);
+    }
+}
+
 function __enterBindings() {
     var obj = {};
     for (var i = 0; i < arguments.length; i += 2) {
@@ -1485,10 +1522,9 @@ class NativeJsScope(
  * native 端 (iOS/鸿蒙) "编译"脚本包装 — 持 bytecode + 源码 (bytecode 读回失败时 fallback 源码 eval)。
  *
  * 对应 quickjs 的 QuickJsJsCompiledScript (持 CompiledScript(bytecode))。
- * bytecode 由 compile/compileForSubScope 生成 (JS_WriteObject 序列化), 执行时
+ * bytecode 由 compile 生成 (JS_WriteObject 序列化), 执行时
  * JS_ReadObject + JS_EvalFunction 跳过重新 parse (见 [NativeJsEngine.evalCompiledInContext])。
- * bytecode 自带 atom 表可跨 ctx/runtime 复用, AnalyzeRuleCore 的 scriptCache (LRU 16)
- * 命中后直接走 bytecode, 不再每次重新编译。
+ * bytecode 自带 atom 表可跨 ctx/runtime 复用, 供 jsLib 等长驻脚本复用编译结果。
  */
 class NativeJsCompiledScript(val source: String, bytecode: ByteArray) : JsCompiledScript {
 

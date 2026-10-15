@@ -133,9 +133,8 @@ interface JsFn {
  * JS 引擎抽象。每个方法对应业务层当前调用的 QuickJsEngine API。
  *
  * 实现类（引擎绑定留 app，经 [JsEngineProvider] 注册进 [JsEngines]）:
- * - `RhinoJsEngine`: 委托 `com.script.rhino.RhinoScriptEngine`，
- *   用 rhino 语义实现 quickjs 独有 API（wrapJsForEval 直接返回源码、evalInSubScope 走 prototype 继承等）
- * - `QuickJsJsEngine`: 委托 `com.script.quickjs.QuickJsEngine`，直接转发
+ * - `QuickJsJsEngine`: 委托 `com.script.quickjs.QuickJsEngine`（Android/Desktop）
+ * - `NativeJsEngine`: iOS/鸿蒙的 cinterop 直连实现
  */
 interface JsEngine {
 
@@ -169,24 +168,12 @@ interface JsEngine {
     // ============ quickjs 独有 API 的统一抽象 ============
 
     /**
-     * 把 JS 包成可子 scope 执行的形式。
-     * - quickjs: `(function(){with(__currentBindings()){return eval(<源码>);}})()`
-     *   （eval 承载末尾表达式完成值，IIFE 隔离声明；顶层 return 落在 eval 里不可用）
-     * - rhino: 直接返回源码（rhino 原生支持顶层 return + 子 scope 词法隔离）
-     */
-    fun wrapJsForEval(jsStr: String): String
-
-    /** compile(wrapJsForEval(jsStr))。 */
-    fun compileForSubScope(jsStr: String): JsCompiledScript
-
-    /**
-     * 在共享 topScope 上执行包装后的 compiled，bindings 注入子 scope。
-     * - quickjs: pushBindingSnapshot → injectBindings → evalBytecode → popBindingSnapshot
-     * - rhino: `bindings.prototype = sharedScope` 后 `compiled.eval(scope, bindings, ctx)`
-     *   （rhino 子 scope 出栈自动清理，无需 cleanup）
+     * 在共享 topScope 上执行用户脚本，bindings 注入子 scope。
+     * - quickjs: bindings 压栈 + 写 globalThis → bootstrap 的 `__evalUserScript(源码)` 求值 → 出栈
+     * - 源码以值参数传递（免字符串转义），包装由引擎侧固定执行器承载，只编译一次
      */
     fun evalInSubScope(
-        compiled: JsCompiledScript,
+        jsStr: String,
         scope: JsScope,
         bindings: JsBindings,
         coroutineContext: CoroutineContext?

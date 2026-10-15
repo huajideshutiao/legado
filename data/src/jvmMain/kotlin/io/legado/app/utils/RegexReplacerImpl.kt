@@ -4,8 +4,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.RegexTimeoutException
 import kotlinx.atomicfu.atomic
 import io.legado.app.help.casUpdate
-import io.legado.app.model.script.JsBindings
-import io.legado.app.model.script.JsEngines
+import io.legado.app.model.script.JsReplacementEvaluator
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 
@@ -65,35 +64,21 @@ object JvmRegexReplacer : RegexReplacer {
                 return source.toString()
             }
             val stringBuffer = StringBuffer()
-            // isJs 路径: 循环外创建共享 scope + 预编译 bytecode,
-            // 避免每次匹配都重新初始化 bootstrap (性能优化,应对长文本大量匹配)
-            val jsScope = if (isJs) {
-                val bindings = JsBindings().apply { this["result"] = "" }
-                val scope = JsEngines.get().getRuntimeScope(bindings)
-                val compiled = JsEngines.get().compile(
-                    JsEngines.get().wrapJsForEval(replacement1), scope
-                )
-                Pair(scope, compiled)
-            } else null
+            // isJs 路径: 循环外建共享作用域, 避免每次匹配都重新初始化 bootstrap
+            // (性能优化, 应对长文本大量匹配)
+            val jsEvaluator = if (isJs) JsReplacementEvaluator(replacement1) else null
             try {
                 do {
-                    if (isJs) {
-                        val (scope, compiled) = jsScope!!
-                        // 更新 result 变量并注入到共享 scope
-                        val bindings = JsBindings().apply {
-                            this["result"] = matcher.group()
-                            dangerousApi = false
-                        }
-                        JsEngines.get().injectBindings(scope, bindings)
-                        val jsResult = compiled.eval(scope, null)?.toString() ?: ""
-                        val quotedResult = Matcher.quoteReplacement(jsResult)
+                    if (jsEvaluator != null) {
+                        val quotedResult =
+                            Matcher.quoteReplacement(jsEvaluator.evaluate(matcher.group()))
                         matcher.appendReplacement(stringBuffer, quotedResult)
                     } else {
                         matcher.appendReplacement(stringBuffer, replacement1)
                     }
                 } while (matcher.find())
             } finally {
-                jsScope?.first?.close()
+                jsEvaluator?.close()
             }
             matcher.appendTail(stringBuffer)
             return stringBuffer.toString()

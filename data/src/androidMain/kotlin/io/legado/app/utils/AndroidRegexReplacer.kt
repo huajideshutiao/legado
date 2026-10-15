@@ -4,8 +4,7 @@ import io.legado.app.exception.RegexTimeoutException
 import kotlinx.atomicfu.atomic
 import io.legado.app.help.casUpdate
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.model.script.JsBindings
-import io.legado.app.model.script.JsEngines
+import io.legado.app.model.script.JsReplacementEvaluator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.IO
@@ -67,26 +66,14 @@ object AndroidRegexReplacer : RegexReplacer {
                             val javaPattern = regex.toPattern()
                             val matcher = javaPattern.matcher(text)
                             val stringBuffer = StringBuffer()
-                            // isJs 路径: 循环外创建共享 scope + 预编译 bytecode,
-                            // 避免每次匹配都重新初始化 bootstrap (性能优化, 应对长文本大量匹配)
-                            val jsScope = if (isJs) {
-                                val bindings = JsBindings().apply { this["result"] = "" }
-                                val scope = JsEngines.get().getRuntimeScope(bindings)
-                                val compiled = JsEngines.get().compile(
-                                    JsEngines.get().wrapJsForEval(replacement1), scope
-                                )
-                                Pair(scope, compiled)
-                            } else null
+                            // isJs 路径: 循环外建共享作用域, 避免每次匹配都重新初始化 bootstrap
+                            // (性能优化, 应对长文本大量匹配)
+                            val jsEvaluator =
+                                if (isJs) JsReplacementEvaluator(replacement1) else null
                             try {
                                 while (matcher.find()) {
-                                    if (isJs) {
-                                        val (scope, compiled) = jsScope!!
-                                        val bindings = JsBindings().apply {
-                                            this["result"] = matcher.group()
-                                            dangerousApi = false
-                                        }
-                                        JsEngines.get().injectBindings(scope, bindings)
-                                        val jsResult = compiled.eval(scope, null)?.toString() ?: ""
+                                    if (jsEvaluator != null) {
+                                        val jsResult = jsEvaluator.evaluate(matcher.group())
                                         matcher.appendReplacement(
                                             stringBuffer, Matcher.quoteReplacement(jsResult)
                                         )
@@ -95,7 +82,7 @@ object AndroidRegexReplacer : RegexReplacer {
                                     }
                                 }
                             } finally {
-                                jsScope?.first?.close()
+                                jsEvaluator?.close()
                             }
                             matcher.appendTail(stringBuffer)
                             block.resume(stringBuffer.toString())

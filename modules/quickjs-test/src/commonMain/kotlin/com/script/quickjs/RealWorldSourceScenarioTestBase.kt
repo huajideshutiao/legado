@@ -361,7 +361,7 @@ abstract class RealWorldSourceScenarioTestBase {
      * 完整书籍列表解析流程: 10 本书 × 7 字段, 模拟 AnalyzeRule.evalJS 循环调用。
      *
      * 验证:
-     * - wrapJsForEval + compile + eval + cleanup 完整流程
+     * - evalInSubScope (bindings 注入子作用域, 固定执行器求值) 完整流程
      * - scope 复用 (SharedJsScope 场景)
      * - bindings 注入 result 变量
      * - 多次执行不污染 (let/const 隔离)
@@ -380,11 +380,6 @@ abstract class RealWorldSourceScenarioTestBase {
                 """result.trim()""",
                 """result + "分""""
             )
-
-            // 编译所有规则 (模拟 AnalyzeRule.compileScriptCache)
-            val compiled = fieldRules.map {
-                QuickJsEngine.compile(QuickJsEngine.wrapJsForEval(it))
-            }
 
             // 10 本书的字段原始值
             val bookFieldInputs = (1..10).map { idx ->
@@ -405,13 +400,8 @@ abstract class RealWorldSourceScenarioTestBase {
                 val bookResult = mutableListOf<String>()
                 for (i in fieldRules.indices) {
                     val bindings = ScriptBindings().apply { put("result", fields[i]) }
-                    val keys = QuickJsEngine.injectBindings(scope, bindings)
-                    try {
-                        val r = compiled[i].eval(scope, null)
-                        bookResult.add(r?.toString() ?: "")
-                    } finally {
-                        QuickJsEngine.cleanupBindings(scope, keys)
-                    }
+                    val r = QuickJsEngine.evalInSubScope(fieldRules[i], scope, bindings, null)
+                    bookResult.add(r?.toString() ?: "")
                 }
                 results.add(bookResult)
             }

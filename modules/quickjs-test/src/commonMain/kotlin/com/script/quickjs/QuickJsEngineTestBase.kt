@@ -929,21 +929,23 @@ abstract class QuickJsEngineTestBase {
         }
     }
 
-    // ============ wrapJsForEval 隔离 (修复点: 避免污染 sharedScope) ============
+    // ============ 用户脚本执行器隔离 (修复点: 避免污染 sharedScope) ============
 
     @Test
-    fun testWrapJsForEvalIsolatesLetConst() {
-        // 修复点: wrapJsForEval 用 IIFE + eval 包裹,let/const 不污染全局
+    fun testUserScriptIsolatesLetConst() {
+        // 固定执行器里 eval 的函数作用域隔离 let/const, 不污染全局
         // 模拟 AnalyzeRule 复用 sharedScope 执行两段含 let url 的 JS,不应报 redeclaration
         val scope = QuickJsEngine.getRuntimeScope(ScriptBindings())
         try {
-            val js1 = QuickJsEngine.wrapJsForEval("let url = 'first'; url;")
-            val js2 = QuickJsEngine.wrapJsForEval("let url = 'second'; url;")
-            val r1 = QuickJsEngine.eval(js1, scope, null)
-            val r2 = QuickJsEngine.eval(js2, scope, null)
+            val r1 = QuickJsEngine.evalInSubScope(
+                "let url = 'first'; url;", scope, ScriptBindings(), null
+            )
+            val r2 = QuickJsEngine.evalInSubScope(
+                "let url = 'second'; url;", scope, ScriptBindings(), null
+            )
             assertEquals("first", r1.toString())
             assertEquals("second", r2.toString())
-            // 全局 url 应未定义(IIFE 内 let 不污染全局)
+            // 全局 url 应未定义(执行器内 let 不污染全局)
             val global = QuickJsEngine.eval("typeof url", scope, null)
             assertEquals("undefined", global.toString())
         } finally {
@@ -952,29 +954,31 @@ abstract class QuickJsEngineTestBase {
     }
 
     @Test
-    fun testWrapJsForEvalPreservesReturnValue() {
-        // 修复点: wrapJsForEval 用 IIFE + eval 包裹,最后一条表达式作为返回值
+    fun testUserScriptPreservesReturnValue() {
+        // 固定执行器里 eval 承载末尾表达式完成值
         // 注意: 完成值(末尾表达式值)是 eval/script 目标特有语义, 函数调用只认显式 return,
-        //       所以包装离不开 eval —— 源码逐字嵌入函数体会丢末尾表达式值 (jvmTest 实证)
+        //       故求值离不开 eval —— 源码逐字嵌入函数体会丢末尾表达式值 (jvmTest 实证)
         val scope = QuickJsEngine.getRuntimeScope(ScriptBindings())
         scope.use { scope ->
-            val wrapped = QuickJsEngine.wrapJsForEval("var x = 1; x + 41;")
-            val result = QuickJsEngine.eval(wrapped, scope, null)
+            val result = QuickJsEngine.evalInSubScope(
+                "var x = 1; x + 41;", scope, ScriptBindings(), null
+            )
             assertEquals(42, (result as Number).toInt())
         }
     }
 
     @Test
-    fun testWrapJsForEvalAccessesScopeVariables() {
-        // 修复点: wrapJsForEval 内 eval 可访问注入到 scope 的变量
+    fun testUserScriptAccessesScopeVariables() {
+        // 执行器内 eval 可访问注入到 scope 的变量
         val scope = QuickJsEngine.getRuntimeScope(ScriptBindings())
         try {
             val keys = QuickJsEngine.injectBindings(scope, ScriptBindings().apply {
                 put("baseUrl", "https://example.com")
             })
             try {
-                val wrapped = QuickJsEngine.wrapJsForEval("baseUrl + '/path';")
-                val result = QuickJsEngine.eval(wrapped, scope, null)
+                val result = QuickJsEngine.evalInSubScope(
+                    "baseUrl + '/path';", scope, ScriptBindings(), null
+                )
                 assertEquals("https://example.com/path", result.toString())
             } finally {
                 QuickJsEngine.cleanupBindings(scope, keys)
@@ -1038,9 +1042,8 @@ abstract class QuickJsEngineTestBase {
             }
             val keysA = QuickJsEngine.injectBindings(sharedScope, bindingsA)
             try {
-                val rA = QuickJsEngine.eval(
-                    QuickJsEngine.wrapJsForEval("result + '|' + custom"),
-                    sharedScope, null
+                val rA = QuickJsEngine.evalInSubScope(
+                    "result + '|' + custom", sharedScope, ScriptBindings(), null
                 )
                 assertEquals("from-A|A-specific", rA.toString())
             } finally {
@@ -1053,15 +1056,13 @@ abstract class QuickJsEngineTestBase {
             }
             val keysB = QuickJsEngine.injectBindings(sharedScope, bindingsB)
             try {
-                val rB = QuickJsEngine.eval(
-                    QuickJsEngine.wrapJsForEval("result"),
-                    sharedScope, null
+                val rB = QuickJsEngine.evalInSubScope(
+                    "result", sharedScope, ScriptBindings(), null
                 )
                 assertEquals("from-B", rB.toString())
                 // A 的 custom 应已不可见
-                val leaked = QuickJsEngine.eval(
-                    QuickJsEngine.wrapJsForEval("typeof custom"),
-                    sharedScope, null
+                val leaked = QuickJsEngine.evalInSubScope(
+                    "typeof custom", sharedScope, ScriptBindings(), null
                 )
                 assertEquals("undefined", leaked.toString())
             } finally {

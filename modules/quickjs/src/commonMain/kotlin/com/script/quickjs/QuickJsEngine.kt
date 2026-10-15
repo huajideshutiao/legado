@@ -13,7 +13,6 @@ import com.script.quickjs.QuickJsEngine.evalInSubScope
 import com.script.quickjs.QuickJsEngine.exitBindings
 import com.script.quickjs.QuickJsEngine.getRuntimeScope
 import com.script.quickjs.QuickJsEngine.injectBindings
-import com.script.quickjs.QuickJsEngine.wrapJsForEval
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -182,14 +181,15 @@ object QuickJsEngine {
     }
 
     /**
-     * 在 SharedJsScope 的 topScope 上执行 bytecode, bindings 压入 `__bindingsStack__` 子 scope 栈,
-     * 由 [wrapJsForEval] 的 `with(__currentBindings())` 让 user JS 走栈顶命中, 不污染 topScope
+     * 在 SharedJsScope 的 topScope 上执行用户脚本: bindings 压入 `__bindingsStack__` 子 scope 栈
+     * 并写入 globalThis, 源码交给 bootstrap 的 `__evalUserScript(源码)` 求值 (源码以值参数传入,
+     * 免字符串转义且包装只编译一次), 不污染 topScope
      * (对齐 rhino `childScope.prototype = topScope` 语义)。
      *
      * jsLib 里 topScope 自由函数看不到 bindings; 共享函数写 jsLib, 业务变量走参数。
      */
     fun evalInSubScope(
-        compiled: CompiledScript,
+        jsStr: String,
         scope: QuickJsContext,
         bindings: ScriptBindings,
         coroutineContext: CoroutineContext?
@@ -206,7 +206,7 @@ object QuickJsEngine {
             val handleSnapshot = JavaObjectBridge.snapshotScopeHandles(scope.scopeId)
             enterBindings(scope, kvs)
             try {
-                return evalBytecode(compiled.bytecode, scope, coroutineContext)
+                return evalUserScript(scope, jsStr, coroutineContext)
             } finally {
                 exitBindings(scope)
                 // 释放本次 evalInSubScope 期间注册的 binding 句柄 (bytes 等大对象)
@@ -214,6 +214,30 @@ object QuickJsEngine {
             }
         } finally {
             QuickJsContext.threadLocalContext.set(previousThreadContext)
+        }
+    }
+
+    /**
+     * 调 bootstrap 的 `__evalUserScript(源码)`: 源码以值参数传入, 免字符串转义。
+     *
+     * 调用方须已 [enterBindings] (helpers 已抓取, bindings 已在栈顶与 globalThis)。
+     */
+    private fun evalUserScript(
+        scope: QuickJsContext,
+        jsStr: String,
+        coroutineContext: CoroutineContext?
+    ): Any? {
+        val handle = scope.evalUserScriptHandle
+        if (handle == 0L) throw ScriptException("__evalUserScript not available", null)
+        return withEvalContext(scope, coroutineContext) {
+            try {
+                val result = QuickJsNative.nativeCallJsHandle(handle, arrayOf(jsStr))
+                // 泵送微任务: 与 [eval] 一致, Promise 结果先泵送再读取
+                QuickJsAsync.settleAndUnwrap(scope, result)
+            } catch (e: JsNativeException) {
+                // 保留 cause, 见 [eval] 同位置注释
+                throw ScriptException(e.message, e, e.fileName, e.lineNumber, e.columnNumber)
+            }
         }
     }
 
@@ -506,6 +530,7 @@ object QuickJsEngine {
         try {
             ctx.enterBindingsHandle = getFuncHandle(ctxPtr, globalHandle, "__enterBindings")
             ctx.exitBindingsHandle = getFuncHandle(ctxPtr, globalHandle, "__exitBindings")
+            ctx.evalUserScriptHandle = getFuncHandle(ctxPtr, globalHandle, "__evalUserScript")
         } finally {
             QuickJsNative.nativeFreeHandle(ctxPtr, globalHandle)
         }
@@ -610,27 +635,6 @@ object QuickJsEngine {
         QuickJsNative.nativeSetDangerousApi(scope.ctxPtr, scope.dangerousApi)
         scope.lastSyncedDangerousApi = scope.dangerousApi
     }
-
-    /**
-     * `(function(){with(__currentBindings()){return eval(<源码>);}})()` 三层包装:
-     * - `with(__currentBindings())`: bindings 走 [evalInSubScope] 压栈成栈顶对象, user JS 里
-     *   `java`/`cache`/`source` 走 with 命中; 空栈时穿透到 globalThis。
-     * - IIFE 隔离 `let`/`const`/`var`, 不污染 topScope (避免 "redeclaration")。
-     * - eval + return: 返回末尾表达式值 (对齐 rhino script.exec)。完成值是 eval/script 目标
-     *   特有语义, 函数调用只认显式 return, 故源码无法逐字嵌入函数体 (会丢末尾表达式值,
-     *   jvmTest testWrapJsForEvalPreservesReturnValue 实证)。
-     * - 已知限制: user JS 顶层 return 落在 eval 里, 报 "Illegal return statement",
-     *   rhino 顶层 return 扩展无法对齐; 书源请用末尾表达式或自带 IIFE。
-     *
-     * 用于复用 sharedScope 的场景; jsLib 本身在 topScope 上定义, 不需要包裹。
-     */
-    fun wrapJsForEval(jsStr: String): String {
-        val jsLiteral = JsStringUtils.escape(jsStr)
-        return "(function(){with(__currentBindings()){return eval($jsLiteral);}})()"
-    }
-
-    /** [wrapJsForEval] 包装后编译为 bytecode, 供 [evalInSubScope] 执行。 */
-    fun compileForSubScope(jsStr: String): CompiledScript = compile(wrapJsForEval(jsStr))
 
     /**
      * 在指定 scope 上执行 nativeEval,处理 ThreadLocalContext / 递归检查 / coroutineContext 同步。

@@ -12,10 +12,11 @@ import io.legado.app.help.source.SourceCacheProviders
 import io.legado.app.help.source.SourceDebugLoggers
 import io.legado.app.help.source.SourceNetworkProviders
 import io.legado.app.help.source.getShareScope
-import io.legado.app.model.script.JsCompiledScript
+import io.legado.app.model.script.JsBindings
 import io.legado.app.model.script.JsEngines
 import io.legado.app.model.script.JsScope
 import io.legado.app.model.script.buildScriptBindings
+import io.legado.app.model.script.evalUserScript
 import io.legado.app.utils.Closeable
 import io.legado.app.utils.EscapeUtils
 import io.legado.app.utils.KS_JSON_STRICT
@@ -73,7 +74,6 @@ open class AnalyzeRuleCore(
 
     private val stringRuleCache = hashMapOf<String, List<SourceRule>>()
     private val regexCache = hashMapOf<String, Boolean>()
-    private val scriptCache = hashMapOf<String, JsCompiledScript>()
     private var topScopeRef: JsScope? = null
 
     var coroutineContext: CoroutineContext = EmptyCoroutineContext
@@ -861,19 +861,16 @@ open class AnalyzeRuleCore(
      * 执行JS
      *
      * quickjs 没有 rhino 的 prototype 继承链, 不能直接 `bindings.prototype = topScope`,
-     * 这里用 IIFE + eval 包裹用户 JS, bindings 直接注入 topScope 的 globalThis:
-     * - let/const 留在 eval 词法环境(或 IIFE 函数作用域), 不污染 topScope
-     *   (避免重复执行报 "redeclaration of 'xxx'")
-     * - eval 返回末尾表达式值(对齐 rhino script.exec 返回最后一个表达式;
-     *   完成值是 eval/script 目标特有语义, 函数调用只认显式 return, 包装离不开 eval)
+     * 这里把 bindings 注入子作用域 (同时写 globalThis), 用户脚本交给引擎固定执行器求值:
+     * - let/const 留在 eval 词法环境, 不污染 topScope (避免重复执行报 "redeclaration of 'xxx'")
+     * - eval 返回末尾表达式值 (对齐 rhino script.exec 返回最后一个表达式;
+     *   完成值是 eval/script 目标特有语义, 函数调用只认显式 return, 求值离不开 eval)
      * - 已知限制: 顶层 return 落在 eval 里报 "Illegal return statement",
-     *   rhino 的顶层 return 扩展无法对齐
-     * - bindings 通过 [io.legado.app.model.script.JsEngine.injectBindings] 写入 globalThis, jsLib 里
-     *   定义在 topScope 上的自由函数 (如 `lk`) 内部访问 `cache` 等 binding 也能命中,
-     *   执行后由 [io.legado.app.model.script.JsEngine.evalInSubScope] 调 cleanupBindings 删除, 避免残留。
+     *   书源请用末尾表达式或自带 IIFE
+     * - bindings 同时写入 globalThis, jsLib 里定义在 topScope 上的自由函数 (如 `lk`)
+     *   内部访问 `cache` 等 binding 也能命中, 执行后由 evalInSubScope 清理, 避免残留。
      *
      * 注: jsLib 在 topScope(SharedJsScope)上执行,是共享的,不需要包裹。
-     * 这里只包裹 AnalyzeRule 的即开即走 JS。
      */
     fun evalJS(jsStr: String, result: Any? = null): Any? {
         // 空字符串早返回，避免不必要的编译执行开销
@@ -893,40 +890,13 @@ open class AnalyzeRuleCore(
             bindings["nextChapterUrl"] = nextChapterUrl
             bindings.dangerousApi = source?.enableDangerousApi == true
         }
+        // 无共享作用域时自建一个并长期持有: 后续调用复用同一作用域, jsLib 定义的自由函数才可见。
         val topScope = source?.getShareScope(coroutineContext) ?: topScopeRef
-        // - topScope == null: 创建独立 scope, bindings 注入 globalThis
-        // - sharedScope 路径: SharedJsScope 缓存的 topScope (ThreadLocal 线程独占),
-        //   bindings 也注入到该 topScope 的 globalThis, 执行后由 evalInSubScope 自行清理,
-        //   既能让 jsLib 自由函数命中 binding, 又不会跨 evalJS 残留。
+            ?: JsEngines.get().getRuntimeScope(JsBindings()).also { topScopeRef = it }
         return try {
-            if (topScope == null) {
-                val scope = JsEngines.get().getRuntimeScope(bindings)
-                topScopeRef = scope
-                val wrappedJs = JsEngines.get().wrapJsForEval(jsStr)
-                compileScriptCache(wrappedJs).eval(scope, coroutineContext)
-            } else {
-                JsEngines.get().evalInSubScope(
-                    compileSubScopeCache(jsStr),
-                    topScope,
-                    bindings,
-                    coroutineContext
-                )
-            }
+            evalUserScript(jsStr, topScope, bindings, coroutineContext)
         } catch (e: Exception) {
             throw RuntimeException("JS执行出错\n${e.message}", e)
-        }
-    }
-
-    private fun compileScriptCache(jsStr: String): JsCompiledScript {
-        return scriptCache.getOrPutLimit(jsStr, 16) {
-            JsEngines.get().compile(jsStr)
-        }
-    }
-
-    private fun compileSubScopeCache(jsStr: String): JsCompiledScript {
-        // 与 compileScriptCache 共用 LRU, 但 key 用 "sub:" 前缀避免与 wrapJsForEval 路径冲突
-        return scriptCache.getOrPutLimit("sub:$jsStr", 16) {
-            JsEngines.get().compileForSubScope(jsStr)
         }
     }
 

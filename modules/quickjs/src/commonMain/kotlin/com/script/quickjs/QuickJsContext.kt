@@ -74,7 +74,9 @@ class QuickJsContext(
      * bootstrap 里 binding helper 的 JsHandleTable 句柄, 供 [QuickJsNative.nativeCallJsHandle] 直接调用。
      *
      * - [enterBindingsHandle] / [exitBindingsHandle]: [QuickJsEngine.evalInSubScope] 用,
-     *   bindings 装入独立 JS 对象压/出 `__bindingsStack__` (rhino 子 scope 语义, 不写 globalThis)。
+     *   bindings 装入独立 JS 对象压/出 `__bindingsStack__`, 同时写入 globalThis
+     *   (with 命中栈顶对象, jsLib 自由函数里的 this 命中 globalThis)。
+     * - [evalUserScriptHandle]: `__evalUserScript(源码)` 句柄, 源码以值参数传入, 免字符串转义。
      *
      * 精简版 (方案B): cleanup 移到 Kotlin 层用 nativeDeleteProperty / nativeSetPropertyHandle 处理。
      *
@@ -83,6 +85,7 @@ class QuickJsContext(
      */
     var enterBindingsHandle: Long = 0L
     var exitBindingsHandle: Long = 0L
+    var evalUserScriptHandle: Long = 0L
 
     /**
      * [cacheBootstrapHelpers] 是否已执行过。

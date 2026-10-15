@@ -13,17 +13,14 @@ import org.junit.runner.RunWith
  * 的关键调用链路, 不依赖业务层 (BookSource/Book/CookieStore 等), 用简单 Java 对象模拟 bindings。
  *
  * 覆盖 AnalyzeRule 适配 quickjs 的关键修改点:
- * - QuickJsEngine.wrapJsForEval (IIFE + eval 包裹, 隔离 let/const)
+ * - QuickJsEngine.evalInSubScope (bindings 注入子作用域 + 固定执行器求值)
  * - QuickJsEngine.getRuntimeScope (创建带 bootstrap 的 scope)
  * - QuickJsEngine.injectBindings / cleanupBindings (子 scope 隔离)
- * - QuickJsEngine.compile (bytecode 编译, 跨 scope 复用限制)
- * - CompiledScript.eval (bytecode 执行)
- * - scriptCache (编译缓存, getOrPutLimit 模拟)
  * - buildScriptBindings 构建 (java/cookie/cache/source/book/result/baseUrl/chapter/title/src/nextChapterUrl)
  *
  * 对照 rhino 行为:
- * - rhino: topLevelScope 复用, 顶层 return 扩展, NativeObject bindings
- * - quickjs: topScope 复用, IIFE + eval 模拟顶层 return, ScriptBindings (Map)
+ * - rhino: topLevelScope 复用, NativeObject bindings
+ * - quickjs: topScope 复用, ScriptBindings (Map)
  *
  * 重点验证: 适配 quickjs 修改的调用处不回归 (用户提到之前出过类似问题)。
  */
@@ -120,85 +117,21 @@ class AnalyzeRulePathTest {
     }
 
     /**
-     * 模拟 AnalyzeRule.evalJS 完整路径 (无 source, 走 topScopeRef 路径)。
+     * 模拟 AnalyzeRule.evalJS 完整路径 (无 source 时自建并长期持有 scope, 之后统一走子作用域执行)。
      *
-     * 真实代码 (AnalyzeRule.kt:799-833):
-     * ```kotlin
-     * fun evalJS(jsStr: String, result: Any? = null): Any? {
-     *     if (jsStr.isBlank()) return null
-     *     val bindings = buildScriptBindings { ... }
-     *     val topScope = source?.getShareScope(coroutineContext) ?: topScopeRef
-     *     val wrappedJs = QuickJsEngine.wrapJsForEval(jsStr)
-     *     return if (topScope == null) {
-     *         val scope = QuickJsEngine.getRuntimeScope(bindings)
-     *         topScopeRef = scope
-     *         compileScriptCache(wrappedJs).eval(scope, coroutineContext)
-     *     } else {
-     *         val injectedKeys = QuickJsEngine.injectBindings(topScope, bindings)
-     *         try {
-     *             compileScriptCache(wrappedJs).eval(topScope, coroutineContext)
-     *         } finally {
-     *             QuickJsEngine.cleanupBindings(topScope, injectedKeys)
-     *         }
-     *     }
-     * }
-     * ```
+     * 真实代码: bindings 注入子作用域, 用户脚本交给引擎固定执行器求值, 执行完清理。
      */
     private fun evalJSLikeAnalyzeRule(
         jsStr: String,
         result: Any? = null,
         topScopeRef: QuickJsContext? = null,
-        scriptCache: HashMap<String, CompiledScript> = hashMapOf(),
         mockJava: MockAnalyzeRule? = null
     ): Pair<Any?, QuickJsContext> {
         if (jsStr.isBlank()) return null to (topScopeRef ?: error("no scope"))
         val bindings = buildMockBindings(result = result, mockJava = mockJava)
-        val topScope = topScopeRef
-        val wrappedJs = QuickJsEngine.wrapJsForEval(jsStr)
-        return if (topScope == null) {
-            // 路径 1: 无 source, 创建新 scope 并缓存
-            val scope = QuickJsEngine.getRuntimeScope(bindings)
-            val r = compileScriptCacheLike(wrappedJs, scriptCache, scope).eval(scope, null)
-            r to scope
-        } else {
-            // 路径 2: 有 sharedScope, inject + eval + cleanup
-            val injectedKeys = QuickJsEngine.injectBindings(topScope, bindings)
-            try {
-                val r =
-                    compileScriptCacheLike(wrappedJs, scriptCache, topScope).eval(topScope, null)
-                r to topScope
-            } finally {
-                QuickJsEngine.cleanupBindings(topScope, injectedKeys)
-            }
-        }
-    }
-
-    /**
-     * 模拟 AnalyzeRule.compileScriptCache (AnalyzeRule.kt:835-839)。
-     *
-     * 真实代码:
-     * ```kotlin
-     * private fun compileScriptCache(jsStr: String): CompiledScript {
-     *     return scriptCache.getOrPutLimit(jsStr, 16) {
-     *         QuickJsEngine.compile(jsStr)
-     *     }
-     * }
-     * ```
-     *
-     * 注意: 真实代码用 getOrPutLimit (限制 16 条), 这里用 getOrPut 简化。
-     * 关键点: compile(jsStr) 不传 scope, 用全局 compiler ctx 编译,
-     * 但 bytecode 必须在执行 scope 上 eval (跨 scope 兼容性限制)。
-     */
-    private fun compileScriptCacheLike(
-        jsStr: String,
-        cache: HashMap<String, CompiledScript>,
-        scope: QuickJsContext
-    ): CompiledScript {
-        return cache.getOrPut(jsStr) {
-            // AnalyzeRule 用 compile(jsStr) 不传 scope, 但需要在执行 scope 上 eval
-            // 这里用 compile(jsStr, scope) 复用目标 scope 编译, 避免跨 scope 问题
-            QuickJsEngine.compile(jsStr, scope)
-        }
+        val scope = topScopeRef ?: QuickJsEngine.getRuntimeScope(ScriptBindings())
+        val r = QuickJsEngine.evalInSubScope(jsStr, scope, bindings, null)
+        return r to scope
     }
 
     // ============ 基础路径验证 ============
@@ -272,37 +205,32 @@ class AnalyzeRulePathTest {
         }
     }
 
-    // ============ wrapJsForEval 隔离验证 ============
+    // ============ 用户脚本执行器隔离验证 ============
 
     /**
-     * 验证 wrapJsForEval 的 IIFE 包裹让 let/const 不污染 topScope。
+     * 验证固定执行器里 eval 的函数作用域隔离 let/const, 不污染 topScope。
      *
-     * 修复点 (AnalyzeRule.kt:790-792):
-     * - let/const 留在 eval 词法环境 (IIFE 函数作用域), 不污染 topScope
+     * - let/const 留在 eval 词法环境, 不污染 topScope
      * - 避免重复执行报 "redeclaration of 'xxx'"
      */
     @Test
-    fun testWrapJsForEvalIsolatesLetConst() {
+    fun testUserScriptIsolatesLetConst() {
         val sharedScope = QuickJsEngine.getRuntimeScope(ScriptBindings())
         try {
-            val scriptCache = hashMapOf<String, CompiledScript>()
-
             // 两次执行含 let url 的 JS, 不应报 redeclaration
             val (r1, _) = evalJSLikeAnalyzeRule(
                 jsStr = "let url = baseUrl + '/path'; url;",
-                topScopeRef = sharedScope,
-                scriptCache = scriptCache
+                topScopeRef = sharedScope
             )
             val (r2, _) = evalJSLikeAnalyzeRule(
                 jsStr = "let url = baseUrl + '/other'; url;",
-                topScopeRef = sharedScope,
-                scriptCache = scriptCache
+                topScopeRef = sharedScope
             )
 
             assertEquals("https://api.example.com/path", r1.toString())
             assertEquals("https://api.example.com/other", r2.toString())
 
-            // 全局 url 应未定义 (IIFE 内 let 不污染全局)
+            // 全局 url 应未定义 (执行器内 let 不污染全局)
             val global = QuickJsEngine.eval("typeof url", sharedScope, null)
             assertEquals("undefined", global.toString())
         } finally {
@@ -311,12 +239,12 @@ class AnalyzeRulePathTest {
     }
 
     /**
-     * 验证 wrapJsForEval 保留返回值 (最后一个表达式)。
+     * 验证执行器保留返回值 (最后一个表达式)。
      *
-     * 修复点 (AnalyzeRule.kt:793): eval 返回末尾表达式值 (模拟 rhino script.exec)
+     * eval 返回末尾表达式值 (模拟 rhino script.exec)
      */
     @Test
-    fun testWrapJsForEvalPreservesReturnValue() {
+    fun testUserScriptPreservesReturnValue() {
         val (result, scope) = evalJSLikeAnalyzeRule(
             """
             var x = 1;
@@ -332,12 +260,12 @@ class AnalyzeRulePathTest {
     }
 
     /**
-     * 验证 wrapJsForEval 内 eval 可访问注入的 bindings 变量。
+     * 验证执行器内 eval 可访问注入的 bindings 变量。
      *
-     * 修复点 (AnalyzeRule.kt:794): bindings 变量通过 globalThis 注入, IIFE 内可访问
+     * bindings 变量通过 globalThis 注入, 执行器内可访问
      */
     @Test
-    fun testWrapJsForEvalAccessesBindings() {
+    fun testUserScriptAccessesBindings() {
         val (result, scope) = evalJSLikeAnalyzeRule(
             """
             result.toUpperCase() + ' @ ' + baseUrl;
@@ -347,80 +275,6 @@ class AnalyzeRulePathTest {
             assertEquals("HELLO @ https://api.example.com", result.toString())
         } finally {
             scope.close()
-        }
-    }
-
-    // ============ scriptCache 编译缓存验证 ============
-
-    /**
-     * 验证 scriptCache 缓存复用 (AnalyzeRule.compileScriptCache)。
-     *
-     * 真实代码 (AnalyzeRule.kt:836-838):
-     * ```kotlin
-     * return scriptCache.getOrPutLimit(jsStr, 16) {
-     *     QuickJsEngine.compile(jsStr)
-     * }
-     * ```
-     *
-     * 修复点: bytecode 在同一 scope 上可重复执行 (模拟 AnalyzeRule.formatJs 循环)。
-     */
-    @Test
-    fun testScriptCacheReusesCompiledBytecode() {
-        val sharedScope = QuickJsEngine.getRuntimeScope(ScriptBindings())
-        try {
-            val scriptCache = hashMapOf<String, CompiledScript>()
-            val jsStr = QuickJsEngine.wrapJsForEval("result + ' ' + baseUrl;")
-
-            // 第一次调用: 编译并缓存
-            val (r1, _) = evalJSLikeAnalyzeRule(
-                jsStr = "result + ' ' + baseUrl;",
-                result = "first",
-                topScopeRef = sharedScope,
-                scriptCache = scriptCache
-            )
-            assertEquals("scriptCache should have 1 entry after first call", 1, scriptCache.size)
-
-            // 第二次调用相同 JS: 应复用缓存
-            val (r2, _) = evalJSLikeAnalyzeRule(
-                jsStr = "result + ' ' + baseUrl;",
-                result = "second",
-                topScopeRef = sharedScope,
-                scriptCache = scriptCache
-            )
-            assertEquals("scriptCache should still have 1 entry (reused)", 1, scriptCache.size)
-
-            assertEquals("first https://api.example.com", r1.toString())
-            assertEquals("second https://api.example.com", r2.toString())
-        } finally {
-            sharedScope.close()
-        }
-    }
-
-    /**
-     * 验证 scriptCache 不同 JS 编译不同 bytecode。
-     */
-    @Test
-    fun testScriptCacheCompilesDifferentJsSeparately() {
-        val sharedScope = QuickJsEngine.getRuntimeScope(ScriptBindings())
-        try {
-            val scriptCache = hashMapOf<String, CompiledScript>()
-
-            evalJSLikeAnalyzeRule(
-                jsStr = "result + '_a';",
-                result = "x",
-                topScopeRef = sharedScope,
-                scriptCache = scriptCache
-            )
-            evalJSLikeAnalyzeRule(
-                jsStr = "result + '_b';",
-                result = "x",
-                topScopeRef = sharedScope,
-                scriptCache = scriptCache
-            )
-
-            assertEquals("scriptCache should have 2 entries for different JS", 2, scriptCache.size)
-        } finally {
-            sharedScope.close()
         }
     }
 
@@ -457,7 +311,6 @@ class AnalyzeRulePathTest {
     fun testJavaBindingPutVarAndGetVar() {
         val sharedScope = QuickJsEngine.getRuntimeScope(ScriptBindings())
         try {
-            val scriptCache = hashMapOf<String, CompiledScript>()
             // 同一 MockAnalyzeRule 实例, 跨多次 eval 保持状态 (模拟真实 AnalyzeRule this)
             val mockJava = MockAnalyzeRule()
 
@@ -465,7 +318,6 @@ class AnalyzeRulePathTest {
             evalJSLikeAnalyzeRule(
                 jsStr = "java.putVar('myKey', 'myValue'); null;",
                 topScopeRef = sharedScope,
-                scriptCache = scriptCache,
                 mockJava = mockJava
             )
 
@@ -473,7 +325,6 @@ class AnalyzeRulePathTest {
             val (r2, _) = evalJSLikeAnalyzeRule(
                 jsStr = "java.getVar('myKey');",
                 topScopeRef = sharedScope,
-                scriptCache = scriptCache,
                 mockJava = mockJava
             )
             assertEquals("myValue", r2.toString())
@@ -605,13 +456,12 @@ class AnalyzeRulePathTest {
     /**
      * 综合场景: 模拟多本书籍列表解析 (循环 evalJS)。
      *
-     * 验证 sharedScope 复用 + bindings 隔离 + scriptCache 缓存。
+     * 验证 sharedScope 复用 + bindings 隔离。
      */
     @Test
     fun testBookListParsingLoop() {
         val sharedScope = QuickJsEngine.getRuntimeScope(ScriptBindings())
         try {
-            val scriptCache = hashMapOf<String, CompiledScript>()
             val books = listOf(
                 mapOf("name" to "斗破苍穹", "author" to "天蚕土豆"),
                 mapOf("name" to "凡人修仙传", "author" to "忘语"),
@@ -620,22 +470,16 @@ class AnalyzeRulePathTest {
 
             val results = books.map { book ->
                 val bindings = buildMockBindings(result = book, book = book)
-                val wrappedJs = QuickJsEngine.wrapJsForEval(
+                QuickJsEngine.evalInSubScope(
                     """
                     var name = result.get('name');
                     var author = result.get('author');
                     name + ' - ' + author;
-                """.trimIndent()
-                )
-                val compiled = scriptCache.getOrPut(wrappedJs) {
-                    QuickJsEngine.compile(wrappedJs, sharedScope)
-                }
-                val keys = QuickJsEngine.injectBindings(sharedScope, bindings)
-                try {
-                    compiled.eval(sharedScope, null)?.toString()
-                } finally {
-                    QuickJsEngine.cleanupBindings(sharedScope, keys)
-                }
+                """.trimIndent(),
+                    sharedScope,
+                    bindings,
+                    null
+                )?.toString()
             }
 
             assertEquals(
@@ -646,8 +490,6 @@ class AnalyzeRulePathTest {
                 ), results
             )
 
-            // 验证 scriptCache 只缓存 1 条 (相同 JS 复用)
-            assertEquals(1, scriptCache.size)
         } finally {
             sharedScope.close()
         }
@@ -673,26 +515,22 @@ class AnalyzeRulePathTest {
                 b.dangerousApi = true  // 启用 dangerousApi
             }
 
-            val keys = QuickJsEngine.injectBindings(sharedScope, bindings)
-            try {
-                val wrappedJs = QuickJsEngine.wrapJsForEval(
-                    """
-                    var sid = cookie.get('sessionid');
-                    var tocUrl = cache.get('tocUrl');
-                    var chTitle = title;
-                    var chUrl = chapter.get('url');
-                    sid + '|' + tocUrl + '|' + chTitle + '|' + chUrl;
-                """.trimIndent()
-                )
-                val compiled = QuickJsEngine.compile(wrappedJs, sharedScope)
-                val result = compiled.eval(sharedScope, null)
-                assertEquals(
-                    "test|https://example.com/toc|目录|https://example.com/toc",
-                    result.toString()
-                )
-            } finally {
-                QuickJsEngine.cleanupBindings(sharedScope, keys)
-            }
+            val result = QuickJsEngine.evalInSubScope(
+                """
+                var sid = cookie.get('sessionid');
+                var tocUrl = cache.get('tocUrl');
+                var chTitle = title;
+                var chUrl = chapter.get('url');
+                sid + '|' + tocUrl + '|' + chTitle + '|' + chUrl;
+            """.trimIndent(),
+                sharedScope,
+                bindings,
+                null
+            )
+            assertEquals(
+                "test|https://example.com/toc|目录|https://example.com/toc",
+                result.toString()
+            )
         } finally {
             sharedScope.close()
         }
@@ -745,19 +583,15 @@ class AnalyzeRulePathTest {
         val sharedScope = QuickJsEngine.getRuntimeScope(ScriptBindings())
         try {
             val bindings = buildMockBindings(result = sb)
-            val keys = QuickJsEngine.injectBindings(sharedScope, bindings)
-            try {
-                val wrappedJs = QuickJsEngine.wrapJsForEval(
-                    """
-                    result.append('-suffix').toString();
-                """.trimIndent()
-                )
-                val compiled = QuickJsEngine.compile(wrappedJs, sharedScope)
-                val r = compiled.eval(sharedScope, null)
-                assertEquals("result-content-suffix", r.toString())
-            } finally {
-                QuickJsEngine.cleanupBindings(sharedScope, keys)
-            }
+            val r = QuickJsEngine.evalInSubScope(
+                """
+                result.append('-suffix').toString();
+            """.trimIndent(),
+                sharedScope,
+                bindings,
+                null
+            )
+            assertEquals("result-content-suffix", r.toString())
         } finally {
             sharedScope.close()
         }
@@ -816,44 +650,29 @@ class AnalyzeRulePathTest {
     fun testSharedScopeReuseWithDifferentSources() {
         val sharedScope = QuickJsEngine.getRuntimeScope(ScriptBindings())
         try {
-            val scriptCache = hashMapOf<String, CompiledScript>()
-
             // 模拟源 A: 注入 result + 自定义变量
             val bindingsA = buildScriptBindings { b ->
                 b["result"] = "from-A"
                 b["custom"] = "A-specific"
             }
-            val keysA = QuickJsEngine.injectBindings(sharedScope, bindingsA)
-            try {
-                val wrappedJs = QuickJsEngine.wrapJsForEval("result + '|' + custom;")
-                val compiled = scriptCache.getOrPut(wrappedJs) {
-                    QuickJsEngine.compile(wrappedJs, sharedScope)
-                }
-                val rA = compiled.eval(sharedScope, null)
-                assertEquals("from-A|A-specific", rA.toString())
-            } finally {
-                QuickJsEngine.cleanupBindings(sharedScope, keysA)
-            }
+            val rA = QuickJsEngine.evalInSubScope(
+                "result + '|' + custom;", sharedScope, bindingsA, null
+            )
+            assertEquals("from-A|A-specific", rA.toString())
 
             // 模拟源 B: 验证 A 的变量已清理, 不会泄漏
             val bindingsB = buildScriptBindings { b ->
                 b["result"] = "from-B"
             }
-            val keysB = QuickJsEngine.injectBindings(sharedScope, bindingsB)
-            try {
-                val wrappedJs = QuickJsEngine.wrapJsForEval(
-                    """
-                    result + '|' + typeof custom;
-                """.trimIndent()
-                )
-                val compiled = scriptCache.getOrPut(wrappedJs) {
-                    QuickJsEngine.compile(wrappedJs, sharedScope)
-                }
-                val rB = compiled.eval(sharedScope, null)
-                assertEquals("from-B|undefined", rB.toString())  // A 的 custom 已清理
-            } finally {
-                QuickJsEngine.cleanupBindings(sharedScope, keysB)
-            }
+            val rB = QuickJsEngine.evalInSubScope(
+                """
+                result + '|' + typeof custom;
+            """.trimIndent(),
+                sharedScope,
+                bindingsB,
+                null
+            )
+            assertEquals("from-B|undefined", rB.toString())  // A 的 custom 已清理
         } finally {
             sharedScope.close()
         }
@@ -866,22 +685,12 @@ class AnalyzeRulePathTest {
     fun testRepeatedExecutionConsistent() {
         val sharedScope = QuickJsEngine.getRuntimeScope(ScriptBindings())
         try {
-            val scriptCache = hashMapOf<String, CompiledScript>()
             val jsStr = "result + ' ' + baseUrl;"
 
             // 执行 5 次, 每次注入不同 result
             val results = (1..5).map { i ->
                 val bindings = buildMockBindings(result = "run-$i")
-                val keys = QuickJsEngine.injectBindings(sharedScope, bindings)
-                try {
-                    val wrappedJs = QuickJsEngine.wrapJsForEval(jsStr)
-                    val compiled = scriptCache.getOrPut(wrappedJs) {
-                        QuickJsEngine.compile(wrappedJs, sharedScope)
-                    }
-                    compiled.eval(sharedScope, null)?.toString()
-                } finally {
-                    QuickJsEngine.cleanupBindings(sharedScope, keys)
-                }
+                QuickJsEngine.evalInSubScope(jsStr, sharedScope, bindings, null)?.toString()
             }
 
             assertEquals(
@@ -893,7 +702,6 @@ class AnalyzeRulePathTest {
                     "run-5 https://api.example.com"
                 ), results
             )
-            assertEquals(1, scriptCache.size)  // 同一 JS 只编译一次
         } finally {
             sharedScope.close()
         }

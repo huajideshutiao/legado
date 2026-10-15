@@ -36,8 +36,8 @@ import io.legado.app.help.source.SourceCacheProviders
 import io.legado.app.help.source.SourceDebugLoggers
 import io.legado.app.help.source.SourceNetworkProviders
 import io.legado.app.help.source.getShareScope
-import io.legado.app.model.script.JsEngines
 import io.legado.app.model.script.buildScriptBindings
+import io.legado.app.model.script.evalUserScript
 import io.legado.app.model.webBook.replaceExploreOptionsInUrl
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MimeBase64Decoder
@@ -281,26 +281,13 @@ open class AnalyzeUrlCore(
             bindings["result"] = result
             bindings.dangerousApi = source?.enableDangerousApi == true
         }
-        val sharedScope = source?.getShareScope(coroutineContext)
-        // - sharedScope == null: 创建独立 scope, bindings 注入 globalThis
-        // - sharedScope 路径: SharedJsScope 缓存的 topScope (ThreadLocal 线程独占),
-        //   bindings 注入该 topScope 的 globalThis 后再执行, evalInSubScope 内部清理,
-        //   保证 jsLib 自由函数 (如 lk) 能命中 cache/book 等 binding。
-        return if (sharedScope == null) {
-            val scope = JsEngines.get().getRuntimeScope(bindings)
-            val wrappedJs = JsEngines.get().wrapJsForEval(jsStr)
-            try {
-                JsEngines.get().eval(wrappedJs, scope, coroutineContext)
-            } finally {
-                // 无 sharedScope 时创建的独立 scope 必须显式 close,
-                // 否则 native JSRuntime/JSContext 只能等 GC + PhantomReference 异步释放,
-                // 漫画场景下大量图片加载会快速累积 native 内存。
-                scope.close()
-            }
-        } else {
-            val compiled = JsEngines.get().compileForSubScope(jsStr)
-            JsEngines.get().evalInSubScope(compiled, sharedScope, bindings, coroutineContext)
-        }
+        // 有共享作用域则复用, 无则临时建一个并在结束时释放 (native 资源由 evalUserScript 负责关闭)。
+        return evalUserScript(
+            jsStr,
+            source?.getShareScope(coroutineContext),
+            bindings,
+            coroutineContext
+        )
     }
 
     fun put(key: String, value: String): String {
