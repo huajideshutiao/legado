@@ -51,6 +51,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -153,17 +154,24 @@ val LocalSheetExpandFraction = compositionLocalOf { 0f }
 val LocalSheetTopOverlap = compositionLocalOf { 0.dp }
 
 /**
- * 动画进行中屏蔽本节点子树的指针输入: Initial 阶段消费全部事件。
+ * 动画进行中屏蔽本节点子树的指针输入: Initial 阶段消费"按下/拖动/抬起"这类会触发动作的事件。
  *
  * 对话框/弹层滑入滑出与缩放淡出 (进度 < 1) 期间, 内容里的点击手势收不到未消费的 down
  * (down 被消费 awaitFirstDown 不成立, up 被消费即判手势取消), 动画途中的点击落在
  * 正在离场的旧按钮上不会触发。
+ *
+ * 悬停与滚轮不吃: 内嵌平台视图 (AndroidView / UIKitView) 的输入通道一旦看到"事件已被
+ * Compose 消费"就停止向该视图派发, 而复位只发生在"全部抬手"——悬停与滚轮永不产生抬手,
+ * 被吃一次即永久锁死 (表现为鼠标滚轮必须先点一下网页才能用)。这两类事件不触发动作,
+ * 放行不影响本拦截的目的。
  */
 internal fun Modifier.blockInputWhile(active: Boolean): Modifier = pointerInput(active) {
     if (!active) return@pointerInput
     awaitPointerEventScope {
         while (true) {
-            awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+            awaitPointerEvent(PointerEventPass.Initial).changes.forEach { change ->
+                if (change.pressed || change.changedToUpIgnoreConsumed()) change.consume()
+            }
         }
     }
 }
