@@ -113,15 +113,32 @@ class AndroidVideoPlayPlatformProvider(
     override fun createController(
         screenModel: VideoPlayScreenModel,
         onPlaybackEnded: () -> Unit,
-    ): VideoPlayerController = AndroidVideoPlayerController(activity, screenModel, onPlaybackEnded)
+    ): VideoPlayerController = AndroidVideoPlayerController(
+        activity = activity,
+        screenModel = screenModel,
+        onPlaybackEnded = onPlaybackEnded,
+        onReleased = ::onControllerReleased,
+    )
 
     /** 画中画真实态 (Activity 回调驱动, Compose 可观察); 展开/关闭小窗后翻回 false。 */
     internal var isInPip: Boolean by mutableStateOf(false)
         private set
 
-    /** 进入小窗时的视频控制器 (RemoteAction 命令路由与参数刷新用); 下次进入时覆盖,
-     *  页面退出后残留的是已 release 的实例 (仅剩快照字段, 不再持媒体), 无需主动清理。 */
+    /** 当前可见页面的视频控制器 (退到后台暂停 / 小窗命令路由与参数刷新用)。
+     *  登记跟随页面可见期 ([onControllerVisible]/[onControllerInvisible]), 释放时兼底注销。 */
     private var activeController: AndroidVideoPlayerController? = null
+
+    override fun onControllerVisible(controller: VideoPlayerController?) {
+        if (controller is AndroidVideoPlayerController) activeController = controller
+    }
+
+    override fun onControllerInvisible(controller: VideoPlayerController?) {
+        if (activeController === controller) activeController = null
+    }
+
+    private fun onControllerReleased(controller: AndroidVideoPlayerController) {
+        if (activeController === controller) activeController = null
+    }
 
     /** 视频渲染面引用 (画中画源矩形按它算); 渲染面离开组合时置空 */
     private var playerView: PlayerView? = null
@@ -153,7 +170,6 @@ class AndroidVideoPlayPlatformProvider(
         // (切后台/锁屏/他应用抢占) 时不得再发起, 按"平台当场判定没进去"回报 false
         if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return false
         val c = controller as? AndroidVideoPlayerController
-        activeController = c
         pipRequestSettled = onSettled
         // 系统拒绝 (策略禁用/窗口不可用) 回 false: 共享层据此结束请求期, 页面回到常规渲染
         val accepted = activity.enterPictureInPictureMode(buildPipParams(c))
@@ -481,6 +497,7 @@ internal class AndroidVideoPlayerController(
     private val activity: MainActivity,
     private var screenModel: VideoPlayScreenModel,
     private val onPlaybackEnded: () -> Unit,
+    private val onReleased: (AndroidVideoPlayerController) -> Unit,
 ) : VideoPlayerController {
     val player: ExoPlayer = ExoPlayerHelper.createHttpExoPlayer(activity)
     private var bound = false
@@ -828,5 +845,6 @@ internal class AndroidVideoPlayerController(
     override fun release() {
         unbind()
         player.release()
+        onReleased(this)
     }
 }

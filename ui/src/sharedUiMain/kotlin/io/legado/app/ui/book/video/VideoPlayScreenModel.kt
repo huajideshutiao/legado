@@ -205,6 +205,17 @@ interface VideoPlayPlatformProvider {
     ): VideoPlayerController
 
     /**
+     * 页面进入可见期 (在栈顶且界面可见): 平台据此登记"当前视频播放器"。
+     *
+     * 多个视频页可同时存活 (页→详情→再开播放页), "最后创建的"不等于"当前可见的",
+     * 所以登记跟随可见期而不是创建时机。
+     */
+    fun onControllerVisible(controller: VideoPlayerController?) = Unit
+
+    /** 页面离开可见期 (被压栈、退到后台或出栈): 注销登记。 */
+    fun onControllerInvisible(controller: VideoPlayerController?) = Unit
+
+    /**
      * [controller] 是否只是降级占位实现。默认 false —— 其它端的「重新加载」永不重建控制器,
      * 行为与引入按需下载前完全一致; 桌面端在媒体组件未就绪时给空控制器, 此时为 true。
      */
@@ -778,10 +789,16 @@ class VideoPlayScreenModel : ScreenModel {
     fun onResume() {
         exited = false
         shared.onResume()
+        // 进入可见期: 登记为当前视频播放器 (Android 退到后台暂停据此定位)
+        platform?.onControllerVisible(controller)
     }
 
     /** 离开活跃期 (对照原版 onPause: 结束计时 + 落库 + 上传), 走 [onExit] 保证一次活跃期只保存一次。 */
-    fun onPause() = onExit()
+    fun onPause() {
+        // 先注销登记再收尾: 被压栈/退到后台后不应再作为暂停目标
+        platform?.onControllerInvisible(controller)
+        onExit()
+    }
 
     /**
      * 保存真实进度 (对照 app `VideoPlayActivity.onPause` + `onDestroy`)。
