@@ -376,15 +376,17 @@ class AudioPlayService : BaseService(), AudioPlaySessionHost {
                 .setActions(MEDIA_SESSION_ACTIONS)
                 .setState(state, exoPlayer.currentPosition, 1f)
                 .setBufferedPosition(exoPlayer.bufferedPosition)
-                .addCustomAction(
-                    APP_ACTION_STOP,
-                    androidAppString("stop"),
-                    R.drawable.ic_stop_black_24dp
-                )
+                // 媒体卡片 (Android 13+) 的按钮顺序 = 自定义动作的添加顺序 (先添加的排最左):
+                // 定时在左、停止在右, 与通知栏动作顺序 (见 createNotification) 同一口径
                 .addCustomAction(
                     APP_ACTION_TIMER,
                     androidAppString("set_timer"),
                     R.drawable.ic_time_add_24dp
+                )
+                .addCustomAction(
+                    APP_ACTION_STOP,
+                    androidAppString("stop"),
+                    R.drawable.ic_stop_black_24dp
                 )
                 .build()
         )
