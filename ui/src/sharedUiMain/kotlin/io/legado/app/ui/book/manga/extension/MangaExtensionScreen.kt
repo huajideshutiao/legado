@@ -317,7 +317,7 @@ fun MangaExtensionScreen(
             FastScrollLazyColumn(Modifier.fillMaxSize()) {
                 if (untrusted.isNotEmpty()) {
                     item(key = "sec_untrusted") { SectionHeader(untrustedTitle) }
-                    items(untrusted, key = { "u_${it.pkgName}" }) { item ->
+                    items(untrusted, key = { "u" to it.pkgName }) { item ->
                         ExtensionRow(
                             item = item,
                             onConfigure = if (item.isConfigurable) {
@@ -338,7 +338,7 @@ fun MangaExtensionScreen(
                 }
                 if (notLoadedOthers.isNotEmpty()) {
                     // 无独立分区标题: 未装载原因在条目内红字展示 (不再额外增 string key)
-                    items(notLoadedOthers, key = { "n_${it.pkgName}" }) { item ->
+                    items(notLoadedOthers, key = { "n" to it.pkgName }) { item ->
                         ExtensionRow(
                             item = item,
                             onConfigure = if (item.isConfigurable) {
@@ -359,7 +359,7 @@ fun MangaExtensionScreen(
                 }
                 if (updatable.isNotEmpty()) {
                     item(key = "sec_updatable") { SectionHeader(updateText) }
-                    items(updatable, key = { "up_${it.pkgName}" }) { item ->
+                    items(updatable, key = { "up" to it.pkgName }) { item ->
                         ExtensionRow(
                             item = item,
                             onConfigure = if (item.isConfigurable) {
@@ -383,7 +383,7 @@ fun MangaExtensionScreen(
                     .groupBy { it.lang?.takeIf { lang -> lang.isNotBlank() } ?: "all" }
                     .forEach { (lang, list) ->
                         item(key = "sec_installed_$lang") { SectionHeader(lang) }
-                        items(list, key = { "i_${it.pkgName}" }) { item ->
+                        items(list, key = { "i" to it.pkgName }) { item ->
                             ExtensionRow(
                                 item = item,
                                 onConfigure = if (item.isConfigurable) {
@@ -404,7 +404,7 @@ fun MangaExtensionScreen(
                     }
                 if (available.isNotEmpty()) {
                     item(key = "sec_available") { SectionHeader(availableText) }
-                    items(available, key = { "a_${it.pkgName}" }) { item ->
+                    items(available, key = { "a" to it.pkgName }) { item ->
                         ExtensionRow(
                             item = item,
                             onConfigure = null,

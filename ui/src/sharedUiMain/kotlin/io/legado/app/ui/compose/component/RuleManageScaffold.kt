@@ -30,7 +30,11 @@ import sh.calvin.reorderable.rememberReorderableLazyGridState
  * [Entry.Row.dataIndex] 是该项在原始数据里的下标, 用于把网格下标还原成数据下标 (拖拽/拖选用)。
  */
 private sealed interface Entry<out T> {
-    data class Header(val text: String) : Entry<Nothing>
+    /**
+     * [anchorIndex] 是该标题所跟随数据项的数据下标, 也是标题条目的标识:
+     * 同一标题文本可在列表中出现多段 (分组键相同的项不连续), 只按文本作键会撞键崩溃。
+     */
+    data class Header(val text: String, val anchorIndex: Int) : Entry<Nothing>
     data class Row<T>(val item: T, val dataIndex: Int) : Entry<T>
 }
 
@@ -39,7 +43,7 @@ private fun <T> buildEntries(items: List<T>, headerOf: ((T) -> String)?): List<E
     buildList {
         items.forEachIndexed { index, item ->
             val header = headerOf?.invoke(item).orEmpty()
-            if (header.isNotEmpty()) add(Entry.Header(header))
+            if (header.isNotEmpty()) add(Entry.Header(header, index))
             add(Entry.Row(item, index))
         }
     }
@@ -78,7 +82,8 @@ const val GridIndexHeader: Int = -1
  * false (默认) 时网格仍 fillMaxSize 吃满, 行为与既有调用方完全一致
  * @param listState      外部传入的网格状态, 供 dragSelectable 边缘拖选复用
  * @param headerOf       返回非空串时该项上方插入占满整行的分组标题 (书源按域名分组用),
- * 返回空串为普通项; 标题不参与选中与拖拽。需传稳定引用 (调用方 remember), 否则每次重组重建条目表
+ * 返回空串为普通项; 标题不参与选中与拖拽。同一标题文本可在列表中出现多段 (分组键相同的项不连续),
+ * 标题条目按所跟随的数据项区分。需传稳定引用 (调用方 remember), 否则每次重组重建条目表
  * @param itemContent    单项内容槽，携带 ReorderableCollectionItemScope 以便 item 内部用 longPressDraggableHandle 绑定把手
  */
 @Composable
@@ -134,7 +139,7 @@ fun <T> RuleManageScaffold(
                         items = entries,
                         key = { entry ->
                             when (entry) {
-                                is Entry.Header -> "header:${entry.text}"
+                                is Entry.Header -> "header:${entry.anchorIndex}"
                                 is Entry.Row -> itemKey(entry.item)
                             }
                         },

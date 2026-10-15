@@ -694,7 +694,7 @@ private fun ColumnScope.ResultArea(
     ) {
         items(
             books,
-            key = { "${it.origin}|${it.bookUrl}" },
+            key = { it.origin to it.bookUrl },
             contentType = { "searchBook" }) { book ->
             // 共享配对身份按条目下发 (被点的封面 = 出发端, token 由页面+区块+条目派生)
             val binding = rememberSharedCoverSourceBinding(book.bookUrl, "search-result")

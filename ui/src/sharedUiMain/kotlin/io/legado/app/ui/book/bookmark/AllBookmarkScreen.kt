@@ -151,7 +151,8 @@ private fun BookmarkList(state: AllBookmarkUiState, actions: AllBookmarkUiAction
         contentPadding = PaddingValues(bottom = navPad.calculateBottomPadding()),
     ) {
         groups.forEach { (key, items) ->
-            stickyHeader(key = "header:${key.first}|${key.second}") {
+            // 键取本组首条书签的时间(主键唯一): 同一本书被拆成多段时两段标题的书名作者相同, 只按书名作者作键会撞键
+            stickyHeader(key = "header:${items.first().value.time}") {
                 GroupHeader("${key.first}(${key.second})")
             }
             itemsIndexed(items, key = { _, iv -> iv.value.time }) { _, iv ->

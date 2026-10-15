@@ -29,7 +29,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlin.concurrent.Volatile
 
 /**
  * 书源管理页 ScreenModel (KMP 版, sharedUiMain 共享)。
@@ -63,19 +62,6 @@ class BookSourceScreenModel(
 
     // 域名缓存, 不随数据变化失效
     private val hostMap = hashMapOf<String, String>()
-
-    // 增量更新: 记录上次排序参数与结果, 仅排序参数变化时全量重排
-    @Volatile
-    private var lastSort: BookSourceSort? = null
-
-    @Volatile
-    private var lastSortAscending: Boolean? = null
-
-    @Volatile
-    private var lastGroupSourcesByDomain: Boolean? = null
-
-    @Volatile
-    private var lastSortedSources: List<BookSourcePart> = emptyList()
 
     init {
         upBookSource(_state.value.searchKey)
@@ -142,16 +128,8 @@ class BookSourceScreenModel(
         }
     }
 
-    // 重置排序缓存, 下次 emit 强制全量重排
-    private fun resetSortCache() {
-        lastSort = null
-        lastSortAscending = null
-        lastGroupSourcesByDomain = null
-    }
-
     private fun upBookSource(searchKey: String) {
         sourceFlowJob?.cancel()
-        resetSortCache()
         sourceFlowJob = scope.launch {
             val filter = resolveFilter(searchKey)
             val base = when (filter) {
@@ -166,7 +144,7 @@ class BookSourceScreenModel(
                 is SourceFilter.Search -> appDb.bookSourceDao.flowSearch(filter.key)
             }
             base.map { data ->
-                withPluginSourceIcons(sortOrMerge(data))
+                withPluginSourceIcons(sortedSources(data))
             }
                 .catch { AppLog.put("书源界面更新书源出错", it) }
                 .flowOn(IoDispatcher)
@@ -179,67 +157,36 @@ class BookSourceScreenModel(
         }
     }
 
-    // 排序参数变化全量重排, 否则增量合并保持旧顺序
-    private suspend fun sortOrMerge(data: List<BookSourcePart>): List<BookSourcePart> {
+    // 每次数据发射都按当前排序口径全量重排: 分组开启时按域名排, 同域名必须连续, 否则同一域名会分成多段标题
+    private fun sortedSources(data: List<BookSourcePart>): List<BookSourcePart> {
         val cur = _state.value
-        val needResort = lastSort != cur.sort
-            || lastSortAscending != cur.sortAscending
-            || lastGroupSourcesByDomain != cur.groupSourcesByDomain
-        val sorted = if (needResort) {
-            if (cur.groupSourcesByDomain) {
-                data.sortedWith(
-                    compareBy<BookSourcePart> { getSourceHost(it.bookSourceUrl) == "#" }
-                        .thenBy { getSourceHost(it.bookSourceUrl) }
-                        .thenByDescending { it.lastUpdateTime })
-            } else {
-                val tmp = when (cur.sort) {
-                    BookSourceSort.Weight -> data.sortedBy { it.weight }
-                    BookSourceSort.Name -> data.sortedWith { o1, o2 ->
-                        o1.bookSourceName.cnCompare(o2.bookSourceName)
-                    }
-
-                    BookSourceSort.Url -> data.sortedBy { it.bookSourceUrl }
-                    BookSourceSort.Update -> data.sortedByDescending { it.lastUpdateTime }
-                    BookSourceSort.Respond -> data.sortedBy { it.respondTime }
-                    BookSourceSort.Enable -> data.sortedWith { o1, o2 ->
-                        var sortNum = -o1.enabled.compareTo(o2.enabled)
-                        if (sortNum == 0) {
-                            sortNum = o1.bookSourceName.cnCompare(o2.bookSourceName)
-                        }
-                        sortNum
-                    }
-
-                    else -> data.sortedBy { it.customOrder }
-                }
-                if (!cur.sortAscending) tmp.reversed() else tmp
-            }
+        return if (cur.groupSourcesByDomain) {
+            data.sortedWith(
+                compareBy<BookSourcePart> { getSourceHost(it.bookSourceUrl) == "#" }
+                    .thenBy { getSourceHost(it.bookSourceUrl) }
+                    .thenByDescending { it.lastUpdateTime })
         } else {
-            mergeIncremental(lastSortedSources, data)
-        }
-        lastSort = cur.sort
-        lastSortAscending = cur.sortAscending
-        lastGroupSourcesByDomain = cur.groupSourcesByDomain
-        lastSortedSources = sorted
-        return sorted
-    }
+            val tmp = when (cur.sort) {
+                BookSourceSort.Weight -> data.sortedBy { it.weight }
+                BookSourceSort.Name -> data.sortedWith { o1, o2 ->
+                    o1.bookSourceName.cnCompare(o2.bookSourceName)
+                }
 
-    // 增量合并: 保持 oldList 顺序, 用 newData 中对应项替换, 已删除项过滤, 新增项追加末尾
-    private fun mergeIncremental(
-        oldList: List<BookSourcePart>,
-        newData: List<BookSourcePart>,
-    ): List<BookSourcePart> {
-        if (oldList.isEmpty()) return newData
-        val newMap = newData.associateBy { it.bookSourceUrl }
-        val result = ArrayList<BookSourcePart>(newData.size)
-        for (item in oldList) {
-            newMap[item.bookSourceUrl]?.let(result::add)
+                BookSourceSort.Url -> data.sortedBy { it.bookSourceUrl }
+                BookSourceSort.Update -> data.sortedByDescending { it.lastUpdateTime }
+                BookSourceSort.Respond -> data.sortedBy { it.respondTime }
+                BookSourceSort.Enable -> data.sortedWith { o1, o2 ->
+                    var sortNum = -o1.enabled.compareTo(o2.enabled)
+                    if (sortNum == 0) {
+                        sortNum = o1.bookSourceName.cnCompare(o2.bookSourceName)
+                    }
+                    sortNum
+                }
+
+                else -> data.sortedBy { it.customOrder }
+            }
+            if (!cur.sortAscending) tmp.reversed() else tmp
         }
-        val oldUrls = HashSet<String>(oldList.size)
-        for (item in oldList) oldUrls.add(item.bookSourceUrl)
-        for (item in newData) {
-            if (item.bookSourceUrl !in oldUrls) result.add(item)
-        }
-        return result
     }
 
     fun dispatch(event: BookSourceUiEvent) {
@@ -319,7 +266,6 @@ class BookSourceScreenModel(
                     .mapIndexed { index, part ->
                         part.copy(customOrder = if (ascending) index else -index)
                     }
-                resetSortCache()
                 scope.launch(IoDispatcher) { appDb.bookSourceDao.upOrder(items) }
             }
 
