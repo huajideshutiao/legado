@@ -383,7 +383,9 @@ function installSystemCrashWatcher(): void {
  */
 function reportSystemCrash(info: hiAppEvent.AppEventInfo): void {
   try {
-    const params: Record<string, Object> = info.params;
+    // hiAppEvent 的 params 声明为 object (SDK 类型即 object), ArkTS 严格模式不允许
+    // 直接当成 Record 用; 这里按运行时对象取用, 缺失字段一律按 undefined 处理。
+    const params: Record<string, Object> = info.params as Record<string, Object>;
     const lines: string[] = [];
     lines.push('system_crash_params=' + JSON.stringify(params));
     const externalLog = params['external_log'];
