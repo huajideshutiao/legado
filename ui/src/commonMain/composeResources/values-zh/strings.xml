@@ -456,8 +456,8 @@
     <string name="auto_indent">自动缩进</string>
     <string name="ps_auto_refresh">打开软件时自动更新书籍</string>
     <string name="pt_auto_refresh">自动刷新</string>
-    <string name="click_book_open_read">点击视频书籍直接播放</string>
-    <string name="click_book_open_read_summary">在搜索、发现中点击视频书籍直接打开播放页，跳过详情</string>
+    <string name="click_book_open_read">点击书籍按类型直达</string>
+    <string name="click_book_open_read_summary">在首页、搜索、发现里点击书籍时跳过详情直接进对应界面（视频→播放页、RSS→阅读页，搜索与发现里的音频书→音频页）；长按仍进详情。</string>
     <string name="media_button_on_exit_title">全程响应耳机按键</string>
     <string name="media_button_on_exit_summary">即使退出软件也响应耳机按键</string>
     <string name="read_aloud_by_media_button_title">耳机按键启动朗读</string>

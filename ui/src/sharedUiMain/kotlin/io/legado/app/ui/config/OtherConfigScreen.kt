@@ -135,6 +135,8 @@ fun OtherConfigScreen(
     val titleHomePage = stringResource(Res.string.default_home_page)
     val titleAutoRefresh = stringResource(Res.string.pt_auto_refresh)
     val summaryAutoRefresh = stringResource(Res.string.ps_auto_refresh)
+    val titlePredictiveBack = stringResource(Res.string.predictive_back_title)
+    val summaryPredictiveBack = stringResource(Res.string.predictive_back_summary)
     val titleDevFeat = stringResource(Res.string.click_book_open_read)
     val summaryDevFeat = stringResource(Res.string.click_book_open_read_summary)
     val titleLocalPassword = stringResource(Res.string.set_local_password)
@@ -182,8 +184,6 @@ fun OtherConfigScreen(
     val summaryRecordLog = stringResource(Res.string.record_debug_log)
     val titleRecordHeapDump = stringResource(Res.string.record_heap_dump_t)
     val summaryRecordHeapDump = stringResource(Res.string.record_heap_dump_s)
-    val titlePredictiveBack = stringResource(Res.string.predictive_back_title)
-    val summaryPredictiveBack = stringResource(Res.string.predictive_back_summary)
     val titleCustomPageKey = stringResource(Res.string.custom_page_key)
 
     AppTheme {
@@ -214,6 +214,15 @@ fun OtherConfigScreen(
                 summary = summaryAutoRefresh,
                 defaultValue = false,
             )
+            // 预测式返回: 只有 Android 有跟手通道; 开关即时生效 (下一页返回就按新规则走)
+            if (showPredictiveBack) {
+                switchPreference(
+                    prefKey = PreferKey.predictiveBack,
+                    title = titlePredictiveBack,
+                    summary = summaryPredictiveBack,
+                    defaultValue = true,
+                )
+            }
             // 关闭主窗口时缩小到托盘: 只有桌面端有系统托盘 (其余端无窗口关闭语义)。
             // 键不存在 = 用户未选择过 (开关显示为关), 首次关闭时弹询问框; 拨过开关即定案
             if (showCloseToTray) {
@@ -271,15 +280,6 @@ fun OtherConfigScreen(
                     title = "Cronet",
                     summary = summaryCronet,
                     defaultValue = false,
-                )
-            }
-            // 预测式返回: 只有 Android 有跟手通道; 开关即时生效 (下一页返回就按新规则走)
-            if (showPredictiveBack) {
-                switchPreference(
-                    prefKey = PreferKey.predictiveBack,
-                    title = titlePredictiveBack,
-                    summary = summaryPredictiveBack,
-                    defaultValue = true,
                 )
             }
             preference(

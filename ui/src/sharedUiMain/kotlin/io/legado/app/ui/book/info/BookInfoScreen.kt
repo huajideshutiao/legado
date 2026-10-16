@@ -300,7 +300,7 @@ fun BookInfoScreen(
 
     // 取色来自平台 slot 上报的已加载封面位图 (共用同一次加载, 不另发请求, 见 [LocalCoverLoaded]):
     // 换书或切横竖时先清空采样, 避免沿用上一份结论。
-    // E-Ink 与竖向 devFeat 分支下 slot 不加载封面, 回调不会触发, 采样自然为空
+    // E-Ink 与竖向分支下 slot 不加载封面, 回调不会触发, 采样自然为空
     val cover = state.book?.getDisplayCover()
     var coverRegions by remember(cover, state.isLandscape) { mutableStateOf<CoverRegions?>(null) }
     val onCoverLoaded: (ImageBitmap) -> Unit = remember(state.isLandscape) {
