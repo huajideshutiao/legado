@@ -58,6 +58,8 @@ import io.legado.app.ui.root.LocalSharedCoverBinding
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.OnRouteLifecycle
+import io.legado.app.ui.root.PageSystemBarAppearance
+import io.legado.app.ui.root.PageSystemBarAppearanceEffect
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
@@ -768,7 +770,7 @@ fun BookInfoRoute(
     // isLandscape: 窗口宽度 > 高度 (跨平台, 对照 Android LocalConfiguration.orientation)
     val containerSize = LocalWindowInfo.current.containerSize
     val isLandscape = containerSize.width > containerSize.height
-    // isDarkTheme: 背景色亮度反推 (对照 Activity.isDarkTheme)
+    // isDarkTheme: 背景色亮度反推 (= 背景为深色; 对照 Activity.isDarkTheme)
     val isDarkTheme = AppTheme.colors.isDark
     // useDevFeat: 竖屏 + 开启横向布局 + 非视频 (对照 Activity Content)
     val useDevFeat = AppConfigProviders.get().bookInfoHorizontalLayout &&
@@ -814,6 +816,20 @@ fun BookInfoRoute(
     val blurCoverBgSlot = LocalBlurCoverBgSlot.current
     val introImageSlot = LocalIntroImageSlot.current
     // 本页封面端点在这里认下共享身份: 页转场 token 来自 entry (发起方卡片交出), 大图 token 本页自签
+    // 状态栏图标明暗: 页顶展示模糊封面背景图时用浅色图标 (图上叠了压暗蒙层), 否则按主题底色
+    // 亮度定 (底色浅 → 深色图标), 对齐原版 applyDevFeatLayout 的两支 setLightStatusBar。
+    // 与原版的差异: 原版按"当前是哪个布局分支"定 (背景图分支恒浅色), 这里改按"背景图是否
+    // 真的画在页顶"(页面把该事实报上来) —— 无背景图可画时原版会给浅色图标压在页面底色上
+    // (E-Ink 纯白底 / 背景图未加载出来时图标看不见), 属原版缺陷, 不复刻
+    var blurCoverPainted by remember { mutableStateOf(false) }
+    PageSystemBarAppearanceEffect(
+        appearance = {
+            PageSystemBarAppearance(
+                // 背景图分支恒浅色 (底是图 + 压暗蒙层), 无背景图分支按主题底色
+                lightStatusBarIcons = if (blurCoverPainted) false else !isDarkTheme,
+            )
+        },
+    )
     CompositionLocalProvider(LocalSharedCoverBinding provides coverBinding) {
     BookInfoScreen(
         state = screenState,
@@ -836,6 +852,7 @@ fun BookInfoRoute(
             // 重载计数传给组件: 任一变化都重载, 都不变则复用已解位图不重走图片管线
             BookInfoCover(book, state.coverTick + coverConfigTick, modifier)
         },
+        onBlurCoverPaintedChange = { blurCoverPainted = it },
         introImageSlot = { src, onClick ->
             introImageSlot(src, onClick)
         },

@@ -33,7 +33,7 @@ import io.legado.app.ui.root.OrientationPolicy
 import io.legado.app.ui.root.PermissionService
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.PlatformServices
-import io.legado.app.ui.root.ReaderSystemBarAppearance
+import io.legado.app.ui.root.PageSystemBarAppearance
 import io.legado.app.ui.root.ShareService
 import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
@@ -373,9 +373,9 @@ private object IosWindowController : WindowController {
         }
     }
 
-    override fun setReaderSystemBarAppearance(appearance: ReaderSystemBarAppearance?) {
-        // 阅读页按样式开关定图标明暗; 离开阅读页可见期交还默认档 (跟随界面风格)。
-        // 导航栏底色在 iOS 上不存在可设通道 (状态栏/导航条区域恒为内容透出)。
+    override fun setPageSystemBarAppearance(appearance: PageSystemBarAppearance?) {
+        // 页面按内容定的图标明暗; 无人声明时交还默认档 (跟随界面风格)。
+        // 导航栏底色在 iOS 上不存在可设通道 (状态栏/导航栏区域恒为内容透出)。
         postStatusBarStyle(
             when {
                 appearance == null -> IosStatusBarStyleDefault

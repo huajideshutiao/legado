@@ -32,6 +32,7 @@ import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import androidx.compose.ui.platform.LocalWindowInfo
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.disableAutoFill
 import io.legado.app.utils.edgeToEdge
@@ -108,7 +109,7 @@ abstract class BaseComposeActivity(
 
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
         super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
-        setupSystemBar()
+        reapplySystemBarAppearance()
         // 多窗口切换会改窗口尺寸与 insets: 重采系统栏外观, 并让阅读页重算避让
         // (复用 SYSTEM_UI 事件, LegadoApp / readerBarConfig 均订阅)
         ReadBookEvents.postConfig(ReadConfigChange.SYSTEM_UI)
@@ -116,11 +117,23 @@ abstract class BaseComposeActivity(
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        setupSystemBar()
+        reapplySystemBarAppearance()
         // 屏幕配置变化会把窗口系统栏重置为页面默认值 (阅读页可见期内的图标明暗/导航栏底色也
         // 被覆盖), 复用 SYSTEM_UI 事件让阅读页重读配置并重下发外观
         // (对照原版 ReadBookActivity.onConfigurationChanged → upSystemUiVisibility)
         ReadBookEvents.postConfig(ReadConfigChange.SYSTEM_UI)
+    }
+
+    /**
+     * 重建系统栏外观并重新盖回页面声明。
+     *
+     * [setupSystemBar] 按主题/壁纸把系统栏外观整个重设一遍 (含图标明暗), 页面声明会被一并冲掉,
+     * 故两者必须成对调用。
+     */
+    private fun reapplySystemBarAppearance() {
+        setupSystemBar()
+        // 平台实现可能还没注册 (Activity 启动极早期的配置回调): 未注册就没人持有声明, 无处可补
+        PlatformServiceProviders.getOrNull()?.window?.reapplyPageSystemBarAppearance()
     }
 
     open fun initTheme() {

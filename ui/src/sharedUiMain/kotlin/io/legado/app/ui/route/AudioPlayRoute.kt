@@ -62,6 +62,8 @@ import io.legado.app.ui.root.LocalSharedCoverBinding
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.OnRouteLifecycle
+import io.legado.app.ui.root.PageSystemBarAppearance
+import io.legado.app.ui.root.PageSystemBarAppearanceEffect
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
@@ -105,6 +107,12 @@ fun AudioPlayRoute(
     val state by screenModel.state.collectAsState()
     val platform = AudioPlayPlatformProviders.getOrNull()
     val scope = rememberCoroutineScope()
+
+    // 状态栏图标明暗 (对照原版 AudioPlayActivity 的 toolBarTheme = Theme.Dark): 本页恒为
+    // 浅色图标 —— 页顶是模糊封面背景叠压暗蒙层, 图标必须与背景保持对比
+    PageSystemBarAppearanceEffect(
+        appearance = { PageSystemBarAppearance(lightStatusBarIcons = false) },
+    )
 
     // 音频页键盘快捷键 (方向键/空格): 走共享 AppShortcutHandler 快捷键栈分发。
     // 对照 ReaderRoute 阅读页 / MangaReaderScreenContent 漫画页方向键模式 —— 快捷键栈在

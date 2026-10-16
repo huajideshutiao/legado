@@ -45,7 +45,7 @@ import io.legado.app.ui.root.OrientationPolicy
 import io.legado.app.ui.root.PermissionService
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.PlatformServices
-import io.legado.app.ui.root.ReaderSystemBarAppearance
+import io.legado.app.ui.root.PageSystemBarAppearance
 import io.legado.app.ui.root.ShareService
 import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
@@ -466,8 +466,11 @@ private class AndroidWindowController(
     private var savedLightStatusBars: Boolean? = null
     private var savedLightNavigationBars: Boolean? = null
 
-    /** 当前窗口是否处于阅读页系统栏外观 (见 [setReaderSystemBarAppearance])。 */
-    private var readerAppearanceApplied = false
+    /** 当前窗口是否处于页面声明的系统栏外观 (见 [setPageSystemBarAppearance])。 */
+    private var pageAppearanceApplied = false
+
+    /** 当前生效的页面声明 (配置变化后重新盖回时取它)。 */
+    private var pageAppearance: PageSystemBarAppearance? = null
 
     override fun setLightIconOverlay(enabled: Boolean) {
         val controller =
@@ -479,29 +482,58 @@ private class AndroidWindowController(
             }
             controller.isAppearanceLightStatusBars = false
             controller.isAppearanceLightNavigationBars = false
+            return
+        }
+        // 退出覆盖层: 页面声明仍生效时按它恢复 (期间的声明变化也要跟上), 否则回到进覆盖层前的值
+        val page = pageAppearance
+        val savedStatus = savedLightStatusBars
+        val savedNavigation = savedLightNavigationBars
+        savedLightStatusBars = null
+        savedLightNavigationBars = null
+        if (page != null) {
+            applyPageSystemBarAppearance(page)
         } else {
-            savedLightStatusBars?.let { controller.isAppearanceLightStatusBars = it }
-            savedLightNavigationBars?.let { controller.isAppearanceLightNavigationBars = it }
-            savedLightStatusBars = null
-            savedLightNavigationBars = null
+            savedStatus?.let { controller.isAppearanceLightStatusBars = it }
+            savedNavigation?.let { controller.isAppearanceLightNavigationBars = it }
         }
     }
 
-    override fun setReaderSystemBarAppearance(appearance: ReaderSystemBarAppearance?) {
+    override fun setPageSystemBarAppearance(appearance: PageSystemBarAppearance?) {
+        pageAppearance = appearance
         if (appearance == null) {
-            // 离开阅读页可见期: 回到非阅读页规则
+            // 当前无人声明: 回到非页面声明的规则
             // (主题状态栏色 / 壁纸贴边像素亮度 + 主题导航栏色)。
-            // 本就不在阅读页外观状态时不重算 —— 非阅读页每次路由变化都会走这条,
+            // 本就不在页面外观状态时不重算 —— 非声明页每次路由变化都会走这条,
             // 而重算含壁纸贴边像素采样
-            if (!readerAppearanceApplied) return
-            readerAppearanceApplied = false
+            if (!pageAppearanceApplied) return
+            pageAppearanceApplied = false
             activity.setupSystemBar()
             return
         }
-        readerAppearanceApplied = true
+        applyPageSystemBarAppearance(appearance)
+    }
+
+    override fun reapplyPageSystemBarAppearance() {
+        pageAppearance?.let { applyPageSystemBarAppearance(it) }
+        // 覆盖层持有图标期间 apply 会跳过图标下发, 而 setupSystemBar 已把它重设成主题值:
+        // 这里把覆盖层要的浅色补回去 (覆盖层也在被重建的窗口上)
+        if (savedLightStatusBars != null) {
+            val controller =
+                WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+            controller.isAppearanceLightStatusBars = false
+            controller.isAppearanceLightNavigationBars = false
+        }
+    }
+
+    private fun applyPageSystemBarAppearance(appearance: PageSystemBarAppearance) {
+        pageAppearanceApplied = true
+        // 深色覆盖层 (全屏看图) 持有期间不下发: 页顶与系统栏区都被覆盖层盖住, 图标该跟覆盖层的
+        // 底色走, 页面重发会把覆盖层刚改白的图标盖回去 (旋转/多窗口后尤为明显); 声明存在
+        // pageAppearance 里, 覆盖层退出时按那时最新的声明恢复 (见 setLightIconOverlay)
+        if (savedLightStatusBars != null) return
         activity.setLightStatusBar(appearance.lightStatusBarIcons)
-        // 对照原版 ReadBookActivity.upNavigationBarColor: 菜单布局不可见时按阅读背景色
-        // (setNavigationBarColorAuto 一并按该色亮度定导航栏图标明暗), 可见时走主题规则
+        // 对照原版 ReadBookActivity.upNavigationBarColor: 声明了底色的页面按该色
+        // (setNavigationBarColorAuto 一并按该色亮度定导航栏图标明暗), 未声明走主题规则
         appearance.navigationBarColor?.let { activity.setNavigationBarColorAuto(it) }
             ?: activity.upNavigationBarColor()
     }

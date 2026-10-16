@@ -244,11 +244,6 @@ fun LegadoApp(
                 runCatching { applyWindowPolicy(windowPolicy) }
                     .onSuccess { appliedPolicy = windowPolicy }
                     .onFailure { AppLog.put("应用窗口策略失败", it) }
-                // 非阅读页: 系统栏外观回到主题规则 (阅读页可见期内由
-                // ReaderSystemBarAppearanceEffect 接管)
-                if (currentRoute !is AppRoute.Reader) {
-                    PlatformServiceProviders.get().window.setReaderSystemBarAppearance(null)
-                }
             }
         }
         // 阅读页隐藏状态栏/导航栏开关在对话框里切换后重应用系统栏策略 (原版 SharedPreference

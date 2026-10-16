@@ -386,13 +386,20 @@ interface WindowController {
     fun setLightIconOverlay(enabled: Boolean) {}
 
     /**
-     * 阅读页系统栏外观 (对照原版 `BaseReadBookActivity.upSystemUiVisibility` 的图标明暗分支
-     * 与 `ReadBookActivity.upNavigationBarColor`)。[appearance] 为 null 表示离开阅读页可见期,
-     * 按本端非阅读页规则恢复 (主题状态栏/导航栏色, 有壁纸时按贴边像素亮度)。
+     * 页面系统栏外观 (见 [PageSystemBarAppearance])。[appearance] 为 null 表示当前无人声明,
+     * 按本端非页面声明的规则恢复 (主题状态栏/导航栏色, 有壁纸时按贴边像素定图标明暗)。
      *
      * 无系统栏的端 (desktop) 走默认空实现。
      */
-    fun setReaderSystemBarAppearance(appearance: ReaderSystemBarAppearance?) {}
+    fun setPageSystemBarAppearance(appearance: PageSystemBarAppearance?) {}
+
+    /**
+     * 把当前页面声明重新盖到窗口事实之上。
+     *
+     * 窗口建立与配置变化 (旋转/多窗口/主题切换) 会把系统栏外观整个重设一遍、盖掉页面声明,
+     * 宿主在那之后调本方法补回 (实现重下发自己记下的那份声明)。
+     */
+    fun reapplyPageSystemBarAppearance() {}
 }
 
 /** 软输入法控制（hide/resize）。

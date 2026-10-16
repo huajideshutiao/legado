@@ -34,7 +34,7 @@ import io.legado.app.ui.root.OrientationPolicy
 import io.legado.app.ui.root.PermissionService
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.PlatformServices
-import io.legado.app.ui.root.ReaderSystemBarAppearance
+import io.legado.app.ui.root.PageSystemBarAppearance
 import io.legado.app.ui.root.ShareService
 import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
@@ -154,14 +154,14 @@ object OhosPlatformServices : PlatformServices {
             OhosNativeBridge.setWindowSystemBarEnable(statusVisible, navigationVisible)
         }
 
-        override fun setReaderSystemBarAppearance(appearance: ReaderSystemBarAppearance?) {
+        override fun setPageSystemBarAppearance(appearance: PageSystemBarAppearance?) {
             if (appearance == null) {
-                // 离开阅读页: 图标内容色交还系统默认 (系统栏底色由系统与窗口决定, 本端不接管)
+                // 无人声明: 图标内容色交还系统默认 (系统栏底色由系统与窗口决定, 本端不接管)
                 OhosNativeBridge.setWindowSystemBarProperties(DEFAULT_CONTENT_COLORS)
                 return
             }
-            // 阅读页: 状态栏图标明暗按外观值; 导航栏区域由页面内容铺满 (沉浸式全屏布局),
-            // 按导航栏底色亮度定 (外观未指定底色时回到主题导航栏色)
+            // 页面声明: 状态栏图标明暗按声明值; 导航栏区域由页面内容铺满 (沉浸式全屏布局),
+            // 按导航栏底色亮度定 (声明未带上底色时回到主题导航栏色)
             val navigationBarColor = appearance.navigationBarColor
                 ?: SharedThemeStoreProvider().navigationBarColor.toArgb()
             OhosNativeBridge.setWindowSystemBarProperties(
