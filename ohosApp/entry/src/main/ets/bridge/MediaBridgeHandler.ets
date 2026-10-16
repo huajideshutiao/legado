@@ -518,13 +518,19 @@ function handlePause(id: string): void {
 // ===== stop =====
 function handleStop(id: string): void {
   const player = playerOf(id);
-  if (player != null) {
-    player.stop().catch((err: Error) => {
-      emitEvent(id, { event: 'onError', message: 'stop failed: ' + (err.message ?? String(err)) });
-    });
-  } else {
+  if (player == null) {
     console.warn('[MediaBridge] stop: avPlayer is null, id=' + id);
+    return;
   }
+  // stop 只在 prepared/playing/paused/completed 合法 (官方接口约束), 其余状态调用会以
+  // 5400102 被当播放错误上报; 已停止/未装载时停止本就是幂等空操作, 直接跳过
+  const state = player.state;
+  if (state !== 'prepared' && state !== 'playing' && state !== 'paused' && state !== 'completed') {
+    return;
+  }
+  player.stop().catch((err: Error) => {
+    emitEvent(id, { event: 'onError', message: 'stop failed: ' + (err.message ?? String(err)) });
+  });
 }
 
 // ===== seekTo =====
