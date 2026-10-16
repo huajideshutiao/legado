@@ -89,7 +89,6 @@ class AndroidPlatformServices(
     private val activity: MainActivity,
     private val capabilitiesImpl: AndroidPlatformCapabilities,
     private val openDocumentPicker: ActivityResultLauncherAwait<Array<String>, Uri?>,
-    private val openDocumentsPicker: ActivityResultLauncherAwait<Array<String>, List<Uri>>,
     private val createDocumentPicker: ActivityResultLauncherAwait<String, Uri?>,
     private val openDocumentTreePicker: ActivityResultLauncherAwait<Uri?, Uri?>,
 ) : PlatformServices {
@@ -98,7 +97,7 @@ class AndroidPlatformServices(
         get() = capabilitiesImpl
 
     override val files: FilePickerService = AndroidFilePickerService(
-        activity, openDocumentPicker, openDocumentsPicker, createDocumentPicker, openDocumentTreePicker,
+        activity, openDocumentPicker, createDocumentPicker, openDocumentTreePicker,
     )
 
     override val sharing: ShareService = AndroidShareService(activity)
@@ -126,7 +125,6 @@ private class AndroidFilePickerService(
     // 选图裁剪 (processWelcomeImage) 需读窗口尺寸与 toast, 与其余能力共用 MainActivity 引用
     private val activity: MainActivity,
     private val openDocumentPicker: ActivityResultLauncherAwait<Array<String>, Uri?>,
-    private val openDocumentsPicker: ActivityResultLauncherAwait<Array<String>, List<Uri>>,
     private val createDocumentPicker: ActivityResultLauncherAwait<String, Uri?>,
     private val openDocumentTreePicker: ActivityResultLauncherAwait<Uri?, Uri?>,
 ) : FilePickerService {
@@ -136,13 +134,6 @@ private class AndroidFilePickerService(
             ?.toString()
             ?.takeIf { filter.matchesUri(it) }
             ?.let(::materializeUri)
-    }
-
-    override fun pickFiles(filter: FileFilter): List<String> = runBlocking {
-        withContext(Dispatchers.Main) { openDocumentsPicker.launch(filter.toMimeTypes()) }
-            .map { it.toString() }
-            .filter { filter.matchesUri(it) }
-            .mapNotNull(::materializeUri)
     }
 
     /**

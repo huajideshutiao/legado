@@ -252,6 +252,10 @@ private suspend fun addDefaultCoverFromPicker(prefKey: String) {
         PlatformServiceProviders.get().files.pickFile(FileFilter.Images)
     } ?: return
     val bytes = FileUtilsCommon.readBytes(path)
+    // 内容已读入内存 (无论成败都不会再读这个文件), 选图物化的临时副本用完即弃
+    withContext(IoDispatcher) {
+        PlatformServiceProviders.get().files.discardPickedFile(path)
+    }
     if (bytes == null || bytes.isEmpty()) {
         Toasters.get().toast("读取图片失败")
         return

@@ -382,7 +382,7 @@ private data class MediaCommand(
  * 鸿蒙文件选择: 接 [io.legado.app.help.file] 的 napi 桥实现 (对照 iOS IosFilePickerService)。
  *
  * DocumentViewPicker 返回的是 `file://docs/...` URI, 不能直接喂给 [File] (POSIX 路径);
- * 故 [pickFile]/[pickFiles] 选中后立刻经 [pickDocumentContent] 读出字节落盘到 cacheDir,
+ * 故 [pickFile] 选中后立刻经 [pickDocumentContent] 读出字节落盘到 cacheDir,
  * 返回沙盒内真实路径, 下游 BackupFileOps.readText 等按普通文件消费。
  */
 private object OhosFilePickerService : FilePickerService {
@@ -391,11 +391,6 @@ private object OhosFilePickerService : FilePickerService {
         pickDocuments(filter.toUtis(), allowsMultiple = false)
             ?.firstOrNull()
             ?.let(::materialize)
-
-    override fun pickFiles(filter: FileFilter): List<String> =
-        pickDocuments(filter.toUtis(), allowsMultiple = true)
-            .orEmpty()
-            .mapNotNull(::materialize)
 
     /**
      * 弹目录选择器 ([pickDirectory], 对照原版导出形制 —— 先选目录, 再把文件写进该目录),

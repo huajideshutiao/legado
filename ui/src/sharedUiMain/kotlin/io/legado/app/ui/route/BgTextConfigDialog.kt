@@ -246,6 +246,10 @@ fun BgTextConfigContent(
                     val fileName = withContext(IoDispatcher) {
                         readBookConfig.setBgFromPath(path)
                     }
+                    // 已复制进 novelBg 图集, 选图物化的临时副本不留在缓存里
+                    withContext(IoDispatcher) {
+                        services.files.discardPickedFile(path)
+                    }
                     readBookConfig.config.setCurBg(2, fileName)
                     withContext(IoDispatcher) {
                         // 烘焙失败不影响导入 (渲染端 resolveBakedReadingBgSource 现场重烘焙兜底)

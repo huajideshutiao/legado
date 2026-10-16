@@ -124,10 +124,6 @@ private object IosFilePickerService : FilePickerService {
     override fun pickFile(filter: FileFilter): String? =
         runBlocking { pickDocuments(filter.toUtis()) }?.firstOrNull()?.path
 
-    override fun pickFiles(filter: FileFilter): List<String> =
-        runBlocking { pickDocuments(filter.toUtis(), allowsMultiple = true) }
-            .orEmpty().mapNotNull { it.path }
-
     /**
      * iOS 没有"先选路径后写入"的系统面板: 先把内容写进沙盒临时件, 再弹系统"文件"面板让用户挑
      * 目标位置 (系统把临时件拷贝过去), 返回目标地址。

@@ -79,11 +79,6 @@ private class DesktopFilePickerService : FilePickerService {
     override fun pickFile(filter: FileFilter): String? =
         FileDialogs.pickOpenFile(extensions = filter.extensions)?.absolutePath
 
-    override fun pickFiles(filter: FileFilter): List<String> =
-        // Windows IFileDialog 原生多选; macOS/Linux AWT FileDialog 多选模式
-        FileDialogs.pickOpenFiles(extensions = filter.extensions).map { it.absolutePath }
-
-    // 调用方没给目录时起始目录用用户可见产物目录 (桌面/legado), 别落在应用数据目录
     override fun saveText(suggestedName: String, text: String, defaultDir: String?): String? {
         val dest = pickSaveFile(suggestedName, defaultDir) ?: return null
         // 整份就位: 覆盖写被打断会在用户目录留下半截文件

@@ -48,10 +48,9 @@ object PlatformServiceProviders {
     fun getOrNull(): PlatformServices? = impl
 }
 
-/** 文件选择器：单选/多选/保存。 */
+/** 文件选择器：单选/保存。 */
 interface FilePickerService {
     fun pickFile(filter: FileFilter): String?
-    fun pickFiles(filter: FileFilter): List<String>
 
     /**
      * 弹本端"保存到文件"入口, 由平台把 [text] 写进用户选定的目标, 返回保存后的引用。
