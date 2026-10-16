@@ -52,15 +52,21 @@ fun Modifier.handleBackKey(
  * [BackLayerHandler] 注册栈模拟第一层; Overlay 栈对应原版 Fragment 对话框层。
  *
  * runCatching: 返回链上任何异常都会连坐 Recomposer (桌面端表现为窗口能重排但键鼠全失灵)。
+ *
+ * @return true = 返回已被消费 (覆盖物层/弹层/页面级拦截任一消费, 或真的完成了出栈);
+ *   false = 三层都没消费、栈里也没有可出的页 —— 调用方据此决定要不要走平台兜底
+ *   (Android 的"再按一次退出/退回调用方", 见 [io.legado.app.ui.root.PlatformCapabilities.onBackUnconsumed])。
  */
-fun performBack(navigator: AppNavigator) {
-    runCatching {
-        if (!dismissTopLayer() &&
-            !navigator.dismissTopOverlaySkipSuspended() &&
-            !dispatchBackKey()
-        ) navigator.pop()
-    }.onFailure { AppLog.put("返回键处理异常", it) }
-}
+fun performBack(navigator: AppNavigator): Boolean = runCatching {
+    if (!dismissTopLayer() &&
+        !navigator.dismissTopOverlaySkipSuspended() &&
+        !dispatchBackKey()
+    ) {
+        navigator.pop()
+    } else {
+        true
+    }
+}.onFailure { AppLog.put("返回键处理异常", it) }.getOrDefault(false)
 
 /** 页面级返回拦截器栈, 按注册顺序存放, 分发时栈顶 (最后注册的页面) 优先。 */
 private val backInterceptors = mutableListOf<() -> Boolean>()
@@ -149,11 +155,12 @@ fun dismissTopLayer(): Boolean {
 private var dispatching = false
 
 /**
- * 页面级返回拦截: 同时覆盖 Android 系统返回键与桌面 ESC/Backspace。
+ * 页面级返回拦截: 同时覆盖系统返回 (Android/鸿蒙的返回键与返回手势, iOS 边缘手势)
+ * 与桌面 ESC/Backspace。
  *
- * [PlatformBackHandler] 在 Android 与鸿蒙生效 (鸿蒙经 ArkUIViewController 的
- * OnBackPressedDispatcher), 桌面/iOS 的返回键走 [handleBackKey] → [dispatchBackKey],
- * 故这里额外注册到拦截器栈。
+ * [PlatformBackHandler] 只在"该端按页面级回调派发返回"时生效 (鸿蒙经 ArkUIViewController 的
+ * OnBackPressedDispatcher; Android 在预测式返回开关关闭时由系统按页面级回调派发), 其余情况
+ * (iOS 边缘手势、Android 开关打开时、桌面 ESC) 由统一返回链在本拦截器栈上判定 —— 故这里额外注册。
  */
 @Composable
 fun AppBackHandler(enabled: Boolean, onBack: () -> Unit) {

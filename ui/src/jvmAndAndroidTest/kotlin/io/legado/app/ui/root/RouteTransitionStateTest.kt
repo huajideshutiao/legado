@@ -1,9 +1,18 @@
 package io.legado.app.ui.root
 
+import androidx.compose.animation.core.LinearEasing
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 /**
@@ -15,6 +24,11 @@ import org.junit.Test
  * 2. 转场段内所有参与页 (含正在离场的) 都在组合中。
  * 3. 角色判定与播放方向无关 (倒放只沿同一段轨迹退回, 不改角色)。
  * 4. [RouteTransitionState.resolve] 是纯函数: 同一输入恒等输出, 不修改状态。
+ * 5. 跟手返回手势 (待出栈段): 页面栈在手势期间不动, 段的两端与真实栈的关系由
+ *    [RouteTransitionState.beginInteractiveBack] / [RouteTransitionState.dragInteractiveBack] /
+ *    [RouteTransitionState.cancelInteractiveBack] 维护; 出栈后 [RouteTransitionState.resolve] 必须
+ *    原样返回同一份段 (动画驱动据此不回跳); 页面栈被外部改动后本段作废, 写入与取消都不再作用
+ *    于它 (见 [RouteTransitionState.isInteractiveBackPending])。
  */
 class RouteTransitionStateTest {
 
@@ -28,6 +42,9 @@ class RouteTransitionStateTest {
         to: List<RouteEntry>,
         reversing: Boolean = false,
     ) = RouteTransitionSegment(from = from, to = to, reversing = reversing)
+
+    /** 取消收尾用的作用域: Unconfined 让收尾在 launch 调用内就跑完, 断言不必等待调度。 */
+    private fun cleanupScope(): CoroutineScope = CoroutineScope(Dispatchers.Unconfined)
 
     @Test
     fun `settled segment keeps whole stack composed`() {
@@ -196,11 +213,296 @@ class RouteTransitionStateTest {
         val state = RouteTransitionState(listOf(a))
         state.applySegment(requireNotNull(state.resolve(listOf(a, b))))
 
-        kotlinx.coroutines.runBlocking { state.settle(listOf(a, b)) }
-
+        runBlocking { state.settle(listOf(a, b)) }
         assertEquals(listOf(a, b), state.segment.from)
         assertEquals(listOf(a, b), state.segment.to)
         assertEquals(1f, state.progress.value, 0f)
         assertNull(state.resolve(listOf(a, b)))
+    }
+
+    @Test
+    fun `interactive back begins pending pop segment`() = runBlocking {
+        val a = entry(1)
+        val b = entry(2)
+        val stack = listOf(a, b)
+        val state = RouteTransitionState(stack)
+
+        assertTrue(state.beginInteractiveBack(stack, 0.25f))
+
+        // 段 = "待出栈": 终点是当前栈去掉栈顶, 页面栈本身没变
+        assertEquals(stack, state.segment.from)
+        assertEquals(listOf(a), state.segment.to)
+        assertEquals(0.25f, state.progress.value, 0f)
+        // 组合期用的是 resolve 返回的倒放副本, 角色必须与普通返回段一致 (目标页 + 出栈页),
+        // 两页都在场 —— 跟手到任意进度都不会空屏
+        val rendered = requireNotNull(state.resolve(stack))
+        assertEquals(listOf(a, b), rendered.displayEntries)
+        assertEquals(TransitionRole.TargetPage, rendered.roleOf(a))
+        assertEquals(TransitionRole.OutgoingPage, rendered.roleOf(b))
+        assertEquals(state.segment.roleOf(a), rendered.roleOf(a))
+        assertEquals(state.segment.roleOf(b), rendered.roleOf(b))
+        // 栈没变但段未落定: 仍算转场中 (转场圆角/状态栏冻结跟着手走), 且按真实进度渲染
+        assertTrue(state.animating(stack))
+        assertTrue(state.rendersLiveProgress(stack))
+        assertTrue(state.isInteractiveBackPending(stack))
+    }
+
+    @Test
+    fun `interactive back refuses root stack and unsettled segment`() = runBlocking {
+        val a = entry(1)
+        val b = entry(2)
+        val state = RouteTransitionState(listOf(a))
+
+        // 栈内不足两页: 没有可返回的上一页
+        assertFalse(state.beginInteractiveBack(listOf(a), 0.2f))
+        assertFalse(state.isInteractiveBackPending(listOf(a)))
+
+        // 上一段 (前进动画) 尚未落定: 不接管, 避免两段抢同一份进度
+        state.applySegment(requireNotNull(state.resolve(listOf(a, b))))
+        assertFalse(state.beginInteractiveBack(listOf(a, b), 0.2f))
+        assertEquals(listOf(a), state.segment.from)
+    }
+
+    @Test
+    fun `interactive back drag writes progress while stack matches`() = runBlocking {
+        val a = entry(1)
+        val b = entry(2)
+        val stack = listOf(a, b)
+        val state = RouteTransitionState(stack)
+        // 起手进度越界也钳制
+        state.beginInteractiveBack(stack, -0.3f)
+        assertEquals(0f, state.progress.value, 0f)
+
+        state.dragInteractiveBack(stack, 0.6f)
+        assertEquals(0.6f, state.progress.value, 0f)
+
+        // 手指可以拖出视图边界, 进度钳制在 0f~1f
+        state.dragInteractiveBack(stack, 1.4f)
+        assertEquals(1f, state.progress.value, 0f)
+
+        // 栈被别处改动: 本段作废, 写入忽略, 取消也不再把它当自己的段来弹
+        state.dragInteractiveBack(listOf(a), 0.1f)
+        state.cancelInteractiveBack(listOf(a), durationMillis = 300, easing = LinearEasing)
+        assertEquals(1f, state.progress.value, 0f)
+        // 本段仍然挂在原来的栈上 (取消没有抢走它)
+        assertTrue(state.isInteractiveBackPending(stack))
+        assertNotNull(state.resolve(stack))
+    }
+
+    @Test
+    fun `interactive back commit continues from dragged progress`() = runBlocking {
+        val a = entry(1)
+        val b = entry(2)
+        val stack = listOf(a, b)
+        val state = RouteTransitionState(stack)
+        state.beginInteractiveBack(stack, 0.5f)
+
+        // 松手判定完成 → 调用方真的出栈: 段两端已与真实栈一致, resolve 必须原样返回同一份段
+        // (动画驱动据此判定"已在途中"而不把进度归零), 且仍按真实进度渲染
+        val committed = listOf(a)
+        assertEquals(state.segment, state.resolve(committed))
+        assertTrue(state.rendersLiveProgress(committed))
+        // 出栈已提交, 本段不再算"正在跟手"
+        assertFalse(state.isInteractiveBackPending(committed))
+
+        state.settle(committed)
+        assertEquals(1f, state.progress.value, 0f)
+        assertNull(state.resolve(committed))
+    }
+
+    @Test
+    fun `interactive back cancel settles back to unchanged stack`() = runBlocking {
+        val a = entry(1)
+        val b = entry(2)
+        val stack = listOf(a, b)
+        val state = RouteTransitionState(stack)
+        state.beginInteractiveBack(stack, 0.3f)
+        // 手指拖回起点后松手: 框架判定取消, 剩余路程为 0 时直接落定
+        state.dragInteractiveBack(stack, 0f)
+
+        state.cancelInteractiveBack(stack, durationMillis = 300, easing = LinearEasing)
+
+        assertEquals(1f, state.progress.value, 0f)
+        assertEquals(stack, state.segment.from)
+        assertNull(state.resolve(stack))
+    }
+
+    @Test
+    fun `interactive driver ignores gesture without drag and returns on drag`() = runBlocking {
+        val a = entry(1)
+        val b = entry(2)
+        val stack = listOf(a, b)
+        val state = RouteTransitionState(stack)
+        var completed = false
+
+        // 空流 = 边缘单击 (框架把识别器失败也当完成上报): 不是返回手势, 状态机不被写坏
+        val emptyWasGesture = state.driveInteractiveBack(
+            gesture = emptyFlow(),
+            entries = { stack },
+            scope = cleanupScope(),
+            cancelDurationMillis = 300,
+            cancelEasing = LinearEasing,
+        ) { completed = true }
+        assertFalse(emptyWasGesture)
+        assertFalse(completed)
+        assertNull(state.resolve(stack))
+
+        // 有进度 = 真的滑动过: 跟手到底后回调返回, 进度停在手指位置等出栈后续播
+        state.driveInteractiveBack(
+            gesture = flow {
+                emit(0.2f)
+                emit(0.7f)
+            },
+            entries = { stack },
+            scope = cleanupScope(),
+            cancelDurationMillis = 300,
+            cancelEasing = LinearEasing,
+        ) { completed = true }
+        assertTrue(completed)
+        assertEquals(0.7f, state.progress.value, 0f)
+
+        // 栈内没有上一页 (根页) 的滑动: 接管被拒 (栈里没有可出栈的页), 但滑动过就必须返回 ——
+        // 边缘滑动不允许被吞掉 (Android 主界面就是滑动切回标签/退出)
+        val rootState = RouteTransitionState(listOf(a))
+        var rootCompleted = false
+        val rootWasGesture = rootState.driveInteractiveBack(
+            gesture = flow { emit(0.4f) },
+            entries = { listOf(a) },
+            scope = cleanupScope(),
+            cancelDurationMillis = 300,
+            cancelEasing = LinearEasing,
+        ) { rootCompleted = true }
+        assertTrue(rootWasGesture)
+        assertTrue(rootCompleted)
+        // 被拒的会话不写状态机: 段仍落在真实栈上, 也没留下待出栈段
+        assertEquals(listOf(a), rootState.segment.from)
+        assertFalse(rootState.isInteractiveBackPending(listOf(a)))
+        assertNull(rootState.resolve(listOf(a)))
+    }
+
+    @Test
+    fun `interactive driver leaves state alone when refused then cancelled`() = runBlocking {
+        val a = entry(1)
+        val state = RouteTransitionState(listOf(a))
+
+        // 单页栈: 接管被拒; 随后框架取消 —— 既不得写状态机, 也不得拉起收尾
+        val failure = runCatching {
+            state.driveInteractiveBack(
+                gesture = flow {
+                    emit(0.4f)
+                    throw CancellationException("cancelled")
+                },
+                entries = { listOf(a) },
+                scope = cleanupScope(),
+                cancelDurationMillis = 300,
+                cancelEasing = LinearEasing,
+            ) { fail("被拒的会话不允许回调返回") }
+        }.exceptionOrNull()
+
+        assertTrue(failure is CancellationException)
+        assertEquals(listOf(a), state.segment.from)
+        assertEquals(listOf(a), state.segment.to)
+        assertEquals(1f, state.progress.value, 0f)
+        assertNull(state.resolve(listOf(a)))
+    }
+
+    @Test
+    fun `interactive driver keeps dragged progress when back chain pops`() = runBlocking {
+        val a = entry(1)
+        val b = entry(2)
+        val stack = listOf(a, b)
+        val state = RouteTransitionState(stack)
+        var live = stack
+
+        state.driveInteractiveBack(
+            gesture = flow {
+                emit(0.2f)
+                emit(0.6f)
+            },
+            entries = { live },
+            scope = cleanupScope(),
+            cancelDurationMillis = 300,
+            cancelEasing = LinearEasing,
+            // 返回链真的出栈: 栈变成手势段早就写好的终点
+            onComplete = { live = listOf(a) },
+        )
+
+        // 进度留在手指位置 (由动画驱动续播到终位), 不被当成"没出栈"而弹回
+        assertEquals(0.6f, state.progress.value, 0f)
+        assertEquals(state.segment, state.resolve(live))
+        assertFalse(state.isInteractiveBackPending(live))
+    }
+
+    @Test
+    fun `interactive back accepts after previous segment settles`() = runBlocking {
+        val a = entry(1)
+        val b = entry(2)
+        val stack = listOf(a, b)
+        val state = RouteTransitionState(listOf(a))
+        // 上一段 (前进) 尚未落定: 首个事件被拒
+        state.applySegment(requireNotNull(state.resolve(stack)))
+        assertFalse(state.beginInteractiveBack(stack, 0.3f))
+
+        // 上一段落定后再次尝试: 接管成功, 页面从手指当前位置开始跟手
+        state.settle(stack)
+        assertTrue(state.beginInteractiveBack(stack, 0.5f))
+
+        assertEquals(0.5f, state.progress.value, 0f)
+        assertTrue(state.isInteractiveBackPending(stack))
+    }
+
+    @Test
+    fun `interactive driver bounces back when back chain did not pop`() = runBlocking {
+        val a = entry(1)
+        val b = entry(2)
+        val stack = listOf(a, b)
+        val state = RouteTransitionState(stack)
+        var completed = false
+
+        // 松手后统一返回链被别的层消费掉 (没真的出栈): 进度停在手指位置没人接管,
+        // 驱动必须自己弹回落定
+        state.driveInteractiveBack(
+            gesture = flow { emit(0f) },
+            entries = { stack },
+            scope = cleanupScope(),
+            cancelDurationMillis = 300,
+            cancelEasing = LinearEasing,
+        ) { completed = true }
+
+        assertTrue(completed)
+        assertEquals(1f, state.progress.value, 0f)
+        assertEquals(stack, state.segment.from)
+        assertNull(state.resolve(stack))
+    }
+
+    @Test
+    fun `interactive driver cancels without leaving half transition`() = runBlocking {
+        val a = entry(1)
+        val b = entry(2)
+        val stack = listOf(a, b)
+        val state = RouteTransitionState(stack)
+        var completed = false
+
+        // 滑动后拖回起点再松手: 框架以取消收尾 —— 取消异常照常抛出 (平台实现据此区分取消与"无进度的完成"),
+        // 收尾 (进度回 0 后落定) 交给传入的作用域执行: Android 的框架会取消本次手势的协程。
+        val failure = runCatching {
+            state.driveInteractiveBack(
+                gesture = flow {
+                    emit(0.4f)
+                    emit(0f)
+                    throw CancellationException("cancelled")
+                },
+                entries = { stack },
+                scope = cleanupScope(),
+                cancelDurationMillis = 300,
+                cancelEasing = LinearEasing,
+            ) { completed = true }
+        }.exceptionOrNull()
+
+        assertTrue(failure is CancellationException)
+        assertFalse(completed)
+        assertEquals(1f, state.progress.value, 0f)
+        assertEquals(stack, state.segment.from)
+        assertNull(state.resolve(stack))
     }
 }

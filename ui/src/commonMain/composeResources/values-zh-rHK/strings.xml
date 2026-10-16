@@ -699,6 +699,8 @@
     <string name="webdav_device_name">裝置名稱</string>
     <string name="web_service_wake_lock">WebService 喚醒鎖</string>
     <string name="web_service_wake_lock_summary">開啟 Web 服務的時候啟用喚醒鎖，有些手機開啟喚醒鎖會被殺背景</string>
+    <string name="predictive_back_title">預測式返回手勢</string>
+    <string name="predictive_back_summary">從屏幕邊緣滑動返回時頁面跟著手指移動（Android 14 及以上），放手後按位移與速度決定是否返回；關閉後改為按下即判定。</string>
     <string name="read_aloud_wake_lock">朗讀服務喚醒鎖</string>
     <string name="read_aloud_wake_lock_summary">開啟朗讀的時候啟用喚醒鎖，有些手機開啟喚醒鎖會被殺背景</string>
     <string name="audio_play_wake_lock">音訊服務喚醒鎖</string>

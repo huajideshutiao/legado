@@ -183,6 +183,7 @@ fun OtherConfigRoute(
             // 以下几项都是"只有声明支持的端才真实消费该 pref"的条目, 不支持的端隐藏,
             // 免得用户拨了一个完全无效的开关 (各 gate 的判定依据见 PlatformCapabilities)
             showCronet = platform.cronetSupported,
+            showPredictiveBack = platform.predictiveBackSupported,
             showLanguage = platform.languageSwitchSupported,
             onLanguageChange = { platform.applyAppLanguage() },
             showMediaButton = platform.mediaButtonSupported,

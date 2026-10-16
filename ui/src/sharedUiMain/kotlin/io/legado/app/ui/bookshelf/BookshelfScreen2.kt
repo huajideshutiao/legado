@@ -132,7 +132,8 @@ internal fun BookshelfScreen2(
 
     Column(modifier.fillMaxSize()) {
         BookshelfTopBarContainer(actions) {
-            // 无系统返回通道的端 (iOS) 没有按键返回可走, 分组内必须给出可见退出口;
+            // 无系统返回通道的端 (iOS) 的返回手势只作用于页面栈 (主界面是栈底, 退不出分组),
+            // 分组内必须给出可见退出口;
             // 有返回通道的端 (Android/鸿蒙系统返回键, 桌面 ESC) 保持原版顶栏形态
             if (!capabilities.supportsSystemBack && groupId != BookGroup.IdRoot) {
                 IconButton(onClick = { groupId = BookGroup.IdRoot }) {

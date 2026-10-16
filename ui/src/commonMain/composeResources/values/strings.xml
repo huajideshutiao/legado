@@ -329,6 +329,8 @@
     <string name="web_service">Web service</string>
     <string name="web_service_wake_lock">WebService Wake up Lock</string>
     <string name="web_service_wake_lock_summary">The wake-up lock is enabled when the web service is enabled, and some phones will be killed when the wake-up lock is enabled.</string>
+    <string name="predictive_back_title">Predictive back gesture</string>
+    <string name="predictive_back_summary">While you swipe back from the screen edge the page follows your finger (Android 14 and later), and the release distance and speed decide whether it returns. Turn it off to decide right at touch-down instead.</string>
     <string name="user_agent">User agent</string>
     <string name="threads_num_title">Number of concurrent tasks</string>
     <string name="bitmap_cache_size">bitmap cache size</string>

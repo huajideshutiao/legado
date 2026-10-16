@@ -142,9 +142,6 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
 
     val viewModel by viewModels<MainViewModel>()
 
-    private var exitTime: Long = 0
-    private val EXIT_INTERVAL = 2000L
-
     /** 视频画中画 provider: PiP 模式切换回调由此转发到共享层渲染状态。 */
     private var videoPlayProvider: AndroidVideoPlayPlatformProvider? = null
 
@@ -631,21 +628,13 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
 
-        // 返回键: navigator.pop 优先 (导航栈有内容时返回上一页), 失败后走双击退出
+        // 返回键: navigator.pop 优先 (导航栈有内容时返回上一页), 失败后走双击退出兜底
+        // (兜底实现与"预测式返回开关打开时根层接管返回链"共用同一份, 见 PlatformCapabilities.onBackUnconsumed)
         onBackPressedDispatcher.addCallback(this) {
             if (AppNavigatorProviders.get().pop()) {
                 return@addCallback
             }
-            if (System.currentTimeMillis() - exitTime > EXIT_INTERVAL) {
-                toastOnUi(androidAppString("double_click_exit"))
-                exitTime = System.currentTimeMillis()
-            } else {
-                if (BaseReadAloudService.pause) {
-                    finish()
-                } else {
-                    moveTaskToBack(true)
-                }
-            }
+            PlatformCapabilityProviders.get().onBackUnconsumed()
         }
         // 冷启动经 DeepLink/文件关联 intent-filter 命中: 解析启动 Intent
         handleExternalIntent(intent)

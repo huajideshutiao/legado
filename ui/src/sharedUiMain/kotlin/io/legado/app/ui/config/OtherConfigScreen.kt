@@ -38,6 +38,8 @@ import legado.ui.generated.resources.language_value
 import legado.ui.generated.resources.media_button_on_exit_summary
 import legado.ui.generated.resources.media_button_on_exit_title
 import legado.ui.generated.resources.pre_download
+import legado.ui.generated.resources.predictive_back_summary
+import legado.ui.generated.resources.predictive_back_title
 import legado.ui.generated.resources.pref_cronet_summary
 import legado.ui.generated.resources.ps_auto_refresh
 import legado.ui.generated.resources.pt_auto_refresh
@@ -101,6 +103,8 @@ fun OtherConfigScreen(
     showWakeLock: Boolean = false,
     /** Cronet 开关是否显示 (仅 Android 注册了 CronetProvider) */
     showCronet: Boolean = false,
+    /** 预测式返回开关是否显示 (仅 Android 接了跟手通道) */
+    showPredictiveBack: Boolean = false,
     /** 语言条目是否显示 (Android/desktop 能切, iOS/鸿蒙未接入) */
     showLanguage: Boolean = false,
     /** 媒体按键两项是否显示 (仅 Android 有 MediaButtonReceiver) */
@@ -178,6 +182,8 @@ fun OtherConfigScreen(
     val summaryRecordLog = stringResource(Res.string.record_debug_log)
     val titleRecordHeapDump = stringResource(Res.string.record_heap_dump_t)
     val summaryRecordHeapDump = stringResource(Res.string.record_heap_dump_s)
+    val titlePredictiveBack = stringResource(Res.string.predictive_back_title)
+    val summaryPredictiveBack = stringResource(Res.string.predictive_back_summary)
     val titleCustomPageKey = stringResource(Res.string.custom_page_key)
 
     AppTheme {
@@ -265,6 +271,15 @@ fun OtherConfigScreen(
                     title = "Cronet",
                     summary = summaryCronet,
                     defaultValue = false,
+                )
+            }
+            // 预测式返回: 只有 Android 有跟手通道; 开关即时生效 (下一页返回就按新规则走)
+            if (showPredictiveBack) {
+                switchPreference(
+                    prefKey = PreferKey.predictiveBack,
+                    title = titlePredictiveBack,
+                    summary = summaryPredictiveBack,
+                    defaultValue = true,
                 )
             }
             preference(

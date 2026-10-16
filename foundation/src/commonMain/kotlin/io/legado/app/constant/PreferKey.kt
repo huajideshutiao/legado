@@ -204,4 +204,10 @@ object PreferKey {
      * 任一处选定过就不再询问。
      */
     const val closeToTray = "desktopCloseToTray"
+
+    /**
+     * 预测式返回跟手 (仅 Android 消费): 打开时返回手势跟手、且返回统一由根层 + 统一返回链接管,
+     * 关闭时回到各页面自己注册的按键式返回回调 (与本改动前一致)。
+     */
+    const val predictiveBack = "predictiveBack"
 }

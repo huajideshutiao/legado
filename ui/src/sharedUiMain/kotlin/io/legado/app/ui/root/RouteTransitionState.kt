@@ -1,6 +1,8 @@
 package io.legado.app.ui.root
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -103,6 +105,12 @@ data class RouteTransitionSegment(
  * 快照中对观察者原子生效。进度的逐帧读取只允许发生在 graphicsLayer 块内 (图层阶段读), 见
  * [rendersLiveProgress]。
  *
+ * 跟手的返回手势 ([beginInteractiveBack], iOS 左边缘拖动) 是段唯一不由页面栈变化产生的来源:
+ * 手势期间写进的是"待出栈段" (终点 = 当前栈去掉栈顶), 页面栈本身不动; 框架判定完成时调用方
+ * 真的出栈, 段的终点随即变成真实栈 —— 此时 [resolve] 原样返回同一份段, 动画从手指位置续播到
+ * 终位, 不回跳; 判定取消则由 [cancelInteractiveBack] 弹回起点再落定。跟手期间 [resolve] 对
+ * 同一份段返回的是 `reversing = true` 的副本 (等于栈退回本段起点), 角色与普通返回段一致。
+ *
  * 进度方向与视觉含义 (Android 平台 spec):
  * - 1f = 稳定态: 栈内页面都在终位;
  * - 0f = 本段起点位: 前进段 = 新页整体在屏幕右侧外 (位移 = 屏宽), 返回段 = 目标页在 -25% 处;
@@ -113,7 +121,9 @@ data class RouteTransitionSegment(
 @Stable
 class RouteTransitionState(initialEntries: List<RouteEntry>) {
 
-    /** 已应用到动画的段: 静止态时两端相等。 */
+    /**
+     * 已应用到动画的段: 静止态时两端相等; 跟手手势期间是"待出栈段" (终点 = 当前栈去掉栈顶)。
+     */
     var segment: RouteTransitionSegment by mutableStateOf(
         RouteTransitionSegment(initialEntries, initialEntries, reversing = false)
     )
@@ -183,4 +193,72 @@ class RouteTransitionState(initialEntries: List<RouteEntry>) {
         segment = RouteTransitionSegment(entries, entries, reversing = false)
         progress.snapTo(1f)
     }
+
+    // ===== 跟手的返回手势 (iOS 左边缘拖动) =====
+    // 手指按住时页面跟着移动; 框架判定"完成"→ 调用方真的出栈, 本状态机从当前进度续播到终位;
+    // 判定"取消"→ 进度弹回起点再落定。段与进度仍是唯二可变状态, 只是这次段由手势而非页面栈变化产生。
+
+    /**
+     * 开启一次跟手的返回手势: 把"待出栈"这一段写进状态机 (端点 = 当前栈去掉栈顶), 并按手指位置
+     * 起算进度。返回 false = 本次事件不接管 (栈内不足两页, 或上一段尚未落定); 是否在后续进度值上
+     * 再试由调用方决定 —— 跟手驱动会重试, 于是上一段落定后页面能从手指当前位置接管。
+     *
+     * 段必须先写、进度后写: 反序会让**静止段** (两端相等) 配上非 1f 的进度, 顶页按 NewPage 角色
+     * 位移到屏幕右侧之外 (整屏空白), 与 [settle] 的写入顺序同一考虑。
+     */
+    suspend fun beginInteractiveBack(entries: List<RouteEntry>, progress: Float): Boolean {
+        if (entries.size <= 1 || resolve(entries) != null) return false
+        segment = RouteTransitionSegment(entries, entries.dropLast(1), reversing = false)
+        this.progress.snapTo(progress.coerceIn(0f, 1f))
+        return true
+    }
+
+    /**
+     * 跟手进度写入 (0f = 本段起点位, 1f = 终位)。
+     *
+     * 只在本段仍与真实页面栈匹配时生效: 拖拽途中页面栈被别处改动 (深链/快捷项等外部投递) 时本段
+     * 已作废, 写入忽略 —— 栈变化本身会让 [resolve] 开新段接管画面 (既有打断语义)。
+     */
+    suspend fun dragInteractiveBack(entries: List<RouteEntry>, progress: Float) {
+        if (!isInteractiveBackPending(entries)) return
+        this.progress.snapTo(progress.coerceIn(0f, 1f))
+    }
+
+    /**
+     * 手势取消: 进度按剩余路程弹回起点后落定 (页面栈不变, 转场圆角与状态栏冻结随之解除)。
+     *
+     * 只在待出栈段仍与真实页面栈匹配时动作: 手势期间栈被别处改动过 (段已被新的转场段接管)
+     * 时直接返回, 不抢正在跑的动画。
+     */
+    suspend fun cancelInteractiveBack(
+        entries: List<RouteEntry>,
+        durationMillis: Int,
+        easing: Easing,
+    ) {
+        if (!isInteractiveBackPending(entries)) return
+        val remaining = progress.value
+        if (remaining > 0f) {
+            progress.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(
+                    durationMillis = (durationMillis * remaining).toInt().coerceAtLeast(1),
+                    easing = easing,
+                ),
+            )
+        }
+        settle(entries)
+    }
+
+    /**
+     * 本段是否仍是"手势正在跟手"的待出栈段: 形状是待出栈 (终点 = 起点去掉栈顶且非倒放),
+     * 且真实页面栈仍等于本段起点 (页面栈未被别处改动、出栈也未提交)。
+     *
+     * 供跟手驱动判定"松手后到底有没有真的出栈" (没出栈则自己弹回落定, 不留半路停住的页面)。
+     */
+    fun isInteractiveBackPending(entries: List<RouteEntry>): Boolean =
+        isInteractiveBackPendingShape() && segment.from == entries
+
+    /** 待出栈段的形状: 终点 = 起点去掉栈顶, 且不是倒放段。 */
+    private fun isInteractiveBackPendingShape(): Boolean =
+        !segment.reversing && segment.from != segment.to && segment.to == segment.from.dropLast(1)
 }

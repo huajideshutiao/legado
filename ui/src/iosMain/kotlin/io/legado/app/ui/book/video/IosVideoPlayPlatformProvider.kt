@@ -289,8 +289,8 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
      * `UiState.isSystemFullScreen`, 页面按全屏重排而系统栏纹丝不动,
      * 观感上就是"进得去、画面没变、退不出去"。
      *
-     * 退全屏入口: iOS 无系统返回通道 (PlatformCapabilities.supportsSystemBack=false),
-     * 共享层据此在全屏期间常驻一个退出钮 (不随控制栏自动隐藏而消失),
+     * 退全屏入口: iOS 的边缘返回手势在播放器全屏内不可靠 (播放器自身吃横向拖动), 共享层按
+     * `supportsSystemBack=false` 在全屏期间常驻一个退出钮 (不随控制栏自动隐藏而消失),
      * 与本方法搭成完整闭环: 系统栏真的隐了, 也真的退得回来。
      */
     override fun applySystemFullScreen(enabled: Boolean) {

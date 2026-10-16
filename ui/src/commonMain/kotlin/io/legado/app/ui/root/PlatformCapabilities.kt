@@ -40,6 +40,15 @@ interface PlatformCapabilities {
     }
 
     fun exitApplication()
+
+    /**
+     * 统一返回链没消费返回 (栈里也没有可出的页) 时的兜底。
+     *
+     * 只有 Android 有真实现 (对照原 MainActivity 的 back 回调: 先提示、2 秒内再按退回调用方);
+     * 其余端无此语义 (没上一页时返回本就无事可做), 默认空实现即正确行为。
+     */
+    fun onBackUnconsumed() {}
+
     fun openExternalUrl(url: String)
 
     /**
@@ -138,11 +147,12 @@ interface PlatformCapabilities {
     val rssDirectWindow: Boolean get() = false
 
     /**
-     * 该端是否存在"系统返回"通道: 返回键/返回手势 (Android/鸿蒙) 或桌面 ESC 统一返回链。
+     * 该端是否有可用于**页面内子状态返回**的返回通道: Android/鸿蒙的返回键与返回手势 (系统交给
+     * 应用), 桌面的 ESC 统一返回链。
      *
-     * false 的端 (iOS) 按键返回不进 AppBackHandler,
-     * 页面内的子状态必须自带可见退出口 (书架文件夹样式分组内顶栏返回箭头 /
-     * 视频页全屏退出钮)。
+     * false 的端 (iOS) 虽有应用层边缘返回手势 (只作用于页面栈, 覆盖不到根页与全屏播放器内部),
+     * 仍按"无系统返回通道"处理: 页面内的子状态必须自带可见退出口 (书架文件夹样式分组内顶栏返回
+     * 箭头 / 视频页全屏退出钮)。
      */
     val supportsSystemBack: Boolean get() = true
 
@@ -441,6 +451,14 @@ interface PlatformCapabilities {
      * 桌面 (DesktopSmtc.setAudioFocus = Unit) 同样无申请/归还能力, 拨了等于没拨。
      */
     val audioFocusSupported: Boolean get() = false
+
+    /**
+     * 是否有"预测式返回跟手"能力 (决定其他设置里该开关的显隐)。
+     *
+     * 只有 Android 接了这条通道 (系统 API 34+ 给跟手进度, 按键/旧式返回走同一出口);
+     * 其余端没有该通道, 开关拨了无效。
+     */
+    val predictiveBackSupported: Boolean get() = false
 
     /**
      * 是否有系统级文本操作菜单入口 (其他设置里"文字操作显示搜索"条目 gate)。

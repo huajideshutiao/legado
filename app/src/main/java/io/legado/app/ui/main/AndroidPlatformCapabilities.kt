@@ -330,6 +330,31 @@ class AndroidPlatformCapabilities(
         activity.finish()
     }
 
+    /** 上次提醒"再按一次退出"的时刻 (对照原 MainActivity.exitTime)。 */
+    private var exitTime: Long = 0
+
+    /**
+     * 返回链没消费时的兜底 (对照原 MainActivity 的 onBackPressedDispatcher 回调): 首次提示,
+     * 2 秒内再按一次退回调用方 (朗读暂停时直接结束)。
+     *
+     * 与 MainActivity 的那条回调共用本实现: 预测式返回开关打开时根层接管返回链, 那条回调收不到
+     * 返回事件; 开关关闭时根层不接管, 事件走那条回调 —— 两路终点必须是同一份语义。
+     */
+    override fun onBackUnconsumed() {
+        if (System.currentTimeMillis() - exitTime > EXIT_INTERVAL) {
+            activity.toastOnUi(androidAppString("double_click_exit"))
+            exitTime = System.currentTimeMillis()
+        } else if (BaseReadAloudService.pause) {
+            activity.finish()
+        } else {
+            activity.moveTaskToBack(true)
+        }
+    }
+
+    private companion object {
+        private const val EXIT_INTERVAL = 2000L
+    }
+
     override fun openExternalUrl(url: String) {
         activity.openUrl(url)
     }
@@ -1457,6 +1482,9 @@ class AndroidPlatformCapabilities(
     // 以下几项均为安卓独有能力, 其余端无消费方 (其他设置里相应条目自动隐藏)
     // Cronet: App.onCreate registerAndroidCronetProvider 注册了 CronetProvider
     override val cronetSupported: Boolean get() = true
+
+    // 预测式返回: 系统自 API 34 起给跟手进度, 页面级返回回调在开关打开时让位给根层接管
+    override val predictiveBackSupported: Boolean get() = true
 
     // 语言: AppContextWrapper.wrap 包 Context (attachBaseContext), 改完重启生效
     override val languageSwitchSupported: Boolean get() = true

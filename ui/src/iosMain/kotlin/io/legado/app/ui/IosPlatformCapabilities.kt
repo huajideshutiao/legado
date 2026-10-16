@@ -167,8 +167,8 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
         }
     }
 
-    // iOS 无物理/手势返回键, PlatformBackHandler 是 no-op → 无系统返回通道,
-    // 页面内的子状态需自带可见退出口。
+    // iOS 的返回是应用层边缘手势 (平台返回通道实现见 PlatformBackHandler.ios.kt), 只作用于页面栈,
+    // 根页与全屏播放器内部覆盖不到 → 页面内的子状态仍需自带可见退出口, 故按无系统返回通道处理。
     override val supportsSystemBack: Boolean get() = false
 
     /**

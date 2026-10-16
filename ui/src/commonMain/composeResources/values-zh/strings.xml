@@ -329,6 +329,8 @@
     <string name="web_service">Web 服务</string>
     <string name="web_service_wake_lock">WebService唤醒锁</string>
     <string name="web_service_wake_lock_summary">开启web服务的时候启用唤醒锁,有些手机开启唤醒锁会被杀后台</string>
+    <string name="predictive_back_title">预测式返回手势</string>
+    <string name="predictive_back_summary">从屏幕边缘滑动返回时页面跟着手指移动（Android 14 及以上），松手后按位移与速度决定是否返回；关闭后改为按下即判定。</string>
     <string name="user_agent">用户代理</string>
     <string name="threads_num_title">更新和搜索线程数（太多会卡顿）</string>
     <string name="bitmap_cache_size">图片绘制缓存</string>

@@ -5,6 +5,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalArkUIViewController
+import kotlinx.coroutines.flow.Flow
 
 /**
  * [PlatformBackHandler] 的鸿蒙 actual: 注册到 ArkUI [OnBackPressedDispatcher]。
@@ -27,4 +28,18 @@ actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
         }
         onDispose { cancel() }
     }
+}
+
+/**
+ * [PlatformPredictiveBackHandler] 的鸿蒙 actual: no-op。
+ * ArkUI 的返回手势经 `OnBackPressedDispatcher` 只有"按下"没有进度, 由 [PlatformBackHandler] 承接;
+ * [PlatformPredictiveBackHandler] 的 onBackClick 出口在本端恒不被调用。
+ */
+@Composable
+actual fun PlatformPredictiveBackHandler(
+    enabled: Boolean,
+    onGesture: suspend (gesture: Flow<Float>) -> Boolean,
+    onBackClick: () -> Unit,
+) {
+    // No-op: 无跟手进度可消费
 }

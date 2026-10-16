@@ -82,6 +82,7 @@ import io.legado.app.ui.compose.component.directionKeyFocusNavigation
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.PlatformBackHandler
+import io.legado.app.ui.compose.platform.PlatformPredictiveBackHandler
 import io.legado.app.ui.compose.platform.dismissTopLayer
 import io.legado.app.ui.compose.platform.handleBackKey
 import io.legado.app.ui.compose.platform.performBack
@@ -362,6 +363,29 @@ fun LegadoApp(
                 // 实现与对话框内容根共用: 见 ListItemFocus.directionKeyFocusNavigation
                 .directionKeyFocusNavigation(focusManager)
         ) {
+            // 系统返回手势 (可跟手): iOS 与 Android 有该通道 (见 PlatformPredictiveBackHandler)。两端都只由
+            // 这一个根层处理器接管 —— 手势由它接管 (页面跟手), 松手后走统一返回链: 先关覆盖物层/
+            // 弹层, 再让页面级拦截 (阅读菜单/多选态/未保存确认) 判定, 最后才出栈; 代价是页面级拦截在
+            // 松手时判定而非按住时。启用条件: 有系统返回键的端 (Android/鸿蒙/桌面) 在"没有上一页"时也
+            // 必须接管 (主界面标签回退/双击退出写在页面拦截里), iOS 没有系统返回键, 根页上关掉该通道
+            // (框架的边缘识别器随之停用, 边缘触摸不再让给返回手势)。
+            // 无进度的完成 (Android 按键/硬件返回、旧式返回手势) 走 onBackClick 直接返回; 页面栈现取现读
+            // (返回链是否真的出栈由状态机与它比对), 不用组合期的快照。
+            val backGestureScope = rememberCoroutineScope()
+            PlatformPredictiveBackHandler(
+                enabled = entries.size > 1 || capabilities.supportsSystemBack,
+                onGesture = { gesture ->
+                    routeTransition.driveInteractiveBack(
+                        gesture = gesture,
+                        entries = { navigator.backStack.value },
+                        scope = backGestureScope,
+                        cancelDurationMillis = transitionSampler.popDurationMillis,
+                        cancelEasing = effectiveSpec.popEasing.toComposeEasing(),
+                        onComplete = { if (!performBack(navigator)) capabilities.onBackUnconsumed() },
+                    )
+                },
+                onBackClick = { if (!performBack(navigator)) capabilities.onBackUnconsumed() },
+            )
             // 栈内页面保持在同一 Composition 中，返回时直接复用 remember/Effect/协程和节点树。
             // 非顶层页面移出可见区域，出栈后才真正离开 Composition 并释放资源。
             val saveableStateHolder = rememberSaveableStateHolder()
@@ -377,6 +401,9 @@ fun LegadoApp(
                 // resolve 返回非空即表示还有未落定的段要播 (已静止时它返回 null)。
                 val next = routeTransition.resolve(entries)
                 if (next != null) {
+                    // 本段是否已由跟手手势写进状态机 (本次只是接着播完): 这种情况不得把进度归零,
+                    // 否则页面在松手那一帧跳回起点位再重播整段
+                    val continuing = next == routeTransition.segment
                     routeTransition.applySegment(next)
                     if (next.reversing) {
                         // 倒放: 保持本段起止栈不变, 从当前位置平滑退回起点位 (0f)。
@@ -394,16 +421,21 @@ fun LegadoApp(
                         )
                     } else {
                         // 正常段: 从本段起点位跑到终位。动画中途被新导航打断时, 新段从其起点位起播,
-                        // 打断瞬间页面先落到上一段终点位再播新段
-                        routeTransition.progress.snapTo(0f)
+                        // 打断瞬间页面先落到上一段终点位再播新段; 跟手手势已在途 (continuing) 时不
+                        // 归零, 从手指位置续播
+                        if (!continuing) routeTransition.progress.snapTo(0f)
+                        // 时长按剩余路程折算: 完成耗时 = 平台 pop 时长 × 剩余路程 (缓动曲线整段套在
+                        // 剩余路程上)。普通导航在这里 remaining 恒为 1f (上一步刚归零), 时长不变
+                        val remaining = 1f - routeTransition.progress.value
+                        val fullDurationMillis = if (next.forward) {
+                            transitionSampler.pushDurationMillis
+                        } else {
+                            transitionSampler.popDurationMillis
+                        }
                         routeTransition.progress.animateTo(
                             1f,
                             tween(
-                                durationMillis = if (next.forward) {
-                                    transitionSampler.pushDurationMillis
-                                } else {
-                                    transitionSampler.popDurationMillis
-                                },
+                                durationMillis = (fullDurationMillis * remaining).toInt().coerceAtLeast(1),
                                 easing = if (next.forward) {
                                     effectiveSpec.pushEasing.toComposeEasing()
                                 } else {
