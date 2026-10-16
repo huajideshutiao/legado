@@ -36,11 +36,9 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
@@ -92,6 +90,8 @@ import kotlin.math.roundToInt
  * | DecelerateInterpolator: 1-(1-t)^2 | [DECELERATE] = Easing { 1f-(1f-it)*(1f-it) } |
  * | colorProgress 每帧 +0.1 (帧数驱动, 时长随刷新率变) | tween(100) 固定时长, 刻意不复刻 |
  * | 颜色: current=ArgbEval(sec→pri), last=ArgbEval(pri→sec) | lerp 同参同序 |
+ * | 无逐字填充: 整行(含译文)同色 | 有字标签的行: 底色恒 secondaryColor, 已唱前缀盖 primaryColor,
+ *   译文不入填充; 切行后正文按满填充色的渐变淡出 |
  * | 缩放: current 1+0.05p, last 1.05-0.05p, 锚点(内容中心X,行中心Y) | 同 |
  * | 透明度: 上下 0.35h 边界线性 255→40, 与颜色 alpha 相乘 | 同 (calculateAlpha) |
  * | 点击: touchY=scrollYOffset+y-h/2, 二分 offset 区间, 回调 time | 同 (touchSlop 判定 tap/drag) |
@@ -121,16 +121,8 @@ fun LrcViewShared(
     val scope = rememberCoroutineScope()
     val lineMarginPx = with(LocalDensity.current) { LINE_MARGIN.toPx() }
     val hPaddingPx = with(LocalDensity.current) { H_PADDING.toPx() }
-    // 歌词统一字号样式: 逐字放大要用同一样式重测当前行
-    val lrcTextStyle = remember { TextStyle(fontSize = FONT_SIZE, textAlign = TextAlign.Center) }
 
     var viewportW by remember { mutableIntStateOf(0) }
-    // 左右留白就是当前行 1.05 倍缩放的溢出余量 (复刻原版 availableWidth = 宽 - 左右 padding,
-    // 裁剪留在全宽); 16dp 兜不住 5% 的超宽面板按视口比例抬升
-    val measureW = remember(viewportW, hPaddingPx) {
-        val inset = max(hPaddingPx, viewportW * SCALE_INSET_RATIO)
-        (viewportW - inset * 2).roundToInt()
-    }
     // 单实例运行态 (对齐原版 LrcView 的字段模型): 不随数据换实例, 复位走显式 reset。
     // 以换实例代替复位会让所有持旧引用的 effect/手势断供 (行表空 → 点击/拖动静默失效)
     val lrc = remember { LrcRuntime() }
@@ -149,8 +141,13 @@ fun LrcViewShared(
     // textMeasurer 随 density/fontScale/layoutDirection/字体解析器重建, 拿它当 key 就覆盖了
     // lineMarginPx 与 sp→px 的换算依赖。
     // lrcProgress 刻意不当 key: 只需要重排那一刻的值用于定位, 加进 key 会让每次切行都重测全部行
-    val lines = remember(lrcData, measureW, textMeasurer) {
-        measureLrcLines(lrcData, measureW, textMeasurer, lineMarginPx, lrcTextStyle)
+    val lines = remember(lrcData, viewportW, textMeasurer) {
+        // 左右留白就是当前行 1.05 倍缩放的溢出余量 (复刻原版 availableWidth = 宽 - 左右 padding,
+        // 裁剪留在全宽); 16dp 兜不住 5% 的超宽面板按视口比例抬升
+        val inset = max(hPaddingPx, viewportW * SCALE_INSET_RATIO)
+        measureLrcLines(
+            lrcData, (viewportW - inset * 2).roundToInt(), textMeasurer, lineMarginPx
+        )
     }
 
     // 歌词数据变化 → 显式复位 (复刻原版 setLrcData: 索引归位/停滚动动画/回中)。
@@ -429,57 +426,43 @@ fun LrcViewShared(
                 isLast -> lerp(primaryColor, secondaryColor, colorProgress)
                 else -> secondaryColor
             }
-            // 缩放 (复刻 withScale: 1→1.05 / 1.05→1, 锚点行中心)。
-            // 逐字放大用同一个倍率, 所以行唱完时字级与行级大小本就相等, 收尾直接走原版分支
+            // 缩放 (复刻 withScale: 1→1.05 / 1.05→1, 锚点行中心)
             val scaleFactor = when {
-                isCurrent -> 1f + WORD_SCALE_DELTA * colorProgress
-                isLast -> 1f + WORD_SCALE_DELTA - WORD_SCALE_DELTA * colorProgress
+                isCurrent -> 1f + 0.05f * colorProgress
+                isLast -> 1.05f - 0.05f * colorProgress
                 else -> 1f
             }
             val lineCenterY = lineY + line.height / 2f
             val layout = line.layout
-            val karaoke = isCurrent && line.words.isNotEmpty()
-            val sungChars = if (karaoke) line.charProgressAt(fillClockMs + Lrc.OFFSET_MS) else 0f
-            // 逐字放大: 已唱过的字保持放大不缩回, 正在唱的那个字按字内进度平滑变大
-            // (瞬变会看成叠层/抖动); 整行要重测, 否则放大的字会直接压住相邻字。
-            // 只作用于当前行: 唱完就是普通行, 收尾交给上面的行缩放
-            val drawLayout = if (karaoke) {
-                val text = layout.layoutInput.text
-                val boundary = sungChars.toInt()
-                val frac = (sungChars - boundary).coerceIn(0f, 1f)
-                val styled = buildAnnotatedString {
-                    append(text)
-                    for (k in text.indices) {
-                        val s = when {
-                            k < boundary -> 1f + WORD_SCALE_DELTA
-                            k == boundary -> 1f + WORD_SCALE_DELTA * frac
-                            else -> 1f
-                        }
-                        if (s > 1.001f) addStyle(SpanStyle(fontSize = FONT_SIZE * s), k, k + 1)
-                    }
-                }
-                textMeasurer.measure(
-                    styled, lrcTextStyle, constraints = Constraints(maxWidth = measureW)
-                )
-            } else layout
+            // 逐字行: 底色恒为 secondaryColor, 亮度全由已唱前缀承载 —— 译文不属于唱词,
+            // 跟随整行渐变就会在切行那一瞬整段亮一下
+            val hasWords = line.words.isNotEmpty()
+            val sungChars = when {
+                hasWords && isCurrent -> line.charProgressAt(fillClockMs + Lrc.OFFSET_MS)
+                // 上一行停在唱完时的满填充, 亮度交给 [sungColor] 随渐变色变暗 (与唱完那一帧连续)
+                hasWords && isLast -> line.bodyChars.toFloat()
+                else -> 0f
+            }
+            val sungColor = if (hasWords && !isCurrent) baseColor else primaryColor
             // 原版: withTranslation(contentCenterX - layout.width / 2f, layoutY)
             // —— Compose 文本块宽度自适应 (短文本 < 视口宽), 需按块宽居中
             val topLeft = Offset(
-                contentCenterX - drawLayout.size.width / 2f,
-                lineY + (line.height - drawLayout.size.height) / 2f,
+                contentCenterX - layout.size.width / 2f,
+                lineY + (line.height - layout.size.height) / 2f,
             )
             // 透明度 (复刻 calculateAlpha: 上下 0.35h 边界线性 1→40/255), 交给 drawText 内部 modulate
             val fade = calculateAlpha(lineCenterY, size.height)
 
-            // 逐字行: 未唱的部分留在 secondaryColor, 已唱的前缀盖 primaryColor;
-            // 整行 secondary→primary 的渐变只留给没有字标签的歌词, 否则会把填充对比冲掉
-            val bodyColor = if (karaoke) secondaryColor else baseColor
+            // 整行 secondary→primary 的渐变只留给没有字标签的歌词 (有字标签的靠填充对比)
+            val bodyColor = if (hasWords) secondaryColor else baseColor
             // 只有当前/上一行会缩放, 其余行跳过 scale{} 的 save/concat/restore
             if (scaleFactor == 1f) {
-                drawLrcLine(drawLayout, topLeft, bodyColor, fade, sungChars, primaryColor)
+                drawLrcLine(layout, topLeft, bodyColor, fade, sungChars, sungColor, line.bodyChars)
             } else {
                 scale(scaleFactor, scaleFactor, pivot = Offset(contentCenterX, lineCenterY)) {
-                    drawLrcLine(drawLayout, topLeft, bodyColor, fade, sungChars, primaryColor)
+                    drawLrcLine(
+                        layout, topLeft, bodyColor, fade, sungChars, sungColor, line.bodyChars
+                    )
                 }
             }
         }
@@ -573,16 +556,21 @@ private class MeasuredLrcLine(
     val height: Int,
     val offset: Float,
     val words: List<LrcWord>,
+    /** 正文的字符数 (译文是 `\n` 之后追加的)。 */
+    val bodyChars: Int,
 )
+
+/** 正文字符数: 译文是 `\n` 之后追加的, 不参与逐字填充。 */
+private fun LrcLine.bodyChars(): Int = text.indexOf('\n').let { if (it < 0) text.length else it }
 
 /**
  * 逐字采样 + 一个收尾采样: Enhanced LRC 只标每个字的起点, 末字没有终点, 用下一行的时间戳补上。
- * 终点是首语种正文的末尾 —— 译文是 `\n` 之后追加的, 不参与填充。
+ * 终点是 [bodyChars] (正文末尾), 译文不参与填充。
  * 末行无下一行时间戳时，根据本行字符节奏预估终点时间，确保播放完毕时末尾字符能被点亮。
  */
 private fun LrcLine.fillSamples(nextTimeMs: Int?): List<LrcWord> {
     if (words.isEmpty()) return emptyList()
-    val end = text.indexOf('\n').let { if (it < 0) text.length else it }
+    val end = bodyChars()
     val lastWord = words.last()
     if (lastWord.charIndex >= end) return words
     val closingTimeMs = if (nextTimeMs != null) {
@@ -614,8 +602,8 @@ private fun MeasuredLrcLine.charProgressAt(positionMs: Int): Float {
 }
 
 /**
- * 画一行歌词: [bodyColor] 打底, 再把前 [sungChars] 个字符 (含小数) 用 [sungColor] 盖一层。
- * [sungChars] 不为正时只打底, 与逐字歌词落地前逐像素一致。
+ * 画一行歌词: [bodyColor] 打底, 再把前 [sungChars] 个正文字符 (含小数) 用 [sungColor] 盖一层。
+ * [sungChars] 不为正时只打底; 填充范围止于 [bodyChars], 换行之后的译文不进高亮。
  */
 private fun DrawScope.drawLrcLine(
     layout: TextLayoutResult,
@@ -624,14 +612,19 @@ private fun DrawScope.drawLrcLine(
     fade: Float,
     sungChars: Float,
     sungColor: Color,
+    bodyChars: Int,
 ) {
     drawText(layout, bodyColor, topLeft, alpha = fade)
     if (sungChars <= 0f) return
-    val boundary = sungChars.toInt()
-    if (boundary >= layout.layoutInput.text.length) {
-        drawText(layout, sungColor, topLeft, alpha = fade)
+    if (sungChars >= bodyChars) {
+        // 整段唱满: 覆盖范围止于正文的最后一个可视行, 换行之后的译文留在打底色上
+        val lastBodyLine = layout.getLineForOffset(bodyChars - 1)
+        clipRect(top = topLeft.y, bottom = topLeft.y + layout.getLineBottom(lastBodyLine)) {
+            drawText(layout, sungColor, topLeft, alpha = fade)
+        }
         return
     }
+    val boundary = sungChars.toInt()
     val visualLine = layout.getLineForOffset(boundary)
     val box = layout.getBoundingBox(boundary)
     // 已唱满的可视行整段盖掉 (长行换行与双语的第二段都靠这个边界分开)
@@ -648,9 +641,6 @@ private fun DrawScope.drawLrcLine(
         drawText(layout, sungColor, topLeft, alpha = fade)
     }
 }
-
-/** 当前行/当前字的放大增量: 两者用同一倍率, 逐字与非逐字的观感才一致。 */
-private const val WORD_SCALE_DELTA = 0.05f
 
 /**
  * 歌词运行态 (复刻原版 LrcView 的可变字段): 滚动/高亮/动画。滚动与颜色进度只被绘制、手势与
@@ -732,10 +722,10 @@ private fun measureLrcLines(
     availableW: Int,
     measurer: TextMeasurer,
     marginPx: Float,
-    style: TextStyle,
 ): List<MeasuredLrcLine> {
     val src = data?.lines
     if (availableW <= 0 || src.isNullOrEmpty()) return emptyList()
+    val style = TextStyle(fontSize = FONT_SIZE, textAlign = TextAlign.Center)
     var offset = 0f
     return src.mapIndexed { i, line ->
         val layout = measurer.measure(
@@ -747,6 +737,7 @@ private fun measureLrcLines(
             layout.size.height + marginPx.roundToInt(),
             offset,
             line.fillSamples(src.getOrNull(i + 1)?.timeMs),
+            line.bodyChars(),
         ).also { offset += it.height }
     }
 }
