@@ -40,6 +40,7 @@ import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.book.changecover.CoverStorageServiceProviders
 import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformServiceProviders
 import kotlinx.coroutines.launch
@@ -97,9 +98,10 @@ import org.jetbrains.compose.resources.stringResource
  * @param onConfirm 用户点击确定按钮, 参数为更新后的 group (新增态为 new BookGroup())
  * @param onDismiss 用户取消 (返回按钮 / 取消按钮)
  * @param onDelete 可选, 删除回调; 编辑态且 groupId 合法时显示删除按钮, 二次确认后调用
- * @param coverSlot 可选, 分组封面渲染槽 (path 可空; 缺省取 [LocalGroupCoverSlot] 书架同源实现,
- *   即 3:4 NOVEL 比例 + 默认封面链)
- * @param onPickCover 可选, 选图回调 (平台自行弹选择器+落盘, 返回封面路径, 取消返回 null)
+ * @param coverSlot 可选, 分组封面渲染槽 (入参为分组记录里的封面引用, 可空; 缺省取
+ *   [LocalGroupCoverSlot] 书架同源实现, 即 3:4 NOVEL 比例 + 默认封面链; 自行解析相对引用
+ *   可参照 [io.legado.app.help.config.resolveImagePath])
+ * @param onPickCover 可选, 选图回调 (平台自行弹选择器 + 落盘, 返回图集内部相对引用, 取消返回 null)
  */
 @Composable
 fun GroupEditDialog(
@@ -124,11 +126,22 @@ fun GroupEditDialog(
     }
     var enableRefresh by remember(group) { mutableStateOf(editingGroup.enableRefresh) }
     var showDeleteDialog by remember { mutableStateOf(false) }
-    // 选图缺省: 平台文件选择器 (对照 BookInfoEditRoute.onSelectCover 同款; 阻塞式须切 IO)
+    // 选图缺省: 平台文件选择器 + 封面图集持久化 (对照 BookInfoEditRoute.onSelectCover 同款;
+    // 阻塞式须切 IO)。返回图集内部相对引用; 用户取消与持久化失败均返回 null (失败已提示)
     val pickCover = onPickCover ?: remember {
         suspend {
-            withContext(IoDispatcher) {
+            val picked = withContext(IoDispatcher) {
                 PlatformServiceProviders.get().files.pickFile(FileFilter.Images)
+            }
+            picked?.let { path ->
+                withContext(IoDispatcher) {
+                    CoverStorageServiceProviders.get().persistCover(
+                        path,
+                        path.substringAfterLast('/').substringAfterLast('\\'),
+                    )
+                }.also { ref ->
+                    if (ref == null) Toasters.get().toast("保存封面失败")
+                }
             }
         }
     }

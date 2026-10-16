@@ -76,8 +76,6 @@ import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
 import io.legado.app.ui.book.audio.SharedAudioPlayPlatformProvider
-import io.legado.app.ui.book.changecover.AndroidCoverStorageService
-import io.legado.app.ui.book.changecover.CoverStorageServiceProviders
 import io.legado.app.ui.book.info.BookInfoBlurCoverBg
 import io.legado.app.ui.book.info.BookInfoIntroImage
 import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
@@ -290,8 +288,6 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     // FilePickerService 桥接: launcher 须在 Activity STARTED 前注册, 交给 AndroidFilePickerService 阻塞等待回调
     private val openDocumentPicker =
         registerForActivityResult(ActivityResultContracts.OpenDocument())
-    private val openDocumentsPicker =
-        registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments())
     private val createDocumentPicker =
         registerForActivityResult(ActivityResultContracts.CreateDocument("*/*"))
 
@@ -588,12 +584,10 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         capabilities = AndroidPlatformCapabilities(this)
         services = AndroidPlatformServices(
             this, capabilities,
-            openDocumentPicker, openDocumentsPicker, createDocumentPicker, openDocumentTreePicker,
+            openDocumentPicker, createDocumentPicker, openDocumentTreePicker,
         )
         PlatformCapabilityProviders.register(capabilities)
         PlatformServiceProviders.register(services)
-        // 封面选图持久化 (对齐原版 externalFiles/covers/<md5>.<ext>)
-        CoverStorageServiceProviders.register(AndroidCoverStorageService())
         readerPlatform = AndroidReaderPlatformProvider(this)
         ReaderPlatformProviders.register(readerPlatform)
         AudioPlayPlatformProviders.register(SharedAudioPlayPlatformProvider)

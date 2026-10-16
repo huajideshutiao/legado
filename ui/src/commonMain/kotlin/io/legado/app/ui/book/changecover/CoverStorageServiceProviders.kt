@@ -1,27 +1,29 @@
 package io.legado.app.ui.book.changecover
 
+import io.legado.app.ui.root.PlatformServiceProviders
 import kotlin.concurrent.Volatile
 
 /**
  * [CoverStorageService] 注入容器 (shared commonMain), 模式同 [ChangeCoverPlatformProviders]。
  *
- * 与 ChangeCoverPlatform 不同, CoverStorageService 无 commonMain 默认实现可兜底
- * (持久目录是平台专属概念: Android externalFilesDir / 桌面应用数据根目录),
- * 故默认实现直接返回 null, 宿主未注册时调用方回退使用 pickFile 原路径
- * (iOS/ohos 等未注册平台保持引入本桥前的行为)。
+ * 默认实现即四端统一链路 ([CoverPersistenceShared]): 选中图复制进图集
+ * `customImg/covers/<字节数>.<ext>` 并按封面比例烘焙产物, 返回图集内部相对引用;
+ * 复制成功后清掉平台物化的临时副本 (各端只删自己物化的副本, 见
+ * [io.legado.app.ui.root.FilePickerService.discardPickedFile])。
+ * 宿主可注册实现覆盖落点; 未注册不会退化成"把选图临时副本当封面存库"。
  */
 object CoverStorageServiceProviders {
 
     @Volatile
     private var impl: CoverStorageService? = null
 
-    /** 宿主启动早期注册 (app 端 MainActivity / 桌面端 Main.kt)。 */
+    /** 宿主启动早期可注册实现覆盖默认落点。 */
     fun register(impl: CoverStorageService) {
         this.impl = impl
     }
 
-    /** 获取已注册实现, 未注册返回 [DefaultCoverStorageService] (返回 null, 不持久化)。 */
-    fun get(): CoverStorageService = impl ?: DefaultCoverStorageService
+    /** 获取实现, 未注册返回四端统一默认实现。 */
+    fun get(): CoverStorageService = impl ?: SharedCoverStorageService
 
     /** 仅测试场景: 清空注册 (生产代码勿调用)。 */
     fun reset() {
@@ -29,7 +31,12 @@ object CoverStorageServiceProviders {
     }
 }
 
-/** 默认实现: 不持久化, 返回 null (iOS/ohos 等未注册平台由调用方回退原路径)。 */
-private object DefaultCoverStorageService : CoverStorageService {
-    override fun persistCover(srcPath: String, displayName: String): String? = null
+/** 默认实现: 图集复制 + 平台物化副本清理 (四端同一份)。 */
+private object SharedCoverStorageService : CoverStorageService {
+    override fun persistCover(srcPath: String, displayName: String): String? {
+        val ref = CoverPersistenceShared.persistCover(srcPath, displayName) ?: return null
+        // 选中件已复制进图集, 平台物化的临时副本不留在缓存里
+        PlatformServiceProviders.getOrNull()?.files?.discardPickedFile(srcPath)
+        return ref
+    }
 }

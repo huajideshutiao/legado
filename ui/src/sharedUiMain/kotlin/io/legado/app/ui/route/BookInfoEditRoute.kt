@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.toast.Toasters
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.ui.book.changecover.CoverStorageServiceProviders
 import io.legado.app.ui.book.info.edit.BookInfoEditScreen
@@ -77,22 +78,24 @@ fun BookInfoEditRoute(
 
         // 本地选图: 平台文件选择器 (对照 app 端 HandleFileContract)
         // 选择器实现是阻塞式的 (Android 端 runBlocking 等 SAF 回调), 必须切到 IO 再调
-        // 选中后先经 CoverStorageService 持久化到图集 covers 目录 (内容字节数特征值命名),
-        // 持久化失败回退 pickFile 物化临时路径
+        // 选中后经封面图集持久化, 存图集内部相对引用 (跨机/跨端恢复后仍有效);
+        // 持久化失败如实提示并保持原封面, 不把选图临时副本写进封面键
         override fun onSelectCover() {
             scope.launch {
-                val path = withContext(IoDispatcher) {
+                val picked = withContext(IoDispatcher) {
                     PlatformServiceProviders.get().files.pickFile(FileFilter.Images)
-                        ?.let { picked ->
-                            val displayName =
-                                picked.substringAfterLast('/').substringAfterLast('\\')
-                            CoverStorageServiceProviders.get()
-                                .persistCover(picked, displayName) ?: picked
-                        }
+                } ?: return@launch
+                val ref = withContext(IoDispatcher) {
+                    CoverStorageServiceProviders.get().persistCover(
+                        picked,
+                        picked.substringAfterLast('/').substringAfterLast('\\'),
+                    )
                 }
-                if (path != null) {
-                    screenModel.dispatch(BookInfoEditUiEvent.CoverChangeTo(path))
+                if (ref == null) {
+                    Toasters.get().toast("保存封面失败")
+                    return@launch
                 }
+                screenModel.dispatch(BookInfoEditUiEvent.CoverChangeTo(ref))
             }
         }
 
