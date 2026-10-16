@@ -67,6 +67,18 @@ const val PROPERTY_ID_BASE = 1700
 /** 带参分派起始 (属性写/变量方法/cookie/cache, 经 [NativeJsPropertyBridge.dispatchWithArgs])。 */
 const val PROPERTY_WRITE_BASE = 2200
 
+/**
+ * KSP 生成表 (NativeGeneratedDispatch) 的 methodId 基址, 与
+ * JsApiProcessor.NATIVE_METHOD_ID_BASE 保持一致 (两边无编译期共享, 改一侧必须同步另一侧)。
+ *
+ * 远离手写段 (1-1699) 与属性桥 (1700-3299), 用数字距离防撞: 手写新增方法不会
+ * 无意落进生成表区间。
+ */
+const val GENERATED_ID_BASE = 5000
+
+/** 生成表段宽度 (5000-5999): 够 JsExtensionsCommon 等目标类全量方法 + 后续扩容。 */
+const val GENERATED_ID_SPAN = 1000
+
 object NativeJsPropertyBridge {
 
     /**
@@ -1122,14 +1134,14 @@ function __createElementObj(handle) {
      * handle 永不回收 (releaseNewHandles 按快照回收, scope.close 也只清理登记过的),
      * 会在逐项循环/多次请求里持续膨胀; 登记后由 releaseNewHandles / scope close 统一回收。
      */
-    private fun registerScopedHandle(value: Any): Long {
+    fun registerScopedHandle(value: Any): Long {
         val handle = NativeJsExtensionsBridge.registerObject(value)
         NativeJsEngine.currentScope()?.handles?.add(handle)
         return handle
     }
 
     /** 节点列表 → JS 数组 (handle 数字), JS 侧 __createElementObj 逐个包装。 */
-    private fun nodeListToJsHandleArray(ctx: CPointer<JSContext>, nodes: List<Node>): CValue<JSValue> {
+    fun nodeListToJsHandleArray(ctx: CPointer<JSContext>, nodes: List<Node>): CValue<JSValue> {
         val arr = JS_NewArray(ctx)
         nodes.forEachIndexed { i, node ->
             JS_SetPropertyUint32(ctx, arr, i.toUInt(), qjs_NewFloat64(ctx, registerScopedHandle(node).toDouble()))

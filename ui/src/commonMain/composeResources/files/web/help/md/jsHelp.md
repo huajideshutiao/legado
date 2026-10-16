@@ -101,6 +101,22 @@ java.getElement(ruleStr: String)
 java.getElements(ruleStr: String)
 ```
 
+> 返回的元素对象四端通用，可直接调用 `text()` `ownText()` `html()` `outerHtml()`
+> `attr(name)` `hasAttr(name)` `absUrl(name)` `select(css)` `children()` `parent()`
+> `tagName()` `id()` `className()` `value()`（iOS/鸿蒙由原生桥实现，非 Java 反射）
+
+* 设置基准链接 / 重定向链接 / 拆分规则 / 释放作用域
+
+```js
+java.setBaseUrl(baseUrl: String?)
+java.setRedirectUrl(url: String)
+java.splitSourceRule(ruleStr: String?, allInOne: Boolean = false)
+java.close()
+```
+
+> `setRedirectUrl` 四端返回重定向后的链接字符串；`splitSourceRule` 返回规则对象数组，
+> 取规则文本用 `.rule`（iOS/鸿蒙不暴露 `SourceRule` 其余 internal 字段）
+
 * 重新获取目录url
 
 > 本质为重新获取书籍详情
