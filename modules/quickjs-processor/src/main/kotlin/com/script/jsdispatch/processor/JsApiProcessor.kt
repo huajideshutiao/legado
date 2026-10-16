@@ -70,7 +70,7 @@ class JsApiProcessor(
         // 名单与 NativeJsExtensionsBridge 手写分支同步维护。
         val NATIVE_EXCLUDED_METHODS: Set<String> = """
             ajax,ajaxAll,base64Decode,base64DecodeToByteArray,base64Encode,bytesToStr,cacheFile,
-            connect,createAsymmetricCrypto,createSign,createSymmetricCrypto,digestBase64Str,digestHex,
+            connect,createAsymmetricCrypto,createSign,createSymmetricCrypto,decompressString,digestBase64Str,digestHex,
             downloadFile,encodeURI,equals,evalJS,get,get7zStringContent,getCookie,getHeaderMap,
             getRarStringContent,getSource,getString,getStringList,getZipStringContent,hashCode,head,
             HMacBase64,HMacHex,log,login,loginUi,logType,md5Encode,md5Encode16,openUrl,post,put,

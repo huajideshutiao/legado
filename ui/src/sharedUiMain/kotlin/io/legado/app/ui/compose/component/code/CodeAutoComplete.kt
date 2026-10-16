@@ -79,6 +79,9 @@ internal val CodeCompletions: Map<String, List<String>?> = mapOf(
         "getRarStringContent()",
         "get7zByteArrayContent()",
         "get7zStringContent()",
+        // 内存单段解压 (gzip/zlib/裸 deflate)
+        "decompressBytes()",
+        "decompressString()",
         // Font 反混淆
         "queryTTF()",
         "replaceFont()",

@@ -9,6 +9,7 @@ import io.legado.app.constant.dateFormat
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.archive.ArchiveProviders
+import io.legado.app.help.compress.StreamDecompressor
 import io.legado.app.help.crypto.AsymmetricCrypto
 import io.legado.app.help.crypto.Sign
 import io.legado.app.help.crypto.SymmetricCrypto
@@ -877,15 +878,7 @@ interface JsExtensionsCommon {
      * 为修复版, 保持现状。
      */
     fun getZipByteArrayContent(url: String, path: String): ByteArray? {
-        val bytes = if (url.isAbsUrl()) {
-            AnalyzeUrlFactories.create(
-                url, source = getSource(),
-                coroutineContext = jsContext.coroutineContext ?: EmptyCoroutineContext
-            ).getByteArray()
-        } else {
-            url.hexToByteArray()
-        }
-        return ArchiveProviders.get().getByteArrayContent(bytes, path)
+        return ArchiveProviders.get().getByteArrayContent(resolveBytes(url), path)
     }
 
     /**
@@ -895,15 +888,7 @@ interface JsExtensionsCommon {
      * @return Rar指定文件的数据
      */
     fun getRarByteArrayContent(url: String, path: String): ByteArray? {
-        val bytes = if (url.isAbsUrl()) {
-            AnalyzeUrlFactories.create(
-                url, source = getSource(),
-                coroutineContext = jsContext.coroutineContext ?: EmptyCoroutineContext
-            ).getByteArray()
-        } else {
-            url.hexToByteArray()
-        }
-        return ArchiveProviders.get().getByteArrayContent(bytes, path)
+        return ArchiveProviders.get().getByteArrayContent(resolveBytes(url), path)
     }
 
     /**
@@ -913,15 +898,65 @@ interface JsExtensionsCommon {
      * @return 7zip指定文件的数据
      */
     fun get7zByteArrayContent(url: String, path: String): ByteArray? {
-        val bytes = if (url.isAbsUrl()) {
+        return ArchiveProviders.get().getByteArrayContent(resolveBytes(url), path)
+    }
+
+    //****************** 内存单段解压 (gzip/zlib/裸 deflate, 全端同一实现) ******************//
+
+    /**
+     * 解压内存中的一段压缩数据 (压缩包解归档见 [unArchiveFile] / [getZipByteArrayContent])。
+     *
+     * @param data 压缩数据: 网络链接 / 十六进制字符串 / 字节数组; 为空时直接返回 null
+     * @param format gzip / zlib / deflate(裸流, 无 zlib 头) / auto(按魔数判断)
+     * @return 解压后的字节; 数据损坏、截断或与 format 不符时返回 null
+     * @throws IllegalArgumentException data 不是链接/十六进制字符串/字节数组, 或 format 不在上述取值内
+     */
+    fun decompressBytes(data: Any?, format: String): ByteArray? {
+        if (data == null) return null
+        return StreamDecompressor.decompress(resolveBytes(data), format)
+    }
+
+    /**
+     * 解压内存中的一段压缩数据并转为字符串, 编码按内容自动检测。
+     *
+     * @param data 压缩数据: 网络链接 / 十六进制字符串 / 字节数组
+     * @param format gzip / zlib / deflate / auto
+     * @return 解压并解码后的字符串; 解压失败返回空串
+     */
+    fun decompressString(data: Any?, format: String): String {
+        return decompressString(data, format, "")
+    }
+
+    /**
+     * 解压内存中的一段压缩数据并转为字符串。
+     *
+     * @param charsetName 指定编码; 空串时按内容自动检测
+     */
+    fun decompressString(data: Any?, format: String, charsetName: String): String {
+        val bytes = decompressBytes(data, format) ?: return ""
+        val charset = charsetName.ifBlank { EncodingDetect.getEncode(bytes) }
+        return JsExtensionsPlatform.bytesToStr(bytes, charset)
+    }
+
+    /**
+     * 入参归一为字节: 链接走网络下载, 十六进制字符串解码, 字节数组原样 (JS 数组经桥接为 List)。
+     */
+    private fun resolveBytes(data: Any): ByteArray = when (data) {
+        is ByteArray -> data
+        is List<*> -> ByteArray(data.size) { (data[it] as? Number)?.toByte() ?: 0 }
+        is String -> if (data.isAbsUrl()) {
             AnalyzeUrlFactories.create(
-                url, source = getSource(),
+                data,
+                source = getSource(),
                 coroutineContext = jsContext.coroutineContext ?: EmptyCoroutineContext
             ).getByteArray()
         } else {
-            url.hexToByteArray()
+            data.hexToByteArray()
         }
-        return ArchiveProviders.get().getByteArrayContent(bytes, path)
+
+        else -> throw IllegalArgumentException(
+            "data 只支持链接/十六进制字符串/字节数组, 收到 ${data::class.simpleName}"
+        )
     }
 
     //****************** P1: 浏览器验证流程 (从 app JsExtensions 下沉) ******************

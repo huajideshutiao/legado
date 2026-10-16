@@ -114,7 +114,7 @@ import kotlinx.atomicfu.locks.synchronized
  * - 300-399: 网络族 (ajax/ajaxAll/connect/webView 系/getCookie/getWebViewUA; 309-311 java get/head/post)
  * - 400-499: UI/杂项 (refreshUi/log/logType/toast/longToast/androidId/openUrl/startBrowser 系/getVerificationCode/copy)
  * - 500-599: 字体族 (queryTTF/queryBase64TTF/replaceFont)
- * - 600-699: 文件/压缩族 (getFile/readFile/readTxtFile/deleteFile/解压全族/downloadFile/cacheFile/importScript)
+ * - 600-699: 文件/压缩族 (getFile/readFile/readTxtFile/deleteFile/解压全族/内存解压(decompressString)/downloadFile/cacheFile/importScript)
  * - 700-799: Connection.Response 对象方法 (java.get/head/post 返回值: body/statusCode/url/header/cookie 等;
  *   规整方法已由 KSP 生成表接管, 手写仅剩 704 url()/712 method() 特例)
  * - 1300-1399: QueryTTF 对象方法 (规整函数手写闭包与生成表并存: 生成注入点在 JS 工厂
@@ -718,6 +718,17 @@ object NativeJsExtensionsBridge {
                 } else obj.get7zStringContent(args.getString(0), args.getString(1))
                 stringToJsValue(ctx, text)
             }
+            obj is JsExtensionsCommon && methodId == 613 -> {
+                // decompressString(data, format[, charsetName]) — charsetName 缺省/空串时按内容自动检测编码
+                stringToJsValue(
+                    ctx,
+                    obj.decompressString(
+                        args.getOrNull(0),
+                        args.getString(1),
+                        args.getOrNull(2) as? String ?: ""
+                    )
+                )
+            }
             obj is JsExtensionsCommon && methodId == 617 -> {
                 // cacheFile(urlStr[, saveTime])
                 val saveTime = (args.getOrNull(1) as? Number)?.toInt()
@@ -935,6 +946,7 @@ function __createJavaObj(handle) {
     obj.getZipStringContent = function(url, path, charsetName) { return __nativeDispatch(handle, 610, [url, path, charsetName]); };
     obj.getRarStringContent = function(url, path, charsetName) { return __nativeDispatch(handle, 611, [url, path, charsetName]); };
     obj.get7zStringContent = function(url, path, charsetName) { return __nativeDispatch(handle, 612, [url, path, charsetName]); };
+    obj.decompressString = function(data, format, charsetName) { return __nativeDispatch(handle, 613, [data, format, charsetName]); };
     obj.downloadFile = function(a, b) { return __nativeDispatch(handle, 616, [a, b]); };
     obj.cacheFile = function(urlStr, saveTime) { return __nativeDispatch(handle, 617, [urlStr, saveTime]); };
     // @@methods:__createJavaObj@@

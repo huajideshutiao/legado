@@ -231,6 +231,18 @@ java.getZipByteArrayContent(url: String, path: String): ByteArray?
 java.getRarByteArrayContent(url: String, path: String): ByteArray?
 java.get7zByteArrayContent(url: String, path: String): ByteArray?
 ```
+* 解压内存中的一段压缩数据(不是压缩包；接口响应体、字段值这类单段压缩数据用它)
+> data支持: 网络链接 / 十六进制字符串 / 字节数组；format支持: `gzip` / `zlib` / `deflate`(裸流，无zlib头) / `auto`(按魔数判断)
+> 数据损坏、截断或与format不符时返回null/空串；format取值非法时抛异常
+> 遇 base64 里包着裸 deflate 的数据(过去用 `Packages.java.util.zip.Inflater(true)` 手写解压的那类)，一行即可，且四端可用
+```js
+java.decompressBytes(data: Any?, format: String): ByteArray?
+java.decompressString(data: Any?, format: String): String
+java.decompressString(data: Any?, format: String, charsetName: String): String
+
+// base64 包裹的裸 deflate → 文本
+var output = java.decompressString(java.base64DecodeToByteArray(base64String), "deflate")
+```
 * URI编码
 ```js
 java.encodeURI(str: String) //默认enc="UTF-8"
