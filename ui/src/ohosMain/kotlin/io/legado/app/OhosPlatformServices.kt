@@ -40,6 +40,7 @@ import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
 import io.legado.app.ui.root.imageExtension
 import io.legado.app.ui.root.WindowController
+import io.legado.app.ui.root.SavedRef
 import io.legado.app.ui.video.VideoDirect
 import io.legado.app.utils.File
 import io.legado.app.utils.KS_JSON
@@ -400,26 +401,21 @@ private object OhosFilePickerService : FilePickerService {
      * 后续访问才需激活。目录按 [DirUsage.Export] 登记: 为导出一个 json 选的目录只放行导出写入,
      * 不放行书籍文件访问 (与书籍保存位置分开)。
      *
-     * @param defaultDir 调用方指定的落点; 传了就不再询问用户
      * @return 用户取消选目录返回 null (调用方静默)
      */
-    override fun saveText(suggestedName: String, text: String, defaultDir: String?): String? {
-        val dir = defaultDir ?: pickDirectory(DirUsage.Export) ?: return null
+    override fun saveText(suggestedName: String, text: String): SavedRef? {
+        val dir = pickDirectory(DirUsage.Export) ?: return null
         val path = "$dir/$suggestedName"
         BackupFileOps.writeText(path, text)
-        return path
+        return SavedRef(path)
     }
 
     /** 同上, 内容按整份复制到选定目录。 */
-    override fun saveFromFile(
-        srcPath: String,
-        suggestedName: String,
-        defaultDir: String?,
-    ): String? {
-        val dir = defaultDir ?: pickDirectory(DirUsage.Export) ?: return null
+    override fun saveFromFile(srcPath: String, suggestedName: String): SavedRef? {
+        val dir = pickDirectory(DirUsage.Export) ?: return null
         val path = "$dir/$suggestedName"
         BackupFileOps.copyFile(srcPath, path)
-        return path
+        return SavedRef(path)
     }
 
     /**

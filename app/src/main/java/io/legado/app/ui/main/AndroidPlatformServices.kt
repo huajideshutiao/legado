@@ -53,6 +53,7 @@ import io.legado.app.ui.root.VideoPlayTarget
 import io.legado.app.ui.root.WindowController
 import io.legado.app.ui.root.importImageSetFile
 import io.legado.app.ui.root.navigateToRoute
+import io.legado.app.ui.root.SavedRef
 import io.legado.app.ui.video.VideoDirect
 import io.legado.app.utils.ActivityResultLauncherAwait
 import io.legado.app.utils.FileDoc
@@ -140,7 +141,7 @@ private class AndroidFilePickerService(
      * 弹 SAF 单文件另存为并写入文本。引用是 `content://` 文档地址 —— 只能经文档写入通道写,
      * 拿它当文件路径写会失败。
      */
-    override fun saveText(suggestedName: String, text: String, defaultDir: String?): String? =
+    override fun saveText(suggestedName: String, text: String): SavedRef? =
         runBlocking {
             // CreateDocument 由系统决定保存位置, defaultDir 不支持指定
             val uri = withContext(Dispatchers.Main) { createDocumentPicker.launch(suggestedName) }
@@ -151,22 +152,21 @@ private class AndroidFilePickerService(
                     App.instance, uri, suggestedName, text.encodeToByteArray()
                 )
             ) { "写入文件失败: $suggestedName" }
-            uri.toString()
+            SavedRef(uri.toString())
         }
 
     /** 同上, 内容按流复制 (大体积内容不整份读入内存)。 */
     override fun saveFromFile(
         srcPath: String,
-        suggestedName: String,
-        defaultDir: String?
-    ): String? = runBlocking {
+        suggestedName: String
+    ): SavedRef? = runBlocking {
         val uri = withContext(Dispatchers.Main) { createDocumentPicker.launch(suggestedName) }
             ?: return@runBlocking null
         val written = File(srcPath).inputStream().use {
             copyToDocumentAtomically(App.instance, uri, suggestedName, it)
         }
         check(written) { "写入文件失败: $suggestedName" }
-        uri.toString()
+        SavedRef(uri.toString())
     }
 
     // 图集导入 + 按真实屏幕尺寸烘焙清晰产物 (启动图与主题背景图共用)。

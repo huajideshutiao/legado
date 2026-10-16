@@ -38,6 +38,7 @@ import io.legado.app.ui.root.ShareService
 import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
 import io.legado.app.ui.root.WindowController
+import io.legado.app.ui.root.SavedRef
 import io.legado.app.utils.IosSecurityScopedStorage
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.runBlocking
@@ -128,16 +129,12 @@ private object IosFilePickerService : FilePickerService {
      * iOS 没有"先选路径后写入"的系统面板: 先把内容写进沙盒临时件, 再弹系统"文件"面板让用户挑
      * 目标位置 (系统把临时件拷贝过去), 返回目标地址。
      */
-    override fun saveText(suggestedName: String, text: String, defaultDir: String?): String? =
-        runBlocking { exportToUser(suggestedName) { it.writeText(text) } }
+    override fun saveText(suggestedName: String, text: String): SavedRef? =
+        runBlocking { exportToUser(suggestedName) { it.writeText(text) }?.let(::SavedRef) }
 
     /** 同上, 内容按整份复制到临时件。 */
-    override fun saveFromFile(
-        srcPath: String,
-        suggestedName: String,
-        defaultDir: String?,
-    ): String? = runBlocking {
-        exportToUser(suggestedName) { tmp -> File(srcPath).copyTo(tmp, overwrite = true) }
+    override fun saveFromFile(srcPath: String, suggestedName: String): SavedRef? = runBlocking {
+        exportToUser(suggestedName) { tmp -> File(srcPath).copyTo(tmp, overwrite = true) }?.let(::SavedRef)
     }
 
     override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? {

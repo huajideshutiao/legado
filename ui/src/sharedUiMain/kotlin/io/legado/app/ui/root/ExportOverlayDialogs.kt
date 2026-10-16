@@ -267,7 +267,7 @@ fun ExportDispatchDialog(
                         Coroutine.async {
                             PlatformServiceProviders.get().files.saveText(fileName, content)
                         }.onSuccess { saved ->
-                            saved?.let(::pushExportSuccess)
+                            saved?.let { pushExportSuccess(it.value) }
                         }.onError { error ->
                             AppLog.put("导出失败\n${error.message}", error, true)
                         }

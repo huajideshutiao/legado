@@ -30,6 +30,7 @@ import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
 import io.legado.app.ui.root.WindowController
 import io.legado.app.ui.root.importImageSetFile
+import io.legado.app.ui.root.SavedRef
 import io.legado.app.utils.browseUrl
 import io.legado.desktop.help.DesktopCrashLogDirs
 import io.legado.desktop.help.DesktopKeepAwake
@@ -79,28 +80,24 @@ private class DesktopFilePickerService : FilePickerService {
     override fun pickFile(filter: FileFilter): String? =
         FileDialogs.pickOpenFile(extensions = filter.extensions)?.absolutePath
 
-    override fun saveText(suggestedName: String, text: String, defaultDir: String?): String? {
-        val dest = pickSaveFile(suggestedName, defaultDir) ?: return null
+    override fun saveText(suggestedName: String, text: String): SavedRef? {
+        val dest = pickSaveFile(suggestedName) ?: return null
         // 整份就位: 覆盖写被打断会在用户目录留下半截文件
         check(writeBytesAtomically(dest, text.encodeToByteArray())) { "写入文件失败: $dest" }
-        return dest
+        return SavedRef(dest)
     }
 
     /** 同上, 内容按整份复制到选定位置。 */
-    override fun saveFromFile(
-        srcPath: String,
-        suggestedName: String,
-        defaultDir: String?,
-    ): String? {
-        val dest = pickSaveFile(suggestedName, defaultDir) ?: return null
+    override fun saveFromFile(srcPath: String, suggestedName: String): SavedRef? {
+        val dest = pickSaveFile(suggestedName) ?: return null
         BackupFileOps.copyFile(srcPath, dest)
-        return dest
+        return SavedRef(dest)
     }
 
-    private fun pickSaveFile(suggestedName: String, defaultDir: String?): String? =
+    private fun pickSaveFile(suggestedName: String): String? =
         FileDialogs.pickSaveFile(
             defaultName = suggestedName,
-            initialDir = (defaultDir ?: userExportDir())?.let(::File)?.takeIf { it.isDirectory },
+            initialDir = userExportDir()?.let(::File)?.takeIf { it.isDirectory },
         )?.absolutePath
 
     override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? {

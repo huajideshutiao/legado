@@ -84,7 +84,7 @@ import sh.calvin.reorderable.ReorderableCollectionItemScope
  * - 图标走 [rememberPainter](key), app 端命中 R.drawable, desktop 未注册返回 Help 占位
  * - 删除确认用 [AppAlertDialog] (替代 app 端 alert 扩展, commonMain 无 android.app.AlertDialog 依赖)
  *
- * @param onExport 选中项导出回调, 宿主端负责文件保存 (app 走 HandleFileContract, desktop 走文件对话框)
+ * @param onExport 选中项导出回调, 宿主端交共享导出分发框 (上传 URL / 保存到文件)
  */
 @Composable
 fun ReplaceRuleListScreen(
