@@ -59,10 +59,20 @@ interface AudioPlaySessionHost {
     /**
      * 会话终结时的平台收尾: 停掉平台侧播放、落播控态、释放音频会话等会话级资源。
      *
-     * 宿主级资源 (引擎 / 媒体会话 / 通知) 不在本回调内释放: 宿主寿命长于会话 (Android 的
-     * 服务实例可被平台复用、其余三端是进程级单例), 提前释放会让会话重启后落在已释放对象上。
+     * 宿主级资源 (引擎 / 媒体会话 / 通知) 的释放时机按各端宿主寿命决定: Android 的服务实例
+     * 可被平台复用 (寿命长于会话), 释放延后到宿主销毁; 其余三端的会话就是最长寿命边界,
+     * 在本回调内释放。
      */
     fun onSessionEnd() {}
+
+    /**
+     * 起播失败时的宿主侧收尾: 释放"这次起播"拿到的独占资源 (唤醒锁、音频焦点、音频会话)
+     * 并请求宿主退出, 不撤会话级资源。
+     *
+     * 不撤会话级资源的原因: 起播失败时会话仍存活 (宿主可能因平台取消停止而复用同一实例),
+     * 撤了资源就没有补挂点。Android 的服务据此 stopSelf; 其余端没有可停的宿主, 只释放独占资源。
+     */
+    fun onHostStopRequest() {}
 
     /** 引擎就绪 (鸿蒙据此撤流播看门狗)。 */
     fun onPlaybackReady() {}
@@ -238,7 +248,7 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
             host.onSessionSync()
         }.onFailure {
             AppLog.put("恢复播放出错\n${it.message}", it)
-            endSession()
+            abortPlayback()
         }
     }
 
@@ -355,17 +365,33 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
     }
 
     /**
+     * 起播/恢复失败的收尾: 清掉本次装载意图、停播放并请求宿主退出, 会话保持存活。
+     *
+     * 对照原版 `play()` / `resume()` 的 `onError → stopSelf()`。直链与暂停态必须一并复位:
+     * 留着直链会让恢复命令走“引擎上已有媒体项”的短路分支, 落在没有本次媒体项的引擎上,
+     * 状态被置成在播却无声。会话级资源与宿主同寿命, 不在这里撤 —— 撤了没有补挂点。
+     */
+    internal fun abortPlayback() {
+        url = ""
+        isPaused = true
+        hasRefreshedOnPlayError = false
+        ReadTimeRecorder.end(ReadTimeRecorder.Source.AUDIO)
+        stopPlay()
+        host.onHostStopRequest()
+    }
+
+    /**
      * [triggerPlay] 的异常收尾。
      *
      * 直链解析要走书源 `<js>` 求值与网络, 必抛; 对照 app 原版 `play().onError → stopSelf()`,
-     * 起播链路失败即终结会话 (通知/播控卡片一并撤掉), 下次 play 重建。
+     * 起播链路失败只停播放并请求宿主停止, 会话不终结。
      */
     private suspend fun runTriggerPlay(playNew: Boolean) {
         runCatching { triggerPlay(playNew) }.onFailure {
             if (it is CancellationException) throw it
             AppLog.put("播放出错\n${it.message}", it)
             host.toast("$url ${it.message}")
-            endSession()
+            abortPlayback()
         }
     }
 

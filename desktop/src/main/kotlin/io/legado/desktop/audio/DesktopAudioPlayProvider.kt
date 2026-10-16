@@ -79,6 +79,11 @@ class DesktopAudioPlayProvider : NowPlayingSessionHost() {
         player.stop()
         SystemMediaControl.releaseAudio()
     }
+
+    /** 起播失败: 释放这次起播占用的系统音频会话; 桌面没有可停的宿主。 */
+    override fun onHostStopRequest() {
+        SystemMediaControl.releaseAudio()
+    }
 }
 
 /**

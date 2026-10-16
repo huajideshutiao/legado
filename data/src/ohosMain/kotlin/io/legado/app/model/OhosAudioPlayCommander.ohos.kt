@@ -175,7 +175,7 @@ class OhosAudioPlayCommander : NowPlayingSessionHost() {
             } catch (e: Exception) {
                 AppLog.put("播放出错\n${e.message}", e)
                 toast("$mediaUrl ${e.message}")
-                session.endSession()
+                session.abortPlayback()
             }
         }
     }
@@ -187,6 +187,11 @@ class OhosAudioPlayCommander : NowPlayingSessionHost() {
         avController.release()
         deleteCacheFile()
         clearStreamingState()
+        SystemMediaControl.releaseAudio()
+    }
+
+    /** 起播失败: 释放这次起播占用的系统音频会话; 鸿蒙没有可停的宿主 (缓存等会话级资源不在此撤)。 */
+    override fun onHostStopRequest() {
         SystemMediaControl.releaseAudio()
     }
 

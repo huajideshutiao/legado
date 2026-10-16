@@ -317,11 +317,15 @@ class AudioPlayService : BaseService(), AudioPlaySessionHost {
         lrcWatchJob = null
         audioFocus.abandon()
         // 先上报最终播放态再收尾: 位置与媒体会话都还在, 置 STOPPED 才落得下去
-        // (引擎位置已由 AudioPlaySession.endSession 先存)。通知刷新只对"会话内部终结而
-        // 宿主仍存活"这条路径有效: 从 onDestroy 进来时作用域已取消, 它不会执行
+        // (引擎位置已由 AudioPlaySession.endSession 先存)
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_STOPPED)
-        upAudioPlayNotification()
-        // 会话内部终结 (起播链路失败) 也要停服务; 本就从 onDestroy 进来时 stopSelf 是空操作
+        stopSelf()
+    }
+
+    /** 起播失败: 释放这次起播拿到的唤醒锁与音频焦点并停掉服务; 会话级资源随宿主销毁收尾。 */
+    override fun onHostStopRequest() {
+        playbackLock.release()
+        audioFocus.abandon()
         stopSelf()
     }
 
