@@ -8,7 +8,7 @@
 |构造函数|函数|对象|简要说明|
 |------|-----|------|------|
 |JavaImporter|importClass| |导入Java类到JavaScript。顶层`importPackage`为空实现（QuickJS无法枚举Java包），请改用`new JavaImporter(包)`或全限定类名；ios/ohos 无 Java 反射，不可用|
-|||Packages java javax android org com io cn|按需懒加载的Java包代理，如`Packages.java.lang.String`|
+|||Packages java javax android org com|按需懒加载的Java包代理，如`Packages.java.lang.String`；无 `io`/`cn` 顶级别名，需写 `Packages.io.xxx`|
 |JavaAdapter|||用JS对象实现Java接口|
 
 > 注意`java`变量指向已经被阅读修改，如果想要调用`java.*`下的包，请使用`Packages.java.*`
@@ -21,7 +21,7 @@
 
 > 不同的书源规则中支持的调用的Java类和方法可能有所不同
 
-> 规则JS每次执行都在独立子作用域中进行，支持顶层`return`；`let` `const`具备标准块级作用域，不会污染共享作用域
+> 规则JS每次执行都在独立子作用域中进行，不支持顶层`return`（报 Illegal return statement，请用末尾表达式或 IIFE）；`let` `const`具备标准块级作用域，不会污染共享作用域
 
 | 变量名            | 调用类                                                                                                                                            |
 |----------------|------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -36,7 +36,7 @@
 | title          | 章节当前标题 String                                                                                                                                  |
 | src            | 当前解析的源码（图片解密规则中为图片地址）                                                                                                                          |
 | nextChapterUrl | 下一章节url                                                                                                                                        |
-| platform       | 运行平台名 String，取值 `android`/`ios`/`ohos`/`jvm`，见 platform 变量章节                                                                                   |
+| platform       | 运行平台名 String，取值 `android`/`ios`/`ohos`/`desktop`，见 platform 变量章节                                                                                   |
 | image          | [图片解密操作类](https://github.com/huajideshutiao/legado/blob/master/data/src/commonMain/kotlin/io/legado/app/help/image/ImageOps.kt)，见 image 对象章节 |
 
 > 部分场景会额外注入局部变量：搜索/发现/字典规则中的 `key`（关键字）与 `page`（页数）、
@@ -48,7 +48,7 @@
 > 只能在书源正文规则的`shouldOverrideUrlLoading`规则中使用（订阅源已并入书源，本规则用于内置浏览器网页跳转拦截）  
 > js返回true拦截本次跳转, js变量`url`为将要跳转的地址  
 > url跳转拦截规则不能执行耗时操作  
-> searchBook/addBook 仅 android/jvm 端绑定，ios/ohos 不可用  
+> searchBook/addBook 四端均可用  
 > 例子https://github.com/huajideshutiao/legado/discussions/3259
 
 * 调用阅读搜索
@@ -89,7 +89,7 @@ java.getStringList(ruleStr: String?, mContent: Any? = null, isUrl: Boolean = fal
 * 设置解析内容
 
 ```js
-java.setContent(content: Any?, baseUrl: String? = null):
+java.setContent(content: Any?, baseUrl: String? = null)
 ```
 
 * 获取Element/Element列表
@@ -303,6 +303,8 @@ java.htmlFormat(str: String): String
 ```js
 //文件下载 url用于生成文件名，返回文件路径
 downloadFile(url: String): String
+//已过时: 把16进制字符串写成文件(url用于判断文件类型), 返回相对路径
+downloadFile(content: String, url: String): String
 //文件解压,zipPath为压缩文件路径，返回解压路径
 unArchiveFile(zipPath: String): String
 unzipFile(zipPath: String): String
@@ -342,7 +344,7 @@ java.toNumChapter(s: String?): String? //如 第一千零三章 -> 第1003章
 
 ### [js加解密类](https://github.com/huajideshutiao/legado/blob/master/data/src/commonMain/kotlin/io/legado/app/help/JsEncodeUtils.kt) 部分函数
 
-> 提供在JavaScript环境中快捷调用crypto算法的函数，android/jvm
+> 提供在JavaScript环境中快捷调用crypto算法的函数，android/desktop
 > 由[hutool-crypto](https://www.hutool.cn/docs/#/crypto/概述)
 > 实现（[JsEncodeUtilsDefaults](https://github.com/huajideshutiao/legado/blob/master/data/src/jvmAndAndroidMain/kotlin/io/legado/app/help/JsEncodeUtils.kt)）  
 > 由于兼容性问题，hutool-crypto当前版本为5.8.22  
@@ -470,7 +472,7 @@ syncTime // 进度同步时间
  index // 章节序号
  isVip // 是否VIP
  isPay // 是否已购买
- resourceUrl // 音频真实URL
+ resourceUrl // 音频/视频真实资源URL
  tag // 更新时间或其他章节附加信息
  wordCount // 本章节字数
  start // 章节起始位置
@@ -490,6 +492,8 @@ source.getSourceType() //源类型
 ```
 
 * 书源属性(与书源编辑界面对应)
+
+> ios/ohos 无 `setXxx()` 方法，请改用属性形式（如 `source.concurrentRate = rate`）；`getLoginUi`/`getEnabledCookieJar`/`getEnableDangerousApi` 在 ios/ohos 同样只有属性形式；`login()`/`showLoginDialog()`/`showSourceVariableDialog()` 在 ios/ohos 不可用
 
 ```js
 source.getConcurrentRate() //并发率
@@ -627,14 +631,14 @@ cache.deleteMemory(key: String)
 ## platform 变量
 
 > 所有 JS 作用域（书源规则、jsLib、登录 JS、替换规则等）都注入了 `platform` 变量，
-> 值为运行平台名 String：`android`（当前）/`ios`/`ohos`/`jvm`。
+> 值为运行平台名 String：`android`（当前）/`ios`/`ohos`/`desktop`。
 > 各平台可用的 Java 类和方法不同，跨端书源请用它做差异判断，而不要探测类是否存在。
 
 各平台能力差异（书源相关）：
 
 | 能力                                        | android | ios/ohos      |
 |-------------------------------------------|---------|---------------|
-| crypto 系列（createSymmetricCrypto/Sign/digestHex 等） | 可用（hutool） | 大部分可用（mbedTLS 统一后端 + 平台回落，见下表） |
+| crypto 系列（createSymmetricCrypto/Sign/digestHex 等） | 可用（hutool） | 大部分可用（mbedTLS 后端，见下表） |
 | java.* 反射调用 Android/JVM 类                  | 可用      | 不可用           |
 | image 对象（图片解密）                             | 可用      | 可用（各平台原生实现）   |
 | webView 系列（java.webView 等）                 | 可用      | 以各平台实现为准      |
@@ -645,27 +649,27 @@ cache.deleteMemory(key: String)
 > 内置 TTS 条目已不依赖 Java 反射，ios/ohos 可用。
 > 需要摘要/HMac/加解密的跨端书源请用内置封装方法
 > `java.HMacBase64`/`java.HMacHex`/`java.digestHex`/`java.base64Encode`（见 crypto 小节，全平台可用）；
-> `ruleHelp.md` 里 `ByteArrayInputStream`/`ByteArrayOutputStream` 图片解密示例同理仅 android/jvm 可用。
+> `ruleHelp.md` 里 `ByteArrayInputStream`/`ByteArrayOutputStream` 图片解密示例同理仅 android/desktop 可用。
 
-crypto 系列各算法明细（android 为 hutool/JCA 全量，ios/ohos 统一走 mbedTLS 后端，异常回落平台实现）：
+crypto 系列各算法明细（android 为 hutool/JCA 全量，ios/ohos 走 mbedTLS 后端）：
 
 | 算法                                          | ios | ohos |
 |---------------------------------------------|-----|------|
-| 摘要/HMac：MD5/SHA-1/SHA-224/SHA-256/SHA-384/SHA-512/RIPEMD160 | 可用  | 可用   |
+| 摘要/HMac：MD5/SHA-1/SHA-224/SHA-256/SHA-384/SHA-512/RIPEMD160/SHA3-224/256/384/512 | 可用  | 可用   |
 | AES/ECB（NoPadding/PKCS5\|PKCS7Padding）       | 可用  | 可用   |
 | AES/CBC、CFB、OFB、CTR（支持 iv；padding 另支持 ANSIX923/ISO10126/Zero） | 可用  | 可用   |
-| AES/PCBC（mbedTLS 无此模式，iOS 走 krypto 回落）        | 可用  | 不可用  |
+| AES/PCBC（mbedTLS 无此模式，两端均抛异常）        | 不可用 | 不可用  |
 | AES/GCM/NoPadding（密文=cipher+tag16，须 setIv）    | 可用  | 可用   |
 | DES/DESede（ECB/CBC）                          | 可用  | 可用   |
 | RC4/SM2/SM3/SM4                             | 不可用 | 不可用  |
 | RSA 非对称（encrypt/decrypt/decryptStr/encryptHex/encryptBase64；PKCS1 v1.5/OAEP；含私钥加密/公钥解密反向，反向仅 v1.5） | 可用  | 可用   |
-| Sign 签名/验签（sign/signHex/verify；MD5/SHA-1/224/256/384/512withRSA、SHA*withRSA/PSS、NONEwithRSA、ECDSA） | 可用  | 可用   |
+| Sign 签名/验签（sign/signHex/verify；MD5/SHA-1/224/256/384/512/RIPEMD160withRSA、SHA*withRSA/PSS、NONEwithRSA、ECDSA） | 可用  | 可用   |
 
 > 对称加密 key 为 null 时各端均使用随机密钥（AES 128 位/DES 8 字节/DESede 24 字节，对齐 hutool KeyUtil）；
 > 不支持的算法/模式会抛出点名异常，便于书源降级判断。
 
 > `PKCS7Padding` 与 `PKCS5Padding` 在块密码（AES 16 字节 / DES 8 字节）下填充字节完全一致，
-> 可互换。android/jvm 端 `java.createSymmetricCrypto` 自动把 `PKCS7Padding` 归一为
+> 可互换。android/desktop 端 `java.createSymmetricCrypto` 自动把 `PKCS7Padding` 归一为
 > `PKCS5Padding`（桌面端 JVM SunJCE 无 PKCS7Padding provider，归一后无需额外依赖即可用）；
 > 桌面端书源直调 `cn.hutool.crypto`/`Cipher` 的 PKCS7Padding 不再内置补齐：bcprov 已移除
 > （引入 BC 会让 hutool RSA Cipher 走 BC 分段加密，网易云 weapi encSecKey 错误，见
@@ -674,8 +678,8 @@ crypto 系列各算法明细（android 为 hutool/JCA 全量，ios/ohos 统一�
 示例——算法超出 ios/ohos 支持面时降级：
 
 ```js
-if (platform == 'android' || platform == 'jvm') {
-    // SM2/SM3/SM4/RC4 等仅 android/jvm (hutool) 提供
+if (platform == 'android') {
+    // SM2/SM3/SM4/RC4 等依赖 BouncyCastle 提供者(安卓系统自带, 桌面端未内置), 桌面端请勿依赖
     result = java.createSymmetricCrypto('SM4/ECB/PKCS5Padding', key).decryptStr(result);
 } else {
     // 其他平台走纯 JS 实现或提示不支持
@@ -694,7 +698,7 @@ if (platform == 'android' || platform == 'jvm') {
 // 解码：图片字节、base64 字符串（可带 data:image/...;base64, 前缀）或输入流 -> 句柄
 image.decode(bytes: ByteArray): ImageRef
 image.decode(base64: String): ImageRef
-image.decode(input: InputStream): ImageRef // 仅 android/jvm 附加重载
+image.decode(input: InputStream): ImageRef // 仅 android 附加重载
 // 编码：句柄 -> 图片字节。format 支持 png/jpg/webp，quality 0-100（png 无损，忽略）；
 // jpg 无透明通道，透明区域按黑底处理（各端一致，与漫画阅读界面底色相同）
 image.encode(img: ImageRef, format: String, quality: Int): ByteArray

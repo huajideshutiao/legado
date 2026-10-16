@@ -7,10 +7,19 @@
 * 规则标志, {{......}}内使用规则必须有明显的规则标志,没有规则标志当作js执行
 ```
 @@ 默认规则,直接写时可以省略@@
-@XPath: xpath规则,直接写时以//开头可省略@XPath
-@Json: json规则,直接写时以$.开头可省略@Json
+@XPath: xpath规则,直接写时以/开头可省略@XPath
+@Json: json规则,直接写时以$.或$[开头可省略@Json
+@CSS: css选择器规则
 : regex规则,不可省略,只可以用在书籍列表和目录列表
 ```
+* 源图标
+> 书源详情的`图标`填图片链接，书源列表更多菜单开启`显示书源图标`后在该源行首显示
+
+* 列表翻页
+> `hasMoreRule` 请求级JS规则，`result`为整页响应body，按Boolean解析是否还有下一页；未配置时列表非空即视为还有下一页
+> `nextPageUrl` 从当前页响应里取下一页地址，取到则下次翻页直接请求它；未配置或取不到时按页码翻页
+> 目录规则的下一页地址用`nextTocUrl`
+
 * jsLib
 
 >
@@ -31,9 +40,9 @@
 * 书源类型: 文件
 > 对于类似知轩藏书提供文件整合下载的网站，可以在书源详情的下载URL规则获取文件链接
 
-> 通过截取下载链接或文件响应头头获取文件信息，获取失败会自动拼接`书名` `作者`和下载链接的`UrlOption`的`type`字段
+> 文件名优先取下载链接路径的末段，其次取响应头的Content-Disposition（或重定向后的地址），都取不到时拼成`书名 作者：作者.后缀`，后缀取下载链接`UrlOption`的`type`字段
 
-> 压缩文件解压缓存会在下次启动后自动清理，不会占用额外空间  
+> 解压临时目录在启动时清理（距上次清理不足1天则跳过），不会长期占用空间  
 
 * CookieJar
 > 启用后会自动保存每次返回头中的Set-Cookie中的值，适用于验证码图片一类需要session的网站
@@ -41,6 +50,8 @@
 * 登录UI
 > 不使用内置webView登录网站，需要使用`登录URL`规则实现登录逻辑，可使用`登录检查JS`检查登录结果  
 > 版本20221113重要更改：按钮支持调用`登录URL`规则里面的函数，必须实现`login`函数
+> 每项字段：`name`表单键、`type`行类型、`action`按钮动作、`style`布局、`chars`下拉选项
+> `type`取值：text文本、password密码、select下拉（选项取`chars`）、toggle开关、button按钮、title标题
 ```
 规则填写示范
 [
@@ -100,7 +111,7 @@ setVariable(variable: String?)
 getVariable(): String?
 AnalyzeUrl相关函数,js中通过java.调用
 initUrl() //重新解析url,可以用于登录检测js登录后重新解析url重新访问
-getHeaderMap().putAll(source.getHeaderMap(true)) //重新设置登录头
+headerMap.putAll(source.getHeaderMap(true)) //重新设置登录头(该属性在Android/桌面端可写,iOS/鸿蒙端为只读)
 getStrResponse(jsStr: String? = null, sourceRegex: String? = null, allowWebView: Boolean = true) //返回访问结果,文本类型,书源内部重新登录后可调用此方法重新返回结果
 getResponse(): Response //返回访问结果,网络朗读引擎采用的是这个,调用登录后在调用这方法可以重新访问,参考阿里云登录检测
 ```
@@ -144,10 +155,10 @@ getResponse(): Response //返回访问结果,网络朗读引擎采用的是这�
 ]
 ```
 
-> `cols` 取值 1-4：1=整行、2=一行两个、3=一行三个（默认）、4=一行四个。  
-> 同一行内各项 `cols` 应一致；不同行可不同，列线会基于 12 列基底严格对齐。  
-> 旧字段 `layout_flexBasisPercent` 仍兼容解析；
-`layout_flexGrow / layout_flexShrink / layout_alignSelf / layout_wrapBefore` 已不再生效。
+> `cols` 取值 1-4：1=整行、2=一行两个、3=一行三个（默认）、4=一行四个，列线基于 12 列基底对齐。  
+> 旧字段 `layout_flexBasisPercent` 仍兼容解析（未填 `cols` 时按它推断列数）；
+`layout_flexGrow / layout_flexShrink / layout_alignSelf / layout_wrapBefore` 已不再生效。  
+> `type` 填 `button` 时 `url` 作为JavaScript执行（按钮式分类），否则 `url` 是发现页地址。
 
 * 请求头,支持http代理,socks4 socks5代理设置
 > 注意请求头的key是区分大小写的  
@@ -167,7 +178,7 @@ http代理
 {
   "proxy":"http://127.0.0.1:1080@用户名@密码"
 }
-注意:这些请求头是无意义的,会被忽略掉
+注意:这些键不会作为请求头发送,会被忽略掉
 ```
 
 * url添加js参数,解析url时执行,可在访问url时处理url,例
@@ -178,6 +189,7 @@ https://www.baidu.com,{"js":"java.url=java.url+'yyyy'"}
 
 * 增加js方法，用于重定向拦截
   * `java.get(urlStr: String, headers: Map<String, String>)`
+  * `java.head(urlStr: String, headers: Map<String, String>)`
   * `java.post(urlStr: String, body: String, headers: Map<String, String>)`
 * 对于搜索重定向的源，可以使用此方法获得重定向后的url
 ```
@@ -259,23 +271,10 @@ decodeImage(result, key)
 ```
 
 * 封面解密
-> 同图片解密 其中result为待解密封面的`inputStream`
+> 同图片解密，填写在书源详情的封面解密，`result`为待解密封面的`ByteArray`，src为封面链接
 
 ```js
 java.createSymmetricCrypto("AES/CBC/PKCS5Padding", key, iv).decrypt(result)
-```
-
-```js
-function decodeImage(data, key) {
-  var out = new Packages.java.io.ByteArrayOutputStream()
-  var byte
-  while ((byte = data.read()) != -1) {
-    out.write(byte ^ key)
-  }
-  return out.toByteArray()
-}
-
-decodeImage(result, key)
 ```
 
 * 段评规则（ReviewRule）
@@ -290,7 +289,7 @@ decodeImage(result, key)
 | page | 分页号，从 1 起（用于 `reviewUrl` / `replyListUrl`） |
 | sort | 列表排序：`0`=最热、`1`=最新（仅 `reviewUrl`） |
 | reviewId | 段评 ID（用于 `replyListUrl` 及各动作规则） |
-| selected | 点赞/点踩的目标态（Boolean，本次操作后应处于的状态，即当前态取反） |
+| selected | 点赞/点踩：调用前该用户是否已点赞（已点踩）的当前态（Boolean）；操作后的目标态为其取反 |
 | result | 在 `replyRule` 中为用户输入的回复正文；在 `totalCountRule` / `hasMoreRule` 中为整页响应 body |
 
 > 请求 / URL 规则（在列表项循环之前求值，上下文为整页 body 或纯 JS）
@@ -298,7 +297,7 @@ decodeImage(result, key)
 | 字段 | 说明 |
 |---|---|
 | reviewUrl | 段评列表 URL，走 AnalyzeUrl；可用 `{{paragraphIndex}}` `{{page}}` `{{sort}}` 占位符或同名 JS 变量。为空则报错 |
-| reviewCountRule | 纯 JS 规则（`result`/`src` 为空串，需自行发起请求），返回 `{段落号: 评论数}` 的 JS 对象或 JSON 字符串；仅 `段落号>0` 且 `数>0` 的项生效，用于正文段落尾部气泡计数 |
+| reviewCountRule | 纯 JS 规则（`src` 为空串、`result` 为 null，需自行发起请求），返回 `{段落号: 评论数}` 的 JS 对象或 JSON 字符串；`0`=章节标题行、`>0`=正文第 N 段，计数 `>0` 的项生效并显示为尾部气泡计数（`-1` 书籍级不参与） |
 | totalCountRule | 请求级，`result` 为整页 body；字符串透传给列表头部"全部评论"计数，未配置则不显示 |
 | hasMoreRule | 请求级，`result` 为整页 body，按 Boolean 解析是否有下一页；未配置时：列表非空默认还有下一页，列表为空则判为无 |
 | replyListUrl | 某条段评的回复列表 URL（通常写 `@js:`），变量 `paragraphIndex` `reviewId` `page`；仅用户展开回复时执行，复用下方 `reviewList` 及各列表项规则解析 |
@@ -320,14 +319,14 @@ decodeImage(result, key)
 | voteUpSelectedRule | 当前登录用户是否已点赞，Boolean 解析；未配置视为 false |
 | voteDownSelectedRule | 当前登录用户是否已点踩，Boolean 解析；未配置视为 false |
 
-> 动作规则（均为 JS，由用户操作触发）
+> 动作规则（均为 JS，由用户操作触发；返回 true 类值表示"已处理"：回复会重载列表，点赞/点踩、删除无额外刷新；其他返回值静默忽略，抛异常才提示失败）
 
 | 字段 | 说明 |
 |---|---|
 | voteUpRule | 点赞；变量 `paragraphIndex` `reviewId` `selected` |
 | voteDownRule | 点踩；变量 `paragraphIndex` `reviewId` `selected` |
 | replyRule | 回复；变量 `paragraphIndex` `reviewId`（回复顶层段评时为空），回复正文经 `result` 传入 |
-| deleteRule | 删除；变量 `paragraphIndex` `reviewId`；JS 返回 `true` 则本地移除该条，其他返回值触发整页重载 |
+| deleteRule | 删除；变量 `paragraphIndex` `reviewId`；JS 返回 true 类值则本地移除该条 |
 
 > 示例骨架（`ruleReview`，仅示意结构，规则值按目标站点改写）
 
@@ -349,7 +348,7 @@ decodeImage(result, key)
   "hasMoreRule": "$.data.hasNext",
   "replyListUrl": "<js>'https://www.example.com/reply?id='+reviewId+'&page='+page</js>",
   "reviewCountRule": "<js>/* 自行请求本章各段评论数, 返回 {\"1\":3,\"5\":8} */</js>",
-  "voteUpRule": "<js>java.post('https://www.example.com/like', JSON.stringify({id: reviewId, cancel: !selected}), {})</js>",
+  "voteUpRule": "<js>java.post('https://www.example.com/like', JSON.stringify({id: reviewId, cancel: selected}), {})</js>",
   "replyRule": "<js>java.post('https://www.example.com/reply', JSON.stringify({id: reviewId, para: paragraphIndex, text: result}), {})</js>",
   "deleteRule": "<js>java.post('https://www.example.com/del', JSON.stringify({id: reviewId}), {})</js>"
 }
