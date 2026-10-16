@@ -70,7 +70,10 @@ class Lrc(val lines: List<LrcLine>, val raw: String? = null) {
  *
  * 输入是一个 NativeArray<String>,每个元素本身是一段多行 LRC 文本:
  * - 第 0 个元素:每个时间戳行作为新条目加入 (time -> text), 无时间戳的行作为 (-1, line) 加入(显示在最前)
- * - 后续元素:按时间戳匹配并把文本以换行附加到已有条目上(用于多语种叠加,常见于网易云双语歌词)
+ * - 后续元素:按时间戳对齐后把文本以换行附加到已有条目上(用于多语种叠加,常见于网易云双语歌词)
+ *
+ * 叠加取时间最接近的一行, 不要求时间戳逐位相等: 各份歌词来自不同请求, 精度可以不同
+ * (QQ 音乐逐字歌词精确到毫秒, 它的译文只到 10 毫秒), 逐位相等会让这些译文整段丢失。
  *
  * 时间戳支持 [mm:ss] 与 [mm:ss.fff], 行首可以有多个时间戳共用同一句 (`[00:12.00][01:30.00]副歌`);
  * 行内 `<mm:ss.fff>` 字标签 (Enhanced LRC) 拆进 [LrcLine.words], 正文里的标签一并剥掉;
@@ -98,12 +101,35 @@ object LrcParser {
         return Lrc(lines, content[0] as String)
     }
 
-    /** 把 [text] 以换行追加到同时间戳的条目上; 找不到就丢弃, 只有首份歌词能引入新条目。 */
+    /**
+     * 叠加两份歌词时容忍的时间戳偏差 (毫秒)。
+     *
+     * 实测 QQ 音乐: 逐字歌词时间戳精确到毫秒 (`[00:09.551]`), 译文只到 10 毫秒 (`[00:09.55]`,
+     * 是逐字时间戳截断到 10 毫秒的值), 两者差 0~9 毫秒 —— 逐位相等会让译文整段丢失。
+     * 同一首歌相邻两句间隔 552 毫秒起, 10 毫秒的偏差远够不着邻句。
+     */
+    private const val MERGE_TICK_MS = 10
+
+    /** 把 [text] 以换行追加到时间最接近的条目上; 偏差超过 [MERGE_TICK_MS] 就丢弃, 只有首份歌词能引入新条目。 */
     private fun MutableList<LrcLine>.mergeAt(timeMs: Int, text: String) {
-        val index = binarySearch { it.timeMs.compareTo(timeMs) }
+        val index = mergeIndexAt(timeMs)
         if (index < 0) return
         val line = this[index]
         this[index] = line.copy(text = "${line.text}\n$text")
+    }
+
+    /** 偏差在 [MERGE_TICK_MS] 内且时间最接近的行下标; 没有这样的行返回 -1。 */
+    private fun List<LrcLine>.mergeIndexAt(timeMs: Int): Int {
+        var low = 0
+        var high = size
+        while (low < high) {
+            val mid = (low + high) ushr 1
+            if (this[mid].timeMs < timeMs) low = mid + 1 else high = mid
+        }
+        // 二分停在首个不早于目标的条目上, 最近的一定是它或它前一行
+        return (low - 1..low).filter { i ->
+            i in indices && kotlin.math.abs(this[i].timeMs - timeMs) < MERGE_TICK_MS
+        }.minByOrNull { i -> kotlin.math.abs(this[i].timeMs - timeMs) } ?: -1
     }
 
     /**
