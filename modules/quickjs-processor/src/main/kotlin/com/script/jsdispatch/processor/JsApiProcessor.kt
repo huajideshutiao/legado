@@ -65,16 +65,18 @@ class JsApiProcessor(
         // native 模式 (jsapi.native=true): 无法模板化、保持手写的特殊方法名 (按名字全局匹配,
         // 不分类 — 新接入目标类与名单同名的规整方法也会被排除, 与手写桥现状一致)。
         // (重载/多参分派/多态/数组构造/批量区间/工厂/handle 返回/header 解析/返回参数原样回传/
-        //  推断返回类型无法归类 (getHeaderMap: HashMap)/List 返回 (loginUi)/UI 副作用 (login 族)/
-        //  kotlin 内建对象方法 (toString/equals/hashCode, JS Object.prototype 已有同名, 不经分派))。
+        //  推断返回类型无法归类 (getHeaderMap: HashMap)/列出函数名与属性同名 (loginUi, JS 同名属性与
+        //  方法不可共存)/kotlin 内建对象方法 (toString/equals/hashCode, JS Object.prototype 已有同名,
+        //  不经分派))。UI 副作用方法 (login/showLoginDialog/showSourceVariableDialog) 不排除:
+        //  它们与 removeLoginInfo 同形 (无参 Unit), 生成后才能与安卓/桌面端脚本 API 对齐。
         // 名单与 NativeJsExtensionsBridge 手写分支同步维护。
         val NATIVE_EXCLUDED_METHODS: Set<String> = """
             ajax,ajaxAll,base64Decode,base64DecodeToByteArray,base64Encode,bytesToStr,cacheFile,
             connect,createAsymmetricCrypto,createSign,createSymmetricCrypto,decompressString,digestBase64Str,digestHex,
             downloadFile,encodeURI,equals,evalJS,get,get7zStringContent,getCookie,getHeaderMap,
             getRarStringContent,getSource,getString,getStringList,getZipStringContent,hashCode,head,
-            HMacBase64,HMacHex,log,login,loginUi,logType,md5Encode,md5Encode16,openUrl,post,put,
-            queryBase64TTF,queryTTF,readTxtFile,replaceFont,showLoginDialog,showSourceVariableDialog,
+            HMacBase64,HMacHex,log,loginUi,logType,md5Encode,md5Encode16,openUrl,post,put,
+            queryBase64TTF,queryTTF,readTxtFile,replaceFont,
             startBrowser,startBrowserAwait,strToBytes,toURL,toString,webView,webViewGetOverrideUrl,
             webViewGetSource,
             org.jsoup.Connection.Response.url,
@@ -957,11 +959,12 @@ class JsApiProcessor(
                     // REF 白名单: 返回 handle 由 JS 工厂包装 (对齐手写 obj.parse = ...__createElementObj)
                     m.handleFactory != null ->
                         "return ${m.handleFactory}(__nativeDispatch(handle, $id, [$argsArr]));"
-                    // Map → JSON 字符串, JS 侧 JSON.parse (对齐手写 706/707/1604 闭包; 可空 Map null 传播)
+                    // Map → JSON 字符串, JS 侧 JSON.parse 后由 __wrapJsonMap 包成 Map 门面
+                    // (对齐手写 1604 闭包; 可空 Map null 传播)
                     m.retCat is Cat.MAPC -> {
                         val fallback = if (m.retNullable) "null" else "{}"
                         "var s = __nativeDispatch(handle, $id, [$argsArr]); " +
-                            "return (s === null || s === undefined) ? $fallback : JSON.parse(s);"
+                            "return __wrapJsonMap((s === null || s === undefined) ? $fallback : JSON.parse(s));"
                     }
 
                     else -> "return __nativeDispatch(handle, $id, [$argsArr]);"

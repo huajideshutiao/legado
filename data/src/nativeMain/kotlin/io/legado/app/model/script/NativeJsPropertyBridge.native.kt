@@ -26,8 +26,6 @@ import io.legado.app.napi.quickjs.qjs_NewBool
 import io.legado.app.napi.quickjs.qjs_NewFloat64
 import io.legado.app.napi.quickjs.qjs_NewInt32
 import io.legado.app.napi.quickjs.qjs_NewString
-import io.legado.app.utils.GSON
-import io.legado.app.utils.toJson
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.cValue
@@ -48,7 +46,8 @@ import kotlinx.cinterop.cValue
  *   2300-2399 BaseBook 变量/方法面 (getVariable/putVariable 等) | 2400-2499 BookChapter 变量/方法面 |
  *   2500-2599 cookie (SourceNetworkProvider) | 2600-2699 cache (SourceCacheProvider) |
  *   2700-3199 属性写 (setterId = getterId + 1000, 对应 1700-2199 的 var 字段) |
- *   3200-3299 ksoup Element/Node 方法面 (src binding 逐项循环场景)
+ *   3200-3299 ksoup Element/Node 方法面 (src binding 逐项循环场景) |
+ *   3300-3399 活 Map 方法面 (java.headerMap 等真实 Map 句柄, 方法名对齐 JVM 端 callMapMethod)
  *   注: 属性名→propId 在 JS 工厂静态绑定; 读/写经同一对象同一 propId 语义, setter 仅偏移 +1000,
  *   与 JVM 端 JavaObjectBridge 的 findGetter/findSetter (bean 属性读写) 对齐。
  * - JS 侧由工厂函数 (__createBookObj 等) 用 Object.defineProperty 挂 getter/setter,
@@ -184,21 +183,26 @@ object NativeJsPropertyBridge {
         2102 -> (obj as? AnalyzeUrlCore)?.let { stringToJsValue(ctx, it.urlNoQuery) } // urlNoQuery
         2103 -> (obj as? AnalyzeUrlCore)?.let { stringToJsValue(ctx, it.type) } // type
         2104 -> (obj as? AnalyzeUrlCore)?.let { longToJsValue(ctx, it.serverID) } // serverID
-        2105 -> (obj as? AnalyzeUrlCore)?.let { stringToJsValue(ctx, GSON.toJson(it.headerMap)) } // headerMap → JSON (JS 侧 JSON.parse)
+        2105 -> (obj as? AnalyzeUrlCore)?.let { // headerMap → 活 Map 句柄 (JS 工厂 __createMapObj 包装; 键读写直达本次请求的请求头)
+            qjs_NewFloat64(ctx, registerScopedHandle(it.headerMap).toDouble())
+        }
         2106 -> (obj as? AnalyzeUrlCore)?.let { stringToJsValue(ctx, it.url) } // url
         2107 -> (obj as? AnalyzeUrlCore)?.let { stringToJsValue(ctx, it.ruleUrl) } // ruleUrl
         2108 -> (obj as? AnalyzeUrlCore)?.let { stringToJsValue(ctx, it.encodedParams) } // encodedParams
 
         // ============ AnalyzeRuleCore 属性 (2109-2112, java binding 的 AnalyzeRule 面) ============
         // 对齐 JVM 端反射可见的 public var (chapter/nextChapterUrl/variables/ruleData);
-        // chapter/ruleData 返回 handle, 由 JS 工厂包装为嵌套对象 (与 getSource 同模式)
+        // chapter/ruleData 返回 handle, 由 JS 工厂包装为嵌套对象 (与 getSource 同模式);
+        // variables 为 Map 字段, 与 headerMap 同路 (活 Map 句柄 → __createMapObj)
         2109 -> (obj as? AnalyzeRuleCore)?.chapter?.let {
-            qjs_NewFloat64(ctx, NativeJsExtensionsBridge.registerObject(it).toDouble())
+            qjs_NewFloat64(ctx, registerScopedHandle(it).toDouble())
         } // chapter (嵌套 handle)
         2110 -> (obj as? AnalyzeRuleCore)?.let { stringToJsValue(ctx, it.nextChapterUrl) } // nextChapterUrl
-        2111 -> (obj as? AnalyzeRuleCore)?.variables?.let { anyToJs(ctx, it) } ?: jsNull() // variables (Map)
+        2111 -> (obj as? AnalyzeRuleCore)?.variables?.let {
+            qjs_NewFloat64(ctx, registerScopedHandle(it).toDouble())
+        } // variables (活 Map 句柄)
         2112 -> (obj as? AnalyzeRuleCore)?.ruleData?.let {
-            qjs_NewFloat64(ctx, NativeJsExtensionsBridge.registerObject(it).toDouble())
+            qjs_NewFloat64(ctx, registerScopedHandle(it).toDouble())
         } // ruleData (嵌套 handle)
 
         else -> null // 未知属性 → undefined (等价 JsDispatchRegistry.NO_MATCH)
@@ -546,7 +550,9 @@ object NativeJsPropertyBridge {
         methodId == 3007 -> (obj as? BaseSource)?.let { b -> b.jsLib = toNullableString(args.getOrNull(0)); jsUndefined() }
 
         // ============ AnalyzeUrlCore 面 (3102/3106/3108) ============
-        // 3101 rawUrl(val) / 3103 type(val get) / 3104 serverID(val get) / 3105 headerMap(val) 只读,
+        // 3101 rawUrl(val) / 3103 type(val get) / 3104 serverID(val get) 只读;
+        // 3105 headerMap 属性整体赋值两端均不可写 (JVM 端 val 无 setter), 但取到的活 Map
+        // 可经 Map 方法面 (3300-3399) 与键赋值改写本次请求的请求头;
         // 3107 ruleUrl(protected set) 两端均不可写 (JVM getMethods 不含 protected setter)
         methodId == 3102 -> (obj as? AnalyzeUrlCore)?.let { b ->
             toNullableString(args.getOrNull(0))?.let { b.urlNoQuery = it }
@@ -583,15 +589,56 @@ object NativeJsPropertyBridge {
         } // children() → handle 数组
         methodId == 3211 -> (obj as? Node)?.let { node ->
             val p = node.parent()
-            if (p == null) jsNull() else qjs_NewFloat64(ctx, registerNodeHandle(p).toDouble())
+            if (p == null) jsNull() else qjs_NewFloat64(ctx, registerScopedHandle(p).toDouble())
         } // parent() → 单 handle 或 null
         methodId == 3212 -> (obj as? Element)?.let { stringToJsValue(ctx, it.tagName()) } // tagName()
         methodId == 3213 -> (obj as? Element)?.let { stringToJsValue(ctx, it.id()) } // id()
         methodId == 3214 -> (obj as? Element)?.let { stringToJsValue(ctx, it.className()) } // className()
         methodId == 3215 -> (obj as? Element)?.let { stringToJsValue(ctx, it.value()) } // value() (ksoup 无 val(), 对齐 JVM 反射面)
 
+        // ============ 活 Map 方法面 (3300-3399, java.headerMap 等真实 Map 句柄) ============
+        // 方法名与返回值语义对齐 JVM 端 JavaObjectBridge.callMapMethod:
+        // put 返回旧值, remove(key) 返回旧值, remove(key, value) 返回是否删除。
+        methodId == 3301 -> mapArg(obj)?.let { qjs_NewInt32(ctx, it.size) } // size()
+        methodId == 3302 -> mapArg(obj)?.let { anyToJs(ctx, it[args.getOrNull(0)]) } // get(key) → 值/null
+        methodId == 3303 -> mapArg(obj)?.let {
+            anyToJs(ctx, it.put(args.getOrNull(0), args.getOrNull(1)))
+        } // put(key, value) → 旧值
+        methodId == 3304 -> mapArg(obj)?.let { anyToJs(ctx, it.remove(args.getOrNull(0))) } // remove(key) → 旧值
+        methodId == 3305 -> mapArg(obj)?.let { map -> // remove(key, value) → 是否删除
+            val key = args.getOrNull(0)
+            val removed = map.containsKey(key) && map[key] == args.getOrNull(1)
+            if (removed) map.remove(key)
+            qjs_NewBool(ctx, if (removed) 1 else 0)
+        }
+        methodId == 3306 -> mapArg(obj)?.let {
+            qjs_NewBool(ctx, if (it.containsKey(args.getOrNull(0))) 1 else 0)
+        } // containsKey(key)
+        methodId == 3307 -> mapArg(obj)?.let { anyToJs(ctx, it.keys.toList()) } // keySet() → 键数组
+        methodId == 3308 -> mapArg(obj)?.let { anyToJs(ctx, it.values.toList()) } // values() → 值数组
+        methodId == 3309 -> mapArg(obj)?.let { map -> // entrySet() → [键, 值] 对数组
+            val pairs = JS_NewArray(ctx)
+            map.entries.forEachIndexed { index, entry ->
+                val pair = JS_NewArray(ctx)
+                JS_SetPropertyUint32(ctx, pair, 0u, anyToJs(ctx, entry.key))
+                JS_SetPropertyUint32(ctx, pair, 1u, anyToJs(ctx, entry.value))
+                JS_SetPropertyUint32(ctx, pairs, index.toUInt(), pair)
+            }
+            pairs
+        }
+        methodId == 3310 -> mapArg(obj)?.let { it.clear(); jsUndefined() } // clear()
+
         else -> null // 未命中 → undefined (等价 JsDispatchRegistry.NO_MATCH)
     }
+
+    /**
+     * 活 Map 分派取参: 非 Map 返回 null (调用方转 JS undefined)。
+     *
+     * MutableMap<*, *> → MutableMap<Any?, Any?> 是同一对象 (泛型擦除), 不复制不装箱。
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun mapArg(obj: Any?): MutableMap<Any?, Any?>? =
+        if (obj is MutableMap<*, *>) obj as MutableMap<Any?, Any?> else null
 
     /**
      * 复杂对象属性桥 JS 工厂代码, 由 NativeJsExtensionsBridge.JS_FACTORY_CODE 拼接注入。
@@ -602,22 +649,158 @@ object NativeJsPropertyBridge {
     val JS_PROPERTY_FACTORY_CODE: String = """
 // ============ 复杂对象属性桥工厂 (NativeJsPropertyBridge, propId 1700-2199) ============
 
+// ============ Map 门面 (活 Map 与 JSON 副本共用一个门面) ============
+// 方法名与返回值语义对齐 JVM 端 JavaObjectBridge.callMapMethod (put 返回旧值,
+// remove(key) 返回旧值, remove(key, value) 返回布尔, putIfAbsent 返回旧值/无则 null);
+// 键访问与 for...in/Object.keys 直达被包装的 Map (对齐 JVM 端 __wrapJavaMap),
+// 同名键优先于方法名 (对齐 JVM 端 getCollectionField 先按键取值的顺序)。
+// ops 提供 10 个原语: size/get/put/removeKey/removeIf/has/keys/values/entries/clear
+function __mapFacade(ops) {
+    var methods = {
+        size: function() { return ops.size(); },
+        isEmpty: function() { return ops.size() === 0; },
+        get: function(key) { return ops.get(key); },
+        put: function(key, value) { return ops.put(key, value); },
+        putIfAbsent: function(key, value) {
+            if (ops.has(key)) return ops.get(key);
+            ops.put(key, value);
+            return null;
+        },
+        remove: function(key, value) {
+            return arguments.length >= 2 ? ops.removeIf(key, value) : ops.removeKey(key);
+        },
+        containsKey: function(key) { return ops.has(key) === true; },
+        containsValue: function(value) {
+            var values = ops.values();
+            for (var i = 0; i < values.length; i++) if (values[i] === value) return true;
+            return false;
+        },
+        keySet: function() { return ops.keys(); },
+        values: function() { return ops.values(); },
+        entrySet: function() { return ops.entries(); },
+        clear: function() { ops.clear(); },
+        getOrDefault: function(key, defaultValue) {
+            var value = ops.get(key);
+            return (value === null || value === undefined) ? defaultValue : value;
+        },
+        putAll: function(from) {
+            if (!from) return;
+            var keys = Object.keys(from);
+            for (var i = 0; i < keys.length; i++) ops.put(keys[i], from[keys[i]]);
+        }
+    };
+    var hasMethod = function(key) { return Object.prototype.hasOwnProperty.call(methods, key); };
+    return new Proxy({}, {
+        get: function(target, key) {
+            if (typeof key === 'string') {
+                if (ops.has(key)) return ops.get(key); // Map 键优先于同名方法
+                if (hasMethod(key)) return methods[key];
+            }
+            // 非 Map 键交回普通对象原型链 (toString/valueOf/hasOwnProperty 等内部调用不报错)
+            if (key in target) return target[key];
+            return typeof key === 'string' ? ops.get(key) : undefined;
+        },
+        set: function(target, key, value) {
+            if (typeof key === 'string') ops.put(key, value);
+            return true;
+        },
+        has: function(target, key) {
+            if (typeof key !== 'string') return key in target;
+            return ops.has(key) || hasMethod(key) || key in target;
+        },
+        ownKeys: function(target) { return ops.keys(); },
+        getOwnPropertyDescriptor: function(target, key) {
+            if (typeof key !== 'string') return undefined;
+            if (ops.has(key)) {
+                return { value: ops.get(key), writable: true, enumerable: true, configurable: true };
+            }
+            if (hasMethod(key)) {
+                return { value: methods[key], writable: true, enumerable: false, configurable: true };
+            }
+            return undefined;
+        }
+    });
+}
+
+// 活 Map: 每次调用打到真实 Kotlin Map (java.headerMap 这类本次请求的请求头)
+function __createMapObj(handle) {
+    if (!handle || handle <= 0) return null;
+    return __mapFacade({
+        size: function() { return __nativeDispatch(handle, 3301, []); },
+        get: function(key) { return __nativeDispatch(handle, 3302, [key]); },
+        put: function(key, value) { return __nativeDispatch(handle, 3303, [key, value]); },
+        removeKey: function(key) { return __nativeDispatch(handle, 3304, [key]); },
+        removeIf: function(key, value) { return __nativeDispatch(handle, 3305, [key, value]); },
+        has: function(key) { return __nativeDispatch(handle, 3306, [key]); },
+        keys: function() { return __nativeDispatch(handle, 3307, []); },
+        values: function() { return __nativeDispatch(handle, 3308, []); },
+        entries: function() { return __nativeDispatch(handle, 3309, []); },
+        clear: function() { __nativeDispatch(handle, 3310, []); }
+    });
+}
+
+// JSON 副本: 包装普通对象 (方法调用的返回值为新建的临时 Map, 与 JVM 端每次调用返回新 Map 一致)
+function __wrapJsonMap(data) {
+    if (data === null || data === undefined || typeof data !== 'object') return data;
+    var own = function(key) { return Object.prototype.hasOwnProperty.call(data, key); };
+    return __mapFacade({
+        size: function() { return Object.keys(data).length; },
+        get: function(key) { return own(key) ? data[key] : null; },
+        put: function(key, value) {
+            var old = own(key) ? data[key] : null;
+            data[key] = value;
+            return old;
+        },
+        removeKey: function(key) {
+            var old = own(key) ? data[key] : null;
+            delete data[key];
+            return old;
+        },
+        removeIf: function(key, value) {
+            if (!own(key) || data[key] !== value) return false;
+            delete data[key];
+            return true;
+        },
+        has: function(key) { return own(key); },
+        keys: function() { return Object.keys(data); },
+        values: function() {
+            var keys = Object.keys(data);
+            var out = [];
+            for (var i = 0; i < keys.length; i++) out.push(data[keys[i]]);
+            return out;
+        },
+        entries: function() {
+            var keys = Object.keys(data);
+            var out = [];
+            for (var i = 0; i < keys.length; i++) out.push([keys[i], data[keys[i]]]);
+            return out;
+        },
+        clear: function() {
+            var keys = Object.keys(data);
+            for (var i = 0; i < keys.length; i++) delete data[keys[i]];
+        }
+    });
+}
+
 function __createBaseSourceObj(handle) {
     if (!handle || handle <= 0) return null;
     // BaseSource 实现 JsExtensionsCommon, 继承完整 java 方法面 (ajax/getHeaderMap/put/get 等)
     var obj = __createJavaObj(handle);
     obj.__h = handle;
-    // getKey/getTag/getSourceType/getLoginJs 已由 KSP 生成表接管 (注入下方标记处);
+    // getKey/getTag/getSourceType/getLoginJs/login/showLoginDialog/showSourceVariableDialog
+    // 已由 KSP 生成表接管 (注入下方标记处);
     // getHeaderMap 特例保持手写 (推断返回 HashMap 无法归类生成);
-    // getLoginUrl/getHeader/getConcurrentRate/getJsLib 为属性 getter 方法化 (阶段 3 E5 接管)
-    obj.getHeaderMap = function() {
-        var s = __nativeDispatch(handle, 1604, []);
-        return (s === null || s === undefined) ? null : JSON.parse(s);
+    // getLoginUrl/getHeader/getConcurrentRate/getJsLib/getLoginUi 为属性 getter 方法化
+    // (阶段 3 E5 接管; getLoginUi 的 JVM 端 loginUi 属性被同名方法遮蔽, 脚本只能经 getLoginUi() 读字符串)
+    obj.getHeaderMap = function(hasLoginHeader) {
+        var s = __nativeDispatch(handle, 1604, [hasLoginHeader === true]);
+        return (s === null || s === undefined) ? null : __wrapJsonMap(JSON.parse(s));
     };
     obj.getLoginUrl = function() { return __nativeDispatch(handle, 1605, []); };
     obj.getHeader = function() { return __nativeDispatch(handle, 1606, []); };
     obj.getConcurrentRate = function() { return __nativeDispatch(handle, 1608, []); };
     obj.getJsLib = function() { return __nativeDispatch(handle, 1609, []); };
+    obj.getLoginUi = function() { return __nativeDispatch(handle, 1623, []); };
     // @@methods:__createBaseSourceObj@@
     // BaseSource 属性 (2000-2099, setter = getter + 1000)
     Object.defineProperty(obj, "concurrentRate", { get: function() { return __nativeDispatch(handle, 2001, []); }, set: function(v) { __nativeDispatch(handle, 3001, [v]); } });
@@ -762,16 +945,16 @@ function __createAnalyzeObj(handle) {
     Object.defineProperty(obj, "type", { get: function() { return __nativeDispatch(handle, 2103, []); } }); // val 只读
     Object.defineProperty(obj, "serverID", { get: function() { return __nativeDispatch(handle, 2104, []); } }); // val 只读
     Object.defineProperty(obj, "headerMap", { get: function() {
-        var s = __nativeDispatch(handle, 2105, []);
-        return (s === null || s === undefined) ? null : JSON.parse(s);
-    } }); // val 只读
+        // 每次访问重新注册 handle (与 JVM 端 javaToJsResult 同路, 随本次 eval 结束回收)
+        return __createMapObj(__nativeDispatch(handle, 2105, []));
+    } }); // 属性整体赋值不可写 (JVM 端 val 无 setter), 内容经 Map 方法面与键赋值改写
     Object.defineProperty(obj, "url", { get: function() { return __nativeDispatch(handle, 2106, []); }, set: function(v) { __nativeDispatch(handle, 3106, [v]); } });
     Object.defineProperty(obj, "ruleUrl", { get: function() { return __nativeDispatch(handle, 2107, []); } }); // protected set 两端不可写
     Object.defineProperty(obj, "encodedParams", { get: function() { return __nativeDispatch(handle, 2108, []); }, set: function(v) { __nativeDispatch(handle, 3108, [v]); } });
     // AnalyzeRuleCore 面 (2109-2112; AnalyzeUrlCore 实例取到 undefined/null)
     Object.defineProperty(obj, "chapter", { get: function() { return __createChapterObj(__nativeDispatch(handle, 2109, [])); } });
     Object.defineProperty(obj, "nextChapterUrl", { get: function() { return __nativeDispatch(handle, 2110, []); }, set: function(v) { __nativeDispatch(handle, 3110, [v]); } });
-    Object.defineProperty(obj, "variables", { get: function() { return __nativeDispatch(handle, 2111, []); } });
+    Object.defineProperty(obj, "variables", { get: function() { return __createMapObj(__nativeDispatch(handle, 2111, [])); } }); // 活 Map 句柄
     Object.defineProperty(obj, "ruleData", { get: function() { return __createBookObj(__nativeDispatch(handle, 2112, [])); } });
     return obj;
 }
@@ -904,7 +1087,7 @@ function __createElementObj(handle) {
     private fun List<Any?>.getString(index: Int): String =
         (getOrNull(index) as? String) ?: ""
 
-    /** 任意 Kotlin 值 → JSValue (variables 属性/getFromMemory 返回值用, 与 bridge 的 anyToJs 同语义)。 */
+    /** 任意 Kotlin 值 → JSValue (Map 方法返回值/getFromMemory 返回值用, 与 bridge 的 anyToJs 同语义)。 */
     private fun anyToJs(ctx: CPointer<JSContext>, value: Any?): CValue<JSValue> = when (value) {
         null -> jsNull()
         is String -> stringToJsValue(ctx, value)
@@ -930,14 +1113,17 @@ function __createElementObj(handle) {
         else -> stringToJsValue(ctx, value.toString())
     }
 
-    // ============ 工具方法: ksoup 节点 handle (3200-3299 段专用) ============
+    // ============ 工具方法: scope 内嵌 handle 注册 (属性 getter / ksoup 节点) ============
 
     /**
-     * 注册 ksoup 节点 handle 并登记到当前 scope (select/children/parent 每次返回新节点,
-     * 不登记会在逐项循环里泄漏 M×N 个 handle; 由 releaseNewHandles / scope close 统一回收)。
+     * 注册嵌套对象 handle 并登记到当前 scope (对齐 JVM 端 javaToJsResult + releaseNewHandles)。
+     *
+     * 属性 getter 与 3200 段节点方法都在脚本执行期调用, 不登记到 scope.handles 则
+     * handle 永不回收 (releaseNewHandles 按快照回收, scope.close 也只清理登记过的),
+     * 会在逐项循环/多次请求里持续膨胀; 登记后由 releaseNewHandles / scope close 统一回收。
      */
-    private fun registerNodeHandle(node: Node): Long {
-        val handle = NativeJsExtensionsBridge.registerObject(node)
+    private fun registerScopedHandle(value: Any): Long {
+        val handle = NativeJsExtensionsBridge.registerObject(value)
         NativeJsEngine.currentScope()?.handles?.add(handle)
         return handle
     }
@@ -946,7 +1132,7 @@ function __createElementObj(handle) {
     private fun nodeListToJsHandleArray(ctx: CPointer<JSContext>, nodes: List<Node>): CValue<JSValue> {
         val arr = JS_NewArray(ctx)
         nodes.forEachIndexed { i, node ->
-            JS_SetPropertyUint32(ctx, arr, i.toUInt(), qjs_NewFloat64(ctx, registerNodeHandle(node).toDouble()))
+            JS_SetPropertyUint32(ctx, arr, i.toUInt(), qjs_NewFloat64(ctx, registerScopedHandle(node).toDouble()))
         }
         return arr
     }
