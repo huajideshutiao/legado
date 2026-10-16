@@ -221,6 +221,14 @@ interface PlatformCapabilities {
         unsupported("导入所选书籍")
     }
 
+    /**
+     * 直接导入用户在系统面板里选定的书文件 (多选, 不经列表勾选): 与 [addImportSelectionToBookshelf]
+     * 同一条导入链, 完成后回调 onComplete。调用方已按扩展名筛过并提示过不支持的文件。
+     */
+    fun importPickedBookFiles(files: List<PickedFile>, onComplete: () -> Unit = {}) {
+        unsupported("导入所选书籍")
+    }
+
     /** 更新搜索过滤关键字 (对照 onSearchTextChange / viewModel.updateCallBackFlow) */
     fun updateImportBookFilter(key: String) = unsupported("筛选导入书籍")
 
@@ -600,6 +608,15 @@ interface PlatformCapabilities {
     // 对照 app 端 FontSelectDialog.loadFontFiles: 字体目录 + 本地字体合并去重排序
     /** 扫描字体文件列表 (对照 app 端 FontSelectDialog, 未实现端空列表) */
     suspend fun scanFontItems(): List<FontItem> = emptyList()
+
+    /**
+     * 把用户选定的字体文件复制进内置字体目录, 返回成功导入的文件名。
+     *
+     * 复制而不引用原位置: 字体可能来自应用容器外的目录、系统面板复制进沙盒的临时件或云盘上的
+     * 占位件, 复制进内置目录后扫描与加载都只认沙盒内文件, 不受目录授权与下载状态影响。
+     * 同名文件按覆盖语义替换。调用方已按扩展名筛过并提示过不支持的文件。
+     */
+    fun importPickedFontFiles(files: List<PickedFile>): List<String> = emptyList()
 
     // 书源管理平台能力 (各端按需 override, 未实现端统一给出明确提示)
     // 对照 app 端 BookSourceActivity 同名方法

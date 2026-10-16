@@ -311,6 +311,7 @@
     <string name="indent_3">Thụt lề 3 ký tự</string>
     <string name="indent_4">Thụt lề 4 ký tự</string>
     <string name="select_folder">Chọn một thư mục</string>
+    <string name="select_font_file">Chọn tệp phông chữ</string>
     <string name="select_file">Chọn một tệp</string>
     <string name="chapter_list_empty">Danh sách chương trống</string>
     <string name="text_letter_spacing">Khoảng cách chữ</string>

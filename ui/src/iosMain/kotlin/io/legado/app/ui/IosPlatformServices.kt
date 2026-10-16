@@ -26,6 +26,7 @@ import io.legado.app.ui.root.FilePickerService
 import io.legado.app.ui.root.KeyboardController
 import io.legado.app.ui.root.LaunchRequest
 import io.legado.app.ui.root.LaunchRequestBus
+import io.legado.app.ui.root.PickedFile
 import io.legado.app.ui.root.navigateToRoute
 import io.legado.app.ui.root.MediaService
 import io.legado.app.ui.root.NotificationService
@@ -126,6 +127,19 @@ private object IosFilePickerService : FilePickerService {
         runBlocking { pickDocuments(filter.toUtis()) }?.firstOrNull()?.path
 
     /**
+     * 多选文件 (书籍/字体导入)。
+     *
+     * 面板用 Import 模式: 系统把选中文件复制进沙盒临时目录后回传路径, 不需要目录授权 ——
+     * 书放在提供方根目录 (选不到目录) 或云盘这类位置也能导。
+     */
+    override fun pickFiles(filter: FileFilter): List<PickedFile> =
+        runBlocking { pickDocuments(filter.toUtis(), allowsMultiple = true) }
+            ?.mapNotNull { url ->
+                url.path?.let { path -> PickedFile(path, path.substringAfterLast('/')) }
+            }
+            ?: emptyList()
+
+    /**
      * iOS 没有"先选路径后写入"的系统面板: 先把内容写进沙盒临时件, 再弹系统"文件"面板让用户挑
      * 目标位置 (系统把临时件拷贝过去), 返回目标地址。
      */
@@ -165,9 +179,10 @@ private object IosFilePickerService : FilePickerService {
 }
 
 // FileFilter 扩展名 → UTI (UIDocumentPicker 只认 UTI); 未知类型放行全部
-private fun FileFilter.toUtis(): List<String> = when {
-    extensions.isEmpty() -> listOf("public.item")
-    else -> extensions.mapNotNull { ext ->
+private fun FileFilter.toUtis(): List<String> {
+    if (extensions.isEmpty()) return listOf("public.item")
+    val wanted = extensions.distinct()
+    val mapped = wanted.mapNotNull { ext ->
         when (ext.lowercase()) {
             "txt" -> "public.plain-text"
             "json" -> "public.json"
@@ -177,7 +192,10 @@ private fun FileFilter.toUtis(): List<String> = when {
             "bmp" -> "public.bmp"
             else -> null
         }
-    }.distinct().ifEmpty { listOf("public.item") }
+    }.distinct()
+    // 未覆盖的扩展名不能丢: 面板按类型过滤, 漏掉的类型会整类置灰选不中 (cbz/rar/7z/字体等),
+    // 有漏项时并入总类, 由应用侧按扩展名复核并提示
+    return if (mapped.size < wanted.size) (mapped + "public.item").distinct() else mapped
 }
 
 // UIActivityViewController 系统分享面板 (对照 app 端 Intent.ACTION_SEND)

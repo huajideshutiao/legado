@@ -25,10 +25,12 @@ import legado.ui.generated.resources.add_to_bookshelf
 import legado.ui.generated.resources.empty_msg_import_book
 import legado.ui.generated.resources.ic_baseline_sort_24
 import legado.ui.generated.resources.ic_folder_open
+import legado.ui.generated.resources.ic_import
 import legado.ui.generated.resources.import_file_name
 import legado.ui.generated.resources.local_book
 import legado.ui.generated.resources.scan_folder
 import legado.ui.generated.resources.screen
+import legado.ui.generated.resources.select_file
 import legado.ui.generated.resources.select_folder
 import legado.ui.generated.resources.sort
 import legado.ui.generated.resources.sort_by_name
@@ -42,6 +44,7 @@ import org.jetbrains.compose.resources.stringResource
  *
  * Painter key (drawable):
  *   - ic_folder_open          (选择目录按钮)
+ *   - ic_import               (选择文件按钮)
  *   - ic_baseline_sort_24     (排序按钮)
  *
  * String key (string):
@@ -50,6 +53,7 @@ import org.jetbrains.compose.resources.stringResource
  *   - screen                  (搜索框 hint 前缀, 已存在)
  *   - add_to_bookshelf        (底部主操作按钮文案, 已存在)
  *   - select_folder           (选择目录 contentDescription)
+ *   - select_file             (选择文件 contentDescription)
  *   - sort                    (排序 contentDescription, 已存在)
  *   - sort_by_name            (按名称排序, 已存在)
  *   - sort_by_size            (按大小排序)
@@ -98,6 +102,9 @@ interface ImportBookUiActions<T : ImportFileItem> {
     fun onBack()
     fun onUpSearchKey(key: String)
     fun onPickFolder()
+
+    /** 直接选书文件导入 (系统面板多选, 不经列表勾选) */
+    fun onPickFiles()
     /** @param sort 0=名称 / 1=大小 / 2=时间 */
     fun onUpSort(sort: Int)
     fun onScanFolder()
@@ -174,7 +181,7 @@ fun <T : ImportFileItem> ImportBookScreen(
     }
 }
 
-/** 对照 import_book 菜单：选择目录/排序(名称|大小|时间单选)/扫描目录/文件名导入 js */
+/** 对照 import_book 菜单：选择目录/选择文件/排序(名称|大小|时间单选)/扫描目录/文件名导入 js */
 @Composable
 private fun <T : ImportFileItem> ImportBookActions(
     state: ImportBookUiState<T>,
@@ -185,6 +192,13 @@ private fun <T : ImportFileItem> ImportBookActions(
         Icon(
             painter = painterResource(Res.drawable.ic_folder_open),
             contentDescription = stringResource(Res.string.select_folder),
+            tint = colors.primaryText,
+        )
+    }
+    IconButton(onClick = { actions.onPickFiles() }) {
+        Icon(
+            painter = painterResource(Res.drawable.ic_import),
+            contentDescription = stringResource(Res.string.select_file),
             tint = colors.primaryText,
         )
     }

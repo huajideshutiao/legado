@@ -288,6 +288,8 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     // FilePickerService 桥接: launcher 须在 Activity STARTED 前注册, 交给 AndroidFilePickerService 阻塞等待回调
     private val openDocumentPicker =
         registerForActivityResult(ActivityResultContracts.OpenDocument())
+    private val openDocumentsPicker =
+        registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments())
     private val createDocumentPicker =
         registerForActivityResult(ActivityResultContracts.CreateDocument("*/*"))
 
@@ -584,7 +586,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         capabilities = AndroidPlatformCapabilities(this)
         services = AndroidPlatformServices(
             this, capabilities,
-            openDocumentPicker, createDocumentPicker, openDocumentTreePicker,
+            openDocumentPicker, openDocumentsPicker, createDocumentPicker, openDocumentTreePicker,
         )
         PlatformCapabilityProviders.register(capabilities)
         PlatformServiceProviders.register(services)

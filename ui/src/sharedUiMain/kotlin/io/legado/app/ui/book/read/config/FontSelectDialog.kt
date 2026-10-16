@@ -37,10 +37,8 @@ import legado.ui.generated.resources.system_typefaces
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
 
-/** 字体文件正则（对齐 app 端 `FontSelectDialog.fontRegex`：.ttf / .otf，大小写不敏感）。 */
-val fontFileRegex: Regex = Regex("(?i).*\\.[ot]tf")
-
 // FontItem 数据类已下沉 commonMain (同包名 FontItem.kt), 供 PlatformCapabilities 引用。
+// 字体文件正则与扩展名清单在 AppPattern (扫描/选择面板/导入复核共用一份)。
 
 /**
  * 跨平台"字体选择"对话框（对照 app 端 `io.legado.app.ui.font.FontSelectDialog`）。
@@ -55,8 +53,7 @@ val fontFileRegex: Regex = Regex("(?i).*\\.[ot]tf")
  *
  * - 字体扫描由调用方注入（[fontItems]）：app 端用 DocumentFile + externalFiles/font，
  *   iOS 端用 NSFileManager + Documents/font，桌面端用 java.io.File + 系统字体目录
- * - "其它目录"按钮走 [topBarTrailing] 槽（iOS 端 PHPicker 不支持选文件夹不注入；
- *   桌面端注入 JFileChooser 入口）
+ * - 顶部按钮行走 [topBarTrailing] 槽（各端注入「其它目录」与「选择字体文件」两个入口）
  * - 字体预览走 [fontPreview] 槽（FontFamily(Font(file=...)) 属 JVM 桌面特殊行为，桌面端注入）
  * - 不含"系统内置字体样式"选择器（app 端 R.array.system_typefaces + AppConfig.systemTypefaces 未下沉）
  *   → 已恢复：点"默认字体"弹 [AppSelectorDialog] 枚举 [Res.array.system_typefaces]，选后写
@@ -70,7 +67,7 @@ val fontFileRegex: Regex = Regex("(?i).*\\.[ot]tf")
  * @param onSelectDefault 默认字体回调（传入空串，对齐 app 端 selectFont("")）
  * @param onDismiss 关闭回调
  * @param widthFraction 对话框宽度占比（透传 AppAlertDialog；桌面端传 0.8f 避免占满）
- * @param topBarTrailing 顶部按钮行尾部槽（桌面端注入"其它目录"按钮）
+ * @param topBarTrailing 顶部按钮行尾部槽（各端注入「其它目录」/「选择字体文件」按钮）
  * @param extraTopContent 顶部按钮行与列表之间的附加内容槽（桌面端注入扫描失败提示）
  * @param fontPreview 字体行预览槽（桌面端注入 FontFamily(Font(file)) 预览文本）
  */

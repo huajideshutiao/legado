@@ -309,6 +309,7 @@
     <string name="indent_3">Indentação com 3 caract.</string>
     <string name="indent_4">Indentação com 4 caract.</string>
     <string name="select_folder">Selecionar uma pasta</string>
+    <string name="select_font_file">Selecionar um arquivo de fonte</string>
     <string name="select_file">Selecionar um arquivo</string>
     <string name="chapter_list_empty">Os capítulos sem conteúdo</string>
     <string name="text_letter_spacing">Espaço entre palavras</string>

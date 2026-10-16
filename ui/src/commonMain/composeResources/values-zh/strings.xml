@@ -298,6 +298,7 @@
     <string name="remote_book">远程书籍</string>
     <string name="scan_folder">智能扫描</string>
     <string name="select_folder">选择文件夹</string>
+    <string name="select_font_file">选择字体文件</string>
     <string name="sub_dir">子文件夹</string>
     <string name="group">分组</string>
     <string name="about">关于</string>

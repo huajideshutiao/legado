@@ -1,6 +1,7 @@
 package io.legado.app.ui.root
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.AppPattern
 import io.legado.app.constant.DirUsage
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
@@ -26,6 +27,7 @@ import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.info.WebFileImportShared
 import io.legado.app.ui.book.manage.reportLocalBookSourceFileDeleteFailure
 import io.legado.app.ui.book.read.config.FontItem
+import io.legado.app.ui.book.read.config.importFontFileToInternalDir
 import io.legado.app.ui.route.encodeReviewListDialogPayload
 import io.legado.app.ui.widget.dialog.awaitWaitDialogDismissed
 import io.legado.app.ui.withLocalDirAccess
@@ -478,7 +480,7 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
      * 支持 SAF content:// 目录的端自行 override。
      */
     override suspend fun scanFontItems(): List<FontItem> = withContext(IoDispatcher) {
-        val fontRegex = Regex("(?i).*\\.[ot]tf")
+        val fontRegex = AppPattern.fontFileRegex
         val items = arrayListOf<FontItem>()
         PreferenceProviders.get().getString(PreferKey.fontFolder)
             .takeIf { it.isNotBlank() }
@@ -494,6 +496,18 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
         scanFontDir(items, DataStorageProviders.get().fontsDir.toPath(), fontRegex)
         items.distinctBy { it.name }.sortedBy { it.name }
     }
+
+    /**
+     * 字体导入: 逐个把选定文件复制进内置字体目录 (共用一份实现, 面板回传文档地址的安卓另 override)。
+     * 失败的个数由调用方如实报出来。
+     */
+    override fun importPickedFontFiles(files: List<PickedFile>): List<String> =
+        files.mapNotNull { picked ->
+            val imported = picked.name.takeIf { importFontFileToInternalDir(picked.ref, it) }
+            // 物化副本只在读字节时需要 (内容已落内置字体目录), 读完即清; 无物化概念的端为 no-op
+            PlatformServiceProviders.get().files.discardPickedFile(picked.ref)
+            imported
+        }
 }
 
 /** 列举目录内字体文件 (非目录/不存在时不动 items)。 */

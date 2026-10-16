@@ -1,6 +1,7 @@
 package io.legado.desktop.ui
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.SourceType
@@ -45,6 +46,7 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.DefaultDialogTransitionSpec
 import io.legado.app.ui.root.DialogTransitionSpec
+import io.legado.app.ui.root.PickedFile
 import io.legado.app.ui.root.SharedPlatformCapabilities
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
@@ -1105,7 +1107,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
      * shared 版返回 okio 列目录得到的路径串, 两者未逐字等价。
      */
     override suspend fun scanFontItems(): List<FontItem> = withContext(Dispatchers.IO) {
-        val fontRegex = Regex("(?i).*\\.[ot]tf")
+        val fontRegex = AppPattern.fontFileRegex
         val items = arrayListOf<FontItem>()
         // 先扫 pref 目录: distinctBy 保留先出现者, 与 app 端 mergeFontItems 优先级一致
         prefs.getString(PreferKey.fontFolder).takeIf { it.isNotBlank() }?.let {
@@ -1161,6 +1163,14 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
             items,
             onComplete,
             onNeedBooksDir = { ensureBookSaveDirSelected() },
+        )
+    }
+
+    /** 选文件导入: 选到的文件直接当条目走上架链 (不经列表勾选)。 */
+    override fun importPickedBookFiles(files: List<PickedFile>, onComplete: () -> Unit) {
+        addImportSelectionToBookshelf(
+            files.map { DesktopImportFile(File(it.ref)) },
+            onComplete,
         )
     }
 

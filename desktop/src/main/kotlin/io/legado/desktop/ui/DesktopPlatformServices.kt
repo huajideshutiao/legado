@@ -17,6 +17,7 @@ import io.legado.app.ui.root.CrashLogProvider
 import io.legado.app.ui.root.ExternalRequestService
 import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.FilePickerService
+import io.legado.app.ui.root.PickedFile
 import io.legado.app.ui.root.KeyboardController
 import io.legado.app.ui.root.LaunchRequest
 import io.legado.app.ui.root.MediaService
@@ -79,6 +80,11 @@ class DesktopPlatformServices(
 private class DesktopFilePickerService : FilePickerService {
     override fun pickFile(filter: FileFilter): String? =
         FileDialogs.pickOpenFile(extensions = filter.extensions)?.absolutePath
+
+    override fun pickFiles(filter: FileFilter): List<PickedFile> =
+        FileDialogs.pickOpenFiles(extensions = filter.extensions)
+            ?.map { PickedFile(it.absolutePath, it.name) }
+            ?: emptyList()
 
     override fun saveText(suggestedName: String, text: String): SavedRef? {
         val dest = pickSaveFile(suggestedName) ?: return null

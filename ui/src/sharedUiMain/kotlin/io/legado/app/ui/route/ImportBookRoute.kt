@@ -5,7 +5,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import io.legado.app.constant.AppPattern
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.import.local.ImportBookScreen
 import io.legado.app.ui.book.import.local.ImportBookScreenModel
@@ -14,9 +18,13 @@ import io.legado.app.ui.book.import.local.ImportBookUiEvent
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 导入本地书籍 shared 路由入口。
@@ -64,6 +72,7 @@ fun ImportBookRoute(
     }
 
     val state by screenModel.state.collectAsState()
+    val scope = rememberCoroutineScope()
 
     val actions = object : ImportBookUiActions<ImportFileItem> {
         override fun onBack() {
@@ -78,6 +87,30 @@ fun ImportBookRoute(
 
         override fun onPickFolder() {
             platform.pickImportFolder()
+        }
+
+        // 选文件导入: 面板多选 → 应用侧按扩展名复核 (面板过滤只是收敛可选范围) → 直接上架,
+        // 不经列表勾选 (书放在提供方根目录这类选不到目录的位置也能导入)
+        override fun onPickFiles() {
+            scope.launch {
+                val picked = withContext(IoDispatcher) {
+                    PlatformServiceProviders.get().files.pickFiles(FileFilter.Books)
+                }
+                if (picked.isEmpty()) return@launch
+                val (supported, unsupported) = picked.partition {
+                    it.name.matches(AppPattern.bookFileRegex) ||
+                        it.name.matches(AppPattern.archiveFileRegex)
+                }
+                unsupported.forEach { Toasters.get().toast("不支持的文件: ${it.name}") }
+                if (supported.isEmpty()) return@launch
+                // 条目构造要读文件属性 (含路径映射), 推到 IO; 导入本身在平台自己的作用域里跑
+                withContext(IoDispatcher) {
+                    platform.importPickedBookFiles(supported) {
+                        screenModel.dispatch(ImportBookUiEvent.SelectAll(false))
+                        screenModel.dispatch(ImportBookUiEvent.BumpRefreshTick)
+                    }
+                }
+            }
         }
 
         // 对照 upSort: 更新排序 + 持久化 + 重排当前列表

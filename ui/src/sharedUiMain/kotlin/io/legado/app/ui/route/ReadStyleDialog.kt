@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -30,6 +31,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.constant.AppLog
+import io.legado.app.constant.AppPattern
 import io.legado.app.constant.DirUsage
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfigProviders
@@ -39,6 +42,7 @@ import io.legado.app.help.config.ReadConfigDefaults
 import io.legado.app.help.config.ReadStyleConfig
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.image.ImageBitmapLoader
+import io.legado.app.help.toast.Toasters
 import io.legado.app.model.resolveBakedReadingBgSource
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
@@ -52,6 +56,7 @@ import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppSheetSurface
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.utils.ColorUtils
@@ -59,6 +64,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.other_folder
+import legado.ui.generated.resources.select_font_file
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -271,25 +277,64 @@ private fun ReadStyleContent(
                 actions.onPostConfig(listOf(ReadConfigChange.STYLE, ReadConfigChange.LOAD_CONTENT))
             },
             onDismiss = { showFontSelect = false },
-            // "其它目录"入口: 走平台目录选择能力 (Android SAF OpenDocumentTree / iOS·鸿蒙文档选择器),
-            // 选完写 fontFolder pref + 重扫列表 (对照 app 端 FontSelectDialog.openFolder → AppConfig.fontFolder)
+            // "其它目录"/"选择字体文件"两个入口: 目录入口走平台目录选择能力 (Android SAF
+            // OpenDocumentTree / iOS·鸿蒙文档选择器), 选完写 fontFolder pref + 重扫列表
+            // (对照 app 端 FontSelectDialog.openFolder → AppConfig.fontFolder);
+            // 文件入口把选定字体复制进内置字体目录 —— 字体在提供方根目录/云盘这类位置时,
+            // 选目录选不到也读不稳, 复制进内置目录后扫描与加载都只认沙盒内文件
             topBarTrailing = {
-                Text(
-                    text = stringResource(Res.string.other_folder),
-                    color = colors.primaryText,
-                    fontSize = 15.sp,
-                    modifier = Modifier
-                        .clickable {
-                            scope.launch {
-                                val path = withContext(IoDispatcher) {
-                                    PlatformServiceProviders.get().files.pickDirectory(DirUsage.Font)
-                                } ?: return@launch
-                                prefs.putString(PreferKey.fontFolder, path)
-                                rescanFontItems()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = stringResource(Res.string.select_font_file),
+                        color = colors.primaryText,
+                        fontSize = 15.sp,
+                        modifier = Modifier
+                            .clickable {
+                                scope.launch {
+                                    val picked = withContext(IoDispatcher) {
+                                        PlatformServiceProviders.get().files
+                                            .pickFiles(FileFilter.Fonts)
+                                    }
+                                    if (picked.isEmpty()) return@launch
+                                    val (supported, unsupported) =
+                                        picked.partition { it.name.matches(AppPattern.fontFileRegex) }
+                                    unsupported.forEach {
+                                        Toasters.get().toast("不支持的文件: ${it.name}")
+                                    }
+                                    if (supported.isEmpty()) return@launch
+                                    val imported = withContext(IoDispatcher) {
+                                        PlatformCapabilityProviders.get()
+                                            .importPickedFontFiles(supported)
+                                    }
+                                    val failed = supported.size - imported.size
+                                    if (failed > 0) {
+                                        AppLog.put("字体导入失败 $failed 个 (共 ${supported.size} 个)")
+                                        Toasters.get().toast("$failed 个字体导入失败")
+                                    } else {
+                                        Toasters.get().toast("已导入 ${imported.size} 个字体")
+                                    }
+                                    rescanFontItems()
+                                }
                             }
-                        }
-                        .padding(vertical = DesignTokens.spacingDefault, horizontal = DesignTokens.spacingMd),
-                )
+                            .padding(vertical = DesignTokens.spacingDefault, horizontal = DesignTokens.spacingMd),
+                    )
+                    Text(
+                        text = stringResource(Res.string.other_folder),
+                        color = colors.primaryText,
+                        fontSize = 15.sp,
+                        modifier = Modifier
+                            .clickable {
+                                scope.launch {
+                                    val path = withContext(IoDispatcher) {
+                                        PlatformServiceProviders.get().files.pickDirectory(DirUsage.Font)
+                                    } ?: return@launch
+                                    prefs.putString(PreferKey.fontFolder, path)
+                                    rescanFontItems()
+                                }
+                            }
+                            .padding(vertical = DesignTokens.spacingDefault, horizontal = DesignTokens.spacingMd),
+                    )
+                }
             },
         )
     }

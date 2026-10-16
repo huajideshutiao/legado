@@ -31,16 +31,33 @@ object FileDialogs {
         title: String? = null,
         extensions: List<String> = emptyList(),
         extensionDesc: String? = null,
-    ): File? {
+    ): File? = pickOpenInternal(title, extensions, extensionDesc, multiSelect = false).firstOrNull()
+
+    /** 多选文件（打开）。用户取消返回空列表。 */
+    fun pickOpenFiles(
+        title: String? = null,
+        extensions: List<String> = emptyList(),
+        extensionDesc: String? = null,
+    ): List<File> = pickOpenInternal(title, extensions, extensionDesc, multiSelect = true)
+
+    private fun pickOpenInternal(
+        title: String?,
+        extensions: List<String>,
+        extensionDesc: String?,
+        multiSelect: Boolean,
+    ): List<File> {
         if (WindowsFileDialogs.isSupported) {
             return WindowsFileDialogs.show(
                 title = title,
+                multiSelect = multiSelect,
                 extensions = extensions,
                 extensionDesc = extensionDesc,
                 owner = ownerWindow(),
-            ).firstOrNull()
+            )
         }
-        return showAwtDialog(title, FileDialog.LOAD, extensions, extensionDesc).firstOrNull()
+        return showAwtDialog(
+            title, FileDialog.LOAD, extensions, extensionDesc, multiSelect = multiSelect,
+        )
     }
 
     /** 选文件（保存）。返回用户选定的 File（调用方自行保证后缀）。 */

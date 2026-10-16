@@ -31,6 +31,7 @@ import io.legado.app.ui.root.navigateToRoute
 import io.legado.app.ui.root.MediaService
 import io.legado.app.ui.root.NotificationService
 import io.legado.app.ui.root.OrientationPolicy
+import io.legado.app.ui.root.PickedFile
 import io.legado.app.ui.root.PermissionService
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.PlatformServices
@@ -389,9 +390,20 @@ private data class MediaCommand(
 private object OhosFilePickerService : FilePickerService {
 
     override fun pickFile(filter: FileFilter): String? =
-        pickDocuments(filter.toUtis(), allowsMultiple = false)
+        pickDocuments(filter.extensions, allowsMultiple = false)
             ?.firstOrNull()
             ?.let(::materialize)
+
+    /**
+     * 多选文件 (书籍/字体导入): 面板按后缀过滤, 回传的 URI 逐个物化成应用缓存里的真实路径
+     * (下游导入链只认 POSIX 路径), 文件名取 URI 末段 (按 URI 规则百分号解码)。
+     */
+    override fun pickFiles(filter: FileFilter): List<PickedFile> =
+        pickDocuments(filter.extensions, allowsMultiple = true)
+            ?.mapNotNull { uri ->
+                materialize(uri)?.let { path -> PickedFile(path, path.substringAfterLast('/')) }
+            }
+            ?: emptyList()
 
     /**
      * 弹目录选择器 ([pickDirectory], 对照原版导出形制 —— 先选目录, 再把文件写进该目录),
@@ -527,7 +539,9 @@ private object OhosFilePickerService : FilePickerService {
     /** URI → 沙盒缓存文件路径; 读取失败返回 null (与取消同样降级)。 */
     private fun materialize(uri: String): String? = runCatching {
         val bytes = pickDocumentContent(uri) ?: return null
+        // URI 末段按 URI 规则百分号解码 (RFC 3986): 带空格/中文的文件名不解码会以编码形式入库
         val name = uri.substringAfterLast('/').substringBefore('?')
+            .percentDecode()
             .ifBlank { "picked_${systemCurrentTimeMillis()}" }
         val dir = AppFilesDirs.get().cacheDir + "/filePicker"
         File(dir).mkdirs()
@@ -535,24 +549,6 @@ private object OhosFilePickerService : FilePickerService {
         target.writeBytes(bytes)
         target.path
     }.getOrNull()
-}
-
-// FileFilter 扩展名 → UTI (桥接层按 iOS UTI 风格取值, ArkTS FilePickerBridgeHandler 再映射到 MIME)
-private fun FileFilter.toUtis(): List<String> = when {
-    extensions.isEmpty() -> listOf("public.data")
-    else -> extensions.mapNotNull { ext ->
-        when (ext.lowercase()) {
-            "txt", "log", "md" -> "public.plain-text"
-            "json" -> "public.json"
-            "xml" -> "public.xml"
-            "png" -> "public.png"
-            "jpg", "jpeg" -> "public.jpeg"
-            "gif" -> "public.gif"
-            "bmp" -> "public.bmp"
-            "webp" -> "public.image"
-            else -> null
-        }
-    }.distinct().ifEmpty { listOf("public.data") }
 }
 
 /** 系统栏图标内容色: 深色图标 (浅色底色) / 浅色图标 (深色底色) */

@@ -46,6 +46,7 @@ import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.DefaultDialogTransitionSpec
 import io.legado.app.ui.root.DialogTransitionSpec
+import io.legado.app.ui.root.PickedFile
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteTransitionSpec
 import io.legado.app.ui.root.TransitionEasing
@@ -429,6 +430,14 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
         onComplete,
         onNeedBooksDir = { ensureBookSaveDirSelected() },
     )
+
+    /** 选文件导入: 面板回传的临时件先复制进沙盒再走上架链, 不经列表勾选。 */
+    override fun importPickedBookFiles(files: List<PickedFile>, onComplete: () -> Unit) =
+        NativeImportBook.importPickedFiles(
+            files.map { it.ref },
+            onComplete,
+            onNeedBooksDir = { ensureBookSaveDirSelected() },
+        )
 
     override fun updateImportBookFilter(key: String) = NativeImportBook.updateFilter(key)
 

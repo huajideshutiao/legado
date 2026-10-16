@@ -49,6 +49,7 @@ import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.BookRef
+import io.legado.app.ui.root.PickedFile
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.ensureBookSaveDirSelected
 import io.legado.app.ui.root.pushExportDispatch
@@ -842,6 +843,18 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
         onComplete,
         onNeedBooksDir = { ensureBookSaveDirSelected() },
     )
+
+    /** 选文件导入: 面板回传的临时件先复制进沙盒再走上架链, 不经列表勾选。 */
+    override fun importPickedBookFiles(files: List<PickedFile>, onComplete: () -> Unit) =
+        NativeImportBook.importPickedFiles(
+            files.map { it.ref },
+            onComplete = {
+                // 物化副本只在导入期间需要 (已复制进沙盒书籍目录), 导入完即清
+                files.forEach { PlatformServiceProviders.get().files.discardPickedFile(it.ref) }
+                onComplete()
+            },
+            onNeedBooksDir = { ensureBookSaveDirSelected() },
+        )
 
     override fun updateImportBookFilter(key: String) = NativeImportBook.updateFilter(key)
 

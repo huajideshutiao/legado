@@ -28,7 +28,7 @@ import { arrayBufferToBase64, base64ToArrayBuffer } from './BridgeCodec';
  *
  * ## pickDocuments payload
  * {
- *   "contentTypes": ["public.json", "public.text", ...],  // iOS UTI 风格, 内部映射到 MIME
+ *   "fileSuffixes": ["json", "txt", ...],  // 扩展名 (不含点), 拼成 fileSuffixFilters
  *   "allowsMultiple": <boolean>
  * }
  *
@@ -56,10 +56,10 @@ import { arrayBufferToBase64, base64ToArrayBuffer } from './BridgeCodec';
  *   policyErrors: [{uri, code, message}], uris: [成功子集] }`
  * - 失败: `{ ok: false, code?: <BusinessError.code>, error: "<string>" }`
  *
- * # UTI → 后缀映射
- * KMP 调用方 (对照 iOS pickDocuments) 传入 iOS UTI 字符串 (如 "public.json"),
- * 鸿蒙 DocumentViewPicker 用文件后缀过滤 (fileSuffixFilters, 无 MIME 过滤能力), 内部做映射;
- * 未知 UTI 不传 filter (显示所有文件, 与 iOS "允许选择任意文件" 语义一致)。
+ * # 后缀过滤
+ * KMP 调用方传扩展名列表 (如 ["txt","epub"]), 鸿蒙 DocumentViewPicker 用文件后缀过滤
+ * (fileSuffixFilters, 无 MIME 过滤能力), 此处拼成后缀项; 列表为空时不设 filter
+ * (显示所有文件)。
  *
  * # 用户取消识别
  * DocumentViewPicker.select 在用户取消时抛出 BusinessError, code 13900042 (ENOENT) /
@@ -98,7 +98,7 @@ interface ActivatePermissionsPayload {
 }
 
 interface PickDocumentsPayload {
-  contentTypes: string[];
+  fileSuffixes: string[];
   allowsMultiple: boolean;
 }
 
@@ -115,25 +115,19 @@ interface SaveImageToAlbumPayload {
   data: string; // base64 编码的图片字节
 }
 
-// ===== UTI → 文件后缀映射表 (对照 iOS UTI 常用值) =====
+// ===== 后缀过滤项拼装 =====
 // 鸿蒙 DocumentSelectOptions 用 fileSuffixFilters (后缀数组) 过滤, 不接受 MIME;
-// 每项形如 '.txt' 或 '说明|.txt,.log' (竖线前为描述, 逗号分隔多后缀);
-// 未知 UTI 不产生过滤项, 全部未命中时不设 filter (显示所有文件)。
-const UTI_TO_SUFFIX: Record<string, string> = {
-  'public.json': '.json',
-  'public.text': '.txt,.log,.md',
-  'public.plain-text': '.txt,.log,.md',
-  'public.html': '.html,.htm',
-  'public.xml': '.xml',
-  'public.source': '.txt',
-  'public.image': '.png,.jpg,.jpeg,.bmp,.gif,.webp',
-  'public.jpeg': '.jpg,.jpeg',
-  'public.png': '.png',
-  'public.bmp': '.bmp',
-  'public.gif': '.gif',
-  'public.zip-archive': '.zip',
-  'org.idpf.epub-container': '.epub',
-};
+// 每项形如 '.txt' 或 '说明|.txt,.log' (竖线前为描述, 逗号分隔多后缀)。
+function toSuffixFilters(fileSuffixes: string[]): string[] {
+  const filters = new Set<string>();
+  for (const suffix of fileSuffixes) {
+    const trimmed = suffix.trim().replace(/^\.+/, '');
+    if (trimmed.length > 0) {
+      filters.add('.' + trimmed.toLowerCase());
+    }
+  }
+  return Array.from(filters);
+}
 
 /**
  * 初始化文件桥 (由 EntryAbility.onCreate 调用, 注入 UIAbilityContext)。
@@ -170,21 +164,15 @@ async function handleAction(req: BridgeRequest): Promise<FilePickerResponse> {
 async function handlePickDocuments(payload: string): Promise<FilePickerResponse> {
   const p = JSON.parse(payload) as PickDocumentsPayload;
 
-  // UTI → 后缀过滤项 (去重, 丢弃未知 UTI)
-  const suffixSet = new Set<string>();
-  for (const uti of p.contentTypes) {
-    const suffix = UTI_TO_SUFFIX[uti];
-    if (suffix != null) {
-      suffixSet.add(suffix);
-    }
-  }
+  // 扩展名 → 后缀过滤项 (去重)
+  const suffixFilters = toSuffixFilters(p.fileSuffixes ?? []);
 
   const documentSelectOptions = new picker.DocumentSelectOptions();
   // maxSelectNumber: 鸿蒙默认 1, 多选时设较大值 (与 iOS allowsMultipleSelection 语义对齐)
   documentSelectOptions.maxSelectNumber = p.allowsMultiple ? 100 : 1;
-  // fileSuffixFilters: 仅当有可映射后缀时设置 (不设表示不限制, 显示所有文件)
-  if (suffixSet.size > 0) {
-    documentSelectOptions.fileSuffixFilters = Array.from(suffixSet);
+  // fileSuffixFilters: 仅当有过滤项时设置 (不设表示不限制, 显示所有文件)
+  if (suffixFilters.length > 0) {
+    documentSelectOptions.fileSuffixFilters = suffixFilters;
   }
 
   const documentViewPicker = new picker.DocumentViewPicker();

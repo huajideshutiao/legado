@@ -298,6 +298,7 @@
     <string name="remote_book">Remote book</string>
     <string name="scan_folder">Intelligent scanning</string>
     <string name="select_folder">Select a folder</string>
+    <string name="select_font_file">Select a font file</string>
     <string name="sub_dir">Sub dir</string>
     <string name="group">Group</string>
     <string name="about">About</string>

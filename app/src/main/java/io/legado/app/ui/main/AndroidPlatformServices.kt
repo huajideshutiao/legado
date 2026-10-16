@@ -37,6 +37,7 @@ import io.legado.app.ui.root.CrashLogProvider
 import io.legado.app.ui.root.ExternalRequestService
 import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.FilePickerService
+import io.legado.app.ui.root.PickedFile
 import io.legado.app.ui.root.KeyboardController
 import io.legado.app.ui.root.LaunchRequest
 import io.legado.app.ui.root.MediaService
@@ -90,6 +91,7 @@ class AndroidPlatformServices(
     private val activity: MainActivity,
     private val capabilitiesImpl: AndroidPlatformCapabilities,
     private val openDocumentPicker: ActivityResultLauncherAwait<Array<String>, Uri?>,
+    private val openDocumentsPicker: ActivityResultLauncherAwait<Array<String>, List<Uri>>,
     private val createDocumentPicker: ActivityResultLauncherAwait<String, Uri?>,
     private val openDocumentTreePicker: ActivityResultLauncherAwait<Uri?, Uri?>,
 ) : PlatformServices {
@@ -98,7 +100,8 @@ class AndroidPlatformServices(
         get() = capabilitiesImpl
 
     override val files: FilePickerService = AndroidFilePickerService(
-        activity, openDocumentPicker, createDocumentPicker, openDocumentTreePicker,
+        activity, openDocumentPicker, openDocumentsPicker, createDocumentPicker,
+        openDocumentTreePicker,
     )
 
     override val sharing: ShareService = AndroidShareService(activity)
@@ -126,6 +129,7 @@ private class AndroidFilePickerService(
     // 选图裁剪 (processWelcomeImage) 需读窗口尺寸与 toast, 与其余能力共用 MainActivity 引用
     private val activity: MainActivity,
     private val openDocumentPicker: ActivityResultLauncherAwait<Array<String>, Uri?>,
+    private val openDocumentsPicker: ActivityResultLauncherAwait<Array<String>, List<Uri>>,
     private val createDocumentPicker: ActivityResultLauncherAwait<String, Uri?>,
     private val openDocumentTreePicker: ActivityResultLauncherAwait<Uri?, Uri?>,
 ) : FilePickerService {
@@ -135,6 +139,26 @@ private class AndroidFilePickerService(
             ?.toString()
             ?.takeIf { filter.matchesUri(it) }
             ?.let(::materializeUri)
+    }
+
+    /**
+     * 多选文件 (书籍/字体导入): 回传 SAF 文档地址与文件名, 不物化副本 ——
+     * 书文件直接以文档地址入库 (常驻读权限在此显式落下), 字体由调用方读字节落内置目录。
+     */
+    override fun pickFiles(filter: FileFilter): List<PickedFile> = runBlocking {
+        val uris = withContext(Dispatchers.Main) { openDocumentsPicker.launch(filter.toMimeTypes()) }
+        uris.mapNotNull { uri ->
+            // ACTION_OPEN_DOCUMENT 默认只给到进程结束的读权限, 不落常驻权限时重启后书文件读不开;
+            // 提供方拒绝时记日志 (该文件当次仍可导入, 只是重启后需重选)
+            runCatching {
+                App.instance.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }.onFailure {
+                AppLog.put("文件选择器未取得常驻读权限: $uri\n${it.localizedMessage}", it)
+            }
+            PickedFile(uri.toString(), fileNameOf(uri) ?: uri.toString())
+        }
     }
 
     /**
@@ -285,6 +309,34 @@ private class AndroidFilePickerService(
         }
     }
 
+    /** 提供方给的显示名 (查不到返回 null)。 */
+    private fun displayNameOf(uri: Uri): String? = runCatching {
+        App.instance.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (nameIndex >= 0 && cursor.moveToFirst()) {
+                cursor.getString(nameIndex)
+            } else {
+                null
+            }
+        }
+    }.getOrNull()
+
+    /**
+     * 文件名字: 优先提供方显示名, 查不到时退回 URI 末段 (文档地址形如
+     * `.../document/primary:Download/书.txt`, 两种形态都按物化侧同一套清洗); 都取不到返回 null。
+     */
+    private fun fileNameOf(uri: Uri): String? =
+        displayNameOf(uri)?.substringAfterLast(':')?.substringAfterLast('/')
+            ?.takeIf { it.isNotBlank() }
+            ?: uri.lastPathSegment?.substringAfterLast(':')?.substringAfterLast('/')
+                ?.takeIf { it.isNotBlank() }
+
     /**
      * SAF 返回的 content:// URI 不能直接交给 java.io.File。
      * 原版 BgTextConfigViewModel.setBgFromUri 直接从 URI 读流；这里把选择结果
@@ -296,32 +348,10 @@ private class AndroidFilePickerService(
         return when (uri.scheme?.lowercase()) {
             "content" -> runCatching {
                 val resolver = App.instance.contentResolver
-                val displayName = resolver.query(
-                    uri,
-                    arrayOf(OpenableColumns.DISPLAY_NAME),
-                    null,
-                    null,
-                    null,
-                )?.use { cursor ->
-                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (nameIndex >= 0 && cursor.moveToFirst()) {
-                        cursor.getString(nameIndex)
-                    } else {
-                        null
-                    }
-                }
-                val sourceName = displayName
-                    ?.substringAfterLast(':')
-                    ?.substringAfterLast('/')
-                    ?.takeIf { it.isNotBlank() }
-                    ?: uri.lastPathSegment
-                        ?.substringAfterLast(':')
-                        ?.substringAfterLast('/')
-                        ?.takeIf { it.isNotBlank() }
-                    ?: "picked_${System.currentTimeMillis()}"
+                val sourceName = fileNameOf(uri) ?: "picked_${System.currentTimeMillis()}"
                 val safeName = sourceName.map { c ->
                     if (c.isLetterOrDigit() || c == '.' || c == '_' || c == '-') c else '_'
-                }.joinToString("").ifBlank { "picked_${System.currentTimeMillis()}" }
+                }.joinToString("")
                 val targetDir = File(App.instance.cacheDir, "file_picker").apply { mkdirs() }
                 val target = File(targetDir, "${System.currentTimeMillis()}_$safeName")
                 resolver.openInputStream(uri)?.use { input ->

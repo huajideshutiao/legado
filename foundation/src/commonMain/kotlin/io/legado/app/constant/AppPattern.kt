@@ -88,6 +88,23 @@ object AppPattern {
     //压缩文件支持类型
     val archiveFileRegex = Regex(".*\\.(zip|rar|7z|tar|gz|bz2|xz|lzma)$", RegexOption.IGNORE_CASE)
 
+    /**
+     * 本地书导入 (选目录与选文件两条入口) 的选择面板过滤扩展名: 书文件 ∪ 压缩包。
+     *
+     * 只喂选择面板的过滤与对话框后缀; 认不认由 [bookFileRegex] / [archiveFileRegex] 判定 ——
+     * 各端提供方报的类型并不可靠, 面板过滤只是收敛可选范围。
+     */
+    val bookImportFileExtensions = listOf(
+        "txt", "epub", "pdf", "cbz",
+        "zip", "rar", "7z", "tar", "gz", "bz2", "xz", "lzma",
+    )
+
+    /** 字体文件扩展名 (字体选择面板的过滤项; 认不认由 [fontFileRegex] 判定)。 */
+    val fontFileExtensions = listOf("ttf", "otf")
+
+    /** 字体文件正则 (对齐原版 `FontSelectDialog.fontRegex`: .ttf / .otf, 大小写不敏感)。 */
+    val fontFileRegex = Regex("(?i).*\\.[ot]tf")
+
     val imgFileRegex = Regex(".*\\.(jpg|jpeg|png|gif|bmp|webp|svg|apng|avif|heic|heif)$", RegexOption.IGNORE_CASE)
 
     /**

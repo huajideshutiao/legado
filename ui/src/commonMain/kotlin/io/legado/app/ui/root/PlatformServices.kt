@@ -2,6 +2,7 @@ package io.legado.app.ui.root
 
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.AppPattern
 import io.legado.app.constant.DirUsage
 import io.legado.app.constant.fileNameFormat
 import io.legado.app.help.FileUtilsCommon
@@ -61,9 +62,30 @@ object PlatformServiceProviders {
  */
 data class SavedRef(val value: String)
 
-/** 文件选择器：单选/保存。 */
+/**
+ * 用户选定的一个文件 (多选入口回传)。
+ *
+ * [ref] 的形态随端: 安卓是 SAF 文档地址 (`content://`, 交本端导入链使用), 桌面是绝对路径,
+ * iOS 是系统复制进沙盒的临时路径, 鸿蒙是应用缓存里的物化路径 —— 各端导入链原样消费自己的形态。
+ * [name] 是文件名 (扩展名判定与提示用): 安卓取提供方显示名, 其余端取回传路径的文件名。
+ */
+data class PickedFile(val ref: String, val name: String)
+
+/** 文件选择器：单选/多选/保存。 */
 interface FilePickerService {
     fun pickFile(filter: FileFilter): String?
+
+    /**
+     * 弹系统面板多选文件 (书籍与字体导入用)。
+     *
+     * 与 [pickFile] 的差别: 不做扩展名静默过滤 —— 面板过滤只是收敛可选范围, 各端提供方报的
+     * 类型并不可靠, 选中不支持的类型由调用方明确提示, 不静默丢弃。
+     *
+     * 阻塞 IO + 弹平台选择器 (实现内部等主线程回调), 必须在 IO 线程调用。
+     *
+     * @return 选定文件列表; 用户取消返回空列表
+     */
+    fun pickFiles(filter: FileFilter): List<PickedFile>
 
     /**
      * 弹本端"保存到文件"入口, 由平台把 [text] 写进用户选定的目标, 返回保存后的引用。
@@ -478,6 +500,17 @@ data class FileFilter(
             mimeTypes = listOf("text/plain", "application/json"),
             extensions = listOf("txt", "json"),
         )
+
+        /**
+         * 本地书导入 (书文件与压缩包)。
+         *
+         * 不给 [FileFilter.mimeTypes]: 安卓 SAF 面板按 MIME 过滤时, 提供方常把书文件报成
+         * `application/octet-stream` 而整类置灰, 过滤交给面板的后缀/类型映射与调用方的扩展名复核。
+         */
+        val Books = FileFilter(extensions = AppPattern.bookImportFileExtensions)
+
+        /** 字体文件导入 (ttf / otf)。 */
+        val Fonts = FileFilter(extensions = AppPattern.fontFileExtensions)
     }
 }
 

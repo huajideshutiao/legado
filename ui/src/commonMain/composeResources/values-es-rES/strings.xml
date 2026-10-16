@@ -311,6 +311,7 @@
     <string name="indent_3">Sangría con 3 carácter</string>
     <string name="indent_4">Sangría con 4 carácter</string>
     <string name="select_folder">Seleccione una carpeta</string>
+    <string name="select_font_file">Seleccionar un archivo de fuente</string>
     <string name="select_file">Seleccione un archivo</string>
     <string name="chapter_list_empty">Capítulos sin contenido</string>
     <string name="text_letter_spacing">Espaciado de palabras</string>

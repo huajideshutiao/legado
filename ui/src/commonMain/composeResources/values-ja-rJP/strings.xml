@@ -311,6 +311,7 @@
     <string name="indent_3">Indent with 3 chars</string>
     <string name="indent_4">Indent with 4 chars</string>
     <string name="select_folder">Select a folder</string>
+    <string name="select_font_file">フォントファイルを選択</string>
     <string name="select_file">Select a file</string>
     <string name="chapter_list_empty">Chapters is empty</string>
     <string name="text_letter_spacing">Word spacing</string>

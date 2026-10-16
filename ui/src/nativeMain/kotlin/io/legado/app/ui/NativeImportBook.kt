@@ -201,18 +201,52 @@ object NativeImportBook {
         onNeedBooksDir: (suspend () -> Boolean)? = null,
     ) {
         scope.launch {
-            selection.filterIsInstance<NativeImportFile>().forEach { item ->
-                runCatching { importOne(item, onNeedBooksDir) }
-                    .onSuccess { item.isOnBookShelf = true }
-                    .onFailure { e ->
-                        AppLog.put("导入 ${item.name} 出错\n${e.message}", e)
-                        Toasters.get().toast("导入 ${item.name} 出错\n${e.message}")
-                    }
-            }
-            refreshShelfNames()
-            ImportBookShared.refresh()
+            importItems(selection.filterIsInstance<NativeImportFile>(), onNeedBooksDir)
             onComplete()
         }
+    }
+
+    /**
+     * 导入系统面板选定的文件 (不经列表勾选)。
+     *
+     * 选定文件是临时件 (iOS 的 Import 副本 / 鸿蒙的缓存物化件), 一律先复制进沙盒再导入:
+     * 压缩包在包内没有书籍文件时导入的是压缩包自身 (见 FileBookLocalImportShared), 引用临时件会在
+     * 临时件被清掉后失效; 其余情形复制后与列表上架同一条链。
+     */
+    fun importPickedFiles(
+        paths: List<String>,
+        onComplete: () -> Unit,
+        onNeedBooksDir: (suspend () -> Boolean)? = null,
+    ) {
+        scope.launch {
+            val items = paths.mapNotNull { path ->
+                runCatching { NativeImportFile(sandboxCopy(File(path))) }
+                    .onFailure {
+                        AppLog.put("导入 ${File(path).name} 出错\n${it.message}", it)
+                        Toasters.get().toast("导入 ${File(path).name} 出错\n${it.message}")
+                    }
+                    .getOrNull()
+            }
+            importItems(items, onNeedBooksDir)
+            onComplete()
+        }
+    }
+
+    /** 逐项导入 + 刷新已上架标记与列表 (两条入口共用)。 */
+    private suspend fun importItems(
+        items: List<NativeImportFile>,
+        onNeedBooksDir: (suspend () -> Boolean)?,
+    ) {
+        items.forEach { item ->
+            runCatching { importOne(item, onNeedBooksDir) }
+                .onSuccess { item.isOnBookShelf = true }
+                .onFailure { e ->
+                    AppLog.put("导入 ${item.name} 出错\n${e.message}", e)
+                    Toasters.get().toast("导入 ${item.name} 出错\n${e.message}")
+                }
+        }
+        refreshShelfNames()
+        ImportBookShared.refresh()
     }
 
     /** 导入单个条目; 保存位置未设置时先选目录再重试一次 (其余导入异常照旧上抛)。 */

@@ -18,8 +18,8 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 //
 // # 调用链 (以 pickDocuments 为例)
 // ```
-// 业务侧 pickDocuments(contentTypes, allowsMultiple)
-//   → OhosNativeBridge.invokeFilePickerSync("pickDocuments", {"contentTypes":[...],"allowsMultiple":...})
+// 业务侧 pickDocuments(fileSuffixes, allowsMultiple)
+//   → OhosNativeBridge.invokeFilePickerSync("pickDocuments", {"fileSuffixes":[...],"allowsMultiple":...})
 //   → [tsfn] ArkTS FilePickerBridgeHandler: DocumentViewPicker.select → uris
 //   → [napi @CName] legado_file_picker_callback(requestId, {"ok":true,"uris":[...]})
 //   → pickDocuments 解析 uris 返回 List<String>
@@ -33,21 +33,20 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 /**
  * 选择文档 (对照 iOS pickDocuments / desktop FileDialog)。
  *
- * @param contentTypes 文件类型过滤 (iOS UTI 风格, 如 "public.json"/"public.text",
- *   ArkTS 侧 FilePickerBridgeHandler 映射到 DocumentViewPicker fileMimeTypeFilters)
+ * @param fileSuffixes 文件扩展名过滤 (不含点, 如 "json"/"txt"), ArkTS 侧拼成 DocumentViewPicker 的 fileSuffixFilters; 空列表表示不限制
  * @param allowsMultiple 是否允许多选
  * @return 选中文件 URI 列表, 用户取消或桥接未就绪返回 null
  */
 @OptIn(ExperimentalEncodingApi::class)
 fun pickDocuments(
-    contentTypes: List<String>,
+    fileSuffixes: List<String>,
     allowsMultiple: Boolean,
 ): List<String>? {
     // 桥接未就绪: 降级返回 null (与 stub 行为一致, 调用方降级处理)
     if (!OhosNativeBridge.isFilePickerBridgeReady()) return null
 
     val payload = KS_JSON.encodeToString(
-        PickDocumentsPayload(contentTypes = contentTypes, allowsMultiple = allowsMultiple)
+        PickDocumentsPayload(fileSuffixes = fileSuffixes, allowsMultiple = allowsMultiple)
     )
     val resultJson = OhosNativeBridge.invokeFilePickerSync("pickDocuments", payload) ?: return null
     val resp = runCatching { KS_JSON.decodeFromString(FilePickerResponse.serializer(), resultJson) }.getOrNull()
@@ -174,7 +173,7 @@ fun activateDirectoryPermissions(uris: List<String>): ActivatePermissionsResult 
 /** pickDocuments 请求 payload (Kotlin → ArkTS)。 */
 @Serializable
 private data class PickDocumentsPayload(
-    val contentTypes: List<String>,
+    val fileSuffixes: List<String>,
     val allowsMultiple: Boolean,
 )
 

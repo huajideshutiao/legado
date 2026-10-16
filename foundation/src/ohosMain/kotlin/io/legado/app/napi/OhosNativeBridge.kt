@@ -1361,7 +1361,7 @@ object OhosNativeBridge {
      * 同步调用 filePicker 操作 (阻塞等待 ArkTS 返回结果)。
      *
      * @param action 操作类型: "pickDocuments" / "pickDocumentContent"
-     * @param payloadJson 操作参数 JSON (由调用方序列化, 含 contentTypes/allowsMultiple 或 uri)
+     * @param payloadJson 操作参数 JSON (由调用方序列化, 含 fileSuffixes/allowsMultiple 或 uri)
      * @param timeoutMs 超时毫秒 (默认 60s, 用户选文件可能耗时较长)
      * @return ArkTS 返回的结果 JSON; tsfn 未注册或超时返回 null (调用方降级处理)
      */

@@ -437,7 +437,7 @@ export interface LegadoNativeBridge {
    * 处理完成后通过 [filePickerCallback] 回送结果给 Kotlin。
    *
    * @param callback 接收 JSON 请求 `{ requestId, action, payload }`:
-   *   - action='pickDocuments':     payload=`{ contentTypes: ['public.json', ...], allowsMultiple }` → 选文件, 回送 `{ ok, uris }` 或 `{ ok, cancelled: true }`
+   *   - action='pickDocuments':     payload=`{ fileSuffixes: ['json', ...], allowsMultiple }` → 选文件, 回送 `{ ok, uris }` 或 `{ ok, cancelled: true }`
    *   - action='pickDocumentContent': payload=`{ uri }` → 读字节, 回送 `{ ok, data: '<base64>' }`
    */
   registerFilePickerCallback(callback: (json: string) => void): void;

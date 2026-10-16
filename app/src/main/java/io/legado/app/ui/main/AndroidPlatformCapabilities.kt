@@ -31,6 +31,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
+import io.legado.app.constant.DirUsage
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.LOG_DIR_NAME
 import io.legado.app.constant.appInfo
@@ -83,6 +84,7 @@ import io.legado.app.ui.book.import.local.ImportBookViewModel
 import io.legado.app.ui.book.info.WebFileImportShared
 import io.legado.app.ui.book.manage.reportLocalBookSourceFileDeleteFailure
 import io.legado.app.ui.book.read.config.FontItem
+import io.legado.app.ui.book.read.config.saveFontBytesToInternalDir
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.manage.BookSourceViewModel
 import io.legado.app.ui.book.source.manage.selectedSourcesJson
@@ -100,6 +102,7 @@ import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.DialogTransitionSpec
+import io.legado.app.ui.root.PickedFile
 import io.legado.app.ui.root.RouteTransitionSpec
 import io.legado.app.ui.root.SharedPlatformCapabilities
 import io.legado.app.ui.root.TransitionEasing
@@ -124,6 +127,7 @@ import io.legado.app.utils.externalCache
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.find
 import io.legado.app.utils.getClipText
+import io.legado.app.utils.inputStream
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isPad
@@ -477,7 +481,7 @@ class AndroidPlatformCapabilities(
 
     // 对照 app 端 FontSelectDialog.loadFontFiles: pref 字体目录 + externalFiles/font 合并去重排序
     override suspend fun scanFontItems(): List<FontItem> = withContext(IO) {
-        val fontRegex = Regex("(?i).*\\.[ot]tf")
+        val fontRegex = AppPattern.fontFileRegex
         val items = arrayListOf<FontItem>()
         val fontPath = AppConfig.fontFolder
         if (!fontPath.isNullOrBlank()) {
@@ -640,6 +644,42 @@ class AndroidPlatformCapabilities(
             onComplete()
         }
     }
+
+    /**
+     * 选文件导入: 系统面板回传的文档地址直接当书籍引用入库 (不经列表勾选)。
+     *
+     * 选定文件的位置同时登记为书籍用途 —— 用途校验只放行书籍类入口选定的位置, 不登记的话
+     * "这个文件所在目录曾经为字体/图片选过"就会把用户刚亲手选定的书文件拦下。
+     */
+    override fun importPickedBookFiles(files: List<PickedFile>, onComplete: () -> Unit) {
+        if (files.isEmpty()) {
+            onComplete()
+            return
+        }
+        capabilityScope.launch(IO) {
+            val books = files.mapTo(HashSet()) { picked ->
+                AndroidDirAuthorizations.remember(picked.ref, DirUsage.BookTree)
+                ImportBook(FileDoc.fromUri(picked.ref.toUri(), false))
+            }
+            importViewModel.addToBookshelf(books, onNeedBooksDir = { ensureBookSaveDirSelected() }) {
+                ImportBookShared.refresh()
+                onComplete()
+            }
+        }
+    }
+
+    /**
+     * 字体导入: 面板回传的是文档地址 (读字节走既有的地址→流通道), 落内置字体目录用面板给的显示名
+     * (物化副本名带防重名前缀, 不能当字体名)。
+     */
+    override fun importPickedFontFiles(files: List<PickedFile>): List<String> =
+        files.mapNotNull { picked ->
+            val bytes = picked.ref.toUri().inputStream(App.instance).getOrNull()
+                ?.use { it.readBytes() }
+            bytes?.takeIf { it.isNotEmpty() }
+                ?.let { saveFontBytesToInternalDir(picked.name, it) }
+                ?.let { picked.name }
+        }
 
     // 对照 ImportBookActivity.onSearchTextChange / viewModel.updateCallBackFlow
     override fun updateImportBookFilter(key: String) {
