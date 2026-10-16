@@ -14,6 +14,8 @@ import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.mainDispatcher
+import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.upLoadToDirectLink
 import io.legado.app.model.fileBook.FileBook
@@ -170,8 +172,21 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
     ) {
         capabilityScope.launch {
             val json = selectedSourcesJson(selection, allCount, sortAscending, sort) ?: return@launch
+            // 与安卓/桌面同形制: 先落一份 JSON 文件, 再分享该文件 (接收方拿到文件而非一段文本)
+            val path = withContext(IoDispatcher) {
+                runCatching {
+                    val file = AppFilesDirs.get().filesDir + "/shareBookSource.json"
+                    BackupFileOps.writeText(file, json)
+                    file
+                }.onFailure {
+                    AppLog.put("分享书源失败\n${it.message}", it)
+                    Toasters.get().toast("分享失败\n${it.message}")
+                }.getOrNull()
+            } ?: return@launch
             // 分享面板是界面动作, 回主线程; 能力作用域是 IO。
-            withContext(mainDispatcher) { shareText(json) }
+            withContext(mainDispatcher) {
+                PlatformServiceProviders.get().sharing.shareFile(path, "application/json")
+            }
         }
     }
 
