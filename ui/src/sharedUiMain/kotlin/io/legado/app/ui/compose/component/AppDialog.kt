@@ -601,9 +601,6 @@ fun AppBottomSheetDialog(
     val dialogSpec = remember { PlatformCapabilityProviders.get().dialogTransitionSpec }
     Dialog(onDismissRequest = { dismissing = true }, properties = properties) {
         WithWindowTextMenu {
-            // 底层压暗走窗口/对话框层 (与居中对话框同一套): Android 补 0.6, skiko 三端用对话框
-            // 自带的 0.6 蒙层; E-Ink 分支在上方不补 (对齐原版 E-Ink 清 dim)
-            PlatformDialogDim()
             val progress = remember { Animatable(0f) }
             // 拖拽位移 (px): 双向 —— 负 = 上推 (面板高度放大, 见 heightPx), 正 = 下拉
             // (面板整体下移, translationY 相加; 触发关闭时退出动画从当前位置继续下滑,
@@ -1001,6 +998,11 @@ fun AppBottomSheetDialog(
                     LocalSheetDismissRequest provides requestDismiss,
                 ) { content() }
             }
+            // 底层压暗走窗口/对话框层 (与居中对话框同一套): Android 补 0.6, skiko 三端用对话框
+            // 自带的 0.6 蒙层; E-Ink 分支在上方不补 (对齐原版 E-Ink 清 dim)。
+            // 必须排在骨架之后: 骨架里的贴边窗口样式先清掉主题自带暗化, 再由这里统一补 0.6,
+            // 顺序颠倒会把补上的 0.6 又清成 0
+            PlatformDialogDim()
         }
     }
 }
@@ -1062,7 +1064,8 @@ private fun BottomSheetScaffold(
     content: @Composable () -> Unit,
 ) {
     // 贴边窗口: 系统栏透明 + 清掉主题自带暗化 (面板底色才能铺到窗口顶; 暗度改由
-    // [PlatformDialogDim] 统一补 0.6)
+    // [PlatformDialogDim] 统一补 0.6 —— 那一次调用必须排在本骨架之后, 否则清在补后,
+    // 补上的 0.6 会被清成 0)
     PlatformSheetWindowStyle()
     // 系统栏图标明暗: 面板顶进入状态栏区域后状态栏那一条由面板底色接管, 按底色亮度定;
     // 导航栏那一条面板恒铺满 (面板贴底, 避让加在底色之内), 恒按底色亮度定

@@ -1,14 +1,5 @@
 package io.legado.app.ui.root
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.CircularProgressIndicator
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -16,29 +7,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import io.legado.app.constant.SourceType
-import io.legado.app.data.entities.BaseBook
-import io.legado.app.data.entities.BaseSource
-import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.loadSourceForLogin
 import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.source.SourceLoginDialog
 import io.legado.app.ui.book.source.SourceLoginFormState
-import io.legado.app.ui.compose.component.AppDialog
-import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDialogSurface
-import io.legado.app.ui.compose.component.appDialogSize
-import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.decodeStringMapOrNull
-import legado.ui.generated.resources.Res
-import legado.ui.generated.resources.loading
-import org.jetbrains.compose.resources.stringResource
 
 /**
  * 书源登录 Overlay 对话框 (key="sourceLogin"), 只承载表单登录。
@@ -52,6 +28,11 @@ import org.jetbrains.compose.resources.stringResource
  * payload 格式: [io.legado.app.help.sourceLoginOverlayPayload] 编码的 {url, dataKey}
  * (dataKey 指向 [SourceLoginContext], 对照原版 IntentData; 深链等仅 URL 的入口只有 url,
  * 缺失时按 url 查库)。
+ *
+ * 源解析在组合期同步完成 (内存上下文命中时首帧即有源), 全程只建一个对话框窗口: 对话框窗口
+ * 建一次底层压暗就生效一次、销毁时撤销, 先弹"解析中"窗口再换成表单窗口会让底层压暗闪两次。
+ * 只有 dataKey 失效后按 url 查库这一条路径需要等异步结果, 期间不建窗口 (对照原版查库期间
+ * 无任何窗口), 查完再建那唯一的窗口。
  */
 @Composable
 internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
@@ -92,25 +73,21 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
     }
 
     // ===== 源解析 (对照原版 IntentData.nowSource 语义) =====
-    // dataKey 内存上下文优先 (HttpTTS 不在 bookSourceDao, 只能走上下文), 其次按 url 查库;
-    // inited 守卫保证挂起恢复后不重复解析 (SourceLoginContext.take 是 one-shot)。
-    var source by remember { mutableStateOf<BaseSource?>(null) }
-    var book by remember { mutableStateOf<BaseBook?>(null) }
-    var chapter by remember { mutableStateOf<BookChapter?>(null) }
-    var loading by remember { mutableStateOf(true) }
-    var inited by remember { mutableStateOf(false) }
+    // dataKey 内存上下文优先 (HttpTTS 不在 bookSourceDao, 只能走上下文), 其次按 url 查库。
+    // 上下文在组合期同步取出 (take 是 one-shot, remember 保证只取一次): 源已在内存时首帧即有源,
+    // 与表单共用同一个对话框窗口, 不先弹"解析中"窗口 (窗口建了又换会让底层压暗闪两次)。
+    val context = remember(params.dataKey) { SourceLoginContext.take(params.dataKey) }
+    var source by remember { mutableStateOf(context?.source) }
+    var loading by remember { mutableStateOf(context?.source == null) }
     LaunchedEffect(params.sourceUrl, params.dataKey) {
-        if (inited) return@LaunchedEffect
-        inited = true
-        val context = SourceLoginContext.take(params.dataKey)
+        if (!loading) return@LaunchedEffect
         // 查库失败 (DB 未就绪等) 按源缺失处理: loading 必须落 false,
         // 由下方"无内容可登录"分支关闭对话框, 不能卡在加载态
-        val src = runCatching { context?.source ?: loadSourceForLogin(params.sourceUrl) }.getOrNull()
-        source = src
-        book = context?.book
-        chapter = context?.chapter
+        source = runCatching { loadSourceForLogin(params.sourceUrl) }.getOrNull()
         loading = false
     }
+    val book = context?.book
+    val chapter = context?.chapter
 
     // 表单登录状态 (登录数据/行) 由本组合持有: 挂起恢复后 SourceLoginDialog 重建时
     // 保留用户已输入的值, 跳过 rebuild 清空 (对照原版 DialogFragment 存活语义)
@@ -121,18 +98,21 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
     val formSource = source?.takeIf { !it.loginUi.isNullOrEmpty() }
     // URL 登录: 源无 loginUi 时, 源对象缺失则直接用入口 url
     val loginUrl = source?.loginUrl ?: params.sourceUrl
-    val urlLogin = !loading && formSource == null && loginUrl.isNotBlank()
+    val urlLogin = formSource == null && loginUrl.isNotBlank()
     var urlLoginHandled by remember { mutableStateOf(false) }
 
     // ===== 挂起: 不渲染 UI 窗口 (新路由可见) =====
     // 注意: 挂起 return 必须位于全部状态声明之后 —— return 之前已声明的节点
     // (源解析状态 / loginFormState / 信号收集) 在挂起期间保持存活, 恢复后原样呈现;
-    // return 之后的 UI 节点 (加载占位/表单) 挂起时移出组合, 恢复时重建。
+    // return 之后的 UI 节点 (表单) 挂起时移出组合, 恢复时重建。
     if (suspended) return
+
+    // 源还在按 url 查库 (dataKey 失效路径): 不建窗口, 查完再建那唯一的窗口
+    if (loading) return
 
     // 源解析完成但拿不到可登录内容 (源不在库 / loginUrl、loginUi 双空):
     // 对照原版 showLoginDialog 双空直接 return 的语义, 关闭即可, 不落入空白对话框。
-    if (!loading && formSource == null && loginUrl.isBlank()) {
+    if (formSource == null && loginUrl.isBlank()) {
         LaunchedEffect(Unit) {
             if (source == null) {
                 Toasters.get().toast("未找到书源")
@@ -164,45 +144,14 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
 
     // 表单登录: 对照原版 BaseSource.showLoginDialog 的 showDialogFragment<SourceLoginDialog> 分支。
     // SourceLoginDialog 自带窗口 (AppDialogScaffold), 不再包外壳 (两层窗口会叠两份背景暗化)。
-    when {
-        // 源还没解析出来: 对话框内加载占位, 先不建任何登录内容
-        loading -> AppDialog(
-            onDismissRequest = { navigator.dismissOverlay(overlay.key) },
-            properties = AppDialogSizes.properties(),
-        ) {
-            AppDialogSurface(modifier = Modifier.appDialogSize()) {
-                LoginLoadingPlaceholder()
-            }
-        }
-
-        else -> SourceLoginDialog(
-            source = formSource!!,
-            onDismiss = { navigator.dismissOverlay(overlay.key) },
-            onOpenUrl = { PlatformCapabilityProviders.get().openExternalUrl(it) },
-            book = book,
-            chapter = chapter,
-            formState = loginFormState,
-        )
-    }
-}
-
-/** 源解析期间对话框内的加载占位 (避免整窗闪白 / 表单源闪空内容)。 */@Composable
-private fun LoginLoadingPlaceholder() {
-    val loadingText = stringResource(Res.string.loading)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 48.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        CircularProgressIndicator(
-            color = AppTheme.colors.accent,
-            modifier = Modifier.size(48.dp),
-        )
-        Spacer(Modifier.height(DesignTokens.spacingLg))
-        Text(loadingText, color = AppTheme.colors.secondaryText)
-    }
+    SourceLoginDialog(
+        source = formSource!!,
+        onDismiss = { navigator.dismissOverlay(overlay.key) },
+        onOpenUrl = { PlatformCapabilityProviders.get().openExternalUrl(it) },
+        book = book,
+        chapter = chapter,
+        formState = loginFormState,
+    )
 }
 
 private data class SourceLoginPayload(val sourceUrl: String, val dataKey: String?)
