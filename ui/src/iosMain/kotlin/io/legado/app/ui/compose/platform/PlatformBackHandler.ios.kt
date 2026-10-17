@@ -56,8 +56,10 @@ actual fun PlatformPredictiveBackHandler(
     val currentOnGesture by rememberUpdatedState(onGesture)
     // 处理器按 (组合键, onBack) 记忆: lambda 每次重组换新实例会注销重注册, 手势途中重组即被掐断,
     // 故用稳定 lambda + rememberUpdatedState 取最新回调; enabled 由框架在重组时就地更新, 不进记忆键。
-    val gestureHandler: suspend (Flow<BackEventCompat>) -> Boolean = remember {
-        { progress -> currentOnGesture(progress.map { it.progress }) }
+    val gestureHandler: suspend (Flow<BackEventCompat>) -> Unit = remember {
+        { progress ->
+            currentOnGesture(progress.map { it.progress })
+        }
     }
     PredictiveBackHandler(enabled = enabled, onBack = gestureHandler)
 }

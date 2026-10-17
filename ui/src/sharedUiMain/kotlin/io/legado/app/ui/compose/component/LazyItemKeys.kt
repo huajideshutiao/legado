@@ -12,7 +12,7 @@ fun <T, K : Any> occurrenceKeys(items: List<T>, keyOf: (T) -> K): List<Any> {
     val seen = HashMap<K, Int>(items.size)
     return items.map { item ->
         val key = keyOf(item)
-        val occurrence = seen.getOrDefault(key, 0)
+        val occurrence = seen[key] ?: 0
         seen[key] = occurrence + 1
         if (occurrence == 0) key else key to occurrence
     }
