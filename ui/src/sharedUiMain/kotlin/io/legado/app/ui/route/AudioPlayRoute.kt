@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.IntentData
@@ -33,8 +34,10 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.showSourceLogin
+import io.legado.app.help.toast.Toasters
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.model.audioCoverFallback
 import io.legado.app.ui.about.AppLogDialog
@@ -74,6 +77,7 @@ import io.legado.app.utils.toDurationTime
 import kotlinx.coroutines.launch
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.add_to_bookshelf
+import legado.ui.generated.resources.audio_energy_glow_restart
 import legado.ui.generated.resources.check_add_bookshelf
 import legado.ui.generated.resources.no
 import legado.ui.generated.resources.yes
@@ -279,8 +283,20 @@ fun AudioPlayRoute(
 
     // 构造溢出菜单动作 (对照 app 端 AudioOverflowMenu)
     // 各项显隐取自页面状态; 依赖书源的动作在点击时取当前书源 (对照原版菜单展开/选中时求值)
+    val pref = PreferenceProviders.get()
+    var glowEnabled by remember {
+        mutableStateOf(pref.getBoolean(PreferKey.audioEnergyGlow, true))
+    }
+    val glowRestartHint = stringResource(Res.string.audio_energy_glow_restart)
     val overflowActions = AudioPlayOverflowActions(
         hasLogin = state.hasLogin,
+        showGlowToggle = PlatformCapabilityProviders.get().audioEnergyGlowSupported,
+        glowEnabled = glowEnabled,
+        onToggleGlow = {
+            glowEnabled = !glowEnabled
+            pref.putBoolean(PreferKey.audioEnergyGlow, glowEnabled)
+            Toasters.get().toast(glowRestartHint)
+        },
         onLogin = {
             // 统一登录入口: URL 登录桌面端直开登录窗口 (2026-08-07);
             // 表单登录弹 Overlay, 带上书与当前章 (对照原版 menu_login 预置 IntentData.book/chapter)

@@ -5,15 +5,27 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
+import io.legado.app.ui.compose.component.AppPopup
+import io.legado.app.ui.compose.platform.rememberColor
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material.AlertDialog
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
-import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,8 +67,8 @@ import kotlin.math.roundToInt
  *   + TransitionDrawable.startTransition(300))
  * - [SharedAudioBlurBgSlot]: 模糊背景 (原版 iv_bg: loadBlur 整图 + 300ms TransitionDrawable 淡入;
  *   同上 keep-previous 旧图→新图交叉淡化; 均匀遮罩 #3A000000 由 AudioPlayScreenContent 统一叠加, 此处不重复)
- * - [AudioPlayTimerDialog] / [AudioPlaySpeedDialog]: 定时/倍速弹窗 (原版 Popup+SliderPopupCard 的
- *   AlertDialog 等价, 四端共用)
+ * - [AudioPlayTimerDialog] / [AudioPlaySpeedDialog]: 定时/倍速弹窗 (原版 PopupWindow+SliderPopup
+ *   的细长条卡片等价, 四端共用)
  * - [SharedAudioPlayScreenContent]: 四端 Provider 的统一 Content 组装 (对照原版 AudioPlayActivity);
  *   歌词用 [LrcViewShared] (复刻原版 LrcView), 取色用 [rememberLrcColors]
  *   (复刻原版 updateLrcColor → setColors + SeekBar tint)
@@ -313,73 +325,115 @@ private fun SharedAudioBlurBgSlot(coverUrl: String?, modifier: Modifier) {
     }
 }
 
-// ---- 定时弹窗 (原版 SliderPopupCard 的 AlertDialog 等价, 四端共用) ----
+// ---- 定时 / 倍速: 原版 SliderPopup (细长条卡片, 四端共用) ----
 
+/**
+ * 原版 SliderPopup 的等价实现 (app 端 ui/book/audio/SliderPopup.kt):
+ * PopupWindow(MATCH_PARENT × WRAP_CONTENT) + shape_card_view(8dp 圆角, background_card 底色)
+ * + 8dp 内边距, 竖排「值文本 + SeekBar」; 拖动即时生效, 点外部关闭, 没有确认按钮。
+ *
+ * 定位对齐原版 showAsDropDown(anchor, 0, -100dp, Gravity.TOP): 卡片贴在触发按钮上方,
+ * 宽度撑满窗口 (左右各留 [SliderPopupSideMargin])。
+ */
+@Composable
+private fun AudioPlaySliderPopup(
+    value: Int,
+    min: Int,
+    max: Int,
+    text: String,
+    onValueChange: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val density = LocalDensity.current
+    val windowWidth = with(density) { LocalWindowInfo.current.containerSize.width.toDp() }
+    val marginPx = with(density) { SliderPopupSideMargin.roundToPx() }
+    val gapPx = with(density) { SliderPopupAnchorGap.roundToPx() }
+    val positionProvider = remember(marginPx, gapPx) {
+        object : PopupPositionProvider {
+            override fun calculatePosition(
+                anchorBounds: IntRect,
+                windowSize: IntSize,
+                layoutDirection: LayoutDirection,
+                popupContentSize: IntSize,
+            ): IntOffset = IntOffset(
+                x = marginPx,
+                // 底边贴在触发按钮上方 (原版用 -100dp 抬到按钮上方, 这里贴着触发按钮更稳)
+                y = anchorBounds.top - popupContentSize.height - gapPx,
+            )
+        }
+    }
+    AppPopup(
+        popupPositionProvider = positionProvider,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(
+            focusable = true,
+            dismissOnClickOutside = true,
+            dismissOnBackPress = true,
+        ),
+    ) {
+        Column(
+            Modifier
+                .width(windowWidth - SliderPopupSideMargin * 2)
+                .clip(RoundedCornerShape(SliderPopupCorner))
+                .background(rememberColor("background_card"))
+                .padding(SliderPopupPadding),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(text = text, color = AppTheme.colors.secondaryText)
+            AppSlider(
+                value = value,
+                min = min,
+                max = max,
+                onValueChange = onValueChange,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+private val SliderPopupSideMargin = 8.dp
+private val SliderPopupAnchorGap = 8.dp
+private val SliderPopupPadding = 8.dp
+private val SliderPopupCorner = 8.dp
+
+/** 定时: 原版 max=180 分钟, 值文本走 `timer_m`。 */
 @Composable
 fun AudioPlayTimerDialog(
     initial: Int,
     onProgressChanged: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var value by remember { mutableIntStateOf(initial) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("定时") },
-        text = {
-            Column {
-                Text(
-                    stringResource(Res.string.timer_m, value),
-                    color = AppTheme.colors.secondaryText,
-                )
-                AppSlider(
-                    value = value,
-                    max = 180,
-                    onValueChange = {
-                        value = it
-                        onProgressChanged(it)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+    var value by remember { mutableIntStateOf(initial.coerceIn(0, 180)) }
+    AudioPlaySliderPopup(
+        value = value,
+        min = 0,
+        max = 180,
+        text = stringResource(Res.string.timer_m, value),
+        onValueChange = {
+            value = it
+            onProgressChanged(it)
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("确认") }
-        },
+        onDismiss = onDismiss,
     )
 }
 
-// ---- 倍速弹窗 (原版 SliderPopupCard 的 AlertDialog 等价, 四端共用) ----
-
+/** 倍速: 原版 max=30 即 3.0X; 下限取 1 (0.1X) —— 0 倍速对引擎是非法值。 */
 @Composable
 fun AudioPlaySpeedDialog(
     initial: Float,
     onProgressChanged: (Float) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    // shared 传入 Float 初值; 内部用 (speed*10).toInt() int 形态 slider (对齐原版)
-    var value by remember { mutableIntStateOf((initial * 10).toInt()) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("播放速度") },
-        text = {
-            Column {
-                Text(
-                    "${(value / 10.0f).let { (it * 10).roundToInt() / 10f }}X",
-                    color = AppTheme.colors.secondaryText,
-                )
-                AppSlider(
-                    value = value,
-                    max = 30,
-                    onValueChange = {
-                        value = it
-                        onProgressChanged(it / 10.0f)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+    var value by remember { mutableIntStateOf((initial * 10).roundToInt().coerceIn(1, 30)) }
+    AudioPlaySliderPopup(
+        value = value,
+        min = 1,
+        max = 30,
+        text = "${value / 10}.${value % 10}X",
+        onValueChange = {
+            value = it
+            onProgressChanged(it / 10f)
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("确认") }
-        },
+        onDismiss = onDismiss,
     )
 }

@@ -1,6 +1,8 @@
 package io.legado.desktop.audio
 
 import io.legado.app.constant.AppLog
+import io.legado.app.model.AudioPlayShared
+import io.legado.app.model.audio.AudioEnergyMeter
 import io.legado.app.model.audio.AudioPlayController
 import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.desktop.media.DesktopMediaRuntime
@@ -12,8 +14,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.pow
 import org.openani.mediamp.MediaStatus
 import org.openani.mediamp.MediampPlayer
 import org.openani.mediamp.PlaybackEvent
@@ -278,6 +283,7 @@ class DesktopAudioPlayer {
     fun stop() {
         if (released) return
         val engine = engineOrNull() ?: return
+        AudioPlayShared.audioEnergy.value = 0f
         // mediamp 的 stopPlayback 会把在途装载一并中止并回到 Idle, 不需要额外的作废标志
         enqueueCommand { engine.stopPlayback() }
     }
@@ -334,6 +340,7 @@ class DesktopAudioPlayer {
             MediampPlayer(Unit, controlScope.coroutineContext).also {
                 engine = it
                 startStateCollectors(it)
+                startEnergyMeter(it)
             }
         } catch (e: Throwable) {
             engineError = "mediamp 初始化失败: ${e.message}"
@@ -389,11 +396,95 @@ class DesktopAudioPlayer {
         }
     }
 
+    /**
+     * 音频能量采集: libmpv 没有 PCM 回调, 但可以把 `astats` 滤镜挂进音频链,
+     * 读取滤镜发布的逐帧元数据 (mpv 手册的 `af-metadata/<filter-label>` 属性)。
+     *
+     * 三段各自一条链: 低频 (320Hz 以下)、中频 (320~2800Hz)、高频 (2800~11025Hz), 与安卓/iOS
+     * 的频谱分段同边界, 因此共用同一个 [AudioEnergyMeter]。滤镜用 `af add` 追加, 不覆盖整条链
+     * (变速等其它处理照常)。
+     *
+     * 固有上限: 引擎只暴露"最近一帧"的统计值, 这里每 [ENERGY_POLL_MS] 轮询一次, 两次采样之间的
+     * 瞬态会漏掉; 安卓/iOS 逐块连续喂 PCM, 不存在这一处丢失。
+     *
+     * 滤镜不可用 (mpv 构建缺少 lavfi/astats) 时直接放弃: 界面上的后果只是辉光不随音乐起伏。
+     */
+    private fun startEnergyMeter(engine: MediampPlayer) {
+        val mpv = engine.impl as? MPVHandle ?: return
+        val bassAdded = mpv.command(
+            "af", "add",
+            "@$ENERGY_BASS_LABEL:lavfi=[lowpass=f=320,$ASTATS_FILTER]",
+        )
+        val midAdded = mpv.command(
+            "af", "add",
+            "@$ENERGY_MID_LABEL:lavfi=[highpass=f=320,lowpass=f=2800,$ASTATS_FILTER]",
+        )
+        val trebleAdded = mpv.command(
+            "af", "add",
+            "@$ENERGY_TREBLE_LABEL:lavfi=[highpass=f=2800,lowpass=f=11025,$ASTATS_FILTER]",
+        )
+        if (!bassAdded || !midAdded || !trebleAdded) {
+            AppLog.put("音频能量: 播放器滤镜不可用, 辉光不随音乐起伏", tag = "音频能量")
+            return
+        }
+        controlScope.launch {
+            val meter = AudioEnergyMeter()
+            var lastMs = 0L
+            while (isActive) {
+                delay(ENERGY_POLL_MS)
+                if (engine.state.value.isPlaying) {
+                    val nowMs = System.nanoTime() / 1_000_000L
+                    val dtMs = if (lastMs == 0L) ENERGY_POLL_MS.toDouble()
+                    else (nowMs - lastMs).toDouble()
+                    lastMs = nowMs
+                    val bass = readLevelDb(mpv, ENERGY_BASS_LABEL)
+                    val mid = readLevelDb(mpv, ENERGY_MID_LABEL)
+                    val treble = readLevelDb(mpv, ENERGY_TREBLE_LABEL)
+                    AudioPlayShared.audioEnergy.value = meter.push(
+                        dtMs.coerceIn(1.0, 200.0),
+                        bass,
+                        mid,
+                        treble,
+                    )
+                } else {
+                    lastMs = 0L
+                    meter.reset()
+                    AudioPlayShared.audioEnergy.value = 0f
+                }
+            }
+        }
+    }
+
+    /** 读一条分析链发布的峰值电平 (dBFS) 并换算成线性幅度; 取不到按静音算 */
+    private fun readLevelDb(mpv: MPVHandle, label: String): Double {
+        val db = mpv.getPropertyString("af-metadata/$label/$ASTATS_PEAK_KEY")?.toDoubleOrNull()
+        if (db == null || !db.isFinite()) return 0.0
+        return 10.0.pow(db / 20.0)
+    }
+
     private fun applySpeed(engine: MediampPlayer) {
         runCatching { engine.features[PlaybackSpeed.Key]?.set(speed) }
     }
 
     private companion object {
+        /** 分析链标签 (mpv 滤镜标签) */
+        private const val ENERGY_BASS_LABEL = "legadoEnergyBass"
+        private const val ENERGY_MID_LABEL = "legadoEnergyMid"
+        private const val ENERGY_TREBLE_LABEL = "legadoEnergyTreble"
+
+        /**
+         * astats 配置: 逐帧注入元数据 (reset=1 表示每帧重置统计窗口), 只算整体峰值电平。
+         * 取峰值而不是 RMS: 鼓点的冲击用 RMS 会被同一窗口里的其它声音平均掉, 拿不到拍子。
+         */
+        private const val ASTATS_FILTER =
+            "astats=metadata=1:reset=1:measure_perchannel=none:measure_overall=Peak_level"
+
+        /** astats 发布的整体峰值电平元数据键 (dBFS) */
+        private const val ASTATS_PEAK_KEY = "lavfi.astats.Overall.Peak_level"
+
+        /** 能量读取间隔 (ms): 音频帧级更新, 40ms 足够且开销可忽略 */
+        private const val ENERGY_POLL_MS = 40L
+
         /** 倍速上下限 (对齐 app 端倍速滑杆 0.0x..3.0x); 下限避免 mpv 变速异常 */
         private const val MIN_SPEED = 0.1f
         private const val MAX_SPEED = 3f

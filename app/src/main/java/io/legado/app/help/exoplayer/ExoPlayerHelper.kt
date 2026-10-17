@@ -24,11 +24,16 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.TeeAudioProcessor
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.extractor.DefaultExtractorsFactory
 import io.legado.app.App
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.externalCache
@@ -106,14 +111,36 @@ object ExoPlayerHelper {
     }
 
     /**
-     * @param audioOnly 纯音频场景(AudioPlayService)传 true,开启 DSP audio offload,
-     *                  绕开 c2.android.mp3.decoder 软解;视频场景必须为 false,
-     *                  否则会触发 A/V 同步问题。
+     * @param audioOnly 纯音频场景(AudioPlayService)传 true。默认走 DSP offload 省电;
+     *   只有用户显式开启「歌词辉光」时才关 offload 并挂载能量旁路
+     *   (官方 tee: 只观察不改写, 不改变下层看到的编码)。
+     *   视频场景传 false。
      */
     fun createHttpExoPlayer(context: Context, audioOnly: Boolean = false): ExoPlayer {
-        // 视频走硬件 MediaCodec 默认已开,加 fallback 让冷门 codec / 怪文件硬解失败时降级到软解
-        val renderersFactory = DefaultRenderersFactory(context)
-            .setEnableDecoderFallback(true)
+        val energyGlow = audioOnly && PreferenceProviders.get()
+            .getBoolean(PreferKey.audioEnergyGlow, true)
+        // 视频走硬件 MediaCodec 默认已开, 加 fallback 让冷门 codec / 怪文件硬解失败时降级到软解;
+        // 纯音频+辉光时挂官方 tee 旁路: 输入/输出编码完全一致, 不影响发声
+        val renderersFactory = if (energyGlow) {
+            object : DefaultRenderersFactory(context) {
+                override fun buildAudioSink(
+                    context: Context,
+                    enableFloatOutput: Boolean,
+                    enableAudioTrackPlaybackParams: Boolean
+                ): AudioSink {
+                    return DefaultAudioSink.Builder(context)
+                        .setEnableFloatOutput(enableFloatOutput)
+                        .setEnableAudioOutputPlaybackParameters(enableAudioTrackPlaybackParams)
+                        // 旁路只观察不改写: 输入与输出编码一致, 下游静音跳过/变速照常
+                        .setAudioProcessors(
+                            arrayOf(TeeAudioProcessor(EnergyAudioBufferSink()))
+                        )
+                        .build()
+                }
+            }.setEnableDecoderFallback(true)
+        } else {
+            DefaultRenderersFactory(context).setEnableDecoderFallback(true)
+        }
 
         val builder = ExoPlayer.Builder(context, renderersFactory).setLoadControl(
             DefaultLoadControl.Builder().setBufferDurationsMs(
@@ -133,7 +160,7 @@ object ExoPlayerHelper {
         )
 
         if (audioOnly) {
-            // offload 依赖 AudioAttributes;焦点交给 AudioFocusController,这里传 false
+            // 音频焦点交给 AudioFocusController, 这里不申请
             builder.setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
@@ -145,7 +172,7 @@ object ExoPlayerHelper {
 
         val player = builder.build()
 
-        if (audioOnly) {
+        if (audioOnly && !energyGlow) {
             // DSP offload 消除 PipelineWatcher pipelineFull;变速场景要求硬件支持,
             // 否则自动回退到 MediaCodec 软解(行为不变)
             player.trackSelectionParameters = player.trackSelectionParameters

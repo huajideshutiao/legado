@@ -1,10 +1,12 @@
 package io.legado.app.ui.book.audio
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -59,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -71,6 +74,7 @@ import io.legado.app.ui.root.PhotoSharedCoverHost
 import io.legado.app.utils.format
 import io.legado.app.utils.toDurationTime
 import legado.ui.generated.resources.Res
+import legado.ui.generated.resources.audio_energy_glow_title
 import legado.ui.generated.resources.audio_play
 import legado.ui.generated.resources.back
 import legado.ui.generated.resources.change_origin
@@ -215,7 +219,7 @@ fun AudioPlayScreenContent(
         // 模糊封面背景 (平台 blurBgSlot 加载; null 时复用 coverSlot)
         val bgSlot = blurBgSlot ?: coverSlot
         bgSlot(coverUrl, Modifier.matchParentSize())
-        // 半透明遮罩 (对照 app 端 0x3A000000)
+        // 半透明遮罩 (对照 app 端 0x3A000000): 压暗背景保证歌词与控件的对比度
         Box(Modifier.matchParentSize().background(Color(0x3A000000)))
         // 左区: 右侧随面板宽度动画挤压 (面板滑入时内容同步变窄); 面板打开时点击
         // 左区空白 (未被子级消费的点击) 关闭面板, 对话框语义
@@ -289,7 +293,7 @@ fun AudioPlayScreenContent(
                                     }
                                     CoverImage(
                                         coverUrl = coverUrl,
-                                        accentColor = accentColor,
+                                        accentColor = lrcActiveColor ?: accentColor,
                                         onClick = onCoverClick,
                                         onLongClick = onCoverLongClick,
                                         coverSlot = coverSlot,
@@ -324,7 +328,7 @@ fun AudioPlayScreenContent(
                                 }
                                 CoverImage(
                                     coverUrl = coverUrl,
-                                    accentColor = accentColor,
+                                    accentColor = lrcActiveColor ?: accentColor,
                                     onClick = onCoverClick,
                                     onLongClick = onCoverLongClick,
                                     coverSlot = coverSlot,
@@ -521,6 +525,16 @@ private fun AudioPlayOverflowMenu(actions: AudioPlayOverflowActions) {
             AudioOverflowItem("log") {
                 dismiss()
                 actions.onShowAppLog()
+            }
+            if (actions.showGlowToggle) {
+                DropdownMenuItem(onClick = { dismiss(); actions.onToggleGlow() }) {
+                    Text(
+                        stringResource(Res.string.audio_energy_glow_title),
+                        color = AppTheme.colors.primaryText,
+                        modifier = Modifier.weight(1f),
+                    )
+                    AppMenuCheckbox(checked = actions.glowEnabled)
+                }
             }
         }
     }

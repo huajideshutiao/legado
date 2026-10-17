@@ -230,6 +230,8 @@
     <string name="audio_play_wake_lock">Audio service wake-up lock</string>
     <string name="publish_lyric">Lyrics on car display</string>
     <string name="publish_lyric_summary">Push the current lyric line to the now-playing title (car display / Bluetooth / lock screen); it replaces the chapter name</string>
+    <string name="audio_energy_glow_title">Dynamic glow</string>
+    <string name="audio_energy_glow_restart">Takes effect after playback restarts (slightly more battery while on)</string>
     <string name="all_source">All Sources</string>
     <string name="precision_search">Precise search</string>
     <string name="screen">Filter</string>

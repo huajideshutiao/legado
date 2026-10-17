@@ -1479,6 +1479,9 @@ class AndroidPlatformCapabilities(
     // AudioPlayService / WebService 用 MediaPlaybackLock 真持唤醒锁, 两个唤醒锁开关只在本端显示
     override val wakeLockSupported: Boolean get() = true
 
+    // 安卓音频播放有 DSP offload, 与 PCM 能量拦截互斥, 辉光开关只在本端显示
+    override val audioEnergyGlowSupported: Boolean get() = true
+
     // 以下几项均为安卓独有能力, 其余端无消费方 (其他设置里相应条目自动隐藏)
     // Cronet: App.onCreate registerAndroidCronetProvider 注册了 CronetProvider
     override val cronetSupported: Boolean get() = true

@@ -62,6 +62,10 @@ import kotlinx.coroutines.withContext
  * UI 命令面应通过 AudioPlayViewModel, 而不是直接调本对象。
  */
 object AudioPlayShared {
+    /** 可设倍速区间 (UI 滑块同区间; 0.1X ~ 3.0X)。 */
+    const val SPEED_MIN = 0.1f
+    const val SPEED_MAX = 3f
+    const val SPEED_DEFAULT = 1f
 
     /**
      * 播放模式 (跨平台版本, 不含 iconRes)。
@@ -93,7 +97,15 @@ object AudioPlayShared {
      * "到下一行还有多少歌曲时间"换算成墙上时间, 而会话起始沿用上一轮倍速时并不会 post
      * AUDIO_SPEED; 且 Android 的会话随 Service 重建, 倍速要靠这里跨会话存活。
      */
-    var playSpeed = 1f
+    var playSpeed: Float = SPEED_DEFAULT
+        /**
+         * 无效倍速一律拦在写入处: 播控引擎把 "speed > 0" 当硬约束 (Media3 的
+         * PlaybackParameters 直接抛 IllegalArgumentException), 且这个值是跨会话存活的,
+         * 一旦写进 0 就会在之后每次"引擎就绪重设倍速"时把已终结的调用链炸掉。
+         */
+        set(value) {
+            field = if (value.isNaN()) SPEED_DEFAULT else value.coerceIn(SPEED_MIN, SPEED_MAX)
+        }
     var book: Book? = null
     var chapterSize = 0
     var simulatedChapterSize = 0
@@ -103,6 +115,14 @@ object AudioPlayShared {
     var durChapter: BookChapter? = null
     var durPlayUrl = ""
     var durCoverUrl: String? = null
+
+    /**
+     * 底层播放器实时音频物理 PCM 能量强度 (0.0f ~ 1.0f)。
+     *
+     * 由底层播放器 (Android ExoPlayer PCM 采样) 真实音频物理电平驱动,
+     * 用于实时调制歌词微弱柔光与背景流光的呼吸收放。播放暂停或停止时恒为 0f。
+     */
+    val audioEnergy = MutableStateFlow(0f)
 
     /**
      * 当前章节歌词 (null = 无歌词/未就绪)。
@@ -174,11 +194,18 @@ object AudioPlayShared {
 
     fun play() = AudioPlayCommanders.get().play()
 
-    fun stop() = AudioPlayCommanders.get().stop()
+    fun stop() {
+        audioEnergy.value = 0f
+        AudioPlayCommanders.get().stop()
+    }
 
-    fun stopPlay() = AudioPlayCommanders.get().stopPlay()
+    fun stopPlay() {
+        audioEnergy.value = 0f
+        AudioPlayCommanders.get().stopPlay()
+    }
 
     fun pause() {
+        audioEnergy.value = 0f
         saveRead()
         AudioPlayCommanders.get().pause()
     }

@@ -86,6 +86,12 @@ data class AudioPlayOverflowActions(
     val onShowAppLog: () -> Unit,
     /** 是否显示登录项 (取自页面状态, 随书源就绪刷新) */
     val hasLogin: Boolean,
+    /** 动态辉光开关是否显示 (仅 Android: 与 DSP offload 互斥) */
+    val showGlowToggle: Boolean = false,
+    /** 动态辉光当前是否开启 */
+    val glowEnabled: Boolean = false,
+    /** 切换动态辉光 */
+    val onToggleGlow: () -> Unit = {},
 )
 
 object AudioPlayPlatformProviders {

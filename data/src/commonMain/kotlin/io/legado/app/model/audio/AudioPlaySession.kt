@@ -256,9 +256,10 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
         if (!isRunning) return
         // 引擎变速调用失败不改会话状态: 倍速已落共享值, 失败只记日志
         runCatching {
+            // 写入处会夹到可设区间, 之后一律回读真源 —— 引擎拿不到无效倍速
             AudioPlayShared.playSpeed = adjust
-            host.controller.setPlaybackSpeed(adjust)
-            postEvent(EventBus.AUDIO_SPEED, adjust)
+            host.controller.setPlaybackSpeed(playSpeed)
+            postEvent(EventBus.AUDIO_SPEED, playSpeed)
             host.onSessionSync()
         }.onFailure {
             AppLog.put("调整倍速出错\n${it.message}", it)

@@ -126,6 +126,9 @@ object PreferKey {
     const val showAddToShelfAlert = "showAddToShelfAlert"
     const val bookInfoDeleteAlert = "bookInfoDeleteAlert"
     const val ignoreAudioFocus = "ignoreAudioFocus"
+
+    /** 歌词辉光: 开启后安卓端关闭 DSP audio offload 以拦截 PCM (后台听书不再省电) */
+    const val audioEnergyGlow = "audioEnergyGlow"
     const val progressBarBehavior = "progressBarBehavior"
     const val sourceEditMaxLine = "sourceEditMaxLine"
     const val ttsTimer = "ttsTimer"

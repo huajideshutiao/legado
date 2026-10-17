@@ -410,6 +410,12 @@ interface PlatformCapabilities {
     val wakeLockSupported: Boolean get() = false
 
     /**
+     * 是否有「纯音频能量驱动与 DSP offload 互斥」这条关系 (决定其它设置页辉光开关）。
+     * 仅 Android 的音频播放有 DSP offload; 其余端不存在这个取舍。
+     */
+    val audioEnergyGlowSupported: Boolean get() = false
+
+    /**
      * 是否真正消费 [io.legado.app.constant.PreferKey.cronet] (其他设置里的 Cronet 开关 gate)。
      *
      * 只有 Android 端注册了 CronetProvider (App.onCreate registerAndroidCronetProvider),
