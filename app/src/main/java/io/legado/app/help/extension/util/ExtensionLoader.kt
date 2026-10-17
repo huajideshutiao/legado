@@ -119,11 +119,19 @@ internal object ExtensionLoader {
         return context.packageManager.getPackageArchiveInfo(file.absolutePath, PACKAGE_FLAGS)
     }
 
-    /** 安装/更新广播是否指向一个扩展包; 包已不可查时返回 false。 */
+    /** 嗅探包是否为扩展仅需获取特性配置 (reqFeatures), 无需拉取证书链与元数据以降低 Binder IPC 开销。 */
+    private const val PROBE_PACKAGE_FLAGS = PackageManager.GET_CONFIGURATIONS
+
+    /** 安装/更新广播是否指向一个扩展包; 非扩展、包已不可查或异常时返回 false。 */
     fun isExtensionPackage(context: Context, pkgName: String): Boolean {
+        if (pkgName.isBlank()) return false
         return try {
-            isPackageAnExtension(context.packageManager.getPackageInfo(pkgName, PACKAGE_FLAGS))
+            val pkgInfo = context.packageManager.getPackageInfo(pkgName, PROBE_PACKAGE_FLAGS)
+            isPackageAnExtension(pkgInfo)
         } catch (_: PackageManager.NameNotFoundException) {
+            false
+        } catch (e: Exception) {
+            AppLog.put("扩展包识别失败: $pkgName", e)
             false
         }
     }
@@ -511,7 +519,7 @@ internal object ExtensionLoader {
 
     /** 两 feature 不会同时声明, 视频键优先判定。 */
     private fun extensionKindOf(pkgInfo: PackageInfo): ExtensionManifestContract.ExtensionKind {
-        return ExtensionManifestContract.extensionKindOf(pkgInfo.reqFeatures.orEmpty().map { it.name })
+        return ExtensionManifestContract.extensionKindOf(pkgInfo.reqFeatures.orEmpty().mapNotNull { it.name })
             ?: ExtensionManifestContract.ExtensionKind.MANGA
     }
 

@@ -127,6 +127,12 @@ object MangaExtensionManager {
         return _notLoadedExtensionsFlow.value.values.sortedBy { it.name }
     }
 
+    /** 是否包含该包名的扩展 (已加载或未加载)。 */
+    fun hasExtension(pkgName: String): Boolean {
+        return _loadedExtensionsFlow.value.containsKey(pkgName) ||
+            _notLoadedExtensionsFlow.value.containsKey(pkgName)
+    }
+
     // region 源注册表
 
     fun getSource(sourceId: Long): Source? {

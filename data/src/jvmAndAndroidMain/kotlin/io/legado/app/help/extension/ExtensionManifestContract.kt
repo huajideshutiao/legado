@@ -37,11 +37,11 @@ object ExtensionManifestContract {
     enum class ExtensionKind { MANGA, ANIME }
 
     /** feature 声明是否指向扩展包 (漫画或视频)。 */
-    fun isExtensionFeature(featureName: String): Boolean =
+    fun isExtensionFeature(featureName: String?): Boolean =
         featureName == EXTENSION_FEATURE || featureName == ANIME_EXTENSION_FEATURE
 
     /** 两 feature 不会同时声明, 视频键优先判定; 缺声明返回 null, 由调用方决定残缺处理。 */
-    fun extensionKindOf(reqFeatureNames: Collection<String>): ExtensionKind? = when {
+    fun extensionKindOf(reqFeatureNames: Collection<String?>): ExtensionKind? = when {
         ANIME_EXTENSION_FEATURE in reqFeatureNames -> ExtensionKind.ANIME
         EXTENSION_FEATURE in reqFeatureNames -> ExtensionKind.MANGA
         else -> null
