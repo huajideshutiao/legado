@@ -111,6 +111,13 @@ fun LrcViewShared(
     modifier: Modifier = Modifier,
     isPlaying: Boolean = AudioPlayShared.status == Status.PLAY,
     playSpeed: Float = AudioPlayShared.playSpeed,
+    /**
+     * 动态文字辉光开关 (与边缘光效各自独立)。
+     *
+     * 关闭后辉光不再随音频能量起伏, 但保留一层固定半径与基础不透明度的静态辉光 ——
+     * 文字仍有发光层次, 只是不"呼吸"。
+     */
+    textGlowEnabled: Boolean = true,
 ) {
     // 排版缓存: 当前行与淡出行的字号/颜色每帧连续变化, 每次都是新文本 (必然重测);
     // 大缓存留给基础排版, 避免被动画帧冲掉后重测
@@ -457,9 +464,10 @@ fun LrcViewShared(
         val lastIndex = lrc.lastIndex
         val colorProgress = lrc.colorProgress
         val lastProgress = lrc.lastProgress
+        val entryBounce = lrc.entryBounce
         val fillClockMs = lrc.fillClockMs
         // 沉浸模式的辉光能量: 已平滑的真实 PCM 电平 (绘制期只读这一个值)
-        val energy = if (eInk) 0f else lrc.smoothEnergy.coerceIn(0f, 1f)
+        val energy = if (eInk || !textGlowEnabled) 0f else lrc.smoothEnergy.coerceIn(0f, 1f)
         // 高亮色: 跟主色(封面取色) 的明暗取极值——主色亮(深色封面) 用白,
         // 主色暗(浅色封面) 用黑。这样歌词在两种背景下都有层次。
         val immersiveHighlight = if (primaryColor.luminance() > 0.5f) Color.White else Color.Black
@@ -471,13 +479,17 @@ fun LrcViewShared(
         }.inv()
 
         val marginPxInt = lineMarginPx.roundToInt()
-        // 切行期间辉光整体收一下 (Enter 曲线 0.75D 收回), 与"新行变亮"形成明暗对比
-        val glowDip = 1f - GLOW_DIP_AMOUNT * (1f - MOTION_ENTER.transform(
-            (colorProgress.coerceIn(0f, 1f) * LIT_IN_MS / GLOW_DIP_MS.toFloat()).coerceIn(0f, 1f)
-        ))
+        // 切行期间辉光整体收一下, 与"新行变亮"形成明暗对比; 入场时再随回弹冲一下
+        // (colorProgress 已经是 Enter 曲线值, 这里不再套第二层缓动)
+        val glowDip = 1f - GLOW_DIP_AMOUNT * (1f -
+            (colorProgress.coerceIn(0f, 1f) * LIT_IN_MS / GLOW_DIP_MS.toFloat()).coerceIn(0f, 1f))
+        // 回弹峰值约 1.1: 辉光半径在入场时短暂胀一下再收回来 (上限 1.25 防尖尖)
+        val bounceGain = entryBounce.coerceIn(0f, 1.25f)
         val dipEnergy = (energy * glowDip).coerceIn(0f, 1f)
         val glowRadiusPx =
-            glowRadiusMinPx + (glowRadiusMaxPx - glowRadiusMinPx) * dipEnergy.pow(GLOW_RADIUS_CURVE)
+            (glowRadiusMinPx + (glowRadiusMaxPx - glowRadiusMinPx) * dipEnergy.pow(GLOW_RADIUS_CURVE)) *
+                bounceGain
+        // 关闭动态文字辉光时能量恒为 0, 阴影退化为固定半径与基础不透明度 —— 静态辉光仍在
         fun glowAt(lit: Float, color: Color): Shadow? = if (lit > GLOW_VISIBLE_MIN) {
             Shadow(
                 color = color.copy(alpha = (GLOW_ALPHA_BASE + GLOW_ALPHA_ENERGY * energy) * lit),
@@ -665,41 +677,44 @@ fun LrcViewShared(
                 shadow = glowShadow,
                 mode = mode,
             )
-            if (charRuns != null) {
-                drawSlideChars(
-                    line = line,
-                    drawn = charRuns,
-                    topLeft = topLeft,
-                    bodyColor = secondaryColor,
-                    litColor = litColor,
-                    litChars = litChars,
-                    perChar = hasWords,
-                    sizeScaleAt = when {
-                        // 淡出中的上一行: 字号按"唱完 → 已唱"回落, 与它自己的排版一致
-                        isLast && hasWords -> { t ->
-                            val sung = 1f + CHAR_GROW_GAIN * t
-                            sung + (PAST_FONT_SCALE - sung) * lastProgress.coerceIn(0f, 1f)
-                        }
+            val drawBody: DrawScope.() -> Unit = {
+                if (charRuns != null) {
+                    drawSlideChars(
+                        line = line,
+                        drawn = charRuns,
+                        topLeft = topLeft,
+                        bodyColor = secondaryColor,
+                        litColor = litColor,
+                        litChars = litChars,
+                        perChar = hasWords,
+                        sizeScaleAt = when {
+                            // 淡出中的上一行: 字号按"唱完 → 已唱"回落, 与它自己的排版一致
+                            isLast && hasWords -> { t ->
+                                val sung = 1f + CHAR_GROW_GAIN * t
+                                sung + (PAST_FONT_SCALE - sung) * lastProgress.coerceIn(0f, 1f)
+                            }
 
-                        isLast -> { _ ->
-                            val sung = 1f + CHAR_GROW_GAIN
-                            sung + (PAST_FONT_SCALE - sung) * lastProgress.coerceIn(0f, 1f)
-                        }
+                            isLast -> { _ ->
+                                val sung = 1f + CHAR_GROW_GAIN
+                                sung + (PAST_FONT_SCALE - sung) * lastProgress.coerceIn(0f, 1f)
+                            }
 
-                        // 当前行的逐字行: 每个字按自己的进度
-                        hasWords -> { t -> 1f + CHAR_GROW_GAIN * MOTION_ENTER.transform(t) }
+                            // 当前行的逐字行: 每个字按自己的进度
+                            hasWords -> { t -> 1f + CHAR_GROW_GAIN * MOTION_ENTER.transform(t) }
 
-                        // 当前行的非逐字行: 整行统一字号 (取该行排版所用的那个值)
-                        // 整行统一字号: progress 已是 Enter 曲线, 不再二次缓动
-                        else -> { _ -> 1f + CHAR_GROW_GAIN * progress }
-                    },
-                    alpha = alpha,
-                    glow = glowShadow,
-                    textMeasurer = textMeasurer,
-                )
-            } else {
-                drawLrcLine(displayLayout, topLeft, style)
+                            // 当前行的非逐字行: 整行统一字号 (取该行排版所用的那个值)
+                            // 整行统一字号: progress 已是 Enter 曲线, 不再二次缓动
+                            else -> { _ -> 1f + CHAR_GROW_GAIN * progress }
+                        },
+                        alpha = alpha,
+                        glow = glowShadow,
+                        textMeasurer = textMeasurer,
+                    )
+                } else {
+                    drawLrcLine(displayLayout, topLeft, style)
+                }
             }
+            drawBody()
             line.displayHeight = displayHeight
             // 折行过渡期间下方各行跟着平滑下推, 而不是一步到位
             val wrapFromHeight = lrc.wrapFromHeightOf(i)
@@ -834,6 +849,14 @@ private const val GLOW_DIP_AMOUNT = 0.18f
  * 肉眼等同"瞬间到位", 反而看不出缓动。
  */
 private val MOTION_ENTER = CubicBezierEasing(0.33f, 1.00f, 0.68f, 1.00f)
+
+/**
+ * 入场回弹: 冲过 1 再落回 (峰值约 1.1)。
+ *
+ * 只给辉光半径这类纯绘制量用。字号不能用它: 缩放进 span 就是真重排, 过冲期间
+ * 行宽会短暂超出, 在临界宽度上多折出一行再退回去。
+ */
+private val MOTION_ENTER_BOUNCE = CubicBezierEasing(0.34f, 1.50f, 0.64f, 1.00f)
 
 /** 退出: 线性 (对齐原版 colorProgress 每帧匀速推进, 无缓动) */
 private val MOTION_EXIT = CubicBezierEasing(0.00f, 0.00f, 1.00f, 1.00f)
@@ -1167,6 +1190,15 @@ private class LrcRuntime {
     /** 新行点亮进度 (0→1, Enter 曲线) */
     var colorProgress by mutableFloatStateOf(1f)
 
+    /**
+     * 入场回弹进度: 冲过 1 再落回 (峰值约 1.1)。
+     *
+     * 只给辉光这类不影响排版与颜色的量用 —— 字号一旦过冲, 排版行数可能瞬间
+     * 多出一行 (见 MOTION_ENTER_BOUNCE 注释)。
+     */
+    var entryBounce by mutableFloatStateOf(1f)
+
+
     /** 上一行退场进度 (0→1, Exit 曲线, 相对切行错峰开始) */
     var lastProgress by mutableFloatStateOf(1f)
 
@@ -1182,7 +1214,9 @@ private class LrcRuntime {
      */
     fun applySwitchTimeline(elapsedMs: Long) {
         val elapsed = elapsedMs.toFloat()
-        colorProgress = MOTION_ENTER.transform((elapsed / LIT_IN_MS).coerceIn(0f, 1f))
+        val litLinear = (elapsed / LIT_IN_MS).coerceIn(0f, 1f)
+        colorProgress = MOTION_ENTER.transform(litLinear)
+        entryBounce = MOTION_ENTER_BOUNCE.transform(litLinear)
         lastProgress = MOTION_EXIT.transform(
             ((elapsed - LIT_OUT_DELAY_MS) / LIT_OUT_MS).coerceIn(0f, 1f),
         )
@@ -1514,6 +1548,7 @@ private class LrcRuntime {
         scrollJob?.cancel()
         colorJob?.cancel()
         colorProgress = 1f
+        entryBounce = 1f
         lastProgress = 1f
     }
 
@@ -1529,6 +1564,7 @@ private class LrcRuntime {
         currentIndex = -1
         lastIndex = -1
         colorProgress = 1f
+        entryBounce = 1f
         lastProgress = 1f
         fillClockMs = 0
         maxSungProgress = 0f
