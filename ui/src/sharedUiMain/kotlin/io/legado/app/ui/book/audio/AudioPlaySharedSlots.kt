@@ -81,6 +81,7 @@ fun SharedAudioPlayScreenContent(
     state: AudioPlayUiState,
     onBack: () -> Unit,
     onOpenChangeSource: () -> Unit,
+    onOpenBookInfo: () -> Unit,
     onOpenToc: () -> Unit,
     onOpenBookSourceEdit: (String) -> Unit,
     onOpenReview: () -> Unit,
@@ -131,6 +132,7 @@ fun SharedAudioPlayScreenContent(
         lrcInactiveColor = lrcColors?.second,
         onBack = onBack,
         onOpenChangeSource = onOpenChangeSource,
+        onOpenBookInfo = onOpenBookInfo,
         onCoverClick = { onEvent(AudioPlayUiEvent.CoverClick) },
         onCoverLongClick = onOpenCover,
         onTogglePlay = { onEvent(AudioPlayUiEvent.TogglePlay) },
@@ -146,11 +148,12 @@ fun SharedAudioPlayScreenContent(
         coverSlot = { url, modifier -> SharedAudioCoverSlot(url, modifier) },
         blurBgSlot = { url, modifier -> SharedAudioBlurBgSlot(url, modifier) },
         lrcSlot = { modifier ->
+            val lrcData = state.lrc
             LrcViewShared(
-                lrcData = state.lrc,
+                lrcData = lrcData,
                 // 当前行按自适应精准延时调度派生 (见 rememberLrcIndex)
                 lrcProgress = rememberLrcIndex(
-                    lrcData = state.lrc,
+                    lrcData = lrcData,
                     isPlaying = state.isPlaying,
                     playSpeed = state.speed,
                 ),

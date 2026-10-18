@@ -169,6 +169,8 @@ fun AudioPlayScreenContent(
     lrcInactiveColor: Color? = null,
     onBack: () -> Unit,
     onOpenChangeSource: () -> Unit,
+    /** 点顶栏标题进书籍详情 */
+    onOpenBookInfo: () -> Unit,
     onCoverClick: () -> Unit,
     onCoverLongClick: () -> Unit,
     onTogglePlay: () -> Unit,
@@ -233,6 +235,7 @@ fun AudioPlayScreenContent(
                 title = title,
                 onBack = onBack,
                 onOpenChangeSource = onOpenChangeSource,
+                onOpenBookInfo = onOpenBookInfo,
                 overflowActions = overflowActions,
                 trailingSlot = titleBarTrailingSlot,
             )
@@ -440,6 +443,7 @@ private fun AudioTitleBar(
     title: String,
     onBack: () -> Unit,
     onOpenChangeSource: () -> Unit,
+    onOpenBookInfo: () -> Unit,
     overflowActions: AudioPlayOverflowActions?,
     trailingSlot: @Composable RowScope.() -> Unit,
 ) {
@@ -463,7 +467,9 @@ private fun AudioTitleBar(
             fontSize = 20.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .clickable { onOpenBookInfo() },
         )
         IconButton(onClick = onOpenChangeSource) {
             Icon(

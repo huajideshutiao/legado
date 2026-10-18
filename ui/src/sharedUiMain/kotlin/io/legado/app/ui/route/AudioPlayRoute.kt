@@ -61,6 +61,7 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.root.LocalSharedCoverBinding
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
@@ -75,6 +76,7 @@ import io.legado.app.ui.root.rememberSharedCoverDestinationBinding
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.utils.toDurationTime
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.add_to_bookshelf
 import legado.ui.generated.resources.audio_energy_glow_restart
@@ -190,6 +192,25 @@ fun AudioPlayRoute(
     LaunchedEffect(Unit) {
         navigator.resultsFor(entry.id).collect { result ->
             when (result.key) {
+                RouteResults.BOOK_INFO -> when (result.payload) {
+                    is RouteResultPayload.Deleted -> {
+                        // 详情里删了这本书: 停止播放并退出音频页 (对齐视频页的删除透传)
+                        AudioPlayShared.stop()
+                        navigator.pop(RouteResultPayload.Deleted)
+                    }
+
+                    else -> {
+                        // 改名/换源后返回: 用库里最新快照刷新标题与书源入口, 不重启动装载
+                        val bookUrl = AudioPlayShared.book?.bookUrl ?: return@collect
+                        val fresh = withContext(IoDispatcher) {
+                            AppDbProviders.get().bookDao.getBook(bookUrl)
+                        } ?: return@collect
+                        AudioPlayShared.book = fresh
+                        AudioPlayShared.bookSource = AudioPlayShared.bookSourceOf(fresh)
+                        screenModel.dispatch(AudioPlayUiEvent.UpdateBook(fresh))
+                    }
+                }
+
                 RouteResults.BOOK_SOURCE_EDIT -> {
                     // 书源编辑后直接采用回传的已保存对象 (不再按 origin 查库) + 刷新评论入口显隐
                     val source =
@@ -368,6 +389,13 @@ fun AudioPlayRoute(
     platform.Content(
         state = pageState,
         onBack = onBack,
+        // 点顶栏标题进书籍详情 (对照 app 端 AudioPlayActivity 的顶栏标题点击)
+        onOpenBookInfo = {
+            navigator.push(
+                AppRoute.BookInfo(book.toRouteRef()),
+                resultKey = RouteResults.BOOK_INFO,
+            )
+        },
         onOpenChangeSource = {
             // 对照原版 menu_change_source → showDialogFragment(ChangeBookSourceDialog) 全高底部弹窗
             showChangeSourceDialog = true
