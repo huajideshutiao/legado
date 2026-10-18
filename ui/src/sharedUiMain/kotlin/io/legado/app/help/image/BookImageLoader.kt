@@ -81,6 +81,14 @@ interface BookImageLoader {
     ): ImageBitmap? = loadImageOrNull(url, sourceOrigin, widthPx, heightPx)
 
     /**
+     * 背景层专用预模糊: 绘制期模糊不生效的端 (见 PlatformCapabilities.drawBlurSupported)
+     * 在加载后一次性算好, 背景层直接画这张图。
+     *
+     * 默认返回 null (本端绘制期模糊生效, 不需要预模糊)。非挂起: 只在背景换图时调一次。
+     */
+    fun blurForBackground(bitmap: ImageBitmap, radiusPx: Int): ImageBitmap? = null
+
+    /**
      * 仅读 Coil3 磁盘缓存字节（不触发网络/解码/写缓存）：供大图查看等自下载链路在下载前
      * 复用书架封面/列表图缓存（双链路架构下 Coil3 磁盘缓存与 [ImageBitmapLoader] 自下载链路
      * 不共享，封面刚显示过大图仍会重新下载——先经本方法命中即零网络）。

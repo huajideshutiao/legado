@@ -57,14 +57,18 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.image_cover_default
 import legado.ui.generated.resources.timer_m
+import org.jetbrains.compose.resources.imageResource
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
 import kotlin.random.Random
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 
 /**
  * 音频播放页全端共享平台 slot (对照原版 AudioPlayActivity 的平台渲染):
@@ -115,10 +119,7 @@ fun SharedAudioPlayScreenContent(
     onOpenCover: () -> Unit = {},
 ) {
     // 封面取色 → 歌词/SeekBar 配色 + 边缘光效配色 (一次采样算齐, 对照原版 updateCover → updateLrcColor)
-    val palette = rememberAudioCoverPalette(
-        state.coverUrl,
-        sourceOrigin = AudioPlayShared.book?.origin,
-    )
+    val palette = rememberAudioCoverPalette(state.coverUrl)
     val fallbackGlowColors = rememberFallbackGlowColors()
     AudioPlayScreenContent(
         title = state.title,
@@ -159,6 +160,7 @@ fun SharedAudioPlayScreenContent(
             { modifier ->
                 AudioPlayEdgeGlow(
                     colors = palette?.glowColors ?: fallbackGlowColors,
+                    isPlaying = state.isPlaying,
                     modifier = modifier,
                 )
             }
@@ -287,6 +289,9 @@ private suspend fun loadAudioCover(loader: BookImageLoader, coverUrl: String?): 
 
 // ---- 模糊背景 slot (原版 iv_bg: 整图模糊 + 300ms TransitionDrawable 淡入; 均匀遮罩由 shared 层叠) ----
 
+/** 背景模糊半径 (dp): 绘制期模糊与被预模糊位图共用同一值 */
+private val BG_BLUR_RADIUS = 24.dp
+
 /** 背景浮动的放大基准: 留出位移余量, 移动时不会露出底色 */
 private const val BG_DRIFT_SCALE_BASE = 1.10f
 
@@ -304,22 +309,16 @@ private const val BG_DRIFT_MAX_MS = 14000
  * 背景模糊图的轻微浮动: 每段随机游走, 与音频能量无关 (不看音量、不跟着拍子)。
  *
  * 位移与缩放都在绘制阶段读取, 只失效重绘不重组; 图预先放大 [BG_DRIFT_SCALE_BASE]
- * 保证移动后边缘不露出底色。E-Ink 下不浮动。
+ * 保证移动后边缘不露出底色。墨水屏由调用方整条修饰符不挂 (既不浮动也不放大)。
  */
 @Composable
-private fun Modifier.bgDrift(eInk: Boolean): Modifier {
+private fun Modifier.bgDrift(): Modifier {
     val density = LocalDensity.current
     val maxOffsetPx = with(density) { BG_DRIFT_MAX_DP.dp.toPx() }
     val driftX = remember { mutableFloatStateOf(0f) }
     val driftY = remember { mutableFloatStateOf(0f) }
     val driftScale = remember { mutableFloatStateOf(BG_DRIFT_SCALE_BASE) }
-    LaunchedEffect(maxOffsetPx, eInk) {
-        if (eInk) {
-            driftX.floatValue = 0f
-            driftY.floatValue = 0f
-            driftScale.floatValue = BG_DRIFT_SCALE_BASE
-            return@LaunchedEffect
-        }
+    LaunchedEffect(maxOffsetPx) {
         val random = Random.Default
         var fromX = 0f
         var fromY = 0f
@@ -356,12 +355,15 @@ private fun Modifier.bgDrift(eInk: Boolean): Modifier {
 @Composable
 private fun SharedAudioBlurBgSlot(coverUrl: String?, modifier: Modifier) {
     val loader = remember { BookImageLoaders.getOrNull() }
+    // 框架的模糊修饰符在 Android 12 以下不生效: 这些端改为加载后一次性算好模糊位图
+    val drawBlur = PlatformCapabilityProviders.get().drawBlurSupported
+    val blurRadiusPx = with(LocalDensity.current) { BG_BLUR_RADIUS.toPx().roundToInt() }
     // keep-previous: 不随 coverUrl 变化重置, 切歌瞬间旧背景保留直到新图就绪;
     // 新图加载失败时回落内置默认封面 (同前景 slot 语义, 2026-08 修)
     var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     var showBuiltIn by remember { mutableStateOf(false) }
     val currentUrl by rememberUpdatedState(coverUrl)
-    LaunchedEffect(coverUrl, loader) {
+    LaunchedEffect(coverUrl, loader, drawBlur, blurRadiusPx) {
         if (loader == null) {
             // 未注册 loader (ohos 无 Coil3): 直接内置默认封面
             bitmap = null
@@ -370,10 +372,14 @@ private fun SharedAudioBlurBgSlot(coverUrl: String?, modifier: Modifier) {
         }
         // 加载链对照原版 BookCover.loadBlur (与前景同 seed, 失败回落同一张默认图)
         val bmp = loadAudioCover(loader, coverUrl)
+        val prepared = if (drawBlur || bmp == null) bmp
+        else withContext(Dispatchers.Default) {
+            loader.blurForBackground(bmp, blurRadiusPx)
+        } ?: bmp
         // 仅当本次请求仍是当前 URL 才落值 (防旧 URL 回调覆盖新背景)
         if (coverUrl == currentUrl) {
-            if (bmp != null) {
-                bitmap = bmp
+            if (prepared != null) {
+                bitmap = prepared
                 showBuiltIn = false
             } else {
                 // 加载失败 (含默认图集为空): 回落内置默认封面 (原版 loadBlur 的内置回落)
@@ -383,6 +389,10 @@ private fun SharedAudioBlurBgSlot(coverUrl: String?, modifier: Modifier) {
         }
     }
     val eInk = LocalEInk.current
+    // 墨水屏不浮动 (连放大基准也不挂, 不白裁一圈)
+    val driftModifier = if (eInk) Modifier else Modifier.bgDrift()
+    // 不生效的端不再叠一层空操作的绘制期模糊
+    val blurModifier = if (drawBlur) Modifier.blur(BG_BLUR_RADIUS) else Modifier
     Box(modifier) {
         // 旧图→新图 300ms 交叉淡化 (对照原版 TransitionDrawable.startTransition(300);
         // 切歌瞬间旧背景保留, 新图就绪后旧图淡出/新图淡入)
@@ -396,14 +406,14 @@ private fun SharedAudioBlurBgSlot(coverUrl: String?, modifier: Modifier) {
                 bmp != null -> Image(
                     bitmap = bmp,
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize().bgDrift(eInk).blur(24.dp),
+                    modifier = Modifier.fillMaxSize().then(driftModifier).then(blurModifier),
                     contentScale = ContentScale.Crop,
                 )
                 // 默认图集也为空: 内置默认封面 (对照原版 loadBlur 的内置回落, 同样模糊)
                 showBuiltIn -> Image(
-                    painter = painterResource(Res.drawable.image_cover_default),
+                    bitmap = rememberBuiltInBlurBg(loader, drawBlur, blurRadiusPx),
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize().bgDrift(eInk).blur(24.dp),
+                    modifier = Modifier.fillMaxSize().then(driftModifier).then(blurModifier),
                     contentScale = ContentScale.Crop,
                 )
                 // 加载中占位: 页面默认背景色 (原版露 Activity 深色背景; 原实现闪主题蓝
@@ -411,6 +421,19 @@ private fun SharedAudioBlurBgSlot(coverUrl: String?, modifier: Modifier) {
                 else -> Box(Modifier.fillMaxSize().background(AppTheme.colors.background))
             }
         }
+    }
+}
+
+/** 内置默认封面按同一规则处理: 绘制期模糊生效就用原图, 否则先算好模糊位图。 */
+@Composable
+private fun rememberBuiltInBlurBg(
+    loader: BookImageLoader?,
+    drawBlur: Boolean,
+    blurRadiusPx: Int,
+): ImageBitmap {
+    val raw = imageResource(Res.drawable.image_cover_default)
+    return remember(raw, loader, drawBlur, blurRadiusPx) {
+        if (drawBlur || loader == null) raw else loader.blurForBackground(raw, blurRadiusPx) ?: raw
     }
 }
 

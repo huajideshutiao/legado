@@ -3,6 +3,7 @@ package io.legado.app.help.image
 import android.content.Context
 import android.os.Build
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import coil3.ComponentRegistry
 import coil3.ImageLoader
@@ -21,6 +22,7 @@ import io.legado.app.help.config.resolveImagePath
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.model.coverBakedCacheDir
 import io.legado.app.model.coverOriginalDir
+import io.legado.app.model.stackBlurBaked
 import io.legado.app.model.manga.MangaModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -80,6 +82,28 @@ class AndroidBookImageLoader(
         widthPx: Int,
         heightPx: Int,
     ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = true)
+
+    /**
+     * Android 12 (API 31) 以下框架的模糊修饰符无效, 在加载后一次性算好模糊。
+     *
+     * 先转成软件位图: Coil3 在安卓 8+ 默认给 HARDWARE 位图, 像素读回必须先整图拷贝。
+     */
+    override fun blurForBackground(bitmap: ImageBitmap, radiusPx: Int): ImageBitmap? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return null
+        return runCatching {
+            val source = bitmap.asAndroidBitmap()
+            val software = source.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
+            if (software == null) {
+                null
+            } else {
+                try {
+                    software.stackBlurBaked(radiusPx).asImageBitmap()
+                } finally {
+                    if (software !== source) software.recycle()
+                }
+            }
+        }.getOrNull()
+    }
 
     /**
      * 仅读 Coil3 磁盘缓存字节（不触发网络/解码）：先查封面解密 key（"coverDecode:$url"），

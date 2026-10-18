@@ -1482,6 +1482,9 @@ class AndroidPlatformCapabilities(
     // 安卓音频播放有 DSP offload, 与 PCM 能量拦截互斥, 辉光开关只在本端显示
     override val audioEnergyGlowSupported: Boolean get() = true
 
+    // 框架的模糊修饰符仅在 Android 12 (API 31) 起的 RenderEffect 上有实现, 更低版本直接忽略
+    override val drawBlurSupported: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
     // 以下几项均为安卓独有能力, 其余端无消费方 (其他设置里相应条目自动隐藏)
     // Cronet: App.onCreate registerAndroidCronetProvider 注册了 CronetProvider
     override val cronetSupported: Boolean get() = true

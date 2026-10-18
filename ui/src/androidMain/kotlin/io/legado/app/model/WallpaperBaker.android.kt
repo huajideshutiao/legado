@@ -217,7 +217,7 @@ fun stackBlurBitmap(bitmap: android.graphics.Bitmap, radius: Int): android.graph
  * 短边 > [BAKE_MAX_SHORT_SIDE] 时先降采样再模糊, 直接返回工作图不放大
  * (模糊产物仅供显示端拉伸, 无需保持原尺寸白耗内存)。
  */
-private fun android.graphics.Bitmap.stackBlurBaked(radius: Int): android.graphics.Bitmap {
+internal fun android.graphics.Bitmap.stackBlurBaked(radius: Int): android.graphics.Bitmap {
     val r = radius.coerceIn(1, 100)
     val shortSide = minOf(width, height)
     val working = if (shortSide > BAKE_MAX_SHORT_SIDE) {

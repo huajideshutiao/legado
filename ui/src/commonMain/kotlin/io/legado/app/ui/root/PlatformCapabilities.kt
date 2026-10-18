@@ -416,6 +416,14 @@ interface PlatformCapabilities {
     val audioEnergyGlowSupported: Boolean get() = false
 
     /**
+     * 绘制期模糊 (框架模糊修饰符) 在当前系统上是否真的生效。
+     *
+     * 不生效的端由加载层先算好模糊位图 (见 BookImageLoader.blurForBackground),
+     * 背景层不再叠绘制期模糊。
+     */
+    val drawBlurSupported: Boolean get() = true
+
+    /**
      * 是否真正消费 [io.legado.app.constant.PreferKey.cronet] (其他设置里的 Cronet 开关 gate)。
      *
      * 只有 Android 端注册了 CronetProvider (App.onCreate registerAndroidCronetProvider),

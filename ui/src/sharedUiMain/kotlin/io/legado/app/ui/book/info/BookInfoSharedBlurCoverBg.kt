@@ -21,15 +21,22 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import io.legado.app.data.entities.Book
 import io.legado.app.help.image.BookImageLoaders
+import io.legado.app.ui.root.PlatformCapabilityProviders
 
 /**
  * 模糊封面背景实现 (desktop/iOS/鸿蒙三端共享, 安卓另有 [io.legado.app.ui.book.info.BookInfoBlurCoverBg])。
  *
- * 走 [BookImageLoaders] (各端注入自己的图片加载实现) 加载封面 Bitmap, 再用 [Modifier.blur] 做高斯模糊。
+ * 走 [BookImageLoaders] (各端注入自己的图片加载实现) 加载封面 Bitmap。模糊两条路:
+ * 绘制期模糊生效的端直接叠 [Modifier.blur]; 不生效的端 (Android 12 以下) 由加载层
+ * 先算好模糊位图 (BookImageLoader.blurForBackground), 绘制期不再叠空操作的修饰符。
  * I3: 按容器尺寸 1/8 采样解码 (size(w/8,h/8) + FILL + INEXACT), blur 后放大绘制视觉等价,
  * 内存/绘制带宽降 ~64 倍。
  * 加载中/失败/E-Ink 模式不绘制 (对照原版 bgBook 空 drawable), 不铺色块以免换图时闪一下。
@@ -47,6 +54,9 @@ import io.legado.app.help.image.BookImageLoaders
  * @param isEInkMode E-Ink 模式跳过图片加载 (不绘制)
  * @param modifier 调用方传入的尺寸约束
  */
+/** 背景模糊半径 (dp): 绘制期模糊与被预模糊位图共用同一值 */
+private val COVER_BG_BLUR_RADIUS = 24.dp
+
 @Composable
 fun SharedBlurCoverBg(
     book: Book?,
@@ -69,14 +79,26 @@ fun SharedBlurCoverBg(
     // I3: 模糊背景按 1/8 显示尺寸采样解码再放大绘制 (blur 后高频细节不可见, 视觉等价),
     // 内存/绘制带宽降 ~64 倍; 容器尺寸测量后触发加载 (窗口 resize 后按新尺寸重解)
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
-    LaunchedEffect(cover, coverTick, loader, isEInkMode, containerSize) {
+    // 框架的模糊修饰符在 Android 12 以下不生效: 这些端改为加载后一次性算好模糊位图
+    val drawBlur = PlatformCapabilityProviders.get().drawBlurSupported
+    val blurRadiusPx = with(LocalDensity.current) { COVER_BG_BLUR_RADIUS.toPx().roundToInt() }
+    val blurModifier = if (drawBlur) Modifier.blur(COVER_BG_BLUR_RADIUS) else Modifier
+    LaunchedEffect(cover, coverTick, loader, isEInkMode, containerSize, drawBlur, blurRadiusPx) {
         if (isEInkMode || cover.isNullOrBlank()) return@LaunchedEffect
         if (containerSize == IntSize.Zero) return@LaunchedEffect
         val w = (containerSize.width / 8).coerceAtLeast(1)
         val h = (containerSize.height / 8).coerceAtLeast(1)
-        val loaded = loader.loadImageOrNull(cover, book.origin, w, h) ?: return@LaunchedEffect
+        val origin = loader.loadImageOrNull(cover, book.origin, w, h) ?: return@LaunchedEffect
+        // 绘制期模糊不生效的端: 在解出的工作图上先算好模糊, 不再叠空操作的绘制期模糊
+        var loaded = origin
+        if (!drawBlur) {
+            loaded = withContext(Dispatchers.Default) {
+                loader.blurForBackground(origin, blurRadiusPx)
+            } ?: origin
+        }
         bitmap = loaded
-        onCoverLoaded(loaded)
+        // 取色必须用原图: 模糊图的像素均值会让详情页主色发浑
+        onCoverLoaded(origin)
     }
     // 写出时机与绘制条件一致 (本实现画出封面的充要条件就是 bitmap 非空)。
     // 共享状态在组合后写回, 顶栏读到新值会多重组一帧 —— 背景已画出而顶栏尚未换色的那一帧
@@ -120,7 +142,7 @@ fun SharedBlurCoverBg(
                             )
                         }
                     }
-                    .blur(24.dp),
+                    .then(blurModifier),
             )
         }
         // 加载中/失败/E-Ink 一律不画东西 (对照原版 bgBook: drawable 为空即空白, 不铺色块),
