@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -34,6 +35,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
@@ -242,15 +245,17 @@ fun LrcViewShared(
             lrc.scrollJob?.cancel()
             val fromScroll = lrc.scrollY
             val toScroll = lrc.centerOf(lrcProgress)
+            // 跨度按行数折算: 相邻行只有一行距离, 跨章/拖动回中可能十几行
+            val scrollMs = lrc.scrollDurationFor(fromScroll, toScroll, lineMarginPx)
             val start = TimeSource.Monotonic.markNow()
             lrc.colorJob = scope.launch {
                 while (isActive) {
                     val elapsedMs = start.elapsedNow().inWholeMilliseconds
-                    val scrollProgress = (elapsedMs.toFloat() / SCROLL_MS).coerceIn(0f, 1f)
+                    val scrollProgress = (elapsedMs.toFloat() / scrollMs).coerceIn(0f, 1f)
                     lrc.scrollY = fromScroll +
-                        (toScroll - fromScroll) * MOTION_SETTLE.transform(scrollProgress)
+                        (toScroll - fromScroll) * MOTION_SCROLL_OUT.transform(scrollProgress)
                     lrc.applySwitchTimeline(elapsedMs)
-                    if (elapsedMs >= SWITCH_TOTAL_MS) break
+                    if (elapsedMs >= scrollMs) break
                     withFrameNanos { }
                 }
             }
@@ -337,12 +342,21 @@ fun LrcViewShared(
     // 平台默认惯性曲线 (spline 衰减; Android 与 OverScroller 同源物理, 密度经 LocalDensity 解析)
     val flingBehavior = ScrollableDefaults.flingBehavior()
 
+    // 读屏用: 歌词是 Canvas 直接绘制的, 不挂语义节点读屏读不到任何内容。
+    // 只暴露当前行 (与 flutter_lyric 维护 activeIndex 语义的做法一致), 不把整篇歌词塞进去。
+    // derivedStateOf: 只在"当前行文本"真的变了才重组, 不会因为滚动/动画帧反复重组
+    val spokenLine by remember(lrc) {
+        derivedStateOf { lrc.lines.getOrNull(lrc.currentIndex)?.text }
+    }
     Canvas(
         modifier
             // 裁到自身边界: 当前行之上的歌词行会画到负 Y (原版 LrcView 是 View, 天然裁剪),
             // 不裁就会画到控件上方压住圆形封面。左右留白在控件内 (见 [H_PADDING]), 放大后的字
             // 由排版自己折行, 不会溢出到留白之外
             .clipToBounds()
+            .semantics {
+                spokenLine?.let { contentDescription = it }
+            }
             // 只有测量要重排才需要宽度进组合; 高度/命中判定直接用手势与绘制作用域自带的 size
             .onSizeChanged { viewportW = it.width }
             // 点击/拖动/fling (复刻 GestureDetector: onScroll/onFling/onSingleTapUp);
@@ -826,11 +840,25 @@ private val LRC_TEXT_STYLE = TextStyle(
 /** 基础单位 (ms) */
 private const val D = 160
 
-/** 行滚动 (2.5D): 落位带轻微回弹 */
-private const val SCROLL_MS = (2.5 * D).toInt()        // 400
+/**
+ * 行滚动: Material 3 `DurationLong2` = 500ms。
+ *
+ * 时长与曲线都直接取官方 motion token, 不自己凑参数 (见 [MOTION_SCROLL_OUT])。
+ */
+private const val SCROLL_MS = 500
 
 /**
- * 新行点亮 (1.25D, 缓出) 与旧行退场 (1D, 线性): 退场对齐原版"立刻开始、匀速退完"的节奏。
+ * 按距离分段的滚动时长 (参照 flutter_lyric 的 `LyricScrollAnimation.byDistance`):
+ * 跨度越大给越久, 避免一次跨很多行时在固定时长里被"甩"过去。
+ *
+ * 每多一行加 [SCROLL_PER_LINE_MS], 上限 [SCROLL_MAX_MS]。
+ */
+private const val SCROLL_PER_LINE_MS = 120
+private const val SCROLL_MAX_MS = 900
+
+/**
+ * 新行点亮 = Material 3 `DurationShort4` (200ms);
+ * 旧行退场固定 160ms (1D), 曲线线性; 不跟随滚动跨度。
  */
 private const val LIT_IN_MS = (1.25 * D).toInt()       // 200
 private const val LIT_OUT_DELAY_MS = 0
@@ -858,13 +886,29 @@ private val MOTION_ENTER = CubicBezierEasing(0.33f, 1.00f, 0.68f, 1.00f)
  */
 private val MOTION_ENTER_BOUNCE = CubicBezierEasing(0.34f, 1.50f, 0.64f, 1.00f)
 
-/** 退出: 线性 (对齐原版 colorProgress 每帧匀速推进, 无缓动) */
+
+/**
+ * 行滚动落位: 参照专业歌词库 flutter_lyric (ozyl/flutter_lyric) 的滚动参数。
+ *
+ * 该库 7 套预设的滚动全部是 `Curves.easeOutCubic` (其 `LyricScrollAnimation.fixed`
+ * 默认 240ms, 各预设 320~700ms; Apple Music 那档 500ms)。Flutter 的 easeOutCubic
+ * 即 cubic-bezier(0.215, 0.61, 0.355, 1), 前快后慢、末端速度为 0。
+ * 时长取 500ms (对应其 Apple Music 预设)。
+ * 不带过冲, 逐行跟读时不会每行回弹 (手动滚动后的自动回中用 [MOTION_SETTLE])。
+ */
+private val MOTION_SCROLL_OUT = CubicBezierEasing(0.215f, 0.61f, 0.355f, 1.00f)
+
+/**
+ * 旧行退场: 线性匀速 (对齐原版 colorProgress 每帧匀速推进, 无缓动)。
+ *
+ * 时长仍跟随本次滚动总时长, 所以新旧行的起止时刻一致, 只是退场本身匀速推进。
+ */
 private val MOTION_EXIT = CubicBezierEasing(0.00f, 0.00f, 1.00f, 1.00f)
 
 /** 标准: 折行位移等中性运动 */
 private val MOTION_STANDARD = CubicBezierEasing(0.22f, 0.61f, 0.36f, 1.00f)
 
-/** 落位回弹: 约 4% 过冲后落稳 (行滚动) */
+/** 落位回弹: 约 4% 过冲后落稳 (手动滚动后的自动回中) */
 private val MOTION_SETTLE = CubicBezierEasing(0.34f, 1.20f, 0.64f, 1.00f)
 
 // 字号缩放一律用单调曲线: 过冲曲线会让字号先超过目标再回落,
@@ -952,38 +996,49 @@ private class MeasuredLrcLine(
 private fun LrcLine.bodyChars(): Int = text.indexOf('\n').let { if (it < 0) text.length else it }
 
 /**
- * 逐字采样 + 一个收尾采样: Enhanced LRC 只标每个字的起点, 末字没有终点, 用下一行的时间戳补上。
+ * 逐字采样 + 一个收尾采样。
+ *
+ * 末字没有终点的数据源 (Enhanced LRC 只标每个字的起点) 用下一行的时间戳补上;
+ * 数据源给了本段结束时刻的 (QRC 逐字带时长), 直接用它, 不把尾部静默段算进填充。
  * 终点是 [bodyChars] (正文末尾), 译文不参与填充。
- * 末行无下一行时间戳时，根据本行字符节奏预估终点时间，确保播放完毕时末尾字符能被点亮。
+ * 末行既无下一行时间戳、也无字时长时, 根据本行字符节奏预估终点, 确保播放完毕时末尾字符能被点亮。
  */
 private fun LrcLine.fillSamples(nextTimeMs: Int?): List<LrcWord> {
     if (words.isEmpty()) return emptyList()
     val end = bodyChars()
     val lastWord = words.last()
     if (lastWord.charIndex >= end) return words
-    val closingTimeMs = if (nextTimeMs != null) {
-        nextTimeMs.coerceAtLeast(lastWord.timeMs)
-    } else {
-        val remainingChars = end - lastWord.charIndex
-        val charSpan = if (words.size > 1) {
-            val charDistance = (lastWord.charIndex - words.first().charIndex).coerceAtLeast(1)
-            ((lastWord.timeMs - words.first().timeMs) / charDistance).coerceIn(200, 2000)
-        } else {
-            500
+    val closingTimeMs = when {
+        lastWord.endMs > lastWord.timeMs -> lastWord.endMs
+        nextTimeMs != null -> nextTimeMs.coerceAtLeast(lastWord.timeMs)
+        else -> {
+            val remainingChars = end - lastWord.charIndex
+            val charSpan = if (words.size > 1) {
+                val charDistance = (lastWord.charIndex - words.first().charIndex).coerceAtLeast(1)
+                ((lastWord.timeMs - words.first().timeMs) / charDistance).coerceIn(200, 2000)
+            } else {
+                500
+            }
+            lastWord.timeMs + remainingChars * charSpan
         }
-        lastWord.timeMs + remainingChars * charSpan
     }
-    return words + LrcWord(closingTimeMs, end)
+    return words + LrcWord(closingTimeMs, end, closingTimeMs)
 }
 
-/** [positionMs] 处已唱到第几个字符 (含小数); 还没到首个采样时 0。 */
+/**
+ * [positionMs] 处已唱到第几个字符 (含小数); 还没到首个采样时 0。
+ *
+ * 填充区间是当前采样自己的 [LrcWord.endMs] (字有明确结束时刻); 没有这个数据时才填到下一采样点。
+ * 填满后到下一字开唱之前保持不动 —— 字间停顿不该继续往前推。
+ */
 private fun MeasuredLrcLine.charProgressAt(positionMs: Int): Float {
     var i = -1
     while (i + 1 <= words.lastIndex && words[i + 1].timeMs <= positionMs) i++
     if (i < 0) return 0f
     val from = words[i]
     val to = words.getOrNull(i + 1) ?: return from.charIndex.toFloat()
-    val span = to.timeMs - from.timeMs
+    val fillEnd = if (from.endMs > from.timeMs) from.endMs else to.timeMs
+    val span = fillEnd - from.timeMs
     if (span <= 0) return to.charIndex.toFloat()
     val t = ((positionMs - from.timeMs).toFloat() / span).coerceIn(0f, 1f)
     return from.charIndex + (to.charIndex - from.charIndex) * t
@@ -1217,8 +1272,9 @@ private class LrcRuntime {
         val litLinear = (elapsed / LIT_IN_MS).coerceIn(0f, 1f)
         colorProgress = MOTION_ENTER.transform(litLinear)
         entryBounce = MOTION_ENTER_BOUNCE.transform(litLinear)
+        // 退场用自己的固定时长: 滚动跨度大时不会把旧行拖成长时间半亮
         lastProgress = MOTION_EXIT.transform(
-            ((elapsed - LIT_OUT_DELAY_MS) / LIT_OUT_MS).coerceIn(0f, 1f),
+            ((elapsed - LIT_OUT_DELAY_MS) / LIT_OUT_MS.toFloat()).coerceIn(0f, 1f),
         )
     }
     /** 逐字填充用的时钟采样; 只有当前行带字标签时才逐帧刷新, 其余时候是陈旧值且无人读 */
@@ -1502,6 +1558,23 @@ private class LrcRuntime {
      * 放大只向下长, 所以用基础行高算中心: 唱到一半时不会因为行变高而产生漂移。
      */
     fun centerOf(index: Int): Float = lines[index].let { it.offset + it.height / 2f }
+
+    /**
+     * 本次滚动该用多久: 以 [SCROLL_MS] 为一行距离的基准, 每多一行加
+     * [SCROLL_PER_LINE_MS], 封顶 [SCROLL_MAX_MS]。
+     *
+     * 参照 flutter_lyric 的 byDistance: 相邻行切换保持原本的节奏, 跨章/拖动回中
+     * 这种大跨度不会被固定时长甩过去。
+     */
+    fun scrollDurationFor(fromScroll: Float, toScroll: Float, lineMarginPx: Float): Int {
+        if (lines.size < 2) return SCROLL_MS
+        // 相邻两行的中心距 = 行高 + 行间距, 用它把像素距离折算成行数
+        val linePitch = lines[0].height + lineMarginPx
+        if (linePitch <= 0f) return SCROLL_MS
+        val lineCount = abs(toScroll - fromScroll) / linePitch
+        val extra = ((lineCount - 1f).coerceAtLeast(0f) * SCROLL_PER_LINE_MS).toInt()
+        return (SCROLL_MS + extra).coerceAtMost(SCROLL_MAX_MS)
+    }
 
     /**
      * 内容坐标 y 落在哪一行: 放大会改变行高, 所以按各行的实际高度逐行累加定位。
