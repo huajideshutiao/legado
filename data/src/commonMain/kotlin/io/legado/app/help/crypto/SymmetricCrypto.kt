@@ -40,5 +40,7 @@ interface SymmetricCrypto {
 
     fun encryptBase64(data: String): String
 
+    fun decrypt(data: ByteArray): ByteArray
+
     fun decrypt(data: String): ByteArray
 }

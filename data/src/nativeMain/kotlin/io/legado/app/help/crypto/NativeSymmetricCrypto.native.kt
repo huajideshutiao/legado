@@ -98,6 +98,8 @@ class NativeSymmetricCrypto(
 
     override fun encryptBase64(data: String): String = Base64Lenient.encodeToString(encrypt(data))
 
+    override fun decrypt(data: ByteArray): ByteArray = doCrypt(encrypt = false, bytes = data)
+
     override fun decrypt(data: String): ByteArray {
         val bytes = if (hexRegex.matches(data)) decodeHex(data) else Base64Lenient.decode(data)
         return doCrypt(encrypt = false, bytes = bytes)

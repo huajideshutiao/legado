@@ -537,14 +537,20 @@ object NativeJsExtensionsBridge {
                 }
             }
             obj is SymmetricCrypto && methodId == 1002 -> {
-                // decryptStr(data) → String
-                val data = args.getString(0)
-                stringToJsValue(ctx, obj.decrypt(data).decodeToString())
+                // decryptStr(data) → String — data 支持 Utf8String|ByteArray
+                val plainBytes = when (val data = args.getDataArg(0)) {
+                    is ByteArray -> obj.decrypt(data)
+                    else -> obj.decrypt(data.toString())
+                }
+                stringToJsValue(ctx, plainBytes.decodeToString())
             }
             obj is SymmetricCrypto && methodId == 1003 -> {
-                // decrypt(data) → ByteArray → JS Array
-                val data = args.getString(0)
-                byteArrayToJsArray(ctx, obj.decrypt(data))
+                // decrypt(data) → ByteArray → JS Array — data 支持 Utf8String|ByteArray
+                val plainBytes = when (val data = args.getDataArg(0)) {
+                    is ByteArray -> obj.decrypt(data)
+                    else -> obj.decrypt(data.toString())
+                }
+                byteArrayToJsArray(ctx, plainBytes)
             }
             obj is NativeSymmetricCrypto && methodId == 1004 -> {
                 // setIv(iv) → 真实存 IV (iv 支持 Utf8String|ByteArray); JS 层返回 this

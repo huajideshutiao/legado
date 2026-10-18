@@ -69,6 +69,8 @@ class SymmetricCryptoAndroid(
         return EncoderUtils.base64Encode(encrypt(data))
     }
 
+    override fun decrypt(data: ByteArray): ByteArray = super.decrypt(data)
+
     override fun decrypt(data: String): ByteArray {
         val bytes = if (data.isHex()) {
             HexUtil.decodeHex(data)
