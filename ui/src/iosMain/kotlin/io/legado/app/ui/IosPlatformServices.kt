@@ -41,6 +41,7 @@ import io.legado.app.ui.root.SystemBarsPolicy
 import io.legado.app.ui.root.WindowController
 import io.legado.app.ui.root.SavedRef
 import io.legado.app.utils.IosSecurityScopedStorage
+import io.legado.app.utils.canonicalizeUri
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.runBlocking
 import platform.AVFoundation.AVAuthorizationStatusAuthorized
@@ -441,7 +442,7 @@ private object IosMediaService : MediaService {
     private var player: AVPlayer? = null
 
     override fun playMedia(url: String, headers: Map<String, String>) {
-        val nsUrl = NSURL.URLWithString(url) ?: run {
+        val nsUrl = NSURL.URLWithString(url.canonicalizeUri()) ?: run {
             AppLog.put("IosMediaService.playMedia 非法 URL: $url")
             return
         }

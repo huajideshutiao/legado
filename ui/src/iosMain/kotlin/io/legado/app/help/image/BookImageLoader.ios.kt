@@ -145,7 +145,8 @@ private fun buildIosBookImageLoader(): ImageLoader {
     return ImageLoader.Builder(PlatformContext.INSTANCE)
         .components {
             // 防盗链 header + URL 重写 + 解密落盘 + 网络层守卫: 同 android/desktop (书源 header 与
-            // JS 改写后的 url 由 SourceHeaderNetworkClient 在 Coil3 磁盘查询之后注入;
+            // JS 改写后的 url 由 SourceHeaderNetworkClient 在 Coil3 磁盘查询之后注入; 交给 ktor 前由
+            // UriCanonicalNetworkClient 做 RFC 3986 逐段语法合法化, 对应 Darwin NSURLComponents 硬校验;
             // SourceHeaderNetworkClient 响应解密对齐 Glide DATA; ImageGuardNetworkClient 包最外层
             // 按原始 url 拦 failUrls)。
             // 直接构 NetworkFetcher.Factory 包 NetworkClient (KtorNetworkFetcherFactory 不接受
@@ -165,7 +166,7 @@ private fun buildIosBookImageLoader(): ImageLoader {
                         }
                         ImageGuardNetworkClient(
                             SourceHeaderNetworkClient(
-                                ktorClient.asNetworkClient(),
+                                UriCanonicalNetworkClient(ktorClient.asNetworkClient()),
                                 ::resolveSourceRequest,
                                 keepCookieJarMarker = false,
                             )

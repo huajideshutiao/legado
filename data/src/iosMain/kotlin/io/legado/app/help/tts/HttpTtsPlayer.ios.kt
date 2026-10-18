@@ -8,6 +8,7 @@ import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.http.header
 import io.legado.app.help.media.AvPlayerItemStatusObserver
 import io.legado.app.utils.File
+import io.legado.app.utils.canonicalizeUri
 import io.legado.app.utils.ensureParentDirectory
 import kotlin.concurrent.Volatile
 import kotlin.random.Random
@@ -152,7 +153,7 @@ class IosHttpTtsPlayer : HttpTtsPlayer {
         this.url = url
         this.headers = headers
 
-        val nsUrl = NSURL.URLWithString(url) ?: run {
+        val nsUrl = NSURL.URLWithString(url.canonicalizeUri()) ?: run {
             listener?.onError("非法 URL: $url")
             return
         }

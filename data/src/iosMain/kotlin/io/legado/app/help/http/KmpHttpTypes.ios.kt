@@ -4,6 +4,7 @@ package io.legado.app.help.http
 
 import io.legado.app.constant.AppConst
 import io.legado.app.help.UserAgentProviders
+import io.legado.app.utils.canonicalizeUri
 import io.legado.app.utils.Closeable
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.toInputStream
@@ -74,8 +75,11 @@ import okio.use
  * commonMain 不直接 `KmpRequest()` 等构造, 无参 constructor 仅用于编译期匹配。
  *
  * ## 与 jvmAndAndroidMain 行为差异
- * - URL 规范化: Ktor 内部用 [io.ktor.http.Url] 解析, 不做 OkHttp `toHttpUrl()` 级别的默认端口移除/路径合并;
- *   功能等价, URL 字符串可能略不同
+ * - URL 规范化: 本端在 [KmpHttpUrl] 构造时做 RFC 3986 逐段语法合法化 ([canonicalizeUri]);
+ *   Ktor 再把串交给 [io.ktor.http.Url] 解析, 不做 OkHttp `toHttpUrl()` 级别的默认端口移除/路径合并,
+ *   故 URL 字符串可能与 jvmAndAndroidMain 略不同 (合法字符集合完全一致, 仅缺语义规范化)
+ *   为什么必须在本端做: Darwin 引擎经 NSURLComponents 装 URL, 段内非法字符或不成套的 `%`
+ *   会抛 NSInvalidArgumentException (ObjC 异常, Kotlin/Native 捕不了 → 进程终止)
  * - 响应体: nativeMain 端 KmpResponseBody 在构造时一次性 `bodyAsBytes()` 缓存到内存,
  *   OkHttp 原生 ResponseBody 是流式; 大文件场景内存占用更高 (与 WebDav.native.kt 同样降级)
  * - 协议枚举: Ktor 不暴露 Protocol 概念, [KmpResponseBuilder.protocol] 入参被忽略,
@@ -321,8 +325,8 @@ actual class KmpRequestBuilder actual constructor() {
     internal var body: KmpRequestBody? = null
 
     actual fun url(url: String): KmpRequestBuilder {
-        urlStr = url
-        return this
+        // 经值类型构造入口, 与 url(KmpHttpUrl) 共用同一条合法化路径
+        return url(KmpHttpUrl(url))
     }
 
     actual fun url(url: KmpHttpUrl): KmpRequestBuilder {
@@ -735,10 +739,11 @@ actual class KmpFormBodyBuilder actual constructor() {
 actual fun KmpFormBodyBuilder.buildKmpRequestBody(): KmpRequestBody = this.buildFormBody()
 
 /**
- * nativeMain 端 [KmpHttpUrl] 实现: 包装 URL 字符串。
+ * nativeMain 端 [KmpHttpUrl] 实现: 持有语法合法的 URI 字符串。
  *
- * 不做 OkHttp `toHttpUrl()` 级别的规范化 (默认端口移除/路径合并等),
- * 仅保存原字符串, 由 Ktor 内部 [io.ktor.http.Url] 解析。
+ * 构造即做 RFC 3986 逐段合法化 ([canonicalizeUri]) —— 「urlStr 恒为合法 URI」是本类型的不变式,
+ * 消费方 (Ktor 请求构造 / [KmpRequest.urlStr] / 重定向回填) 不需要再校验或转义。
+ * 除此之外不做 OkHttp `toHttpUrl()` 级别的语义规范化 (默认端口移除/路径合并等)。
  */
 actual class KmpHttpUrl {
     internal var urlStr: String? = null
@@ -747,7 +752,7 @@ actual class KmpHttpUrl {
     constructor()
 
     internal constructor(urlStr: String) {
-        this.urlStr = urlStr
+        this.urlStr = urlStr.canonicalizeUri()
     }
 
     actual fun newBuilder(): KmpHttpUrlBuilder {

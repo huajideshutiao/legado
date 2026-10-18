@@ -47,6 +47,8 @@ import io.legado.app.help.toast.DesktopTrayNotifier
 import io.legado.app.help.tvbox.TvBoxSniffPlatforms
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.model.ActiveReadBookRegistry
+import io.legado.app.utils.OkHttpUrlCanonicalizer
+import io.legado.app.utils.UrlCanonicalProviders
 import io.legado.app.model.AudioPlayCommanders
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.model.fileBook.BitmapProviders
@@ -203,6 +205,8 @@ fun main(args: Array<String>) {
     // (否则预览进程会落在正式数据根, 预览里的改动直接写进正式数据)
     applyDialogPreviewRoot(args)
     initDesktopRuntimeEnvironment()
+    // URL 合法化统一入口: 桌面用 OkHttp 的宽松解析 (与 Android 同一实现)
+    UrlCanonicalProviders.register(OkHttpUrlCanonicalizer)
     // 全局崩溃日志 (对照 app 端 CrashHandler): 必须紧跟 initDesktopRuntimeEnvironment ——
     // 落盘目录依赖它设的 legado.portable.root, 提前装会把便携模式的日志写到系统缓存目录去。
     DesktopCrashHandler.install()

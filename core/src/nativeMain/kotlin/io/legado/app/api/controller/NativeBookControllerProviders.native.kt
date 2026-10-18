@@ -13,6 +13,7 @@ import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.model.ActiveReadBookStateProvider
 import kotlinx.coroutines.runBlocking
 import io.legado.app.utils.File
+import io.legado.app.utils.canonicalizeUri
 
 /**
  * nativeMain: [ImageControllerProvider] 的 iOS/鸿蒙最小真实实现。
@@ -66,7 +67,7 @@ object NativeImageControllerProvider : ImageControllerProvider {
     private suspend fun downloadBytes(url: String): ByteArray? {
         val client = HttpClient()
         return try {
-            val response = client.get(url)
+            val response = client.get(url.canonicalizeUri())
             if (response.status.isSuccess()) response.bodyAsBytes() else null
         } finally {
             client.close()

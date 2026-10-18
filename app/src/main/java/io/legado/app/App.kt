@@ -108,6 +108,8 @@ import io.legado.app.ui.compose.platform.registerComposeStringProviders
 import io.legado.app.ui.main.AndroidUpdateBookCallback
 import io.legado.app.ui.platform.registerSharedAppContext
 import io.legado.app.utils.LogUtils
+import io.legado.app.utils.OkHttpUrlCanonicalizer
+import io.legado.app.utils.UrlCanonicalProviders
 import io.legado.app.utils.defaultSharedPreferences
 import io.legado.app.utils.externalCache
 import io.legado.app.utils.getFile
@@ -140,6 +142,8 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // URL 合法化统一入口: Android 用 OkHttp 的宽松解析 (与桌面同一实现)
+        UrlCanonicalProviders.register(OkHttpUrlCanonicalizer)
         // WebView 内核的 UI 线程初始化改成 ASYNC 分片 (见 configureWebViewStartUpMode)。
         // 必须排在任何 WebView API 之前 (全进程一次生效, 须在任何 WebView 访问前)
         configureWebViewStartUpMode(this)

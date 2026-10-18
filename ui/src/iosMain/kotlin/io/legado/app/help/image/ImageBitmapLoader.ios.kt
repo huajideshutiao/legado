@@ -11,6 +11,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.utils.File
 import io.legado.app.utils.ImageUtils
+import io.legado.app.utils.canonicalizeUri
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.http.isSuccess
@@ -162,7 +163,7 @@ actual class ImageBitmapLoader actual constructor() {
     private suspend fun downloadBytesSimple(url: String, recordFailure: Boolean): ByteArray? {
         val client = OkHttpClientProviders.get().okHttpClient.ktorClient ?: return null
         return runCatching {
-            val response = client.get(url)
+            val response = client.get(url.canonicalizeUri())
             if (!response.status.isSuccess()) {
                 if (recordFailure) markIosFailUrl(null, url)
                 null

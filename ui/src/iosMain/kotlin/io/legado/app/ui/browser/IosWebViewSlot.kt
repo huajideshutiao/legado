@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import io.legado.app.help.http.CookieStoreProviders
+import io.legado.app.utils.canonicalizeUri
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSHTTPCookie
 import platform.Foundation.NSMutableURLRequest
@@ -71,7 +72,7 @@ fun IosWebViewSlot(
                 view.loadHTMLString(
                     html,
                     baseURL = config.url.takeIf { it.isNotBlank() }
-                        ?.let { NSURL.URLWithString(it) },
+                        ?.let { NSURL.URLWithString(it.canonicalizeUri()) },
                 )
             }
         },
@@ -80,7 +81,7 @@ fun IosWebViewSlot(
 
 /** 带 headerMap 的请求加载 (loadRequest 请求头注入, 对照 Android loadUrl(url, headers))。 */
 private fun loadWithHeaders(webView: WKWebView, config: WebViewConfig) {
-    val nsUrl = NSURL.URLWithString(config.url) ?: return
+    val nsUrl = NSURL.URLWithString(config.url.canonicalizeUri()) ?: return
     val request = NSMutableURLRequest(uRL = nsUrl)
     config.headerMap.forEach { (key, value) -> request.setValue(value, forHTTPHeaderField = key) }
     webView.loadRequest(request)

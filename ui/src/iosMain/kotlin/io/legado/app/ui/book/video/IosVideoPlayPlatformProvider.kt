@@ -24,6 +24,7 @@ import io.legado.app.ui.IosStatusBarHiddenNotification
 import io.legado.app.ui.appSupportedOrientationMask
 import io.legado.app.ui.landscapeMask
 import io.legado.app.ui.requestSceneOrientation
+import io.legado.app.utils.canonicalizeUri
 import io.legado.app.utils.hasPlayableScheme
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -392,7 +393,7 @@ class IosVideoPlayerController(
         // 先卸上一件媒体 (保留 AVPlayer 本体: 渲染面绑的是实例引用, 换源不换实例可避开
         // 「新 player 已建但 avpvc 仍指旧实例」的黑屏窗口; 真的换实例只有首装与 release 两条路)
         unloadMedia()
-        val nsUrl = NSURL.URLWithString(url) ?: run {
+        val nsUrl = NSURL.URLWithString(url.canonicalizeUri()) ?: run {
             handlePlayError("视频地址不可用")
             return
         }

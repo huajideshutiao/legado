@@ -4,6 +4,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.ui.OpenUrlProviders
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.KS_JSON
+import io.legado.app.utils.canonicalizeUri
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 
@@ -13,9 +14,15 @@ import kotlinx.serialization.encodeToString
 // 经 [OhosNativeBridge.invokePasteboardSync] napi 桥同步调用 (与 OhosFilePicker 同模式);
 // 桥未就绪时记一条降级日志 / 返回 null。
 
-/** 用系统浏览器打开外部链接 (对照 iOS openURL / desktop browseUrl)。 */
+/**
+ * 用系统浏览器打开外部链接 (对照 iOS openURL / desktop browseUrl)。
+ *
+ * url 先经 [canonicalizeUri] 做 RFC 3986 逐段合法化: Want.uri 由系统按 URI 解析,
+ * 含空格/非 ASCII/裸 `%` 的串会被判为非法 URI 而 startAbility 失败 (用户看到「点了没反应」),
+ * 与 iOS `NSURL.URLWithString` 对非法串返 nil 同一类问题。
+ */
 fun openURL(url: String) {
-    OpenUrlProviders.get().openUrl(url)
+    OpenUrlProviders.get().openUrl(url.canonicalizeUri())
 }
 
 /** 复制文本到系统剪贴板 (对照 iOS copyToClipboard / desktop Toolkit.systemClipboard)。 */

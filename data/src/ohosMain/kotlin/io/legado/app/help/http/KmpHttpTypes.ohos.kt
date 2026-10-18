@@ -8,6 +8,7 @@ import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.Closeable
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.KS_JSON
+import io.legado.app.utils.canonicalizeUri
 import io.legado.app.utils.toInputStream
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -41,6 +42,8 @@ import kotlin.time.Duration
  * ## 与 nativeMain (iosMain) 的差异
  * - iosMain 用 Ktor HttpClient (Darwin engine, 通过 NSURLSession 发起请求);
  * - ohosMain 用 @ohos.net.http (ArkTS API, 经 napi tsfn 跨线程 dispatch)。
+ * - 两端 URL 均在 [KmpHttpUrl] 构造时做 RFC 3986 逐段语法合法化 ([canonicalizeUri]),
+ *   交给引擎的 url 恒为合法 URI。
  */
 
 // region JSON 协议数据类 (与 HttpBridgeHandler.ets 对齐)
@@ -235,8 +238,8 @@ actual class KmpRequestBuilder actual constructor() {
     internal var body: KmpRequestBody? = null
 
     actual fun url(url: String): KmpRequestBuilder {
-        urlStr = url
-        return this
+        // 经值类型构造入口, 与 url(KmpHttpUrl) 共用同一条合法化路径
+        return url(KmpHttpUrl(url))
     }
 
     actual fun url(url: KmpHttpUrl): KmpRequestBuilder {
@@ -579,7 +582,12 @@ actual class KmpFormBodyBuilder actual constructor() {
 
 actual fun KmpFormBodyBuilder.buildKmpRequestBody(): KmpRequestBody = this.buildFormBody()
 
-// 包装 URL 字符串, 不做 OkHttp toHttpUrl() 级别规范化 (由 @ohos.net.http 内部解析)
+/**
+ * nativeMain 端 [KmpHttpUrl] 实现: 持有语法合法的 URI 字符串。
+ *
+ * 构造即做 RFC 3986 逐段合法化 ([canonicalizeUri]) —— 「urlStr 恒为合法 URI」是本类型的不变式。
+ * 不做 OkHttp `toHttpUrl()` 级别的语义规范化 (默认端口移除/路径合并等)。
+ */
 actual class KmpHttpUrl {
     internal var urlStr: String? = null
         private set
@@ -587,7 +595,7 @@ actual class KmpHttpUrl {
     constructor()
 
     internal constructor(urlStr: String) {
-        this.urlStr = urlStr
+        this.urlStr = urlStr.canonicalizeUri()
     }
 
     actual fun newBuilder(): KmpHttpUrlBuilder {

@@ -24,6 +24,13 @@ class PercentCodec private constructor(private val core: PercentCodecCore) {
     fun encode(str: CharSequence, toBytes: (String) -> ByteArray): String =
         core.encode(str, toBytes)
 
+    /**
+     * 逐码点编码, 保留成套的 `%XX` 不二次转义, 不成套的 `%` 写为 `%25` (RFC 3986 §2.1)。
+     * 与 [encode] 的区别只在 `%` 的处理: 本方法用于「输入已是部分转义的 URI」的合法化。
+     */
+    fun encodeKeepEscapes(str: CharSequence, toBytes: (String) -> ByteArray): String =
+        core.encodeKeepEscapes(str, toBytes)
+
     companion object {
 
         fun of(chars: CharSequence): PercentCodec = PercentCodec(PercentCodecCore.of(chars))

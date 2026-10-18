@@ -10,6 +10,7 @@ import io.legado.app.help.getUserAgent
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.WebViewSnifferScripts
 import io.legado.app.utils.RuleRegexes
+import io.legado.app.utils.canonicalizeUri
 import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -217,10 +218,10 @@ private class IosBackstageWebViewHandle(
         val urlStr = url
         when {
             !htmlStr.isNullOrEmpty() ->
-                webView.loadHTMLString(htmlStr, urlStr?.let { NSURL.URLWithString(it) })
+                webView.loadHTMLString(htmlStr, urlStr?.let { NSURL.URLWithString(it.canonicalizeUri()) })
 
             !urlStr.isNullOrEmpty() -> {
-                val nsUrl = NSURL.URLWithString(urlStr)
+                val nsUrl = NSURL.URLWithString(urlStr.canonicalizeUri())
                     ?: throw NoStackTraceException("url解析失败: $urlStr")
                 val request = NSMutableURLRequest(uRL = nsUrl)
                 headerMap?.forEach { (name, value) ->
@@ -336,7 +337,7 @@ private class IosBackstageWebViewHandle(
     /** 加载前把业务层 cookie 注入 WKHTTPCookieStore, 替代安卓全局 CookieManager 的隐式共享。 */
     private suspend fun injectCookies(webView: WKWebView, cookie: String?) {
         if (cookie.isNullOrBlank()) return
-        val host = url?.let { NSURL.URLWithString(it) }?.host ?: return
+        val host = url?.let { NSURL.URLWithString(it.canonicalizeUri()) }?.host ?: return
         val store = webView.configuration.websiteDataStore.httpCookieStore
         cookieToMap(cookie).forEach { (name, value) ->
             val properties = mapOf<Any?, Any?>(

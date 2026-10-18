@@ -9,6 +9,7 @@ import io.legado.app.napi.OhosNativeBridge.WebViewHeader
 import io.legado.app.napi.OhosNativeBridge.WebViewRequestPayload
 import io.legado.app.napi.OhosNativeBridge.WebViewResult
 import io.legado.app.utils.KS_JSON
+import io.legado.app.utils.canonicalizeUri
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.encodeToString
@@ -112,7 +113,7 @@ private class OhosBackstageWebViewHandle(
             .apply { put(AppConst.UA_NAME, headerMap.getUserAgent()) }
         // 控制面: 小字段走 JSON; html (可能数百 KB~数 MB) 走裸字符串第二参数
         val payload = WebViewRequestPayload(
-            url = url,
+            url = url?.canonicalizeUri(),
             encode = encode,
             tag = tag,
             headers = effectiveHeaders.map { (name, value) -> WebViewHeader(name, value) },

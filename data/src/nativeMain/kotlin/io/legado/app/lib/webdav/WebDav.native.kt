@@ -11,6 +11,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.NetworkUtils
+import io.legado.app.utils.canonicalizeUri
 import io.legado.app.utils.findNS
 import io.legado.app.utils.findNSPrefix
 import io.legado.app.utils.toInputStream
@@ -116,6 +117,7 @@ actual open class WebDav actual constructor(
             .replace("davs://", "https://")
             .replace("dav://", "http://")
         raw.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }
+            ?.canonicalizeUri()
     }
 
     // HttpClient 复用: 构造时创建一次, 不依赖 Ktor Auth 插件 (避免 realm 过滤等差异)

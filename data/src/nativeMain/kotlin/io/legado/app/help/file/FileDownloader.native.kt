@@ -6,6 +6,7 @@ import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.isSuccess
 import io.legado.app.help.copyToFileAtomically
 import io.legado.app.help.deleteOrphanAtomicWriteTempFilesInDir
+import io.legado.app.utils.canonicalizeUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
@@ -41,7 +42,7 @@ class NativeFileDownloader : FileDownloader {
                 deleteOrphanAtomicWriteTempFilesInDir(destPath)
                 val client = HttpClient()
                 try {
-                    val response = client.get(url)
+                    val response = client.get(url.canonicalizeUri())
                     if (!response.status.isSuccess()) {
                         false
                     } else {

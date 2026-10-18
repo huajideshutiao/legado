@@ -18,6 +18,7 @@ import io.legado.app.model.audio.AudioPlaySession
 import io.legado.app.model.audio.LyricPublisher
 import io.legado.app.model.audio.NowPlayingSessionHost
 import io.legado.app.help.media.maxLoadedTimeRangeEndMs
+import io.legado.app.utils.canonicalizeUri
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -157,7 +158,7 @@ private class IosAvAudioPlayController : AudioPlayController {
     fun setSource(url: String, headers: Map<String, String>, startPosMs: Long) {
         releaseCurrent()
         pendingSeekMs = startPosMs
-        val nsUrl = NSURL.URLWithString(url) ?: run {
+        val nsUrl = NSURL.URLWithString(url.canonicalizeUri()) ?: run {
             listener?.onPlayerError(IllegalArgumentException("非法 URL: $url"))
             return
         }

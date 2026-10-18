@@ -9,6 +9,7 @@ import io.legado.app.help.getUserAgent
 import io.legado.app.help.http.WebViewSnifferScripts
 import io.legado.app.help.toast.Toasters
 import io.legado.app.utils.browseUrl
+import io.legado.app.utils.canonicalizeUri
 import io.legado.desktop.help.webview.DesktopWebViewEngineBase
 import io.legado.desktop.help.webview.DesktopWebViewWindowHandleBase
 import io.legado.desktop.help.webview.NavigationState
@@ -446,12 +447,12 @@ internal class MacSession private constructor(
         when {
             !html.isNullOrEmpty() -> {
                 val base = request.url?.takeIf { it.isNotBlank() }
-                    ?.let { ptr(ObjC.cls("NSURL"), "URLWithString:", ns(it)) }
+                    ?.let { ptr(ObjC.cls("NSURL"), "URLWithString:", ns(it.canonicalizeUri())) }
                 void(webView, "loadHTMLString:baseURL:", ns(html), base)
             }
 
             !request.url.isNullOrEmpty() -> {
-                val nsUrl = ptr(ObjC.cls("NSURL"), "URLWithString:", ns(request.url)) ?: return
+                val nsUrl = ptr(ObjC.cls("NSURL"), "URLWithString:", ns(request.url.canonicalizeUri())) ?: return
                 val req = ptr(ObjC.cls("NSMutableURLRequest"), "requestWithURL:", nsUrl)!!
                 request.headerMap?.forEach { (name, value) ->
                     void(req, "setValue:forHTTPHeaderField:", ns(value), ns(name))
@@ -765,7 +766,7 @@ private class MacWindowHandle(
     }
 
     private fun loadUrl(session: MacSession, url: String) {
-        val nsUrl = ptr(ObjC.cls("NSURL"), "URLWithString:", ns(url)) ?: return
+        val nsUrl = ptr(ObjC.cls("NSURL"), "URLWithString:", ns(url.canonicalizeUri())) ?: return
         val req = ptr(ObjC.cls("NSMutableURLRequest"), "requestWithURL:", nsUrl)!!
         void(session.webView, "loadRequest:", req)
     }

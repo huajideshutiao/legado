@@ -2,6 +2,7 @@
 
 package io.legado.app.help
 
+import io.legado.app.utils.canonicalizeUri
 import platform.Foundation.NSURL
 import platform.UIKit.UIApplication
 import platform.UIKit.UIPasteboard
@@ -10,9 +11,14 @@ import platform.UIKit.UIWindow
 
 // iOS 平台 openURL / 剪贴板 / 顶层 vc 查找 工具 (对照 desktop java.awt.Desktop / Toolkit.systemClipboard)
 
-/** 用系统浏览器打开外部链接 (对照 desktop browseUrl)。 */
+/**
+ * 用系统浏览器打开外部链接 (对照 desktop browseUrl)。
+ *
+ * url 先经 [canonicalizeUri] 做 RFC 3986 逐段合法化: NSURL 解析器对空格/非 ASCII/裸 `%`
+ * 这类段内非法字符直接返回 nil, 不合法化就会“点了没反应”。
+ */
 fun openURL(url: String) {
-    NSURL.URLWithString(url)?.let { UIApplication.sharedApplication().openURL(it) }
+    NSURL.URLWithString(url.canonicalizeUri())?.let { UIApplication.sharedApplication().openURL(it) }
 }
 
 /**
@@ -26,7 +32,7 @@ fun openURL(url: String) {
  * 恒返回 false, 会把“能打开”误判成“打不开”。
  */
 fun openURLIfPossible(url: String, onResult: (Boolean) -> Unit) {
-    val nsUrl = NSURL.URLWithString(url) ?: run {
+    val nsUrl = NSURL.URLWithString(url.canonicalizeUri()) ?: run {
         onResult(false)
         return
     }
