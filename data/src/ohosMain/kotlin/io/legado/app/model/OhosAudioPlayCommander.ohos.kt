@@ -584,10 +584,14 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
         energyMark = TimeSource.Monotonic.markNow()
         // 鸿蒙只给整体电平（线性幅度, 量纲待实机确认）: 换算成分贝后进统一响度模型
         val linear = level.coerceAtLeast(0.0)
-        AudioPlayShared.audioEnergy.value = energyMeter.pushLevel(
+        val energy = energyMeter.pushLevel(
             dtMs.coerceIn(1.0, AMPLITUDE_MAX_DT_MS),
             AudioEnergyMeter.linearToDb(linear),
         )
+        AudioPlayShared.audioEnergy.value = energy
+        // 无频谱: 各段用同一个值 (如实退化, 靠时间相位维持流动)
+        AudioPlayShared.audioBands.value =
+            FloatArray(AudioPlayShared.audioBands.value.size) { energy }
     }
 
     private companion object {

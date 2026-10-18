@@ -5,6 +5,7 @@ import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.audio.TeeAudioProcessor
 import io.legado.app.model.AudioPlayShared
+import io.legado.app.model.audio.AudioBandMeter
 import io.legado.app.model.audio.AudioEnergyMeter
 import io.legado.app.model.audio.AudioLoudnessMeter
 import io.legado.app.model.audio.AudioSpectrum
@@ -30,6 +31,7 @@ class EnergyAudioBufferSink : TeeAudioProcessor.AudioBufferSink {
     private var loudness: AudioLoudnessMeter? = null
     private var spectrum: AudioSpectrum? = null
     private var energyMeter = AudioEnergyMeter()
+    private var bandMeter = AudioBandMeter()
     private var pendingFrames = 0
     private var sampleRate = 44100
     private var channels = 2
@@ -42,8 +44,10 @@ class EnergyAudioBufferSink : TeeAudioProcessor.AudioBufferSink {
         loudness = AudioLoudnessMeter(sampleRate)
         spectrum = AudioSpectrum(sampleRate)
         energyMeter.reset()
+        bandMeter.reset()
         pendingFrames = 0
         AudioPlayShared.audioEnergy.value = 0f
+        AudioPlayShared.audioBands.value = FloatArray(AudioSpectrum.BAND_COUNT)
     }
 
     override fun handleBuffer(buffer: ByteBuffer) {
@@ -64,8 +68,15 @@ class EnergyAudioBufferSink : TeeAudioProcessor.AudioBufferSink {
         while (pendingFrames >= HOP_FRAMES) {
             pendingFrames -= HOP_FRAMES
             val lkfs = loudness.momentaryLkfs()
-            val lowBand = spectrum.analyzeLowBand() ?: 0.0
-            AudioPlayShared.audioEnergy.value = energyMeter.pushFrame(hopMs / speed, lkfs, lowBand)
+            val frame = spectrum.analyze()
+            val lowBand = frame?.lowBand ?: 0.0
+            val dtMs = hopMs / speed
+            AudioPlayShared.audioEnergy.value = energyMeter.pushFrame(dtMs, lkfs, lowBand)
+            // 各段独立起伏: 边缘光效按频段分开驱动, 不与上面那条合成曲线同涨同落
+            // (必须复制: push 复用同一个数组实例, StateFlow 按引用相等会判为没变而不发出)
+            frame?.let {
+                AudioPlayShared.audioBands.value = bandMeter.push(dtMs, it.bands).copyOf()
+            }
         }
     }
 

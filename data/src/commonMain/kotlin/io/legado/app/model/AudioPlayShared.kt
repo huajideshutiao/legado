@@ -17,6 +17,7 @@ import io.legado.app.help.i18n.appString
 import io.legado.app.model.AudioPlayShared.bookSourceOf
 import io.legado.app.model.AudioPlayShared.durLrc
 import io.legado.app.model.AudioPlayShared.resetData
+import io.legado.app.model.audio.AudioSpectrum
 import io.legado.app.model.chapter.ChapterProgressStore
 import io.legado.app.model.chapter.resolveChapter
 import io.legado.app.utils.postEvent
@@ -125,6 +126,17 @@ object AudioPlayShared {
     val audioEnergy = MutableStateFlow(0f)
 
     /**
+     * 底层播放器实时多频段幅度 (每段 0.0f ~ 1.0f, 长度 [io.legado.app.model.audio.AudioSpectrum.BAND_COUNT])。
+     *
+     * 供页面边缘光效按频段分别驱动 (低频、人声、高频各占不同位置), 与 [audioEnergy] 的单值
+     * 口径不同: 那边是给歌词辉光的合成曲线, 这边保留各段独立起伏。
+     *
+     * 无频谱能力的端 (桌面走播放器峰值电平、鸿蒙只给整体幅度) 用整体电平填满各段 ——
+     * 如实退化, 不伪造频谱。
+     */
+    val audioBands = MutableStateFlow(FloatArray(AudioSpectrum.BAND_COUNT))
+
+    /**
      * 当前章节歌词 (null = 无歌词/未就绪)。
      *
      * 用 StateFlow 而不是 sticky 事件: 歌词是状态不是通知, 订阅即拿到当前值, 换章置 null、
@@ -196,16 +208,19 @@ object AudioPlayShared {
 
     fun stop() {
         audioEnergy.value = 0f
+        audioBands.value = FloatArray(audioBands.value.size)
         AudioPlayCommanders.get().stop()
     }
 
     fun stopPlay() {
         audioEnergy.value = 0f
+        audioBands.value = FloatArray(audioBands.value.size)
         AudioPlayCommanders.get().stopPlay()
     }
 
     fun pause() {
         audioEnergy.value = 0f
+        audioBands.value = FloatArray(audioBands.value.size)
         saveRead()
         AudioPlayCommanders.get().pause()
     }
@@ -232,6 +247,13 @@ object AudioPlayShared {
     }
 
     fun addTimer() = AudioPlayCommanders.get().addTimer()
+
+    /**
+     * 按两个辉光开关同步底层 offload 策略 (开关切换后调用, 无需重起播)。
+     *
+     * 采样旁路常挂, offload 是运行时参数: 都关时省电, 任一开启时取 PCM 供光效使用。
+     */
+    fun syncAudioOffload() = AudioPlayCommanders.get().syncAudioOffload()
 
     /**
      * 触发 Service 加载当前章节的播放 URL / 封面 / 歌词。

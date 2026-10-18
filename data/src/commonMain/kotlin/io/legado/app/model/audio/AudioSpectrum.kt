@@ -2,25 +2,38 @@ package io.legado.app.model.audio
 
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.pow
 import kotlin.math.sqrt
 import kotlin.math.sin
 
 /**
- * 短窗频谱: 低频段能量。
+ * 短窗频谱: 低频段能量 + 多频段幅度。
  *
- * 窗长 1024、hop 512，周期 Hann 窗。只输出低频段（20–320Hz）的幅度和，
- * 与 MilkDrop/Butterchurn 的 bass 段一致 —— 视觉律动取这条连续能量曲线，
- * 不做离散的起音检测（离散事件会漏拍、卡顿）。
+ * 窗长 1024、hop 512，周期 Hann 窗。一次 FFT 同时给出:
+ * - [Frame.lowBand]: 20–320Hz 的幅度和, 与 MilkDrop/Butterchurn 的 bass 段一致 ——
+ *   歌词辉光取这条连续能量曲线, 不做离散的起音检测 (离散事件会漏拍、卡顿)。
+ * - [Frame.bands]: 从 20Hz 到接近 Nyquist 的对数分布多频段幅度均值, 供边缘光效按频段
+ *   分别驱动 (各段各自起伏, 不是一条总能量的复制)。
+ *
+ * 频段取段内幅度均值而不是求和: 对数分布的相邻段 bin 数差几倍, 求和会让高频段永远压过
+ * 低频段。
  */
 class AudioSpectrum(private val sampleRate: Int) {
 
-    private companion object {
-        const val FFT_SIZE = 1024
-        const val HALF = FFT_SIZE / 2
-        const val FFT_LOG2 = 10
-        const val RING_SIZE = FFT_SIZE
+    companion object {
+        /** 多频段分析的段数 (对数分布) */
+        const val BAND_COUNT = 12
 
-        fun reverseBits(value: Int): Int {
+        private const val FFT_SIZE = 1024
+        private const val HALF = FFT_SIZE / 2
+        private const val FFT_LOG2 = 10
+        private const val RING_SIZE = FFT_SIZE
+
+        /** 频段下界 / 上界 (Hz); 上界另受 Nyquist 限制 */
+        private const val BAND_MIN_HZ = 20.0
+        private const val BAND_MAX_HZ = 16000.0
+
+        private fun reverseBits(value: Int): Int {
             var v = value
             var result = 0
             repeat(FFT_LOG2) {
@@ -30,6 +43,14 @@ class AudioSpectrum(private val sampleRate: Int) {
             return result
         }
     }
+
+    /** 一次分析的结果 */
+    class Frame(
+        /** 20–320Hz 幅度和 */
+        val lowBand: Double,
+        /** 对数分布各段幅度均值 (长度 = [BAND_COUNT]) */
+        val bands: DoubleArray,
+    )
 
     private val ring = DoubleArray(RING_SIZE)
     private var writeIndex = 0
@@ -45,16 +66,36 @@ class AudioSpectrum(private val sampleRate: Int) {
     private val bassStart: Int
     private val bassEnd: Int
 
+    /** 各段对应的 bin 区间 [start, end) */
+    private val bandStart = IntArray(BAND_COUNT)
+    private val bandEnd = IntArray(BAND_COUNT)
+
+    private val bands = DoubleArray(BAND_COUNT)
+
     init {
         binHz = sampleRate.toDouble() / FFT_SIZE
         bassStart = (20.0 / binHz).toInt().coerceIn(1, HALF - 1)
         bassEnd = (320.0 / binHz).toInt().coerceIn(bassStart + 1, HALF)
+
+        // 对数分布边界: 20Hz → min(16kHz, 0.45 * 采样率)
+        val nyquistLimit = sampleRate * 0.45
+        val top = BAND_MAX_HZ.coerceAtMost(nyquistLimit)
+        val ratio = top / BAND_MIN_HZ
+        var previous = bassStart
+        for (i in 0 until BAND_COUNT) {
+            val hz = BAND_MIN_HZ * ratio.pow((i + 1).toDouble() / BAND_COUNT)
+            val bin = (hz / binHz).toInt().coerceIn(previous + 1, HALF)
+            bandStart[i] = previous
+            bandEnd[i] = bin
+            previous = bin
+        }
     }
 
     fun reset() {
         ring.fill(0.0)
         writeIndex = 0
         filled = 0
+        bands.fill(0.0)
     }
 
     fun pushSample(mono: Double) {
@@ -63,8 +104,8 @@ class AudioSpectrum(private val sampleRate: Int) {
         if (filled < RING_SIZE) filled++
     }
 
-    /** 低频段 (20–320Hz) 的幅度和; 窗口未满返回 null */
-    fun analyzeLowBand(): Double? {
+    /** 窗口未满返回 null */
+    fun analyze(): Frame? {
         if (filled < FFT_SIZE) return null
         var index = (writeIndex - FFT_SIZE + RING_SIZE) % RING_SIZE
         for (i in 0 until FFT_SIZE) {
@@ -74,11 +115,18 @@ class AudioSpectrum(private val sampleRate: Int) {
         }
         fft()
 
-        var energy = 0.0
+        var lowEnergy = 0.0
         for (k in bassStart until bassEnd) {
-            energy += sqrt(re[k] * re[k] + im[k] * im[k])
+            lowEnergy += sqrt(re[k] * re[k] + im[k] * im[k])
         }
-        return energy
+        for (i in 0 until BAND_COUNT) {
+            var sum = 0.0
+            for (k in bandStart[i] until bandEnd[i]) {
+                sum += sqrt(re[k] * re[k] + im[k] * im[k])
+            }
+            bands[i] = sum / (bandEnd[i] - bandStart[i]).coerceAtLeast(1)
+        }
+        return Frame(lowEnergy, bands.copyOf())
     }
 
     private fun fft() {

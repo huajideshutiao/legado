@@ -37,7 +37,6 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.showSourceLogin
-import io.legado.app.help.toast.Toasters
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.model.audioCoverFallback
 import io.legado.app.ui.about.AppLogDialog
@@ -79,7 +78,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.add_to_bookshelf
-import legado.ui.generated.resources.audio_energy_glow_restart
 import legado.ui.generated.resources.check_add_bookshelf
 import legado.ui.generated.resources.no
 import legado.ui.generated.resources.yes
@@ -308,7 +306,9 @@ fun AudioPlayRoute(
     var glowEnabled by remember {
         mutableStateOf(pref.getBoolean(PreferKey.audioEnergyGlow, true))
     }
-    val glowRestartHint = stringResource(Res.string.audio_energy_glow_restart)
+    var edgeGlowEnabled by remember {
+        mutableStateOf(pref.getBoolean(PreferKey.audioEdgeGlow, true))
+    }
     val overflowActions = AudioPlayOverflowActions(
         hasLogin = state.hasLogin,
         showGlowToggle = PlatformCapabilityProviders.get().audioEnergyGlowSupported,
@@ -316,7 +316,14 @@ fun AudioPlayRoute(
         onToggleGlow = {
             glowEnabled = !glowEnabled
             pref.putBoolean(PreferKey.audioEnergyGlow, glowEnabled)
-            Toasters.get().toast(glowRestartHint)
+            // 采样旁路常挂, offload 由播放侧按开关即时切换, 不需要重起播
+            AudioPlayShared.syncAudioOffload()
+        },
+        edgeGlowEnabled = edgeGlowEnabled,
+        onToggleEdgeGlow = {
+            edgeGlowEnabled = !edgeGlowEnabled
+            pref.putBoolean(PreferKey.audioEdgeGlow, edgeGlowEnabled)
+            AudioPlayShared.syncAudioOffload()
         },
         onLogin = {
             // 统一登录入口: URL 登录桌面端直开登录窗口 (2026-08-07);

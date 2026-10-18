@@ -74,6 +74,15 @@ interface AudioPlayCommander {
 
     /** 派发 loadPlayUrl 命令 (requireRunning=false, Service 未运行时启动) */
     fun loadPlayUrl()
+
+    /**
+     * 按当前辉光开关状态同步音频 offload 策略。
+     *
+     * 采样旁路与 offload 互斥, 而旁路只能在播放器构建期决定 —— 所以旁路常挂, 由本方法在
+     * 运行时切 offload: 两个辉光都关时开 offload 省电, 任一开启时关掉以拿到 PCM。
+     * 只有 Android 有 offload 概念, 其余端默认空实现。
+     */
+    fun syncAudioOffload() = Unit
 }
 
 /**

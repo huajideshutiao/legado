@@ -74,6 +74,7 @@ import io.legado.app.ui.root.PhotoSharedCoverHost
 import io.legado.app.utils.format
 import io.legado.app.utils.toDurationTime
 import legado.ui.generated.resources.Res
+import legado.ui.generated.resources.audio_edge_glow_title
 import legado.ui.generated.resources.audio_energy_glow_title
 import legado.ui.generated.resources.audio_play
 import legado.ui.generated.resources.back
@@ -143,6 +144,7 @@ enum class AudioPlaySidePanelKind { TOC, REVIEW }
  * @param onSetSpeed 设定倍速
  * @param coverSlot 封面加载槽 (url, modifier) → 平台图片加载 Composable
  * @param blurBgSlot 模糊封面背景加载槽 (null=复用 coverSlot; 整图模糊 + 交叉淡化)
+ * @param edgeGlowSlot 页面边缘光效槽 (画在压暗遮罩之上、内容之下; null=不绘制)
  * @param lrcSlot 歌词渲染槽 (modifier) → 平台歌词 Composable
  * @param titleBarTrailingSlot 标题栏尾部槽 (默认评论钮, 四端一致)
  * @param timerDialogSlot 定时弹窗槽 (initial, onProgressChanged, onDismiss)
@@ -184,6 +186,7 @@ fun AudioPlayScreenContent(
     overflowActions: AudioPlayOverflowActions? = null,
     coverSlot: @Composable (String?, Modifier) -> Unit,
     blurBgSlot: (@Composable (String?, Modifier) -> Unit)? = null,
+    edgeGlowSlot: (@Composable (Modifier) -> Unit)? = null,
     lrcSlot: @Composable (Modifier) -> Unit,
     titleBarTrailingSlot: @Composable RowScope.() -> Unit = {},
     timerDialogSlot: @Composable (initial: Int, onProgressChanged: (Int) -> Unit, onDismiss: () -> Unit) -> Unit,
@@ -223,6 +226,8 @@ fun AudioPlayScreenContent(
         bgSlot(coverUrl, Modifier.matchParentSize())
         // 半透明遮罩 (对照 app 端 0x3A000000): 压暗背景保证歌词与控件的对比度
         Box(Modifier.matchParentSize().background(Color(0x3A000000)))
+        // 边缘光效: 在遮罩之上、内容之下 —— 光在文字背后, 不糊内容
+        edgeGlowSlot?.invoke(Modifier.matchParentSize())
         // 左区: 右侧随面板宽度动画挤压 (面板滑入时内容同步变窄); 面板打开时点击
         // 左区空白 (未被子级消费的点击) 关闭面板, 对话框语义
         Column(
@@ -541,6 +546,14 @@ private fun AudioPlayOverflowMenu(actions: AudioPlayOverflowActions) {
                     )
                     AppMenuCheckbox(checked = actions.glowEnabled)
                 }
+            }
+            DropdownMenuItem(onClick = { dismiss(); actions.onToggleEdgeGlow() }) {
+                Text(
+                    stringResource(Res.string.audio_edge_glow_title),
+                    color = AppTheme.colors.primaryText,
+                    modifier = Modifier.weight(1f),
+                )
+                AppMenuCheckbox(checked = actions.edgeGlowEnabled)
             }
         }
     }

@@ -14,8 +14,9 @@ import androidx.compose.ui.unit.Dp
  * - desktop Main.kt → 同上
  * - iOS MainViewController / ohos MainOhos → 同上
  *
- * 复用 shared [SharedAudioPlayScreenContent] (封面/模糊背景/歌词/弹窗 slot 全端共享,
- * 见 AudioPlaySharedSlots.kt / LrcViewShared.kt); 歌词取色 [rememberLrcColors] 同源。
+ * 复用 shared [SharedAudioPlayScreenContent] (封面/模糊背景/歌词/边缘光效/弹窗 slot 全端共享,
+ * 见 AudioPlaySharedSlots.kt / LrcViewShared.kt / AudioPlayEdgeGlow.kt);
+ * 歌词与边缘光效取色 [rememberAudioCoverPalette] 同源。
  * 鸿蒙未注册 BookImageLoaders (coil3 无 ohosArm64 变体) 时, 封面 slot 走
  * getOrNull 回退直接显示内置默认封面 (见 SharedAudioCoverSlot)。
  */

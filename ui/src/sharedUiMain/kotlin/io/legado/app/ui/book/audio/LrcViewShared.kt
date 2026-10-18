@@ -16,7 +16,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -26,12 +25,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -52,29 +49,23 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.Status
-import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.model.AudioPlayCommanders
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.model.Lrc
 import io.legado.app.model.LrcLine
 import io.legado.app.model.LrcWord
 import io.legado.app.ui.compose.theme.LocalEInk
-import io.legado.app.utils.ColorUtils
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.sin
-import kotlin.math.exp
-import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * 全端共享歌词控件: 逐项复刻原版 LrcView
@@ -161,10 +152,12 @@ fun LrcViewShared(
         if (!isPlaying || eInk) return@LaunchedEffect
         var lastFrameNs = 0L
         while (isActive) {
-            if (lrc.energy <= ENERGY_SILENT_THRESHOLD && lrc.smoothEnergy <= ENERGY_SILENT_THRESHOLD) {
+            if (lrc.energy <= AudioEnergyEnvelope.SILENT_THRESHOLD &&
+                lrc.smoothEnergy <= AudioEnergyEnvelope.SILENT_THRESHOLD
+            ) {
                 // 静音段: 平滑值已经落到地板, 低频推进即可 (省电)
                 lrc.resetEnergyEnvelope()
-                delay(ENERGY_IDLE_POLL_MS)
+                delay(AudioEnergyEnvelope.IDLE_POLL_MS)
                 continue
             }
             withFrameNanos { frameNs ->
@@ -917,29 +910,6 @@ private const val WRAP_JUMP_BOW_PX = 48f
 /** 判定"被重排到别处"的水平位移阈值 (px): 小于它只做纵向位移, 不加横向弧线 */
 private const val WRAP_JUMP_MIN_DX_PX = 24f
 
-
-// ---- 能量显示平滑 ----
-//
-// 自归一化 (快包络 / 慢均值) 已经在 PCM 侧完成, 这里绝不能再做第二遍窗口归一化 ——
-// 两层自适应会互相拉扯: 同一首歌的副歌与主歌会得到不同亮度, 且还要等窗口重新收敛。
-// 这里只做一层显示平滑, 把逐缓冲的驱动值化成连续呼吸。
-
-/** 显示平滑时间常数 (ms): 上升快于下降, 拍子能看出来但不抽搽 */
-private const val ENERGY_DISPLAY_ATTACK_MS = 60f
-private const val ENERGY_DISPLAY_RELEASE_MS = 180f
-
-/** 音频管道静默超过此间隔后才开始衰减 (ms): 正常派发间隔远小于它, 不会把阶梯锯成锯齿 */
-private const val ENERGY_HOLD_MS = 120
-
-/** 断供 (暂停/缓冲/跳转) 后的衰减时间常数 (ms) */
-private const val ENERGY_DECAY_TAU_MS = 200f
-
-/** 低于这个能量视为静音, 帧循环降为低频轮询 (省电) */
-private const val ENERGY_SILENT_THRESHOLD = 0.01f
-
-/** 静音段的时钟推进间隔 (ms) */
-private const val ENERGY_IDLE_POLL_MS = 100L
-
 /** 测量后的行 (复刻原版 LrcView.LrcLine); [words] 是逐字采样, 空表示这行整行高亮。 */
 private class MeasuredLrcLine(
     val time: Int,
@@ -1421,15 +1391,23 @@ private class LrcRuntime {
 
     /** 取该行过渡起点的行高 */
     fun wrapFromHeightOf(index: Int): Float = wrapSlides[index]?.fromHeight ?: 0f
-    /** 音频物理能量平滑值 (直接存内部运行态, 绝不触发视图重组) */
-    var energy by mutableFloatStateOf(0f)
-    /** [energy] 的采样时刻 (播放位置 ms), 供绘制期判断管道是否断供 */
-    var energyAtMs by mutableIntStateOf(0)
     /**
-     * 最终展示的能量 (0~1)。
-     * 绘制期只读这一个值: 它变化 -> 只失效重绘。
+     * 能量显示包络 (与页面边缘光效共用同一套平滑): 字段存内部运行态, 绝不触发视图重组。
+     * 采样时刻用播放位置, 绘制期据此判断能量管道是否还在供数。
      */
-    var smoothEnergy by mutableFloatStateOf(0f)
+    private val energyEnvelope = AudioEnergyEnvelope()
+    var energy: Float
+        get() = energyEnvelope.energy
+        set(value) {
+            energyEnvelope.energy = value
+        }
+    var energyAtMs: Int
+        get() = energyEnvelope.energyAtMs
+        set(value) {
+            energyEnvelope.energyAtMs = value
+        }
+    /** 最终展示的能量 (0~1): 绘制期只读这一个值, 它变化只失效重绘 */
+    val smoothEnergy: Float get() = energyEnvelope.smoothEnergy
     var scrollY by mutableFloatStateOf(0f)
     // 手动滚动计时信号 (每次 +1 重启 5s 回中; 复刻 removeCallbacks+postDelayed)
     var manualTick by mutableIntStateOf(0)
@@ -1439,31 +1417,14 @@ private class LrcRuntime {
     var scrollJob: Job? = null
     var colorJob: Job? = null
 
-    /**
-     * 绘制期取用当前驱动值: 正常播放时 PCM 处理器每 10~40ms 派发一次, 直接用最新值;
-     * 只有静默超过 [ENERGY_HOLD_MS] (暂停/缓冲/跳转断供) 才开始指数衰减到 0,
-     * 不会把逐次派发的阶梯锯成锯齿。
-     */
-    fun decayedEnergy(nowMs: Int): Float {
-        val base = energy
-        if (base <= 0f) return 0f
-        val idleMs = nowMs - energyAtMs - ENERGY_HOLD_MS
-        return if (idleMs <= 0) base else base * exp(-idleMs / ENERGY_DECAY_TAU_MS)
-    }
+    /** 绘制期取用当前驱动值 (断供衰减见 [AudioEnergyEnvelope.decayedEnergy]) */
+    fun decayedEnergy(nowMs: Int): Float = energyEnvelope.decayedEnergy(nowMs)
 
     /** 静音/暂停: 显示值归零, 避免恢复播放瞬间从陈旧的亮度跳下来 */
-    fun resetEnergyEnvelope() {
-        smoothEnergy = 0f
-    }
+    fun resetEnergyEnvelope() = energyEnvelope.resetDisplay()
 
-    /**
-     * 帧循环逐帧推进显示平滑: 只一层非对称一阶平滑 (上升 90ms / 下降 380ms)。
-     * 自归一化与拍点包络已经在 PCM 侧完成, 这里绝不能再做窗口归一化。
-     */
-    fun advanceEnergy(dtMs: Float, target: Float) {
-        val tau = if (target > smoothEnergy) ENERGY_DISPLAY_ATTACK_MS else ENERGY_DISPLAY_RELEASE_MS
-        smoothEnergy += (target - smoothEnergy) * (1f - exp(-dtMs / tau))
-    }
+    /** 帧循环逐帧推进显示平滑 (曲线见 [AudioEnergyEnvelope.advance]) */
+    fun advanceEnergy(dtMs: Float, target: Float) = energyEnvelope.advance(dtMs, target)
 
     private fun resetWrapSlide() {
         wrapSlides.clear()
@@ -1573,9 +1534,7 @@ private class LrcRuntime {
         maxSungProgress = 0f
         prevSungProgress = 0f
         resetWrapSlide()
-        energy = 0f
-        energyAtMs = 0
-        smoothEnergy = 0f
+        energyEnvelope.reset()
         scrollY = 0f
         manualTick = 0
         autoScroll = true
@@ -1626,101 +1585,3 @@ private fun calculateAlpha(lineCenterY: Float, viewportHeight: Float): Float {
         else -> 1f
     }
 }
-
-// ==================== 封面取色 (复刻原版 getRepresentativeColor + updateLrcColor) ====================
-
-/**
- * 复刻原版 `Bitmap.getRepresentativeColor` (BitmapUtils.kt):
- * - 缩放到 64px 最长边 (加载时已按 64px 请求, 这里的采样步长兜住更大的图)
- * - 过滤: alpha < 128 跳过; HSL 饱和度 <0.1 或 亮度 <0.1 或 >0.9 跳过
- * - 平均 RGB; 无有效像素时返回中心像素
- *
- * 一次性整块读回 (逐行 readPixels 在安卓端对 HARDWARE 位图每次都要整图拷贝), 通道走位运算,
- * HSL 复用同一个 FloatArray —— 与原版逐行等价且采样过程零分配。
- */
-private fun ImageBitmap.representativeColor(): Color {
-    val pixels = IntArray(width * height)
-    readPixels(pixels)
-    val step = max(1, (max(width, height) / 64f).roundToInt())
-    val hsl = FloatArray(3)
-    var rSum = 0L
-    var gSum = 0L
-    var bSum = 0L
-    var count = 0
-    var y = 0
-    while (y < height) {
-        val rowStart = y * width
-        var x = 0
-        while (x < width) {
-            val pixel = pixels[rowStart + x]
-            if ((pixel ushr 24) >= 128) { // 原版 (pixel shr 24) and 0xFF >= 128
-                val r = ColorUtils.red(pixel)
-                val g = ColorUtils.green(pixel)
-                val b = ColorUtils.blue(pixel)
-                ColorUtils.RGBToHSL(r, g, b, hsl)
-                if (hsl[1] >= 0.1f && hsl[2] >= 0.1f && hsl[2] <= 0.9f) {
-                    rSum += r
-                    gSum += g
-                    bSum += b
-                    count++
-                }
-            }
-            x += step
-        }
-        y += step
-    }
-    // 全是黑白/透明时取中心像素 (复刻原版 pixels[size / 2])
-    if (count == 0) return Color(pixels[pixels.size / 2])
-    return Color(
-        ColorUtils.argb((rSum / count).toInt(), (gSum / count).toInt(), (bSum / count).toInt())
-    )
-}
-
-/**
- * 复刻原版 `AudioPlayActivity.updateLrcColor`:
- * - meanColor → HSL; isLight = L > 0.6
- * - secondary: light → L-0.45 (下限 0.3); dark → L+0.45 (上限 0.7)
- * - primary: 基于 secondary 的 L 再 ±0.35 (下限 0.2 / 上限 0.8)
- * - 输出不透明色 (HSLToColor), 供歌词 setColors + SeekBar tint
- */
-private fun adjustLrcColors(meanColor: Color): Pair<Color, Color> {
-    val hsl = FloatArray(3)
-    ColorUtils.colorToHSL(meanColor.toArgb(), hsl)
-    val l = hsl[2]
-    val isLight = l > 0.6f
-    val secondaryL = if (isLight) (l - 0.45f).coerceAtLeast(0.3f)
-    else (l + 0.45f).coerceAtMost(0.7f)
-    hsl[2] = secondaryL
-    val secondary = Color(ColorUtils.HSLToColor(hsl))
-    hsl[2] = if (isLight) (secondaryL - 0.35f).coerceAtLeast(0.2f)
-    else (secondaryL + 0.35f).coerceAtMost(0.8f)
-    val primary = Color(ColorUtils.HSLToColor(hsl))
-    return primary to secondary
-}
-
-/** 封面 → 歌词/SeekBar 配色 (原版 updateLrcColor 的完整链路, 全端共享)。 */
-private fun ImageBitmap.representativeLrcColors(): Pair<Color, Color> =
-    adjustLrcColors(representativeColor())
-
-/**
- * 封面取色状态 (全端共享): 封面 URL 变化时经 [BookImageLoaders] 加载封面, 计算
- * [representativeLrcColors]; 未注册 loader / 加载失败 / 无封面 → null (用原版默认色)。
- * 对照原版 AudioPlayActivity.updateCover → updateLrcColor 链路。
- *
- * keep-previous: 加载期间保留旧配色, 新色算出才换 (原版 updateLrcColor 无中间态, 不会先闪回默认色);
- * 但换到无封面/加载失败的书要回落默认色, 不能沿用上一本的配色 (同 SharedAudioCoverSlot 的语义)。
- */
-@Composable
-fun rememberLrcColors(coverUrl: String?, sourceOrigin: String? = null): Pair<Color, Color>? {
-    var colors by remember { mutableStateOf<Pair<Color, Color>?>(null) }
-    LaunchedEffect(coverUrl, sourceOrigin) {
-        // 取色只要 64px 级别的小图 (原版 getRepresentativeColor 也是先缩到 64px 最长边):
-        // 按原图请求会让像素读回整图搬一遍 (安卓端 Coil3 默认给 HARDWARE 位图, 读回还要先整图拷贝),
-        // 而采样实际只用到几千个像素。磁盘缓存键只按 url, 不会多下载一次
-        val bitmap = if (coverUrl.isNullOrBlank()) null else BookImageLoaders.getOrNull()
-            ?.loadCoverOrNull(coverUrl, sourceOrigin, widthPx = 64, heightPx = 64)
-        colors = bitmap?.let { withContext(Dispatchers.Default) { it.representativeLrcColors() } }
-    }
-    return colors
-}
-

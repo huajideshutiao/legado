@@ -2,6 +2,7 @@
 
 package io.legado.app.model
 
+import io.legado.app.model.audio.AudioBandMeter
 import io.legado.app.model.audio.AudioEnergyMeter
 import io.legado.app.model.audio.AudioLoudnessMeter
 import io.legado.app.model.audio.AudioSpectrum
@@ -67,6 +68,7 @@ object IosAudioEnergyTap {
         var loudness: AudioLoudnessMeter? = null
         var spectrum: AudioSpectrum? = null
         val energyMeter = AudioEnergyMeter()
+        val bandMeter = AudioBandMeter()
 
         var sampleRate: Double = 44100.0
         var channels: Int = 2
@@ -168,6 +170,7 @@ private fun onTapPrepare(
     state.loudness = AudioLoudnessMeter(state.sampleRate.toInt())
     state.spectrum = AudioSpectrum(state.sampleRate.toInt())
     state.energyMeter.reset()
+    state.bandMeter.reset()
 }
 
 private fun onTapUnprepare(tap: MTAudioProcessingTapRef?) {
@@ -202,9 +205,12 @@ private fun onTapProcess(
 
     analyzePcm(state, loudness, spectrum, bufferListInOut, frames)
     val dtMs = frames.toDouble() / state.sampleRate * 1000.0
-    val lowBand = spectrum.analyzeLowBand() ?: 0.0
+    val frame = spectrum.analyze() ?: return
     AudioPlayShared.audioEnergy.value =
-        state.energyMeter.pushFrame(dtMs, loudness.momentaryLkfs(), lowBand)
+        state.energyMeter.pushFrame(dtMs, loudness.momentaryLkfs(), frame.lowBand)
+    // 各段独立起伏: 边缘光效按频段分开驱动
+    // (必须复制: push 复用同一个数组实例, StateFlow 按引用相等会判为没变而不发出)
+    AudioPlayShared.audioBands.value = state.bandMeter.push(dtMs, frame.bands).copyOf()
 }
 
 /** 按 ASBD 描述的采样格式把多声道混成单声道后喂给响度计与频谱 */

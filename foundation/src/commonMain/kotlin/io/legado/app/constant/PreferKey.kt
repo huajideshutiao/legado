@@ -129,6 +129,9 @@ object PreferKey {
 
     /** 歌词辉光: 开启后安卓端关闭 DSP audio offload 以拦截 PCM (后台听书不再省电) */
     const val audioEnergyGlow = "audioEnergyGlow"
+
+    /** 播放页边缘光效: 纯界面效果, 不依赖 PCM 采样, 四端都可单独开关 */
+    const val audioEdgeGlow = "audioEdgeGlow"
     const val progressBarBehavior = "progressBarBehavior"
     const val sourceEditMaxLine = "sourceEditMaxLine"
     const val ttsTimer = "ttsTimer"

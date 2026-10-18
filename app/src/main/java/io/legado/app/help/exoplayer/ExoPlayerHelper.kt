@@ -8,7 +8,6 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
-import androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences
 import androidx.media3.common.util.Util
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSpec
@@ -32,8 +31,6 @@ import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.extractor.DefaultExtractorsFactory
 import io.legado.app.App
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.PreferKey
-import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.externalCache
@@ -111,17 +108,17 @@ object ExoPlayerHelper {
     }
 
     /**
-     * @param audioOnly 纯音频场景(AudioPlayService)传 true。默认走 DSP offload 省电;
-     *   只有用户显式开启「歌词辉光」时才关 offload 并挂载能量旁路
-     *   (官方 tee: 只观察不改写, 不改变下层看到的编码)。
-     *   视频场景传 false。
+     * @param audioOnly 纯音频场景(AudioPlayService)传 true。
+     *
+     * 纯音频一律挂能量旁路 (官方 tee: 只观察不改写, 不改变下层看到的编码), 因此也一律
+     * 不开 DSP offload —— 旁路与 offload 互斥 (官方 offload 模式不参与音频处理), 而
+     * "开关切换后无需重起播"要求采样在播放器构建期就位。两个辉光开关只决定画不画。
+     * 视频场景传 false, 不挂旁路。
      */
     fun createHttpExoPlayer(context: Context, audioOnly: Boolean = false): ExoPlayer {
-        val energyGlow = audioOnly && PreferenceProviders.get()
-            .getBoolean(PreferKey.audioEnergyGlow, true)
         // 视频走硬件 MediaCodec 默认已开, 加 fallback 让冷门 codec / 怪文件硬解失败时降级到软解;
-        // 纯音频+辉光时挂官方 tee 旁路: 输入/输出编码完全一致, 不影响发声
-        val renderersFactory = if (energyGlow) {
+        // 纯音频时挂官方 tee 旁路: 输入/输出编码完全一致, 不影响发声
+        val renderersFactory = if (audioOnly) {
             object : DefaultRenderersFactory(context) {
                 override fun buildAudioSink(
                     context: Context,
@@ -171,20 +168,6 @@ object ExoPlayerHelper {
         }
 
         val player = builder.build()
-
-        if (audioOnly && !energyGlow) {
-            // DSP offload 消除 PipelineWatcher pipelineFull;变速场景要求硬件支持,
-            // 否则自动回退到 MediaCodec 软解(行为不变)
-            player.trackSelectionParameters = player.trackSelectionParameters
-                .buildUpon()
-                .setAudioOffloadPreferences(
-                    AudioOffloadPreferences.Builder()
-                        .setAudioOffloadMode(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
-                        .setIsSpeedChangeSupportRequired(true)
-                        .build()
-                )
-                .build()
-        }
 
         return player
     }

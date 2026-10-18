@@ -230,8 +230,8 @@
     <string name="audio_play_wake_lock">音频服务唤醒锁</string>
     <string name="publish_lyric">车载歌词</string>
     <string name="publish_lyric_summary">当前歌词行推到 now-playing 标题 (车机 / 蓝牙 / 锁屏), 会顶掉章节名</string>
-    <string name="audio_energy_glow_title">动态辉光</string>
-    <string name="audio_energy_glow_restart">重新起播后生效 (开启期间略微增加耗电)</string>
+    <string name="audio_energy_glow_title">动态文本辉光</string>
+    <string name="audio_edge_glow_title">边缘光效</string>
     <string name="all_source">全部书源</string>
     <string name="precision_search">精准搜索</string>
     <string name="screen">筛选</string>

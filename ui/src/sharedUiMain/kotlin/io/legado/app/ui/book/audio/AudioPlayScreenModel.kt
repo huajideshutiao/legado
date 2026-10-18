@@ -88,12 +88,16 @@ data class AudioPlayOverflowActions(
     val onShowAppLog: () -> Unit,
     /** 是否显示登录项 (取自页面状态, 随书源就绪刷新) */
     val hasLogin: Boolean,
-    /** 动态辉光开关是否显示 (仅 Android: 与 DSP offload 互斥) */
+    /** 动态文本辉光开关是否显示 (仅 Android: 与 DSP offload 互斥) */
     val showGlowToggle: Boolean = false,
-    /** 动态辉光当前是否开启 */
+    /** 动态文本辉光当前是否开启 */
     val glowEnabled: Boolean = false,
-    /** 切换动态辉光 */
+    /** 切换动态文本辉光 */
     val onToggleGlow: () -> Unit = {},
+    /** 边缘光效当前是否开启 (四端都可控, 不依赖 PCM) */
+    val edgeGlowEnabled: Boolean = true,
+    /** 切换边缘光效 */
+    val onToggleEdgeGlow: () -> Unit = {},
 )
 
 object AudioPlayPlatformProviders {
@@ -416,7 +420,7 @@ class AudioPlayScreenModel : ScreenModel {
  * 音频播放页 UI 状态 (对照 [AudioPlayScreenContent] 同名参数)。
  *
  * 歌词只托管数据 ([lrc]); 当前高亮行由 [rememberLrcIndex] 自适应精准延时派生, 配色由
- * [rememberLrcColors] 从封面取色, 都不进本状态。
+ * [rememberAudioCoverPalette] 从封面取色, 都不进本状态。
  */
 data class AudioPlayUiState(
     val title: String = "",

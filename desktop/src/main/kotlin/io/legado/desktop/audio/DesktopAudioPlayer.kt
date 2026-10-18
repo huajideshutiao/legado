@@ -429,12 +429,18 @@ class DesktopAudioPlayer {
                     else (nowMs - lastMs).toDouble()
                     lastMs = nowMs
                     val fullDb = readLevelDb(mpv, ENERGY_FULL_LABEL)
-                    AudioPlayShared.audioEnergy.value =
-                        meter.pushLevel(dtMs.coerceIn(1.0, 200.0), fullDb)
+                    val energy = meter.pushLevel(dtMs.coerceIn(1.0, 200.0), fullDb)
+                    AudioPlayShared.audioEnergy.value = energy
+                    // 桌面只拿得到峰值电平, 没有频谱: 各段用同一个值 —— 如实退化,
+                    // 边缘光效靠时间相位维持流动, 但不会按频段分开起伏
+                    AudioPlayShared.audioBands.value =
+                        FloatArray(AudioPlayShared.audioBands.value.size) { energy }
                 } else {
                     lastMs = 0L
                     meter.reset()
                     AudioPlayShared.audioEnergy.value = 0f
+                    AudioPlayShared.audioBands.value =
+                        FloatArray(AudioPlayShared.audioBands.value.size)
                 }
             }
         }

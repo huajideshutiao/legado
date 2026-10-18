@@ -60,6 +60,12 @@ object AudioPlayProvidersImpl : AudioPlayCommander {
 
     override fun loadPlayUrl() = sendAction(IntentAction.loadPlayUrl, requireRunning = false)
 
+    override fun syncAudioOffload() {
+        // 播放器可能尚未创建 (Service 没起): 那时无需同步, 创建时会按当时偏好设定
+        if (!AudioPlayService.isRun) return
+        AudioPlayService.syncAudioOffload()
+    }
+
     /**
      * 向 [AudioPlayService] 发送命令 (原 app 端 `AudioPlay.sendAction` 等价实现)。
      *
