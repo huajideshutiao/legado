@@ -261,6 +261,14 @@ fun SearchScreen(
         viewModel.showInputHelp(!hideHelp)
     }
 
+    // 开始拖动帮助列表就收键盘并清焦点 (对照原版两个帮助列表 SCROLL_STATE_DRAGGING → clearFocus):
+    // 手指要滑列表时输入法挡着没法滑
+    LaunchedEffect(shelfHelpGridState, historyHelpScrollState) {
+        snapshotFlow {
+            shelfHelpGridState.isScrollInProgress || historyHelpScrollState.isScrollInProgress
+        }.collect { scrolling -> if (scrolling) focusManager.clearFocus() }
+    }
+
     val searchOptionsVersion by viewModel.searchOptionsVersion.collectAsState()
     val pluginFiltersVersion by viewModel.pluginFiltersVersion.collectAsState()
     // 聚簇顶部选项行快照: 仅单源时非空 (多源选项在各源区块内); 点击直改实例, 版本号驱动重读
