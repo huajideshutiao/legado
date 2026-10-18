@@ -102,10 +102,10 @@ object LrcParser {
     fun parse(content: List<*>): Lrc {
         if (content.isEmpty()) return Lrc(emptyList())
         val main = content[0] as String
-        val isQrc = isQrc(main)
+        val mainIsQrc = isQrc(main)
         val lines = mutableListOf<LrcLine>()
         // 首份歌词建立时间轴; 部分歌词源时间戳乱序(如网易云), 加完统一排序
-        if (isQrc) {
+        if (mainIsQrc) {
             lines.addAll(parseQrc(main))
         } else {
             forEachEntry(main) { timeMs, text, words ->
@@ -113,15 +113,25 @@ object LrcParser {
             }
         }
         lines.sortBy { it.timeMs }
-        // 后续歌词只把文本叠加到已有条目上(多语种), 不引入新时间戳
+        // 后续歌词只把文本叠加到已有条目上(多语种), 不引入新时间戳。
+        // 每份自己识别格式: 逐字歌词的译文常常也是逐字格式, 按纯 LRC 读会整段丢掉
         for (i in 1 until content.size) {
-            forEachEntry(content[i] as String) { timeMs, text, _ ->
-                if (timeMs >= 0 && text.isNotBlank()) lines.mergeAt(timeMs, text)
+            val extra = content[i] as String
+            if (isQrc(extra)) {
+                for (line in parseQrc(extra)) {
+                    if (line.timeMs >= 0 && line.text.isNotBlank()) {
+                        lines.mergeAt(line.timeMs, line.text)
+                    }
+                }
+            } else {
+                forEachEntry(extra) { timeMs, text, _ ->
+                    if (timeMs >= 0 && text.isNotBlank()) lines.mergeAt(timeMs, text)
+                }
             }
         }
         // 原文只留首份: 系统侧整段吃一份就够, 叠加的多语种是同一时间戳的重复行。
         // QRC 原文系统侧读不懂, 换成等价的逐行 LRC 交给它
-        return Lrc(lines, if (isQrc) lines.toLrcText() else main)
+        return Lrc(lines, if (mainIsQrc) lines.toLrcText() else main)
     }
 
     /** 行首是 `[起始毫秒,持续毫秒]` 即 QRC; LRC 的行首时间戳永远是 `mm:ss` 形式, 两者不会撞。 */
@@ -133,24 +143,32 @@ object LrcParser {
      *
      * 时间戳是绝对毫秒 (与行头同一时间轴)。文字里可以出现半角括号 (如 `((1440,160)Jay`
      * 表示正文是一个左括号), 所以按标签位置切片取文字, 而不是拿 `[^\(]*` 去卡正文。
+     * `[offset:+500]` 与纯 LRC 同义: 平移其后各行的时间 (正值表示提前)。
      */
     private fun parseQrc(text: String): List<LrcLine> {
         val lines = mutableListOf<LrcLine>()
+        var offsetMs = 0
         for (rawLine in text.lineSequence()) {
             val line = rawLine.trim()
+            if (line.length < 3) continue
+            if (line[0] == '[' && line.startsWith(OFFSET_TAG, 1, ignoreCase = true)) {
+                offsetMs = parseOffset(line, 1 + OFFSET_TAG.length, line.indexOf(']'))
+                continue
+            }
             val head = QRC_HEAD.find(line) ?: continue
             val body = line.substring(head.range.last + 1)
             val plain = StringBuilder(body.length)
             val words = mutableListOf<LrcWord>()
             var last = 0
             for (tag in QRC_WORD.findAll(body)) {
-                val start = tag.groupValues[1].toInt()
+                val start = (tag.groupValues[1].toInt() - offsetMs).coerceAtLeast(0)
                 words.add(LrcWord(start, plain.length, start + tag.groupValues[2].toInt()))
                 plain.append(body, last, tag.range.first)
                 last = tag.range.last + 1
             }
             plain.append(body, last, body.length)
-            lines.add(LrcLine(head.groupValues[1].toInt(), plain.toString(), words))
+            val lineStart = (head.groupValues[1].toInt() - offsetMs).coerceAtLeast(0)
+            lines.add(LrcLine(lineStart, plain.toString(), words))
         }
         return lines
     }
