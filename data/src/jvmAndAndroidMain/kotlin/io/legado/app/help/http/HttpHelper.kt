@@ -1,5 +1,6 @@
 package io.legado.app.help.http
 
+import eu.kanade.tachiyomi.network.interceptor.CHALLENGE_CALL_TIMEOUT_MS
 import io.legado.app.constant.AppConst
 import io.legado.app.help.CacheManager
 import io.legado.app.help.UserAgentProviders
@@ -66,7 +67,7 @@ private fun createOkHttpClient(): OkHttpClient {
         .connectTimeout(15, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
-        .callTimeout(15, TimeUnit.SECONDS)
+        .callTimeout(CHALLENGE_CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         //.cookieJar(cookieJar = cookieJar)
         .sslSocketFactory(SSLHelper.unsafeSSLSocketFactory, SSLHelper.unsafeTrustManager)
         .retryOnConnectionFailure(true)

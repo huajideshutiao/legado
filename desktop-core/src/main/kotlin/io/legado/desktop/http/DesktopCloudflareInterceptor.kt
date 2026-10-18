@@ -19,7 +19,7 @@ import okhttp3.Request
  * HttpHelper 的 cookie bridge 拦截器, loadRequest 从 CookieStore 合入新 cf_clearance。
  *
  * 与 Android 版差异: 无 interactive 提前中止与 WebView 过旧检测 (引擎无对应桥),
- * 需人工交互的挑战靠 30s 超时放弃, 语义等效 (求解通道差异见共享基类 KDoc)。
+ * 需人工交互的挑战靠求解窗超时放弃, 语义等效 (求解通道差异见共享基类 KDoc)。
  *
  * 覆盖范围: 只有 Android 与桌面挂 CF 自动解挑战; iOS / 鸿蒙的共享 HTTP 栈不挂本拦截器。
  */
@@ -41,9 +41,15 @@ open class DesktopCloudflareInterceptor : ChallengeInterceptorBase() {
 
     override fun solve(request: Request, oldClearance: String?) {
         val engine = DesktopChallengeEngines.get() ?: throw CloudflareBypassException()
+        // 引擎只能加载 GET 页面: 非 GET 请求改在站点根页取 clearance (与 Android 版同一处理)
+        val challengeUrl = if (request.method == "GET") {
+            request.url.toString()
+        } else {
+            request.url.newBuilder().encodedPath("/").query(null).fragment(null).build().toString()
+        }
         val cookies = runBlocking {
             engine.awaitChallengeCookies(
-                url = request.url.toString(),
+                url = challengeUrl,
                 headerMap = request.headers.toMap(),
                 timeoutMs = CHALLENGE_TIMEOUT_MS,
             ) { cookieStr ->

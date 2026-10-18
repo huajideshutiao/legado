@@ -94,7 +94,7 @@ abstract class ChallengeInterceptorBase : Interceptor {
         response.close()
         try {
             // 超过挑战等待上限仍未拿到锁, 视同绕过失败 (排队者不再重复开引擎)
-            if (!state.lock.tryLock(CHALLENGE_WAIT_SECONDS, TimeUnit.SECONDS)) {
+            if (!state.lock.tryLock(CHALLENGE_WAIT_MS, TimeUnit.MILLISECONDS)) {
                 throw CloudflareBypassException()
             }
             try {
@@ -159,11 +159,24 @@ abstract class ChallengeInterceptorBase : Interceptor {
     }
 }
 
-// 与上游 awaitFor30Seconds 对齐, 排队锁的上限留出余量
-private const val CHALLENGE_WAIT_SECONDS = 35L
+/*
+ * 时间预算: 三个数字必须同时满足下面两条, 否则自动解挑战在结构上不可能成功。
+ * 改任一个都要回来核对另一条。
+ *
+ * 1. 求解窗 < 整次请求超时 —— 求解只能在请求内完成 (OkHttp 不支持异步拦截器),
+ *    整次请求超时一旦先到, 求解成果作废;
+ * 2. 排队上限 + 求解窗 <= 整次请求超时 —— 排队者要么复用同一挑战窗口内的那次求解结果
+ *    (近乎立即), 要么在前一轮释放后自己再解一轮。
+ */
 
-// 引擎内挑战轮询窗 (对照 Android CountDownLatch 30s)
+/** 单次求解窗 (引擎 / WebView 侧等待上限)。实测一次成功求解约 14 秒。 */
 const val CHALLENGE_TIMEOUT_MS = 30_000L
+
+/** 同 host 排队上限 = 求解窗: 排队者的挑战时刻落在这轮求解窗内就能拿到结果。 */
+private const val CHALLENGE_WAIT_MS = CHALLENGE_TIMEOUT_MS
+
+/** 整次请求超时: 最坏 "等一轮 + 解一轮" 再加 5 秒余量。 */
+const val CHALLENGE_CALL_TIMEOUT_MS = CHALLENGE_TIMEOUT_MS * 2 + 5_000L
 
 private val SERVER_CHECK = arrayOf("cloudflare-nginx", "cloudflare")
 const val COOKIE_CLEARANCE = "cf_clearance"

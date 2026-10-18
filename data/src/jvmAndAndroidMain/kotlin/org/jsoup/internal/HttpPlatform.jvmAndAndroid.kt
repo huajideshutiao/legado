@@ -56,7 +56,8 @@ internal actual fun buildPlatformClient(
         .followSslRedirects(request.followRedirects())
 
     if (shared != null) {
-        // 共享 client 带 callTimeout(15s),会盖过上面 per-request 的 connect/read 超时,清掉
+        // 共享 client 的整次请求超时 (见挑战拦截器的时间预算) 会盖过上面 per-request 的
+        // connect/read 超时, 二者同时生效时以更短的一方为准, 故清零让 per-request 值生效
         builder.callTimeout(0, TimeUnit.MILLISECONDS)
     } else {
         builder.hostnameVerifier(AllHostHostnameVerifier)
