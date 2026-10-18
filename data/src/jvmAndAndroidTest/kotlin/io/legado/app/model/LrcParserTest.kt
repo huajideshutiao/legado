@@ -76,4 +76,29 @@ class LrcParserTest {
         val lines = LrcParser.parse(listOf(main, "[00:09.55]俱乐部", "[00:09.55]the club")).lines
         assertEquals("The club\n俱乐部\nthe club", lines[0].text)
     }
+
+    /**
+     * QRC: 行头与字标签都是绝对毫秒, 每段自带时长; 正文里的半角括号是正文, 不是标签分隔符。
+     */
+    @Test
+    fun `QRC 逐字带时长且保留正文括号`() {
+        val qrc = "[ti:晴天]\n[0,2250]晴(0,160)天(160,160) (320,160)((480,160)Jay(640,160)"
+        val lrc = LrcParser.parse(listOf(qrc))
+        val line = lrc.lines.single()
+        assertEquals(0, line.timeMs)
+        assertEquals("晴天 (Jay", line.text)
+        assertEquals(listOf(0, 1, 2, 3, 4), line.words.map { it.charIndex })
+        assertEquals(listOf(0, 160, 320, 480, 640), line.words.map { it.timeMs })
+        assertEquals(listOf(160, 320, 480, 640, 800), line.words.map { it.endMs })
+        // 系统侧读不懂 QRC, 要拿到等价的逐行 LRC
+        assertEquals("[00:00.000]晴天 (Jay", lrc.systemLrcText)
+    }
+
+    /** QRC 与译文 (10 毫秒精度) 仍按时间戳就近叠加。 */
+    @Test
+    fun `QRC 叠加译文`() {
+        val qrc = "[9551,2000]The (9551,200)club(9751,300)"
+        val lines = LrcParser.parse(listOf(qrc, "[00:09.55]俱乐部")).lines
+        assertEquals("The club\n俱乐部", lines.single().text)
+    }
 }
