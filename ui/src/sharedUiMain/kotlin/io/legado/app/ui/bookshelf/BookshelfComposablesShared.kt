@@ -1,5 +1,6 @@
 package io.legado.app.ui.bookshelf
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -67,6 +69,7 @@ import io.legado.app.utils.toTimeAgo
 import kotlinx.coroutines.delay
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.bookshelf_empty
+import legado.ui.generated.resources.ic_bookmark
 import legado.ui.generated.resources.ic_search
 import legado.ui.generated.resources.search
 import org.jetbrains.compose.resources.painterResource
@@ -773,7 +776,28 @@ fun ShelfLastUpdateText(time: Long, timeTick: State<Int>) {
     Text(timeAgo, color = colors.secondaryText, fontSize = 13.sp, maxLines = 1)
 }
 
-/** 网格条目, 对照 item_bookshelf_grid: 封面(12dp 边距)+两行书名, 徽标/转圈叠加右上 */
+/**
+ * 书架标记 (ic_bookmark): 标记该书已加入书架。
+ *
+ * 对照原版 `iv_in_bookshelf` (item_bookshelf_grid / item_explore_video): 尺寸由调用方给
+ * (网格档随封面宽度等比 0.22, 视频档固定 30dp), 由调用方贴在封面左上角。
+ */
+@Composable
+fun BookshelfBadge(modifier: Modifier = Modifier) {
+    Image(
+        painter = painterResource(Res.drawable.ic_bookmark),
+        contentDescription = null,
+        modifier = modifier,
+    )
+}
+
+/**
+ * 网格条目, 对照 item_bookshelf_grid: 封面(12dp 边距)+两行书名, 书架标记叠加封面左上, 未读/转圈叠加右上。
+ *
+ * @param inBookshelf 书架标记: null = 不显示 (书架内每条都已入库, 逐条亮是噪音, 对照原版
+ *   showBookshelfBadge=false); 非书架界面 (搜索结果) 传该书真实书架态, 对照原版 bindGridCard 的
+ *   showBookshelfBadge && isInBookshelf。
+ */
 @Composable
 fun ShelfGridItem(
     book: Book,
@@ -782,6 +806,7 @@ fun ShelfGridItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
+    inBookshelf: Boolean? = null,
     coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -802,6 +827,16 @@ fun ShelfGridItem(
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(top = DesignTokens.spacingDefault),
+            )
+        }
+        // 书架标记对照原 XML: 约束到 iv_cover 的 start/top (iv_cover 带 12dp margin), 宽度 0.22 比例
+        if (inBookshelf == true) {
+            BookshelfBadge(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = DesignTokens.spacingMd, top = DesignTokens.spacingMd)
+                    .fillMaxWidth(0.22f)
+                    .aspectRatio(1f),
             )
         }
         // 徽标/转圈对照原 XML: 约束到 parent 右上角 (bv_unread/rl_loading 均 layout_constraintRight_toRightOf=parent + Top_toTopOf=parent),
@@ -827,7 +862,13 @@ fun ShelfGridItem(
     }
 }
 
-/** 视频卡片, 对照 item_explore_video/bindVideoCard: 16:9 封面+粗体标题+分类+作者, 无徽标 */
+/**
+ * 视频卡片, 对照 item_explore_video/bindVideoCard: 16:9 封面+粗体标题+分类+作者, 书架标记叠加封面左上。
+ *
+ * @param inBookshelf 书架标记: null = 不显示 (书架内每条都已入库, 逐条亮是噪音, 对照原版
+ *   showBookshelfBadge=false); 非书架界面 (探索展示/搜索结果) 传该书真实书架态, 对照原版
+ *   bindVideoCard 的 showBookshelfBadge && isInBookshelf。
+ */
 @Composable
 fun ShelfVideoItem(
     book: Book,
@@ -835,6 +876,7 @@ fun ShelfVideoItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
+    inBookshelf: Boolean? = null,
     coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -844,9 +886,15 @@ fun ShelfVideoItem(
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(DesignTokens.spacingDefault),
     ) {
-        // 无 cover URL 时仍渲染封面 Box (走占位), 对齐原 View 版无 path 也显示默认封面
-        ShelfCoverBox(ShelfCoverSlot.VIDEO) { m, isVideoCover ->
-            coverSlot(book, m, isVideoCover, coverReloadTick)
+        Box {
+            // 无 cover URL 时仍渲染封面 Box (走占位), 对齐原 View 版无 path 也显示默认封面
+            ShelfCoverBox(ShelfCoverSlot.VIDEO) { m, isVideoCover ->
+                coverSlot(book, m, isVideoCover, coverReloadTick)
+            }
+            // 书架标记对照原 XML: 固定 30dp, 贴封面左上角 (无 margin)
+            if (inBookshelf == true) {
+                BookshelfBadge(Modifier.align(Alignment.TopStart).size(30.dp))
+            }
         }
         Text(
             text = book.name,

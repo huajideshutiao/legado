@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.search
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -242,6 +244,23 @@ fun SearchScreen(
     val precisionSearch by viewModel.precisionSearch.collectAsState()
     val manualStopped by viewModel.manualStopped.collectAsState()
 
+    // 输入帮助区两个列表的滚动状态: 滚动中失焦不收帮助区 (对照原版 isScrollingHelp)
+    val shelfHelpGridState = rememberLazyGridState()
+    val historyHelpScrollState = rememberScrollState()
+    val focusManager = LocalFocusManager.current
+
+    // 搜索框焦点变化 (对照原版 setOnQueryTextFocusChangeListener):
+    // 搜索中, 或"失焦且结果非空且关键词非空且帮助列表未滚动"时收起输入帮助, 其余显示
+    val onFieldFocusChange: (Boolean) -> Unit = { focused ->
+        val hasResult = resultBooks.isNotEmpty() || searchGroups.isNotEmpty()
+        val hideHelp = isSearching || (
+            !focused && hasResult && query.isNotBlank() &&
+                !shelfHelpGridState.isScrollInProgress &&
+                !historyHelpScrollState.isScrollInProgress
+            )
+        viewModel.showInputHelp(!hideHelp)
+    }
+
     val searchOptionsVersion by viewModel.searchOptionsVersion.collectAsState()
     val pluginFiltersVersion by viewModel.pluginFiltersVersion.collectAsState()
     // 聚簇顶部选项行快照: 仅单源时非空 (多源选项在各源区块内); 点击直改实例, 版本号驱动重读
@@ -292,14 +311,13 @@ fun SearchScreen(
                 SearchField(
                     query = query,
                     onQueryChange = viewModel::onQueryChange,
-                    onQuerySubmit = viewModel::onQuerySubmit,
-                    focusEpoch = focusEpoch,
-                    onCleared = {
-                        // 搜索中或已有结果时不弹回输入帮助 (对齐原 onFieldFocusChanged 的 autoLoading/有结果分支)
-                        if (!viewModel.isSearching.value && resultBooks.isEmpty()) {
-                            viewModel.showInputHelp(true)
-                        }
+                    // 提交先清焦点 (对照原版 onQueryTextSubmit 的 clearFocus), 焦点离开后按焦点规则收起帮助区
+                    onQuerySubmit = {
+                        focusManager.clearFocus()
+                        viewModel.onQuerySubmit()
                     },
+                    focusEpoch = focusEpoch,
+                    onFocusChange = onFieldFocusChange,
                     modifier = Modifier.weight(1f),
                 )
             },
@@ -318,9 +336,8 @@ fun SearchScreen(
                 .weight(1f)
         ) {
             Column(Modifier.fillMaxSize()) {
-                // 搜索中或已有结果时强制显示结果区, 不弹回书架/历史 (对齐原 onFieldFocusChanged)
-                val showInputHelp = inputHelpVisible && !isSearching && resultBooks.isEmpty()
-                if (showInputHelp) {
+                // 输入帮助区与结果区互斥, 只由焦点规则驱动 (对照原版 visibleInputHelp)
+                if (inputHelpVisible) {
                     InputHelp(
                         viewModel = viewModel,
                         navCallbacks = navCallbacks,
@@ -331,6 +348,12 @@ fun SearchScreen(
                         styleCols = styleCols,
                         bookshelfVersion = bookshelfVersion,
                         shelfCoverSlot = resolvedShelfCoverSlot,
+                        shelfGridState = shelfHelpGridState,
+                        historyScrollState = historyHelpScrollState,
+                        onHistoryClick = { word ->
+                            focusManager.clearFocus()
+                            viewModel.searchHistory(word)
+                        },
                     )
                 } else {
                     // 聚簇布局顶部选项行 (单源搜索): 按源分类布局下选项在各源区块内显示, 不重复
@@ -391,7 +414,7 @@ private fun SearchField(
     onQueryChange: (String) -> Unit,
     onQuerySubmit: () -> Unit,
     focusEpoch: Int,
-    onCleared: () -> Unit,
+    onFocusChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -416,12 +439,7 @@ private fun SearchField(
         modifier = modifier,
         textFieldModifier = Modifier
             .focusRequester(focusRequester)
-            .onFocusChanged {
-                // 失焦时收起输入帮助区 (与原 onFieldFocusChanged 简化对齐)
-                if (!it.isFocused && it.hasFocus == false) {
-                    onCleared()
-                }
-            },
+            .onFocusChanged { onFocusChange(it.isFocused) },
     )
 }
 
@@ -502,6 +520,9 @@ private fun ColumnScope.InputHelp(
     styleCols: Int,
     bookshelfVersion: Int,
     shelfCoverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit,
+    shelfGridState: LazyGridState,
+    historyScrollState: ScrollState,
+    onHistoryClick: (String) -> Unit,
 ) {
     val colors = AppTheme.colors
     val navPad = rememberNavigationBarPaddingValues()
@@ -530,6 +551,7 @@ private fun ColumnScope.InputHelp(
         // 阅读记录页 / 发现页 rememberResponsiveColumns 行为), 不再分 LazyColumn 单列分支
         LazyVerticalGrid(
             columns = rememberResponsiveColumns(spanCount),
+            state = shelfGridState,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
@@ -623,7 +645,7 @@ private fun ColumnScope.InputHelp(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(historyScrollState)
                 .padding(horizontal = DesignTokens.spacingDefault)
                 .padding(navPad),
         ) {
@@ -632,7 +654,7 @@ private fun ColumnScope.InputHelp(
                     AppFilletTextButton(
                         text = keyword.word,
                         onLongClick = { viewModel.deleteHistory(keyword) },
-                        onClick = { viewModel.searchHistory(keyword.word) },
+                        onClick = { onHistoryClick(keyword.word) },
                     )
                 }
             }
@@ -664,6 +686,7 @@ private fun ColumnScope.ResultArea(
             groups,
             styleIsVideo,
             pluginFiltersVersion,
+            bookshelfVersion,
             coverSlot,
         )
         return
@@ -716,6 +739,8 @@ private fun ColumnScope.ResultArea(
                             onLongClick = {
                                 navCallbacks.onBookClick(book, true, binding.pageToken)
                             },
+                            // 书架命中标记 (对照原 VideoExploreShowAdapter 的 isInBookshelf)
+                            inBookshelf = viewModel.isInBookShelf(book),
                             coverSlot = cover,
                         )
                     }
@@ -757,6 +782,8 @@ private fun ColumnScope.ResultArea(
                             onLongClick = {
                                 navCallbacks.onBookClick(book, true, binding.pageToken)
                             },
+                            // 书架命中标记 (对照原 GridExploreShowAdapter 的 isInBookshelf)
+                            inBookshelf = viewModel.isInBookShelf(book),
                             coverSlot = cover,
                         )
                     }
@@ -780,8 +807,10 @@ private fun ColumnScope.SourceGroupResultArea(
     groups: List<SourceSearchGroup>,
     styleIsVideo: Boolean,
     pluginFiltersVersion: Int,
+    bookshelfVersion: Int,
     coverSlot: @Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit,
 ) {
+    @Suppress("UNUSED_EXPRESSION") bookshelfVersion // 书架增删时重组刷新书架标记
     val state = rememberLazyListState()
     // 触底续搜 (同聚簇分支: 对齐原 canScrollVertically(1)==false -> scrollToBottom)
     LaunchedEffect(state) {
@@ -848,7 +877,7 @@ private fun SourceSection(
             onOptionSelected = { viewModel.onSourceOptionChanged(group.source.bookSourceUrl) },
         )
         // 横向行: 视频位跟搜索布局 (同 home 区块视频封面卡); 封面渲染走与聚簇模式
-        // 同款 coverSlot (书架命中分流缓存区)
+        // 同款 coverSlot (书架命中分流缓存区); 书架标记按搜索结果语义显示 (同聚簇模式)
         SectionCoverRow(
             books = group.books,
             onBookClick = { book, token -> navCallbacks.onBookClick(book, sharedToken = token) },
@@ -856,6 +885,7 @@ private fun SourceSection(
             isVideoStyle = styleIsVideo,
             blockId = "search-source-${group.source.bookSourceUrl}",
             coverSlot = coverSlot,
+            inBookshelf = viewModel::isInBookShelf,
         )
     }
 }

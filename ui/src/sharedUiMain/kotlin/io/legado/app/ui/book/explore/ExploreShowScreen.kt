@@ -1,6 +1,5 @@
 package io.legado.app.ui.book.explore
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -43,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.model.webBook.PluginFilterSession
+import io.legado.app.ui.bookshelf.BookshelfBadge
 import io.legado.app.ui.bookshelf.KindLabels
 import io.legado.app.ui.bookshelf.shelfCoverHeightDp
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -57,7 +57,6 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.explore_cols
-import legado.ui.generated.resources.ic_bookmark
 import legado.ui.generated.resources.ic_refresh_black_24dp
 import legado.ui.generated.resources.ic_star
 import legado.ui.generated.resources.ic_star_border
@@ -633,10 +632,8 @@ private fun ExploreGridItem(
             )
         }
         if (inBookshelf) {
-            Image(
-                painter = painterResource(Res.drawable.ic_bookmark),
-                contentDescription = null,
-                modifier = Modifier
+            BookshelfBadge(
+                Modifier
                     .align(Alignment.TopStart)
                     .padding(start = DesignTokens.spacingMd, top = DesignTokens.spacingMd)
                     .fillMaxWidth(0.22f)

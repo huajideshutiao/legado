@@ -375,6 +375,7 @@ fun ExploreShowRoute(
                 coverReloadTick = state.bookshelfVersion,
                 onClick = onClick,
                 onLongClick = onLongClick,
+                inBookshelf = inBookshelf,
                 coverSlot = { b, modifier, isVideoCover, coverReloadTick ->
                     LocalBookCoverSlot.current(b, modifier, isVideoCover, coverReloadTick)
                 },

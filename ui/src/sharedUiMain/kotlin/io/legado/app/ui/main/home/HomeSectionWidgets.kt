@@ -3,8 +3,10 @@ package io.legado.app.ui.main.home
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -20,6 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.ui.bookshelf.BookshelfBadge
 import io.legado.app.ui.bookshelf.ShelfVideoItem
 import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.compose.component.horizontalMouseWheel
@@ -88,7 +91,11 @@ fun SectionTitleRow(title: String, onMoreClick: () -> Unit) {
  * isVideoStyle=true 时对照原版 CoverCardAdapter 的
  * VideoCoverCardVH: 复用 item_explore_video 视频卡 (shared [ShelfVideoItem]),
  * 卡片宽 220dp (原版把 match_parent 根布局改为固定 220dp 才能在横向滚动里排布),
- * 封面按 VIDEO(16:9) 比例由宽度反推高度, 加粗标题 + 分类 + 作者, 无徽标。
+ * 封面按 VIDEO(16:9) 比例由宽度反推高度, 加粗标题 + 分类 + 作者。
+ *
+ * @param inBookshelf 书架标记提供方: null = 不显示 (主页展示项区块, 对照原版
+ *   `bindVideoCard(isInBookshelf=false, showBookshelfBadge=false)` 与 CoverCardVH 无徽标);
+ *   搜索按源分类结果区传该书真实书架态, 与聚簇搜索结果标记一致。
  */
 @Composable
 fun SectionCoverRow(
@@ -98,6 +105,7 @@ fun SectionCoverRow(
     isVideoStyle: Boolean,
     blockId: String,
     coverSlot: (@Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit)? = null,
+    inBookshelf: ((SearchBook) -> Boolean)? = null,
 ) {
     val scrollState = rememberScrollState()
     Row(
@@ -108,8 +116,8 @@ fun SectionCoverRow(
             .padding(horizontal = DesignTokens.spacingDefault),
     ) {
         if (isVideoStyle) {
-            // 对照原 VideoCoverCardVH.bind: bindVideoCard(coverRatio=VIDEO, isInBookshelf=false,
-            // showBookshelfBadge=false); 封面走 LocalBookCoverSlot (与书架/探索页一致)
+            // 对照原 VideoCoverCardVH.bind: bindVideoCard(coverRatio=VIDEO); 封面走 LocalBookCoverSlot
+            // (与书架/探索页一致); 书架标记由调用方提供 (null = 主页区块不显示)
             books.forEach { book ->
                 // 共享配对身份按条目下发 (被点的封面 = 出发端, token 由页面+区块+条目派生)
                 val binding = rememberSharedCoverSourceBinding(book.bookUrl, blockId)
@@ -120,6 +128,7 @@ fun SectionCoverRow(
                         onClick = { onBookClick(book, binding.pageToken) },
                         onLongClick = { onBookLongClick(book, binding.pageToken) },
                         modifier = Modifier.width(220.dp),
+                        inBookshelf = inBookshelf?.invoke(book),
                         coverSlot = { b, m, isVideoCover, tick ->
                             coverSlot?.invoke(book, m, isVideoCover)
                                 ?: LocalBookCoverSlot.current(b, m, isVideoCover, tick)
@@ -147,23 +156,34 @@ fun SectionCoverRow(
                     ) {
                         // 封面: 外部 slot 优先 (搜索端按书架命中分流缓存区), 否则默认
                         // toCoverBook() 补 notShelf 标记 (与书架/探索页一致)
-                        if (coverSlot != null) {
-                            coverSlot(
-                                book,
-                                Modifier
-                                    .width(120.dp)
-                                    .height(160.dp),
-                                false,
-                            )
-                        } else {
-                            LocalBookCoverSlot.current(
-                                book.toCoverBook(),
-                                Modifier
-                                    .width(120.dp)
-                                    .height(160.dp),
-                                false,
-                                0,
-                            )
+                        Box {
+                            if (coverSlot != null) {
+                                coverSlot(
+                                    book,
+                                    Modifier
+                                        .width(120.dp)
+                                        .height(160.dp),
+                                    false,
+                                )
+                            } else {
+                                LocalBookCoverSlot.current(
+                                    book.toCoverBook(),
+                                    Modifier
+                                        .width(120.dp)
+                                        .height(160.dp),
+                                    false,
+                                    0,
+                                )
+                            }
+                            // 书架标记 (对照 item_bookshelf_grid 的 0.22 比例书签, 贴封面左上)
+                            if (inBookshelf?.invoke(book) == true) {
+                                BookshelfBadge(
+                                    Modifier
+                                        .align(Alignment.TopStart)
+                                        .fillMaxWidth(0.22f)
+                                        .aspectRatio(1f),
+                                )
+                            }
                         }
                         // 对照 XML tv_name: 12sp 最多 2 行 (minLines=2 保持卡片等高)
                         Text(
