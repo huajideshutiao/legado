@@ -5,7 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -63,7 +63,7 @@ private const val THICKNESS_MIN_SCALE = 0.7f
 private const val THICKNESS_MAX_SCALE = 1.3f
 
 /** 颜色沿边缘流动一周的时间 (ms) */
-private const val FLOW_PERIOD_MS = 16000f
+private const val FLOW_PERIOD_MS = 16_000L
 
 /** 慢层 (段落响度) 的时间常数 (ms): 比歌词辉光的快层慢一个数量级 */
 private const val SLOW_ATTACK_MS = 900f
@@ -110,7 +110,11 @@ private fun glowNowMs(): Int = glowClockStart.elapsedNow().inWholeMilliseconds.t
  *   [rememberFallbackGlowColors] 给出)
  */
 @Composable
-internal fun AudioPlayEdgeGlow(colors: List<Color>, modifier: Modifier = Modifier) {
+internal fun AudioPlayEdgeGlow(
+    colors: List<Color>,
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier,
+) {
     val eInk = LocalEInk.current
     if (eInk) return
     // 快层: 与歌词辉光同一套曲线 (整体亮度); 慢层: 段落渐强
@@ -118,9 +122,12 @@ internal fun AudioPlayEdgeGlow(colors: List<Color>, modifier: Modifier = Modifie
     val slow = remember {
         AudioEnergyEnvelope(attackMs = SLOW_ATTACK_MS, releaseMs = SLOW_RELEASE_MS)
     }
-    // 多频段驱动: 非状态数组, 靠 frameTick 建立绘制依赖
+    // 多频段驱动: 非状态数组, 靠帧时钟建立绘制依赖
     val bands = remember { FloatArray(AudioSpectrum.BAND_COUNT) }
-    var frameTick by remember { mutableIntStateOf(0) }
+    // 复用同一条路径: 每帧重建 24 条原生路径会成为主要分配源
+    val path = remember { Path() }
+    // 帧时钟 (ns→ms): 只在动画推进时更新, 绘制期读它即建立逐帧重绘依赖, 也用作颜色流动相位
+    var frameClockMs by remember { mutableLongStateOf(0L) }
     val density = LocalDensity.current
     val baseThicknessPx = with(density) { GLOW_BASE_THICKNESS.toPx() }
     val topInsetPx = with(density) { LocalOverlayTopInset.current.toPx() }
@@ -132,9 +139,8 @@ internal fun AudioPlayEdgeGlow(colors: List<Color>, modifier: Modifier = Modifie
             fast.energyAtMs = glowNowMs()
         }
     }
-    // 整体淡入淡出: 暂停时播放侧会把频谱清零, 只靠它收会"啪"一下消失,
-    // 所以形状保留最后一帧, 由这条曲线把整圈慢慢压下去
-    var fade by remember { mutableFloatStateOf(1f) }
+    // 整体淡入淡出: 形状保留最后一帧, 由这条曲线把整圈慢慢压下去
+    var fade by remember { mutableFloatStateOf(0f) }
     // 观察多频段幅度: 只在有真实频谱时覆盖 —— 暂停清零时保留最后一帧的形状
     LaunchedEffect(Unit) {
         AudioPlayShared.audioBands.collect { values ->
@@ -146,13 +152,19 @@ internal fun AudioPlayEdgeGlow(colors: List<Color>, modifier: Modifier = Modifie
         }
     }
 
-    // 帧循环: 有信号才逐帧推进; 完全淡出后转低频轮询 (省电)
-    LaunchedEffect(Unit) {
+    // 帧循环: 有信号才逐帧推进; 完全淡出后转低频轮询 (播放中) 或直接停帧 (暂停)
+    LaunchedEffect(isPlaying) {
         var lastFrameNs = 0L
         while (isActive) {
-            val idle = fast.energy <= AudioEnergyEnvelope.SILENT_THRESHOLD &&
-                fast.smoothEnergy <= AudioEnergyEnvelope.SILENT_THRESHOLD
-            if (idle && fade <= 0.01f) {
+            // 暂停时目标恒为 0: 显示包络自行收干净, 不依赖播放侧清零
+            val target = if (isPlaying) fast.decayedEnergy(glowNowMs()) else 0f
+            val rest = target <= AudioEnergyEnvelope.SILENT_THRESHOLD &&
+                fast.smoothEnergy <= AudioEnergyEnvelope.SILENT_THRESHOLD &&
+                fade <= FADE_STOP_THRESHOLD
+            if (rest) {
+                if (!isPlaying) return@LaunchedEffect
+                // 播放中的静音段: 低频轮询即可 (省电); 恢复时从当前帧重新计时
+                lastFrameNs = 0L
                 delay(AudioEnergyEnvelope.IDLE_POLL_MS)
                 continue
             }
@@ -160,16 +172,15 @@ internal fun AudioPlayEdgeGlow(colors: List<Color>, modifier: Modifier = Modifie
                 val dtMs = if (lastFrameNs == 0L) 16f
                 else ((frameNs - lastFrameNs) / 1_000_000f).coerceIn(1f, 100f)
                 lastFrameNs = frameNs
-                val target = fast.decayedEnergy(glowNowMs())
                 fast.advance(dtMs, target)
                 slow.advance(dtMs, target)
                 // 起播快速亮起, 暂停/停止按慢时间常数收回
-                val fadeTarget = if (idle) 0f else 1f
+                val fadeTarget = if (target > AudioEnergyEnvelope.SILENT_THRESHOLD) 1f else 0f
                 val tau = if (fadeTarget > fade) FADE_IN_MS else FADE_OUT_MS
                 fade += (fadeTarget - fade) * (1f - exp(-dtMs / tau))
                 // 指数衰减永远逼近而不等于 0: 过阈值直接归零, 否则会一直留一层极薄的光
                 if (fadeTarget <= 0f && fade < FADE_STOP_THRESHOLD) fade = 0f
-                frameTick++
+                frameClockMs = frameNs / 1_000_000L
             }
         }
     }
@@ -177,18 +188,19 @@ internal fun AudioPlayEdgeGlow(colors: List<Color>, modifier: Modifier = Modifie
     Spacer(
         modifier.drawBehind {
             val slowEnergy = slow.smoothEnergy.coerceIn(0f, 1f)
-            // 读帧计数只为建立绘制依赖: 颜色流动与频谱起伏都要求逐帧重绘
-            val tick = frameTick
+            // 读帧时钟只为建立绘制依赖 (颜色流动与频谱起伏都要求逐帧重绘), 不参与业务判断
+            val clockMs = frameClockMs
             val visible = fade.coerceIn(0f, 1f)
-            if (tick < 0 || visible <= 0.01f) return@drawBehind
+            if (visible <= 0.01f) return@drawBehind
             drawEdgeGlow(
                 colors = colors,
                 bands = bands,
                 slowEnergy = slowEnergy,
                 baseThicknessPx = baseThicknessPx,
                 topInsetPx = topInsetPx,
-                phase = (glowNowMs() % FLOW_PERIOD_MS) / FLOW_PERIOD_MS,
+                phase = (clockMs % FLOW_PERIOD_MS) / FLOW_PERIOD_MS.toFloat(),
                 fade = visible,
+                path = path,
             )
         }
     )
@@ -209,6 +221,7 @@ private fun DrawScope.drawEdgeGlow(
     topInsetPx: Float,
     phase: Float,
     fade: Float,
+    path: Path,
 ) {
     val w = size.width
     val h = size.height
@@ -217,16 +230,16 @@ private fun DrawScope.drawEdgeGlow(
     val energyGain = 0.62f + 0.38f * slowEnergy
 
     fun colorAt(pos: Float): Color {
-        // 沿环插值四路色, 相位让颜色持续流动
-        val t = (((pos + phase) % 1f + 1f) % 1f) * colors.size
+        // 沿环插值四路色, 相位让颜色持续流动 (pos 与 phase 均非负, 取模一次即落回 0~1)
+        val t = ((pos + phase) % 1f) * colors.size
         val index = t.toInt().coerceIn(0, colors.size - 1)
         val frac = t - index
         return lerpColor(colors[index], colors[(index + 1) % colors.size], frac)
     }
 
     fun bandAt(ring: Float): Float {
-        // 环位置 → 频段值 (相邻段线性插值, 曲线连续)
-        val t = ((ring * bands.size) % bands.size + bands.size) % bands.size
+        // 环位置 → 频段值 (相邻段线性插值, 曲线连续); ring 非负, 取模一次即落回 0~段数
+        val t = (ring * bands.size) % bands.size
         val i = t.toInt()
         val frac = t - i
         val a = bands[i % bands.size]
@@ -260,9 +273,8 @@ private fun DrawScope.drawEdgeGlow(
         ratio: Float,
         alpha: Float,
     ) {
-        if (alpha <= ALPHA_EPS) return
         val span = to - from
-        val path = Path()
+        path.rewind()
         for (i in 0..SAMPLES) {
             val t = i / SAMPLES.toFloat()
             val along = from + span * t
@@ -505,9 +517,11 @@ internal fun rememberAudioCoverPalette(
     sourceOrigin: String? = null,
 ): AudioCoverPalette? {
     var palette by remember { mutableStateOf<AudioCoverPalette?>(null) }
-    LaunchedEffect(coverUrl, sourceOrigin) {
+    // 书源来源不是快照状态, 不拿它当 effect 键 (换书时不会更新); 进入效果时读当前值
+    LaunchedEffect(coverUrl) {
+        val origin = sourceOrigin ?: AudioPlayShared.book?.origin
         val bitmap = if (coverUrl.isNullOrBlank()) null else BookImageLoaders.getOrNull()
-            ?.loadCoverOrNull(coverUrl, sourceOrigin, widthPx = 64, heightPx = 64)
+            ?.loadCoverOrNull(coverUrl, origin, widthPx = 64, heightPx = 64)
         palette = bitmap?.let { bmp ->
             withContext(Dispatchers.Default) {
                 val stats = bmp.coverColorStats()

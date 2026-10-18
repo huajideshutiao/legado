@@ -127,11 +127,20 @@ object PreferKey {
     const val bookInfoDeleteAlert = "bookInfoDeleteAlert"
     const val ignoreAudioFocus = "ignoreAudioFocus"
 
-    /** 歌词辉光: 开启后安卓端关闭 DSP audio offload 以拦截 PCM (后台听书不再省电) */
+    /**
+     * 动态文本辉光。开启后安卓端会关掉 DSP audio offload 以拿到 PCM (后台听书不再省电),
+     * 与 [audioEdgeGlow] 任一个开启都需要 PCM。
+     */
     const val audioEnergyGlow = "audioEnergyGlow"
 
-    /** 播放页边缘光效: 纯界面效果, 不依赖 PCM 采样, 四端都可单独开关 */
+    /**
+     * 播放页边缘光效。安卓端与 [audioEnergyGlow] 同等: 需要 PCM 才能按频段起伏,
+     * 两个开关都关才开省电解码。
+     */
     const val audioEdgeGlow = "audioEdgeGlow"
+
+    /** 上面两个辉光开关的默认值 (读取处统一引用它, 不各写一遍字面量) */
+    const val audioGlowDefault = true
     const val progressBarBehavior = "progressBarBehavior"
     const val sourceEditMaxLine = "sourceEditMaxLine"
     const val ttsTimer = "ttsTimer"

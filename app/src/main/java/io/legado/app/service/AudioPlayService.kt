@@ -20,9 +20,7 @@ import io.legado.app.base.BaseService
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
-import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.media.AudioFocusController
@@ -31,6 +29,7 @@ import io.legado.app.help.media.MediaPlaybackLock
 import io.legado.app.help.media.MediaNotificationHost
 import io.legado.app.help.media.MediaPlaybackNotification
 import io.legado.app.model.AudioPlay
+import io.legado.app.model.AudioPlayShared
 import io.legado.app.model.BookCover
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.getMediaItem
@@ -106,11 +105,9 @@ class AudioPlayService : BaseService(), AudioPlaySessionHost {
         /**
          * 按两个辉光开关同步 offload 策略 (开关切换后调用, 无需重起播)。
          *
-         * 采样旁路常挂, offload 是运行时参数: 两个辉光都关时开 offload 省电,
-         * 任一开启时关掉以拿到 PCM 供光效使用。
+         * 采样旁路常挂, offload 是运行时参数: 都关时省电, 任一开启时关掉以拿到 PCM。
          */
-        @JvmStatic
-        fun syncAudioOffload() {
+        private fun syncAudioOffload() {
             instance?.exoPlayer?.applyOffloadPolicy()
         }
 
@@ -231,6 +228,7 @@ class AudioPlayService : BaseService(), AudioPlaySessionHost {
                 IntentAction.play -> session.play()
                 IntentAction.loadPlayUrl -> session.loadPlayUrl()
                 IntentAction.stopPlay -> session.stopPlay()
+                IntentAction.syncAudioOffload -> syncAudioOffload()
                 IntentAction.pause -> pauseSession()
                 IntentAction.resume -> resumeSession()
                 IntentAction.prev -> AudioPlay.prev()
@@ -566,15 +564,14 @@ class AudioPlayService : BaseService(), AudioPlaySessionHost {
 }
 
 /**
- * 按当前两个辉光开关设定 offload: 需要 PCM 时关 offload, 都关时开 offload 省电。
+ * 按“是否需要 PCM 采样”设定解码省电策略: 需要时关 offload, 不需要时开 offload 省电。
  *
  * 旁路与 offload 官方互斥 (offload 模式不参与音频处理), 所以两者状态必须一致。
+ * 另外还要求设备支持“变速场景下的 offload”(速度切换是常规操作), 不支持时该请求被
+ * 采媒库静默忽略 —— 即“都关才省电”只在这种设备上真实生效。
  */
 private fun ExoPlayer.applyOffloadPolicy() {
-    val prefs = PreferenceProviders.get()
-    val needPcm = prefs.getBoolean(PreferKey.audioEnergyGlow, true) ||
-        prefs.getBoolean(PreferKey.audioEdgeGlow, true)
-    val mode = if (needPcm) {
+    val mode = if (AudioPlayShared.needsAudioPcm()) {
         AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED
     } else {
         AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED

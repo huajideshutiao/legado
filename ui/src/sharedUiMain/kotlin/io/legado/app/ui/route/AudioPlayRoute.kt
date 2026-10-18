@@ -304,10 +304,10 @@ fun AudioPlayRoute(
     // 各项显隐取自页面状态; 依赖书源的动作在点击时取当前书源 (对照原版菜单展开/选中时求值)
     val pref = PreferenceProviders.get()
     var glowEnabled by remember {
-        mutableStateOf(pref.getBoolean(PreferKey.audioEnergyGlow, true))
+        mutableStateOf(pref.getBoolean(PreferKey.audioEnergyGlow, PreferKey.audioGlowDefault))
     }
     var edgeGlowEnabled by remember {
-        mutableStateOf(pref.getBoolean(PreferKey.audioEdgeGlow, true))
+        mutableStateOf(pref.getBoolean(PreferKey.audioEdgeGlow, PreferKey.audioGlowDefault))
     }
     val overflowActions = AudioPlayOverflowActions(
         hasLogin = state.hasLogin,

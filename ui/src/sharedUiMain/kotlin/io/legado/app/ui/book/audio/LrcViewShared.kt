@@ -89,7 +89,7 @@ import kotlinx.coroutines.launch
  * | 绘制 lineY = centerY + (line.offset - scrollYOffset) | lineY = centerY + (offset + 行高差累加 - scrollY) |
  * | updateProgress: lastIndex/currentIndex/colorProgress=0 | 同 |
  * | 首次 (lastIndex==-1) 无动画直接定位 | 同 |
- * | 切行滚动 startScroll(600ms, DecelerateInterpolator) | 同有切行滚动: 2.5D=400ms 的 Settle 曲线 (不复刻 600ms 减速) |
+ * | 切行滚动 startScroll(600ms, DecelerateInterpolator) | 同有切行滚动: 自定时长 (基准 500ms, 按距离加时, 封顶 900ms) + 缓出三次曲线 |
  * | colorProgress 每帧 +0.1 (帧数驱动, 时长随刷新率变) | 统一切行时间轴: 点亮 1.25D / 退场 1D, 刻意不复刻 |
  * | 透明度: 上下 0.35h 边界线性 255→40, 与景深相乘 | 同 (calculateAlpha) |
  * | 点击: touchY=scrollYOffset+y-h/2, 定位命中的行, 回调 time | 同 (touchSlop 判定 tap/drag; 行高不恒定时按显示行高逐行定位) |
@@ -158,15 +158,20 @@ fun LrcViewShared(
     // 能量帧循环: 绘制期只有平滑后的能量一个输入 (见 [LrcRuntime.smoothEnergy])。
     // 逐字歌词本来就有帧驱动, 但整行高亮 (无字标签) 的普通歌词平时一帧都不刷 ——
     // 不挂这个循环, 能量就只会在每次 PCM 派发那一帧跳一格 (既不连续又会闪)。
-    LaunchedEffect(isPlaying, eInk) {
-        if (!isPlaying || eInk) return@LaunchedEffect
+    LaunchedEffect(isPlaying, eInk, textGlowEnabled) {
+        // 关闭文本辉光后能量不参与绘制, 不刷帧
+        if (eInk || !textGlowEnabled) return@LaunchedEffect
         var lastFrameNs = 0L
         while (isActive) {
-            if (lrc.energy <= AudioEnergyEnvelope.SILENT_THRESHOLD &&
+            // 暂停时目标恒为 0: 显示包络自行收干净, 不依赖播放侧清零
+            val target = if (isPlaying) lrc.decayedEnergy(positionNowMs()) else 0f
+            if (target <= AudioEnergyEnvelope.SILENT_THRESHOLD &&
                 lrc.smoothEnergy <= AudioEnergyEnvelope.SILENT_THRESHOLD
             ) {
-                // 静音段: 平滑值已经落到地板, 低频推进即可 (省电)
                 lrc.resetEnergyEnvelope()
+                // 暂停且已收干净: 停帧等 isPlaying 重启; 播放中的静音段低频轮询 (省电)
+                if (!isPlaying) return@LaunchedEffect
+                lastFrameNs = 0L
                 delay(AudioEnergyEnvelope.IDLE_POLL_MS)
                 continue
             }
@@ -174,7 +179,7 @@ fun LrcViewShared(
                 val dtMs = if (lastFrameNs == 0L) 16f
                 else ((frameNs - lastFrameNs) / 1_000_000f).coerceIn(1f, 100f)
                 lastFrameNs = frameNs
-                lrc.advanceEnergy(dtMs, lrc.decayedEnergy(positionNowMs()))
+                lrc.advanceEnergy(dtMs, target)
             }
         }
     }
@@ -344,10 +349,11 @@ fun LrcViewShared(
 
     // 读屏用: 歌词是 Canvas 直接绘制的, 不挂语义节点读屏读不到任何内容。
     // 只暴露当前行 (与 flutter_lyric 维护 activeIndex 语义的做法一致), 不把整篇歌词塞进去。
-    // derivedStateOf: 只在"当前行文本"真的变了才重组, 不会因为滚动/动画帧反复重组
-    val spokenLine by remember(lrc) {
+    // 在组合期读值: 语义配置构建期读快照状态拿不到失效通知, 文本会停在旧行;
+    // derivedStateOf 只在"当前行文本"真的变了才通知, 不会因滚动/动画帧反复重组
+    val spokenLine = remember(lrc) {
         derivedStateOf { lrc.lines.getOrNull(lrc.currentIndex)?.text }
-    }
+    }.value
     Canvas(
         modifier
             // 裁到自身边界: 当前行之上的歌词行会画到负 Y (原版 LrcView 是 View, 天然裁剪),
@@ -841,17 +847,18 @@ private val LRC_TEXT_STYLE = TextStyle(
 private const val D = 160
 
 /**
- * 行滚动: Material 3 `DurationLong2` = 500ms。
+ * 行滚动基准时长。
  *
- * 时长与曲线都直接取官方 motion token, 不自己凑参数 (见 [MOTION_SCROLL_OUT])。
+ * 数值与 Material 3 的 `DurationLong2` 相同 (500ms), 但那张 token 表在 material3 依赖里,
+ * 本模块只依赖 material (M2), 所以这里是**拷过来的字面量**, 不是引用。
  */
 private const val SCROLL_MS = 500
 
 /**
- * 按距离分段的滚动时长 (参照 flutter_lyric 的 `LyricScrollAnimation.byDistance`):
- * 跨度越大给越久, 避免一次跨很多行时在固定时长里被"甩"过去。
+ * 按行数分段的滚动时长: 跨度越大给越久, 避免一次跨很多行时在固定时长里被“甩”过去。
  *
  * 每多一行加 [SCROLL_PER_LINE_MS], 上限 [SCROLL_MAX_MS]。
+ * 这两个数与基准 500ms 都是**本仓自定参数**, 不引自任何外部库。
  */
 private const val SCROLL_PER_LINE_MS = 120
 private const val SCROLL_MAX_MS = 900
@@ -888,12 +895,10 @@ private val MOTION_ENTER_BOUNCE = CubicBezierEasing(0.34f, 1.50f, 0.64f, 1.00f)
 
 
 /**
- * 行滚动落位: 参照专业歌词库 flutter_lyric (ozyl/flutter_lyric) 的滚动参数。
+ * 行滚动落位: 缓出三次曲线 (Flutter 的 `Curves.easeOutCubic` 即 (0.215, 0.61, 0.355, 1),
+ * 前快后慢、末端速度为 0)。
  *
- * 该库 7 套预设的滚动全部是 `Curves.easeOutCubic` (其 `LyricScrollAnimation.fixed`
- * 默认 240ms, 各预设 320~700ms; Apple Music 那档 500ms)。Flutter 的 easeOutCubic
- * 即 cubic-bezier(0.215, 0.61, 0.355, 1), 前快后慢、末端速度为 0。
- * 时长取 500ms (对应其 Apple Music 预设)。
+ * 曲线取自该曲线定义本身; 时长 (500ms 基准 + 按行加时) 是本仓自定参数, 没有外部基准。
  * 不带过冲, 逐行跟读时不会每行回弹 (手动滚动后的自动回中用 [MOTION_SETTLE])。
  */
 private val MOTION_SCROLL_OUT = CubicBezierEasing(0.215f, 0.61f, 0.355f, 1.00f)
@@ -1563,8 +1568,7 @@ private class LrcRuntime {
      * 本次滚动该用多久: 以 [SCROLL_MS] 为一行距离的基准, 每多一行加
      * [SCROLL_PER_LINE_MS], 封顶 [SCROLL_MAX_MS]。
      *
-     * 参照 flutter_lyric 的 byDistance: 相邻行切换保持原本的节奏, 跨章/拖动回中
-     * 这种大跨度不会被固定时长甩过去。
+     * 目的: 相邻行切换保持原本的节奏, 跨章/拖动回中这种大跨度不被固定时长甩过去。
      */
     fun scrollDurationFor(fromScroll: Float, toScroll: Float, lineMarginPx: Float): Int {
         if (lines.size < 2) return SCROLL_MS

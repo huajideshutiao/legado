@@ -88,13 +88,13 @@ data class AudioPlayOverflowActions(
     val onShowAppLog: () -> Unit,
     /** 是否显示登录项 (取自页面状态, 随书源就绪刷新) */
     val hasLogin: Boolean,
-    /** 动态文本辉光开关是否显示 (仅 Android: 与 DSP offload 互斥) */
+    /** 动态文本辉光开关是否显示 (仅 Android: 该开关会改解码通路, 其余端没有这个取舍) */
     val showGlowToggle: Boolean = false,
     /** 动态文本辉光当前是否开启 */
     val glowEnabled: Boolean = false,
     /** 切换动态文本辉光 */
     val onToggleGlow: () -> Unit = {},
-    /** 边缘光效当前是否开启 (四端都可控, 不依赖 PCM) */
+    /** 边缘光效当前是否开启 (四端都可控; 安卓端同样会占住 PCM, 与文本辉光同等) */
     val edgeGlowEnabled: Boolean = true,
     /** 切换边缘光效 */
     val onToggleEdgeGlow: () -> Unit = {},

@@ -481,7 +481,7 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
         cachedBufferedMs = 0L
         energyMark = null
         energyMeter.reset()
-        AudioPlayShared.audioEnergy.value = 0f
+        AudioPlayShared.publishLevelOnly(0f)
         state = AudioPlayController.STATE_IDLE
     }
 
@@ -588,10 +588,7 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
             dtMs.coerceIn(1.0, AMPLITUDE_MAX_DT_MS),
             AudioEnergyMeter.linearToDb(linear),
         )
-        AudioPlayShared.audioEnergy.value = energy
-        // 无频谱: 各段用同一个值 (如实退化, 靠时间相位维持流动)
-        AudioPlayShared.audioBands.value =
-            FloatArray(AudioPlayShared.audioBands.value.size) { energy }
+        AudioPlayShared.publishLevelOnly(energy)
     }
 
     private companion object {

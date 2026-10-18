@@ -22,6 +22,8 @@ object IntentAction {
     const val init = "init"
     const val remove = "remove"
     const val stopPlay = "stopPlay"
+    /** 按两个辉光开关重算解码省电策略 (开关切换后发给播放服务) */
+    const val syncAudioOffload = "syncAudioOffload"
 
     // ===== MainActivity 通知 contentIntent 身份 action (与 route extra 配套) =====
     // 通知点击统一走 MainActivity → toLaunchRequest → NavigateTo(route); 各通知用不同 action

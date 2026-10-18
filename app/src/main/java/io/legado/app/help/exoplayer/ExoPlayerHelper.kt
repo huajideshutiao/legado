@@ -110,9 +110,9 @@ object ExoPlayerHelper {
     /**
      * @param audioOnly 纯音频场景(AudioPlayService)传 true。
      *
-     * 纯音频一律挂能量旁路 (官方 tee: 只观察不改写, 不改变下层看到的编码), 因此也一律
-     * 不开 DSP offload —— 旁路与 offload 互斥 (官方 offload 模式不参与音频处理), 而
-     * "开关切换后无需重起播"要求采样在播放器构建期就位。两个辉光开关只决定画不画。
+     * 纯音频一律挂能量旁路 (官方 tee: 只观察不改写, 不改变下层看到的编码)。旁路与 DSP offload
+     * 互斥 (官方 offload 模式不参与音频处理), 而“开关切换后无需重起播”要求采样在播放器构建期就位,
+     * 所以旁路常挂、offload 由两个辉光开关在运行期切换 (见 AudioPlayService 的 offload 策略)。
      * 视频场景传 false, 不挂旁路。
      */
     fun createHttpExoPlayer(context: Context, audioOnly: Boolean = false): ExoPlayer {

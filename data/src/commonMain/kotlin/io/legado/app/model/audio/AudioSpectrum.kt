@@ -44,13 +44,20 @@ class AudioSpectrum(private val sampleRate: Int) {
         }
     }
 
-    /** 一次分析的结果 */
-    class Frame(
+    /**
+     * 一次分析的结果。
+     *
+     * 同一个 [AudioSpectrum] 复用同一实例: 内容在下一次分析时被覆盖, 调用方只能当场读,
+     * 不要保留引用 (这样每次分析不产生新分配)。
+     */
+    class Frame internal constructor() {
         /** 20–320Hz 幅度和 */
-        val lowBand: Double,
+        var lowBand: Double = 0.0
+            internal set
+
         /** 对数分布各段幅度均值 (长度 = [BAND_COUNT]) */
-        val bands: DoubleArray,
-    )
+        val bands: DoubleArray = DoubleArray(BAND_COUNT)
+    }
 
     private val ring = DoubleArray(RING_SIZE)
     private var writeIndex = 0
@@ -71,6 +78,8 @@ class AudioSpectrum(private val sampleRate: Int) {
     private val bandEnd = IntArray(BAND_COUNT)
 
     private val bands = DoubleArray(BAND_COUNT)
+
+    private val frame = Frame()
 
     init {
         binHz = sampleRate.toDouble() / FFT_SIZE
@@ -124,9 +133,10 @@ class AudioSpectrum(private val sampleRate: Int) {
             for (k in bandStart[i] until bandEnd[i]) {
                 sum += sqrt(re[k] * re[k] + im[k] * im[k])
             }
-            bands[i] = sum / (bandEnd[i] - bandStart[i]).coerceAtLeast(1)
+            bands[i] = sum / (bandEnd[i] - bandStart[i])
         }
-        return Frame(lowEnergy, bands.copyOf())
+        frame.lowBand = lowEnergy
+        return frame
     }
 
     private fun fft() {

@@ -22,20 +22,6 @@ class AudioEnergyMeter {
         private const val LONG_TERM_KEEP = 0.9995
         private const val BASE_POWER = 0.5
 
-        /** MilkDrop 快包络: 上升 0.2 / 下降 0.5 (30fps 基准) */
-        private const val ATTACK_KEEP = 0.2
-        private const val RELEASE_KEEP = 0.5
-
-        /** MilkDrop 慢平均: 0.992 (30fps 基准) */
-        private const val LONG_AVG_KEEP = 0.992
-
-        /**
-         * 律动映射: 快包络/慢平均 的典型区间约 0.5~2.0, 线性映射到 0~1。
-         * 区间取自 MilkDrop 的 att 定义 (avg/longAvg) 与静音钳制 (longAvg<0.001 时取 1)。
-         */
-        private const val PULSE_MIN_RATIO = 0.5
-        private const val PULSE_RANGE = 1.5
-
         private const val BASE_WEIGHT = 0.5
         private const val PULSE_WEIGHT = 0.5
 
@@ -49,19 +35,19 @@ class AudioEnergyMeter {
     private var elapsedMs = 0.0
     private var base = 0.0
     private var longTermLkfs = -20.0
-    private var fast = 0.0
-    private var longAvg = 0.0
     private var lastLevelDb = -40.0
-    private var lastDrive = 0f
+
+    /** 律动包络: 单段 (低频能量), 与多频段驱动共用同一份实现 */
+    private val pulseEnvelope = AudioPulseEnvelope(1)
+    private val pulseInput = DoubleArray(1)
 
     fun reset() {
         elapsedMs = 0.0
         base = 0.0
         longTermLkfs = -20.0
-        fast = 0.0
-        longAvg = 0.0
+        pulseEnvelope.reset()
+        pulseInput[0] = 0.0
         lastLevelDb = -40.0
-        lastDrive = 0f
     }
 
     /**
@@ -72,7 +58,6 @@ class AudioEnergyMeter {
      * @param lowBand 低频段能量 (任意线性标度, 只需同源稳定)
      */
     fun pushFrame(dtMs: Double, lkfs: Double, lowBand: Double): Float {
-        if (dtMs <= 0.0) return lastDrive
         elapsedMs += dtMs
         val frameScale = dtMs * 30.0 / 1000.0
 
@@ -82,20 +67,16 @@ class AudioEnergyMeter {
         val target = ((lkfs - floor) / (ceil - floor))
             .coerceIn(0.0, 1.0)
             .pow(BASE_POWER)
-        val baseKeep = if (target > base) ATTACK_KEEP else RELEASE_KEEP
+        val baseKeep = if (target > base) AudioPulseEnvelope.ATTACK_KEEP
+        else AudioPulseEnvelope.RELEASE_KEEP
         base += (target - base) * (1.0 - baseKeep.pow(frameScale))
 
-        val fastKeep = if (lowBand > fast) ATTACK_KEEP else RELEASE_KEEP
-        fast += (lowBand - fast) * (1.0 - fastKeep.pow(frameScale))
-        val longKeep = LONG_AVG_KEEP.pow(frameScale)
-        longAvg = if (longAvg <= 0.0) lowBand else longAvg * longKeep + lowBand * (1.0 - longKeep)
-        val ratio = if (longAvg > 1e-6) fast / longAvg else 1.0
-        val pulse = ((ratio - PULSE_MIN_RATIO) / PULSE_RANGE).coerceIn(0.0, 1.0)
+        pulseInput[0] = lowBand
+        val pulse = pulseEnvelope.push(dtMs, pulseInput)[0]
 
-        lastDrive = (base * BASE_WEIGHT + pulse * PULSE_WEIGHT)
+        return (base * BASE_WEIGHT + pulse * PULSE_WEIGHT)
             .coerceIn(0.0, 1.0)
             .toFloat()
-        return lastDrive
     }
 
     /** 无频谱端: 用整体电平的线性值近似低频能量 */

@@ -282,7 +282,7 @@ class DesktopAudioPlayer {
     fun stop() {
         if (released) return
         val engine = engineOrNull() ?: return
-        AudioPlayShared.audioEnergy.value = 0f
+        AudioPlayShared.publishLevelOnly(0f)
         // mediamp 的 stopPlayback 会把在途装载一并中止并回到 Idle, 不需要额外的作废标志
         enqueueCommand { engine.stopPlayback() }
     }
@@ -430,17 +430,12 @@ class DesktopAudioPlayer {
                     lastMs = nowMs
                     val fullDb = readLevelDb(mpv, ENERGY_FULL_LABEL)
                     val energy = meter.pushLevel(dtMs.coerceIn(1.0, 200.0), fullDb)
-                    AudioPlayShared.audioEnergy.value = energy
-                    // 桌面只拿得到峰值电平, 没有频谱: 各段用同一个值 —— 如实退化,
-                    // 边缘光效靠时间相位维持流动, 但不会按频段分开起伏
-                    AudioPlayShared.audioBands.value =
-                        FloatArray(AudioPlayShared.audioBands.value.size) { energy }
+                    // 桌面只拿得到峰值电平, 没有频谱: 各段用同一个值 (如实退化, 不伪造频谱)
+                    AudioPlayShared.publishLevelOnly(energy)
                 } else {
                     lastMs = 0L
                     meter.reset()
-                    AudioPlayShared.audioEnergy.value = 0f
-                    AudioPlayShared.audioBands.value =
-                        FloatArray(AudioPlayShared.audioBands.value.size)
+                    AudioPlayShared.publishLevelOnly(0f)
                 }
             }
         }
