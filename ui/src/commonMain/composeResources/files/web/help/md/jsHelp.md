@@ -153,10 +153,16 @@ java.connect(urlStr): StrResponse
 java.connect(urlStr, header: String?): StrResponse
 
 java.post(url: String, body: String, headers: Map<String, String>): Connection.Response
+//请求体为原始字节 (加密请求体/二进制上传用这个重载)
+java.post(url: String, body: ByteArray, headers: Map<String, String>): Connection.Response
 
 java.get(url: String, headers: Map<String, String>): Connection.Response
 
 java.head(url: String, headers: Map<String, String>): Connection.Response
+
+> get/head/post 返回 Connection.Response, 取响应用 body(): String (文本) 或 bodyAsBytes(): ByteArray (原始字节)。
+> 响应是加密二进制时必须用 bodyAsBytes(), body() 会按 charset 猜测解码并丢弃原始字节。
+> 字符编码: String 体重载按 UTF-8 写请求体; ByteArray 体重载按 ISO-8859-1 逐字节写, 与入参完全一致。
 
 * 使用webView访问网络
 * @param html 直接用webView载入的html, 如果html为空直接访问url

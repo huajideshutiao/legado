@@ -544,6 +544,30 @@ interface JsExtensionsCommon {
      * 网络访问post
      */
     fun post(urlStr: String, body: String, headers: Map<String, String>): Connection.Response {
+        return postWithBody(urlStr, body, null, headers)
+    }
+
+    /**
+     * 网络访问post (请求体为原始字节)
+     *
+     * 端口按 postDataCharset 编码字符串写请求体, 故字节体按 ISO-8859-1 中转:
+     * 一字节对应一个字符, 端口再用同一编码写回, 线上字节与入参逐字节一致。
+     */
+    fun post(urlStr: String, body: ByteArray, headers: Map<String, String>): Connection.Response {
+        return postWithBody(
+            urlStr,
+            JsExtensionsPlatform.bytesToStr(body, "ISO-8859-1"),
+            "ISO-8859-1",
+            headers
+        )
+    }
+
+    private fun postWithBody(
+        urlStr: String,
+        body: String,
+        bodyCharset: String?,
+        headers: Map<String, String>,
+    ): Connection.Response {
         val requestHeaders = if (getSource()?.enabledCookieJar == true) {
             headers.toMutableMap().apply { put(cookieJarHeader, "1") }
         } else headers
@@ -554,6 +578,7 @@ interface JsExtensionsCommon {
                 .sslContext(JsExtensionsPlatform.unsafeSslContext())
                 .ignoreContentType(true)
                 .followRedirects(false)
+                .apply { if (bodyCharset != null) postDataCharset(bodyCharset) }
                 .requestBody(body)
                 .headers(requestHeaders)
                 .method(Connection.Method.POST)

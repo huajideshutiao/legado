@@ -112,7 +112,8 @@ import kotlinx.atomicfu.locks.synchronized
  * - 1000-1099: SymmetricCrypto 对象方法 (encryptBase64/decryptStr/decrypt/setIv/encrypt/encryptHex)
  * - 1100-1199: AsymmetricCrypto 对象方法 (setPrivateKey/setPublicKey/decrypt/encrypt/decryptStr/encryptHex/encryptBase64)
  * - 1200-1299: Sign 对象方法 (setPrivateKey/setPublicKey/sign/signHex/verify)
- * - 300-399: 网络族手写特例 (ajax/ajaxAll/connect/webView 系/getCookie; 309-311 java get/head/post)
+ * - 300-399: 网络族手写特例 (ajax/ajaxAll/connect/webView 系/getCookie; 309-311 java get/head/post,
+ *   312 java.post 字节体重载)
  * - 400-499: UI/杂项手写特例 (log/logType/openUrl/startBrowser 系/startBrowserAwait)
  * - 500-599: 字体族手写特例
  * - 600-699: 文件/压缩族手写特例 (getZip/getRar/get7zStringContent、decompressString 613、
@@ -733,6 +734,12 @@ object NativeJsExtensionsBridge {
                 val headerMap = parseHeaderArg(args.getOrNull(2))
                 qjs_NewFloat64(ctx, registerObject(obj.post(args.getString(0), args.getString(1), headerMap)).toDouble())
             }
+            obj is JsExtensionsCommon && methodId == 312 -> {
+                // java.post(url, bodyBytes, headers)
+                val headerMap = parseHeaderArg(args.getOrNull(2))
+                val body = args.getDataArgOrNull(1) as? ByteArray ?: ByteArray(0)
+                qjs_NewFloat64(ctx, registerObject(obj.post(args.getString(0), body, headerMap)).toDouble())
+            }
 
             // ============ Connection.Response 对象方法 (700-799, java.get/head/post 返回值) ============
             // 规整方法已由 KSP 生成表接管 (5000+ 段); 以下为无法模板化的特例:
@@ -1013,6 +1020,9 @@ function __createJavaObj(handle) {
     };
     obj.post = function(urlStr, body, headers) {
         var h = (typeof headers === 'string') ? headers : JSON.stringify(headers);
+        if (typeof body !== 'string') {
+            return __createRespObj(__nativeDispatch(handle, 312, [urlStr, body, h]));
+        }
         return __createRespObj(__nativeDispatch(handle, 311, [urlStr, body, h]));
     };
     // ============ UI/杂项 (400-499) ============
