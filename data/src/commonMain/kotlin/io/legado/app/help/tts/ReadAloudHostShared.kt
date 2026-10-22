@@ -401,6 +401,9 @@ abstract class ReadAloudHostShared(
                     return@collect
                 }
                 if (state != ReadAloudState.PLAYING) return@collect
+                // 回上一章且该章未预载时, 位置先是 Int.MAX_VALUE 哨兵 (排版完成后才归一为末页页首);
+                // 拿哨兵去建计划没有意义, 等归一后的那次更新再跟
+                if (position.chapterPosition == Int.MAX_VALUE) return@collect
                 if (position.chapterPosition == lastSyncedPos) return@collect
                 if (position.chapterIndex != controller.chapterIndex.value) {
                     // 用户翻到了别的章: 朗读跟过去 (从那一章的阅读位置重开)。
@@ -411,7 +414,10 @@ abstract class ReadAloudHostShared(
                         "朗读跟随跨章翻页: 第 ${controller.chapterIndex.value + 1} 章 -> " +
                             "第 ${position.chapterIndex + 1} 章 (pos=${position.chapterPosition})"
                     )
-                    startAt(position.chapterIndex, position.chapterPosition)
+                    // 跨章也走软切换: 换一份章节计划而已, 不必把整场会话拆掉
+                    lastSyncedPos = position.chapterPosition
+                    pausedPosition = null
+                    controller.seekTo(position.chapterPosition, position.chapterIndex)
                     return@collect
                 }
                 // 换章时阅读页会把阅读位置落成章首 0 (loadChapterInternal 的跳章落位), 这不是
@@ -435,7 +441,7 @@ abstract class ReadAloudHostShared(
                 // 引擎停住; 这里只换队列, 引擎路由与订阅令牌原样保留。
                 lastSyncedPos = position.chapterPosition
                 pausedPosition = null
-                controller.seekTo(position.chapterPosition)
+                controller.seekTo(position.chapterPosition, position.chapterIndex)
             }
         }
     }

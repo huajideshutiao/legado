@@ -549,16 +549,21 @@ class ReadAloudControllerShared(
     }
 
     /**
-     * 同章内换位置 (用户手动翻页): 只换队列续读, 不拆会话。
+     * 用户手动翻页换位置: 只换队列续读, 不拆会话。
      *
      * [start] 是"新会话"语义: 重新解析并注册 TTS 路由、重登章节、重置整套状态。用户翻页只是
      * "从这一页开头接着念", 用不着这一套 —— 那正是翻页后卡一段时间、甚至把引擎停在那儿不动
      * 的直接原因。这里保留引擎路由与订阅令牌, 只重建段落队列再提交当前段。
      *
+     * 跨章翻页同样走这里 (传目标 [chapterIndex]): 换章只是换一份章节计划, 没必要把整场会话
+     * 拆掉; 起点就是用户翻到的那一页 (往回翻时是上一章末页), 不从章首重念。
+     *
      * @param chapterPosition 翻页后阅读页的页首 (章内字符位置); 拿不到计划时回落 [start]
+     * @param chapterIndex 目标章; 默认当前章
      */
-    fun seekTo(chapterPosition: Int) {
-        val index = _chapterIndex.value
+    fun seekTo(chapterPosition: Int, chapterIndex: Int = _chapterIndex.value) {
+        val index = chapterIndex
+        val current = _chapterIndex.value
         if (index < 0 || _state.value != ReadAloudState.PLAYING) {
             if (index >= 0) start(index, chapterPosition)
             return
@@ -580,6 +585,11 @@ class ReadAloudControllerShared(
         _paragraphIndex.value = -1
         _chapterPosition.value = plan.chapterPosition
         _currentText.value = ""
+        _chapterSize.value = chapterData.chapterCount
+        if (index != current) {
+            // 跨章: 让阅读页真正切到目标章 (已在该章时是无害的 no-op)
+            chapterNavigation.moveToChapter(index)
+        }
         playbackQueue.reset(
             contentList = plan.paragraphs,
             nowSpeak = plan.paragraphIndex,
