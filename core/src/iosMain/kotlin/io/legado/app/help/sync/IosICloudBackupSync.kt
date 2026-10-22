@@ -60,16 +60,20 @@ object IosICloudBackupSync {
     /**
      * 走公共备份路径打包, 再把 zip 传到 iCloud 容器。
      *
-     * @param uploadToWebDav 是否同时上传 WebDav (两条通道并存, 默认各走各的)
      * @return 上传到 iCloud 的文件名, 失败返回 null
      */
-    suspend fun backupToICloud(uploadToWebDav: Boolean = false): String? {
+    suspend fun backupToICloud(): String? {
         if (!IosICloud.enabled) return null
         val fileName = BackupShared.nowZipFileName()
-        val localZip = runCatching { BackupShared.backupLocked(uploadToWebDav = uploadToWebDav) }
+        // iCloud 是在线通道: 备份包取独占临时副本上传, 不依赖"书籍保存位置"
+        val localZip = runCatching { BackupShared.backupForDownload() }
             .onFailure { AppLog.put("iCloud 备份打包失败\n${it.message}", it) }
             .getOrNull() ?: return null
-        return if (uploadBackup(localZip, fileName)) fileName else null
+        return try {
+            if (uploadBackup(localZip, fileName)) fileName else null
+        } finally {
+            BackupFileOps.delete(localZip)
+        }
     }
 
     /**

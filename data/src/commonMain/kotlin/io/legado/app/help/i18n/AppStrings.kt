@@ -54,6 +54,15 @@ enum class AppStringKey {
     // "去设置目录"分支 (InvalidBooksDirException) 能匹配上。
     no_books_dir,
 
+    // 未设置保存位置且网盘不可用: 本次备份没有任何可取出备份包的出口
+    backup_no_destination,
+
+    // 未设置保存位置且无网络: 网盘是唯一出口, 离线时无法上传
+    network_connection_unavailable,
+
+    // 保存位置已设置但不可写: 本次备份只上传网盘, 本地不保留副本
+    backup_dir_unwritable,
+
     // ReplaceRule 校验失败
     replace_rule_invalid,
 

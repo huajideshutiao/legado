@@ -308,7 +308,9 @@
     <string name="backup_config">备份设置</string>
     <string name="backup">备份</string>
     <string name="backup_restore">备份与恢复</string>
-    <string name="auto_backup_no_book_save_dir">未设置书籍保存位置，自动备份不会执行</string>
+    <string name="auto_backup_no_book_save_dir">未设置书籍保存位置：备份只上传 WebDav，本地不保留副本</string>
+    <string name="backup_no_destination">没有可用于保存备份的位置：请设置书籍保存位置，或检查 WebDav 网盘配置</string>
+    <string name="backup_dir_unwritable">书籍保存位置不可写：本次备份只上传 WebDav，本地不保留副本</string>
     <string name="backup_summary">本地和 WebDav 一起备份</string>
     <string name="auto_check_new_backup_s">打开软件时检查是否有新备份，有新备份时提示是否更新</string>
     <string name="auto_check_new_backup_t">自动检查新备份</string>

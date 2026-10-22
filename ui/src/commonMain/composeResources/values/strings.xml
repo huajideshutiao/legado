@@ -308,7 +308,9 @@
     <string name="backup_config">Backup settings</string>
     <string name="backup">Backup</string>
     <string name="backup_restore">Backup and restore</string>
-    <string name="auto_backup_no_book_save_dir">No book save location set; automatic backup will not run</string>
+    <string name="auto_backup_no_book_save_dir">No book save location set: backups only go to WebDav, no local copy is kept</string>
+    <string name="backup_no_destination">No place to keep the backup: set a book save location, or check the WebDav configuration</string>
+    <string name="backup_dir_unwritable">Book save location is not writable: this backup is uploaded to WebDav only, no local copy is kept</string>
     <string name="backup_summary">Backup the local and WebDav simultaneously</string>
     <string name="auto_check_new_backup_s">Check for new backups when opening the app, prompt to update if available</string>
     <string name="auto_check_new_backup_t">Auto check for new backup</string>

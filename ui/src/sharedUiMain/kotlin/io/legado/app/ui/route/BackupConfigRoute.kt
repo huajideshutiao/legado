@@ -53,7 +53,6 @@ import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
-import io.legado.app.ui.root.ensureBookSaveDirSelected
 import io.legado.app.ui.root.reselectBookSaveDir
 import io.legado.app.ui.widget.dialog.HelpDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
@@ -64,7 +63,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.auto_backup_no_book_save_dir
+import legado.ui.generated.resources.backup_dir_unwritable
 import legado.ui.generated.resources.backup_fail
+import legado.ui.generated.resources.backup_no_destination
 import legado.ui.generated.resources.backup_restore
 import legado.ui.generated.resources.backup_success
 import legado.ui.generated.resources.cancel
@@ -106,10 +107,16 @@ fun BackupConfigRoute(
     val webDavUrlSStr = stringResource(Res.string.web_dav_url_s)
     val webDavAccountSStr = stringResource(Res.string.web_dav_account_s)
     val webDavPwSStr = stringResource(Res.string.web_dav_pw_s)
-    // 未设置书籍保存位置时自动备份不会执行 (备份产物落该目录): 在设置页明确告知
+    // 未设置书籍保存位置时靠 WebDav 兜底: 网盘也未配就不存在备份出口, 两种情形分别告知
     val autoBackupNoDirWarning = stringResource(Res.string.auto_backup_no_book_save_dir)
+    val noBackupDestinationWarning = stringResource(Res.string.backup_no_destination)
+    // 保存位置已设置但写不进去时不静默丢本地副本, 逐次告知
+    val backupDirUnwritableWarning = stringResource(Res.string.backup_dir_unwritable)
     val bookSaveDirPref by rememberPrefState(PreferKey.defaultBookTreeUri) {
         it.getStringOrNull(PreferKey.defaultBookTreeUri)
+    }
+    val webDavAccountPref by rememberPrefState(PreferKey.webDavAccount) {
+        it.getStringOrNull(PreferKey.webDavAccount)
     }
     // 顶栏标题 (对照 app 端 R.string.backup_restore)
     val titleStr = stringResource(Res.string.backup_restore)
@@ -144,7 +151,7 @@ fun BackupConfigRoute(
     // (对照 app 端 WaitDialog.from(activity).setText("备份") + viewModel.backup)
     // 协程跑在 screenModel.scope (生命周期与 ScreenModel 绑定, 而非组合), 修复组合销毁后
     // 延迟回调 scope.launch 抛 ForgottenCoroutineScopeException
-    val startBackup: (String, Boolean) -> Unit = { backupPath, uploadToWebDav ->
+    val startBackup: (String?, Boolean) -> Unit = { backupPath, uploadToWebDav ->
         backupRestoreJob = screenModel.scope.launch {
             // 对照 app 端 ConfigViewModel.backup: "备份中…" → backupLocked → 成功 toast 备份成功
             waitDialogMessage = "备份中…"
@@ -197,24 +204,27 @@ fun BackupConfigRoute(
 
     screenModel = screenModelStore.getOrCreateTyped(entry) {
         BackupConfigScreenModel(
-            // 备份: 落用户在"书籍保存位置"选定的目录 (与导出书籍/下载书籍同一处);
-            // 未设置先拉选择器, 已设置先预检可写性, 不可写重新选
+            // 备份: 临时包先产出, 再按出口分发 —— 网盘配置了就上传, "书籍保存位置"可用就落本地,
+            // 两者各走各的, 缺一个不影响另一个 (未设置保存位置时不再拦住整次备份)
             onBackup = { uploadToWebDav ->
                 val services = PlatformServiceProviders.get()
                 screenModel.scope.launch {
-                    if (!ensureBookSaveDirSelected()) return@launch
-                    val backupPath = effectiveBookSaveDir() ?: return@launch
-                    val canWrite = withContext(IoDispatcher) {
-                        services.files.checkWrite(backupPath, DirUsage.BookTree)
+                    val savedPath = effectiveBookSaveDir()
+                    val canWrite = savedPath != null && withContext(IoDispatcher) {
+                        services.files.checkWrite(savedPath, DirUsage.BookTree)
                     }
-                    if (canWrite) {
-                        startBackup(backupPath, uploadToWebDav)
+                    val backupPath = if (canWrite) {
+                        savedPath
+                    } else if (uploadToWebDav) {
+                        // 有网盘出口: 本地副本跳过, 备份照常上传
+                        if (savedPath != null) Toasters.get().toast(backupDirUnwritableWarning)
+                        null
                     } else {
-                        // 选定目录已不可写: 重新选一次 (与各端"去设置目录"出口同一入口), 取消则中止本次备份
+                        // 仅本地备份 (长按) 时本地是唯一出口: 拉起目录选择器, 取消即中止
                         if (!reselectBookSaveDir()) return@launch
-                        val path = effectiveBookSaveDir() ?: return@launch
-                        startBackup(path, uploadToWebDav)
+                        effectiveBookSaveDir()
                     }
+                    startBackup(backupPath, uploadToWebDav)
                 }
             },
             // 恢复: upConfig + getBackupNames, 有则 AppSelectorDialog 选 → restoreWebDav; 无则 alert 回退本地
@@ -345,7 +355,11 @@ fun BackupConfigRoute(
             webDavPasswordSummary = state.webDavPasswordSummary,
             webDavDirSummary = state.webDavDirSummary,
             webDavDeviceNameSummary = state.webDavDeviceNameSummary,
-            bookSaveDirWarning = autoBackupNoDirWarning.takeIf { bookSaveDirPref.isNullOrBlank() },
+            bookSaveDirWarning = when {
+                !bookSaveDirPref.isNullOrBlank() -> null
+                webDavAccountPref.isNullOrBlank() -> noBackupDestinationWarning
+                else -> autoBackupNoDirWarning
+            },
             onWebDavBackup = { screenModel.dispatch(BackupConfigUiEvent.Backup) },
             onWebDavBackupLong = { screenModel.dispatch(BackupConfigUiEvent.BackupLocal) },
             onWebDavRestore = { screenModel.dispatch(BackupConfigUiEvent.Restore) },

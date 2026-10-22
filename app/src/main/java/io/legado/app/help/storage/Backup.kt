@@ -17,7 +17,6 @@ import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
 import io.legado.app.utils.isContentScheme
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
@@ -43,13 +42,6 @@ object Backup {
     @Suppress("UNUSED_PARAMETER")
     fun autoBack(context: Context) {
         BackupShared.autoBack()
-    }
-
-    @Suppress("UNUSED_PARAMETER")
-    suspend fun backupLocked(context: Context, path: String?, uploadToWebDav: Boolean = true) {
-        withContext(IO) {
-            BackupShared.backupLocked(path, uploadToWebDav)
-        }
     }
 
     fun clearCache() {

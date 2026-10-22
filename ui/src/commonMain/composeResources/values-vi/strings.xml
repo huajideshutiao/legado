@@ -66,7 +66,9 @@
     <string name="pt_auto_refresh">Tự động làm mới</string>
     <string name="ps_auto_refresh">Tự động cập nhật sách khi mở phần mềm</string>
     <string name="backup_restore">Sao lưu và khôi phục</string>
-    <string name="auto_backup_no_book_save_dir">Chưa đặt vị trí lưu sách; sao lưu tự động sẽ không chạy</string>
+    <string name="auto_backup_no_book_save_dir">Chưa đặt vị trí lưu sách: bản sao lưu chỉ tải lên WebDav, không lưu bản sao cục bộ</string>
+    <string name="backup_no_destination">Không có vị trí để lưu bản sao lưu: hãy đặt vị trí lưu sách hoặc kiểm tra cấu hình WebDav</string>
+    <string name="backup_dir_unwritable">Vị trí lưu sách không ghi được: bản sao lưu này chỉ tải lên WebDav, không lưu bản sao cục bộ</string>
     <string name="web_dav_set">Cài đặt WebDav</string>
     <string name="web_dav_set_import_old">Cài đặt WebDav/Nhập dữ liệu cũ</string>
     <string name="backup">Sao lưu</string>

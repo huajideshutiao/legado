@@ -67,7 +67,9 @@
     <string name="pt_auto_refresh">Atualização automática</string>
     <string name="ps_auto_refresh">Atualizar os livros automaticamente ao abrir o App</string>
     <string name="backup_restore">Backup e restauração</string>
-    <string name="auto_backup_no_book_save_dir">Nenhum local de salvamento de livros definido; o backup automático não será executado</string>
+    <string name="auto_backup_no_book_save_dir">Nenhum local de salvamento de livros definido: o backup só vai para o WebDav, sem cópia local</string>
+    <string name="backup_no_destination">Não há local para guardar o backup: defina um local para salvar livros ou verifique a configuração do WebDav</string>
+    <string name="backup_dir_unwritable">O local de salvamento de livros não permite escrita: este backup vai apenas para o WebDav, sem cópia local</string>
     <string name="web_dav_set">Configurações de WebDav</string>
     <string name="web_dav_set_import_old">Configurações/importação WebDav de dados Legado </string>
     <string name="backup">Fazer Backup</string>

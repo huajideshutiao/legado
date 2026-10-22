@@ -7,6 +7,8 @@ import io.legado.app.constant.ThreadSafeDateFormat
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.dao.sortedByLocalizedOrder
 import io.legado.app.data.entities.ReadRecord
+import io.legado.app.exception.InvalidBooksDirException
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.DirectLinkUploadStoreProviders
 import io.legado.app.help.HomeTabHelpShared
@@ -20,12 +22,14 @@ import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.book.bookSaveSubDir
 import io.legado.app.help.book.effectiveBookSaveDir
-import io.legado.app.help.book.requireBookSaveDir
+import io.legado.app.help.i18n.AppStringKey
+import io.legado.app.help.i18n.appString
 import io.legado.app.help.ruleFileName
 import io.legado.app.help.storage.BackupShared.backupLocked
 import io.legado.app.help.storage.BackupShared.backupPath
 import io.legado.app.help.storage.BackupShared.mutex
 import io.legado.app.utils.GSON
+import io.legado.app.utils.isNetworkAvailable
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.randomUUIDString
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -164,14 +168,23 @@ object BackupShared {
         // 挑选时已把该条订阅的下次尝试时间推到次日, 失败或中断都等次日时机再试, 不写半份数据。
         RuleSubAutoUpdate.run()
         if (!shouldAutoBackup()) return
-        // 书籍保存位置未设置: 没有可用的落地目录, 跳过本次自动备份
-        if (destinationPath.isNullOrBlank()) return
+        // 认证信息只由 upConfig 置上, 未置上则网盘这条出口等于不存在: 这里补一次
+        // (没存账号密码时 upConfig 直接返回, 不产生网络往返; 失败不影响本地出口)。
+        if (!AppWebDavShared.isOk) {
+            runCatching { AppWebDavShared.upConfig() }
+                .onFailure { AppLog.put("自动备份前刷新 WebDav 配置失败\n${it.message}", it, tag = TAG) }
+        }
+        // 本地目录与网盘至少一个可用才值得跑: 两个都没有 (或网盘是唯一出口但当前断网) 时
+        // 不会产出备份包, 跳过且不推进上次备份时间, 下次退出再试; 未设保存位置时设置页
+        // 有常驻警告, 自动备份无其他提示入口
+        val localDirectory = destinationPath?.takeIf { it.isNotBlank() }
+        if (localDirectory == null && (!AppWebDavShared.isOk || !isNetworkAvailable())) return
         autoBackMutex.withLock {
             if (!shouldAutoBackup()) return
             val backupZipFileName = nowZipFileName()
             val hasRemote = runCatching { AppWebDavShared.hasBackUp(backupZipFileName) }.getOrDefault(false)
             if (!hasRemote) {
-                backupLocked(destinationPath)
+                backupLocked(localDirectory)
             } else {
                 BackupRestoreHooks.get().setLastBackup(systemCurrentTimeMillis())
             }
@@ -181,17 +194,19 @@ object BackupShared {
     /**
      * 备份执行入口 (互斥锁保护)。
      *
-     * @param destinationPath 本地备份目录 (书籍保存位置); 未设置时抛 [InvalidBooksDirException],
-     *                        由调用链既有的"去设置目录"出口处理。备份 zip 落其下的
-     *                        [BOOK_BACKUP_DIR_NAME] 子目录 (书籍直接放保存位置根)。
+     * @param destinationPath 本地备份目录 (书籍保存位置); 未设置时不落本地, 本次备份只以
+     *                        网盘上传成功为成功, 备份 zip 落其下的 [BOOK_BACKUP_DIR_NAME] 子目录
+     *                        (书籍直接放保存位置根)。
      *                        Android 的 content:// 目录由 [BackupRestoreHook.copyBackupTo] 处理。
      * @param uploadToWebDav 是否上传到 WebDav
-     * @return 已保留在本地的备份 zip 绝对路径
+     * @return 已保留在本地的备份 zip 绝对路径; 未落本地 (未设置保存位置) 时返回 null
+     * @throws InvalidBooksDirException 未设置保存位置且网盘未配置或未认证时
+     * @throws NoStackTraceException 未设置保存位置且当前无网络时
      */
     suspend fun backupLocked(
         destinationPath: String? = effectiveBookSaveDir(),
         uploadToWebDav: Boolean = true,
-    ): String {
+    ): String? {
         return mutex.withLock {
             backup(destinationPath, uploadToWebDav)
         }
@@ -211,11 +226,12 @@ object BackupShared {
             var delivered = false
             var failure: Throwable? = null
             try {
+                // 落地目录非空 ⇒ 备份包必定落在该目录下, 返回值非空
                 val result = backup(
                     destinationPath = directory,
                     uploadToWebDav = false,
                     localFileNameOverride = fileName,
-                )
+                )!!
                 delivered = true
                 result
             } catch (t: Throwable) {
@@ -237,18 +253,35 @@ object BackupShared {
      * 2. 逐个 DAO 导出为 JSON 写入 backupPath
      * 3. servers.json 加密 / 阅读配置 / 主题配置 / 直链上传规则
      * 4. dump 全量配置 → config.json
-     * 5. zip 打包 → 复制到本地目录 → 上传 WebDav
+     * 5. zip 打包到临时文件 → 落在本地目录 (未设置保存位置时跳过) → 上传 WebDav
      * 6. 清理临时文件, 再走宿主收尾钩子 (背景图上传)
+     *
+     * 已有本地副本时上传失败只记日志 (本地副本可找回); 未设置保存位置时本地没有副本,
+     * 上传是唯一去向, 上传失败按备份失败上报。临时包在收尾时统一删除, 落本地即保留副本。
      */
     private suspend fun backup(
         destinationPath: String?,
         uploadToWebDav: Boolean,
         localFileNameOverride: String? = null,
-    ): String {
+    ): String? {
         val workDirPath = backupPath
         val tempZipPath = zipFilePath
         var failure: Throwable? = null
         try {
+            val localDirectory = destinationPath?.takeIf { it.isNotBlank() }
+            // 未设置保存位置时本地不产出副本, 网盘是唯一去向: 关掉上传、未配置/未认证、
+            // 无网络三种情形都会让本次备份零产物, 在导出数据前就按失败上报
+            if (localDirectory == null) {
+                when {
+                    !uploadToWebDav ->
+                        throw InvalidBooksDirException(appString(AppStringKey.no_books_dir))
+                    !AppWebDavShared.isOk ->
+                        throw InvalidBooksDirException(appString(AppStringKey.backup_no_destination))
+                    !isNetworkAvailable() -> throw NoStackTraceException(
+                        appString(AppStringKey.network_connection_unavailable)
+                    )
+                }
+            }
             val hooks = BackupRestoreHooks.get()
             AppLog.putDebug("开始备份 path:$destinationPath", tag = TAG)
             hooks.onBackupStart()
@@ -386,24 +419,27 @@ object BackupShared {
             } else {
                 zipFileName
             }
-            val localDirectory = destinationPath?.takeIf { it.isNotBlank() }
-                ?: requireBookSaveDir()
             // 备份 zip 落保存位置下的 backup 子目录 (书籍直接放根): 普通路径端在这里拼路径,
             // SAF 树引用端由 hook 在树内建同名子目录
-            val backupDir = bookSaveSubDir(localDirectory, BOOK_BACKUP_DIR_NAME)
-            val localZipPath = bookSaveSubDir(backupDir, localFileName)
+            val backupDir = localDirectory?.let { bookSaveSubDir(it, BOOK_BACKUP_DIR_NAME) }
+            val localZipPath = backupDir?.let { bookSaveSubDir(it, localFileName) }
 
             if (!BackupFileOps.zipFiles(pathsWithImages, tempZipPath)) {
                 error("备份 zip 打包失败")
             }
-            if (!hooks.copyBackupTo(tempZipPath, localDirectory, localFileName, BOOK_BACKUP_DIR_NAME)) {
-                BackupFileOps.copyFile(tempZipPath, localZipPath)
+            // 先落本地 (未设置保存位置时没有本地副本, 临时包由收尾清理): 落不了即按失败上报
+            if (localDirectory != null && localZipPath != null) {
+                if (!hooks.copyBackupTo(tempZipPath, localDirectory, localFileName, BOOK_BACKUP_DIR_NAME)) {
+                    BackupFileOps.copyFile(tempZipPath, localZipPath)
+                }
             }
+            // 再上网盘: 已有本地副本时上传失败只记日志, 没有本地副本时上传失败即备份失败
             if (uploadToWebDav) {
                 try {
                     AppWebDavShared.backUpWebDav(zipFileName)
                 } catch (e: Exception) {
                     currentCoroutineContext().ensureActive()
+                    if (localDirectory == null) throw e
                     AppLog.put("上传备份至webdav失败\n$e", e)
                 }
             }

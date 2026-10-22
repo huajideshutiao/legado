@@ -68,7 +68,9 @@
     <string name="pt_auto_refresh">自動重新整理</string>
     <string name="ps_auto_refresh">打開軟體時自動更新書籍</string>
     <string name="backup_restore">備份與復原</string>
-    <string name="auto_backup_no_book_save_dir">未設定書籍儲存位置，自動備份不會執行</string>
+    <string name="auto_backup_no_book_save_dir">未設定書籍儲存位置：備份只上傳 WebDav，本機不保留副本</string>
+    <string name="backup_no_destination">沒有可用於儲存備份的位置：請設定書籍儲存位置，或檢查 WebDav 網盤設定</string>
+    <string name="backup_dir_unwritable">書籍儲存位置無法寫入：本次備份只上傳 WebDav，本機不保留副本</string>
     <string name="web_dav_set">WebDav設定</string>
     <string name="web_dav_set_import_old">WebDav設定/匯入舊版本資料</string>
     <string name="backup">備份</string>
