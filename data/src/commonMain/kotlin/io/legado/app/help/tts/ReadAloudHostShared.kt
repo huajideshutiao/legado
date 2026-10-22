@@ -402,7 +402,18 @@ abstract class ReadAloudHostShared(
                 }
                 if (state != ReadAloudState.PLAYING) return@collect
                 if (position.chapterPosition == lastSyncedPos) return@collect
-                if (position.chapterIndex != controller.chapterIndex.value) return@collect
+                if (position.chapterIndex != controller.chapterIndex.value) {
+                    // 用户翻到了别的章: 朗读跟过去 (从那一章的阅读位置重开)。
+                    // 朗读自己换章时, 控制器在调 moveToChapter 之前就把 chapterIndex 换好了,
+                    // 阅读页随后写回的位置一定与它同章, 不会走到这里 —— 所以这条分支只会被
+                    // 用户跨章翻页触发。此前这里直接丢弃, 表现就是"翻到下一章, 朗读留在上一章"。
+                    AppLog.put(
+                        "朗读跟随跨章翻页: 第 ${controller.chapterIndex.value + 1} 章 -> " +
+                            "第 ${position.chapterIndex + 1} 章 (pos=${position.chapterPosition})"
+                    )
+                    startAt(position.chapterIndex, position.chapterPosition)
+                    return@collect
+                }
                 // 换章时阅读页会把阅读位置落成章首 0 (loadChapterInternal 的跳章落位), 这不是
                 // 用户翻页; 朗读此刻也在章首 (段 0 / 尚未起段), 放行就会立刻 startAt 把刚起的
                 // 这一章再拆一次, 正是章首那声停顿的来源。
