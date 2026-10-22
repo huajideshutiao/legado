@@ -67,7 +67,11 @@ object BookInfo {
                 analyzeRule.setContent(analyzeRule.getElement(it))
             }
         }
-        val mCanReName = canReName && !infoRule.canReName.isNullOrBlank()
+        // "允许修改书名作者"规则: 未填或求值为空按允许, 显式返回 false/0 才禁止。
+        val canReNameRule = infoRule.canReName?.takeIf { it.isNotBlank() }
+            ?.let { analyzeRule.getString(it) }.orEmpty()
+        val mCanReName = canReName &&
+            (canReNameRule.isBlank() || WebBookRuleUtils.parseBoolean(canReNameRule))
         if (!infoRule.name.isNullOrBlank()) {
             currentCoroutineContext().ensureActive()
             SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取书名")
