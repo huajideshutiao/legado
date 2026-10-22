@@ -67,7 +67,7 @@ fun MangaReaderRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val route = entry.route as AppRoute.MangaReader
-    // asBook() 每次 copy() 新实例, remember(route) 固定后 LaunchedEffect(book) 只在换路由时重启
+    // asBook() 对搜索书每次新建实例, remember(route) 让同一路由内保持同一份
     val book = remember(route) { route.book.asBook() }
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) { MangaReaderScreenModel() }
@@ -79,10 +79,26 @@ fun MangaReaderRoute(
     val scope = rememberCoroutineScope()
 
     // 初始化书籍数据, 透传书签跳转参数 (对照 app 端 applyBookmarkPosition: chapterIndex/chapterPos)
-    LaunchedEffect(book) {
+    // 只按书的身份重启: 同一页面被单例复用只换章节时不得重发 Init (Init 会重新拉目录)
+    LaunchedEffect(route.book) {
         screenModel.dispatch(
             MangaReaderUiEvent.Init(route.book, route.chapterIndex, route.chapterPos)
         )
+    }
+
+    // 单例页复用: 同一页面被再次打开时路由参数会变 (对照原版 singleTask + onNewIntent)。
+    // 换书交给上面的 Init 全量重载; 只换章节时按新章节定位。
+    val appliedTarget = remember {
+        mutableStateOf(route.book to (route.chapterIndex to route.chapterPos))
+    }
+    LaunchedEffect(route.book, route.chapterIndex, route.chapterPos) {
+        val target = route.book to (route.chapterIndex to route.chapterPos)
+        if (target == appliedTarget.value) return@LaunchedEffect
+        val previous = appliedTarget.value
+        appliedTarget.value = target
+        if (previous.first != target.first) return@LaunchedEffect
+        val index = target.second.first ?: return@LaunchedEffect
+        screenModel.dispatch(MangaReaderUiEvent.OpenChapter(index, target.second.second ?: 0))
     }
 
     // 订阅子页结果回填 (对照 ReadMangaActivity.Content LaunchedEffect + VideoPlayRoute)

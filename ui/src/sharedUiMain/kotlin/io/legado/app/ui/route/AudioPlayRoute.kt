@@ -100,7 +100,7 @@ fun AudioPlayRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val route = entry.route as AppRoute.AudioPlay
-    // asBook() 每次 copy() 新实例, remember(route) 固定后 LaunchedEffect(book) 只在换路由时重启
+    // asBook() 对搜索书每次新建实例, remember(route) 让同一路由内保持同一份
     val book = remember(route) { route.book.asBook() }
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) { AudioPlayScreenModel() }
@@ -173,10 +173,30 @@ fun AudioPlayRoute(
     }
 
     // 初始化标题 (对照 viewModel.initData 中 titleData.postValue(book.name) + applyBookmarkPosition)
-    LaunchedEffect(book) {
+    // 只按书的身份重启: 同一页面被单例复用只换章节时不得重发 Init (Init 会重新拉目录)
+    LaunchedEffect(route.book) {
         screenModel.dispatch(
             AudioPlayUiEvent.Init(route.book, route.chapterIndex, route.chapterPos)
         )
+    }
+
+    // 单例页复用: 同一页面被再次打开时路由参数会变 (对照原版 singleTask + onNewIntent)。
+    // 换书交给上面的 Init 全量重载; 只换章节时按原版 applyBookmarkPosition 轻量定位。
+    val appliedTarget = remember {
+        mutableStateOf(route.book to (route.chapterIndex to route.chapterPos))
+    }
+    LaunchedEffect(route.book, route.chapterIndex, route.chapterPos) {
+        val target = route.book to (route.chapterIndex to route.chapterPos)
+        if (target == appliedTarget.value) return@LaunchedEffect
+        val previous = appliedTarget.value
+        appliedTarget.value = target
+        if (previous.first != target.first) return@LaunchedEffect
+        val index = target.second.first ?: return@LaunchedEffect
+        val pos = target.second.second ?: 0
+        when {
+            index != previous.second.first -> AudioPlayShared.skipTo(index, pos)
+            pos != (previous.second.second ?: 0) -> AudioPlayShared.adjustProgress(pos)
+        }
     }
 
     // 退出音频页: 落库进度 + 通知书架刷新 (对齐阅读器/视频/漫画行为, 回归 2026-08)。

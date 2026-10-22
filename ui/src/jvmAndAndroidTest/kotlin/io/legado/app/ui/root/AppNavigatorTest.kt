@@ -124,6 +124,68 @@ class AppNavigatorTest {
         )
     }
 
+    /**
+     * 单例页 (singleTask) 复用: 栈中已有该页时复用它、清掉它上面的页, 页面身份不变
+     * (页面数据与界面状态以身份为键, 不重建)。
+     */
+    @Test
+    fun `single task page is reused and pages above are removed`() {
+        val navigator = AppNavigator()
+        val rootId = navigator.currentEntry.id
+        navigator.push(AppRoute.Search())
+        val searchId = navigator.currentEntry.id
+        navigator.push(AppRoute.About)
+        val aboutId = navigator.currentEntry.id
+        navigator.push(AppRoute.Search())
+        assertEquals(4, navigator.backStack.value.size)
+
+        val reusedId = navigator.push(AppRoute.About)
+
+        assertEquals(aboutId, reusedId)
+        assertEquals(listOf(rootId, searchId, aboutId), navigator.backStack.value.map { it.id })
+    }
+
+    /** 单例页复用换参数: 同一页面被换成另一个参数时复用原页面, 身份不变。 */
+    @Test
+    fun `single task reuse keeps page identity across parameter change`() {
+        val navigator = AppNavigator()
+        navigator.push(AppRoute.BookSourceEdit("u1"))
+        val pageId = navigator.currentEntry.id
+        navigator.push(AppRoute.Search())
+
+        val reusedId = navigator.push(AppRoute.BookSourceEdit("u2"))
+
+        assertEquals(pageId, reusedId)
+        assertEquals(AppRoute.BookSourceEdit("u2"), navigator.currentEntry.route)
+        assertEquals(2, navigator.backStack.value.size)
+    }
+
+    /** 栈顶同类页 (singleTop) 复用并换参数。 */
+    @Test
+    fun `single top reuses top page of same type with new parameters`() {
+        val navigator = AppNavigator()
+        navigator.push(AppRoute.BookshelfManage(1L))
+        val pageId = navigator.currentEntry.id
+
+        val reusedId = navigator.push(AppRoute.BookshelfManage(2L))
+
+        assertEquals(pageId, reusedId)
+        assertEquals(AppRoute.BookshelfManage(2L), navigator.currentEntry.route)
+        assertEquals(2, navigator.backStack.value.size)
+    }
+
+    /** 同类页不在栈顶时 singleTop 不复用, 而是新建 (对照原版 singleTop 语义)。 */
+    @Test
+    fun `single top does not reuse page below top`() {
+        val navigator = AppNavigator()
+        navigator.push(AppRoute.BookshelfManage(1L))
+        navigator.push(AppRoute.Search())
+
+        navigator.push(AppRoute.BookshelfManage(2L))
+
+        assertEquals(4, navigator.backStack.value.size)
+    }
+
     private suspend fun <T> kotlinx.coroutines.flow.Flow<T>.firstOrNullWithin(
         timeoutMillis: Long,
     ): T? = runCatching {

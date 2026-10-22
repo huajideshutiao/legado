@@ -179,14 +179,19 @@ class AppNavigator(
         // 挡视线, 观感更差 (2026-09 实测回退)。
         // 注: 弹新 Overlay 不走本逻辑 —— 对话框之间默认叠放, 见 [showOverlay]。
         dismissDialogOverlays()
-        val entryId = routeBackStack.push(
+        val result = routeBackStack.pushWithLaunchMode(
             route = route,
             resultKey = resultKey,
-            resultTargetEntryId = resultKey?.let { currentEntry.id },
             sharedToken = sharedToken,
         )
-        targetedResults.getOrPut(entryId) { Channel(Channel.UNLIMITED) }
-        return entryId
+        // 单例页复用: 它上面的页已被移除 (对照原版 singleTask 销毁上层 Activity),
+        // 结果通道与刷新回调一并释放, 否则被移除页的协程挂在自己的通道上永不结束
+        result.removed.forEach { removedEntry ->
+            targetedResults.remove(removedEntry.id)?.close()
+            refreshHandlers.remove(removedEntry.id)
+        }
+        targetedResults.getOrPut(result.entryId) { Channel(Channel.UNLIMITED) }
+        return result.entryId
     }
 
     /**

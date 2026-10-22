@@ -39,7 +39,7 @@ data class RouteTransitionSegment(
     /** 本段被推入的页面 (倒放时就是要退回屏幕右侧的那几页)。 */
     val retreating: List<RouteEntry> get() = to.filterNot { t -> from.any { it.id == t.id } }
 
-    /** 本段被弹出的页面 (pop 单个 / replace 被换掉的那页)。 */
+    /** 本段被移除的页面 (pop / replace 换掉的页 / 单例页复用清掉的那一串)。 */
     val dropped: List<RouteEntry> get() = from.filterNot { f -> to.any { it.id == f.id } }
 
     /**
@@ -49,7 +49,13 @@ data class RouteTransitionSegment(
     val overOutgoing: Boolean get() = dropped.isNotEmpty() && forward
 
     /**
-     * 本段参与渲染的页面 (含正在离场的): 离场页必须留在组合里播完动画,
+     * 本段实际播退场动画的页面: 跨多页时只取栈顶那页 (对照原版只 finish 一页的观感),
+     * 其余被移除的页直接离场, 不参与本段渲染。
+     */
+    private val exiting: RouteEntry? get() = dropped.lastOrNull()
+
+    /**
+     * 本段参与渲染的页面 (含正在离场的那一页): 离场页必须留在组合里播完动画,
      * 否则返回时会先空一格。单段前进时出栈页插在栈顶之下 —— 新页在上才是前进的 z 序,
      * 排到栈尾会让不透明的旧页盖住新页滑入 (中段两层 alpha 之和 <1 会透出根背景)。
      *
@@ -61,17 +67,17 @@ data class RouteTransitionSegment(
     val displayEntries: List<RouteEntry>
         get() = when {
             reversing -> from + retreating
-            overOutgoing -> to.dropLast(1) + dropped + to.takeLast(1)
-            !forward -> to + dropped
+            overOutgoing -> to.dropLast(1) + listOfNotNull(exiting) + to.takeLast(1)
+            !forward -> to + listOfNotNull(exiting)
             else -> to
         }
 
-    /** 正常段的让位页: 纯前进 = 终点栈的倒数第二页; 其余 = 本段弹出的页面。 */
+    /** 正常段的让位页: 纯前进 = 终点栈的倒数第二页; 其余 = 本段退场的那一页。 */
     private val slidingIds: Set<RouteEntryId>
         get() = if (forward && !overOutgoing) {
             to.getOrNull(to.lastIndex - 1)?.let { setOf(it.id) } ?: emptySet()
         } else {
-            dropped.mapTo(mutableSetOf()) { it.id }
+            exiting?.let { setOf(it.id) } ?: emptySet()
         }
 
     /**

@@ -21,7 +21,8 @@ import org.junit.Test
  * 守住的契约:
  * 1. 静止态组合整条栈 (被盖页留在组合中): 被盖页的页面级副作用与 UI 节点树不随压栈销毁,
  *    返回时零重建。这是共享元素回程飞行与页面订阅存活的前提。
- * 2. 转场段内所有参与页 (含正在离场的) 都在组合中。
+ * 2. 转场段内所有参与页 (含正在离场的那一页) 都在组合中; 一次移除多页时只有栈顶那页
+ *    播退场动画, 其余直接离场。
  * 3. 角色判定与播放方向无关 (倒放只沿同一段轨迹退回, 不改角色)。
  * 4. [RouteTransitionState.resolve] 是纯函数: 同一输入恒等输出, 不修改状态。
  * 5. 跟手返回手势 (待出栈段): 页面栈在手势期间不动, 段的两端与真实栈的关系由
@@ -100,6 +101,20 @@ class RouteTransitionStateTest {
         // 出栈页 (b) 也留在组合里
         assertTrue(overOutgoing.displayEntries.contains(b))
         assertEquals(3, overOutgoing.displayEntries.size)
+    }
+
+    @Test
+    fun `multi page removal exits only the top page`() {
+        val a = entry(1)
+        val b = entry(2)
+        val c = entry(3)
+        // 单例页复用: 一次清掉两层, 只让栈顶那页播退场, 其余直接离场
+        val segment = segment(from = listOf(a, b, c), to = listOf(a))
+
+        assertEquals(listOf(a, c), segment.displayEntries)
+        assertEquals(TransitionRole.TargetPage, segment.roleOf(a))
+        assertEquals(TransitionRole.OutgoingPage, segment.roleOf(c))
+        assertNull(segment.roleOf(b))
     }
 
     @Test

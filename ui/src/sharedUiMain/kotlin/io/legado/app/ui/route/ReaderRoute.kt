@@ -258,20 +258,37 @@ fun ReaderRoute(
     // 推迟到正文区实测后再装载：首排必用实测视口，杜绝 LayoutConfig.DEFAULT(720x1080)
     // 先行排版 → 实测配置到达后再整章重排的「二次排版」（对照原版 initData 用
     // Looper.myQueue().addIdleHandler 把 loadContent 推迟到视图测量完成后执行）。
-    // book 在路由组合期内固定（remember(route)），用一次性标志保证只 init 一次，
-    // 后续 textAreaSize 变化（窗口 resize）不重复 initBook。
+    // 按书身份只装载一次: 后续 textAreaSize 变化（窗口 resize）不重复 initBook,
+    // 单例页复用换成另一本书时重新装载。
     // initBook 只做状态落位与装载登记 (整段跑在可取消任务内), 正文装载/本地文件检查/云进度
     // 都在该任务里执行, 组合期的 UI 线程不做 DB/文件 IO。
-    var bookInitialized by remember { mutableStateOf(false) }
-    LaunchedEffect(textAreaSize) {
-        if (textAreaSize == null || bookInitialized) return@LaunchedEffect
-        bookInitialized = true
+    // 已装载的书 (单例页复用可能把本页换成另一本书): 按书身份判定是否重新装载,
+    // 与原先的一次性标志等价 (窗口 resize 不重复装载), 但换书时能重新装载。
+    var loadedRef by remember { mutableStateOf<BookRef?>(null) }
+    LaunchedEffect(textAreaSize, route.book) {
+        if (textAreaSize == null) return@LaunchedEffect
+        if (loadedRef == route.book) return@LaunchedEffect
+        loadedRef = route.book
         screenModel.initBook(
             book,
             route.chapterIndex,
             route.chapterPos,
             isSearchBook = route.book is BookRef.Search,
         )
+    }
+
+    // 单例页复用只换章节: 按新章节定位 (对照原版 onNewIntent → openChapter), 不重新装载书
+    val appliedTarget = remember {
+        mutableStateOf(route.book to (route.chapterIndex to route.chapterPos))
+    }
+    LaunchedEffect(route.book, route.chapterIndex, route.chapterPos) {
+        val target = route.book to (route.chapterIndex to route.chapterPos)
+        if (target == appliedTarget.value) return@LaunchedEffect
+        val previous = appliedTarget.value
+        appliedTarget.value = target
+        if (previous.first != target.first) return@LaunchedEffect
+        val index = target.second.first ?: return@LaunchedEffect
+        screenModel.openChapter(index, target.second.second)
     }
 
     val state = remember(screenModel) {
