@@ -15,6 +15,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
@@ -454,7 +455,12 @@ private fun AudioTitleBar(
         Modifier
             .fillMaxWidth()
             .platformStatusBarPadding()
-            .heightIn(min = DesignTokens.viewHeightMax),
+            .heightIn(min = DesignTokens.viewHeightMax)
+            // 整行点击打开书籍详情 (对齐阅读/漫画页顶栏)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { onOpenBookInfo() },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
@@ -470,9 +476,7 @@ private fun AudioTitleBar(
             fontSize = 20.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .weight(1f)
-                .clickable { onOpenBookInfo() },
+            modifier = Modifier.weight(1f),
         )
         // 平台尾部槽 (review 钮等)
         trailingSlot()
