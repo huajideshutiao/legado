@@ -78,10 +78,8 @@ import legado.ui.generated.resources.audio_edge_glow_title
 import legado.ui.generated.resources.audio_energy_glow_title
 import legado.ui.generated.resources.audio_play
 import legado.ui.generated.resources.back
-import legado.ui.generated.resources.change_origin
 import legado.ui.generated.resources.chapter_list
 import legado.ui.generated.resources.ic_arrow_back
-import legado.ui.generated.resources.ic_exchange
 import legado.ui.generated.resources.ic_more_vert
 import legado.ui.generated.resources.more_menu
 import legado.ui.generated.resources.next_chapter
@@ -131,7 +129,6 @@ enum class AudioPlaySidePanelKind { TOC, REVIEW }
  * @param lrcActiveColor SeekBar 已播层颜色 (null=用 accentColor; 调用方从 lrcColors 取)
  * @param lrcInactiveColor SeekBar 缓冲层颜色 (null=用 accentColor.copy(0.5); 调用方从 lrcColors 取)
  * @param onBack 返回
- * @param onOpenChangeSource 换源
  * @param onCoverClick 封面点击 (隐藏封面)
  * @param onCoverLongClick 封面长按 (查看封面大图; 无封面 URL 时由调用方内部判空不动作)
  * @param onTogglePlay 播放/暂停切换
@@ -170,7 +167,6 @@ fun AudioPlayScreenContent(
     lrcActiveColor: Color? = null,
     lrcInactiveColor: Color? = null,
     onBack: () -> Unit,
-    onOpenChangeSource: () -> Unit,
     /** 点顶栏标题进书籍详情 */
     onOpenBookInfo: () -> Unit,
     onCoverClick: () -> Unit,
@@ -239,7 +235,6 @@ fun AudioPlayScreenContent(
             AudioTitleBar(
                 title = title,
                 onBack = onBack,
-                onOpenChangeSource = onOpenChangeSource,
                 onOpenBookInfo = onOpenBookInfo,
                 overflowActions = overflowActions,
                 trailingSlot = titleBarTrailingSlot,
@@ -441,13 +436,12 @@ fun AudioPlayScreenContent(
     }
 }
 
-// ---- 标题栏 (返回 + 标题 + 换源 + 尾部槽) ----
+// ---- 标题栏 (返回 + 标题 + 尾部槽) ----
 
 @Composable
 private fun AudioTitleBar(
     title: String,
     onBack: () -> Unit,
-    onOpenChangeSource: () -> Unit,
     onOpenBookInfo: () -> Unit,
     overflowActions: AudioPlayOverflowActions?,
     trailingSlot: @Composable RowScope.() -> Unit,
@@ -476,13 +470,6 @@ private fun AudioTitleBar(
                 .weight(1f)
                 .clickable { onOpenBookInfo() },
         )
-        IconButton(onClick = onOpenChangeSource) {
-            Icon(
-                painter = painterResource(Res.drawable.ic_exchange),
-                contentDescription = stringResource(Res.string.change_origin),
-                tint = Color.White,
-            )
-        }
         // 平台尾部槽 (review 钮等)
         trailingSlot()
         // 共享溢出菜单 (登录/复制URL/源变量/书变量/编辑书源/书签/日志)
@@ -533,10 +520,6 @@ private fun AudioPlayOverflowMenu(actions: AudioPlayOverflowActions) {
                 dismiss()
                 actions.onAddBookmark()
             }
-            AudioOverflowItem("log") {
-                dismiss()
-                actions.onShowAppLog()
-            }
             if (actions.showGlowToggle) {
                 DropdownMenuItem(onClick = { dismiss(); actions.onToggleGlow() }) {
                     Text(
@@ -554,6 +537,10 @@ private fun AudioPlayOverflowMenu(actions: AudioPlayOverflowActions) {
                     modifier = Modifier.weight(1f),
                 )
                 AppMenuCheckbox(checked = actions.edgeGlowEnabled)
+            }
+            AudioOverflowItem("log") {
+                dismiss()
+                actions.onShowAppLog()
             }
         }
     }

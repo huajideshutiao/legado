@@ -26,7 +26,6 @@ object SharedAudioPlayPlatformProvider : AudioPlayPlatformProvider {
     override fun Content(
         state: AudioPlayUiState,
         onBack: () -> Unit,
-        onOpenChangeSource: () -> Unit,
         onOpenBookInfo: () -> Unit,
         onOpenToc: () -> Unit,
         onOpenBookSourceEdit: (String) -> Unit,
@@ -43,7 +42,6 @@ object SharedAudioPlayPlatformProvider : AudioPlayPlatformProvider {
         SharedAudioPlayScreenContent(
             state = state,
             onBack = onBack,
-            onOpenChangeSource = onOpenChangeSource,
             onOpenBookInfo = onOpenBookInfo,
             onOpenToc = onOpenToc,
             onOpenBookSourceEdit = onOpenBookSourceEdit,

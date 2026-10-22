@@ -27,11 +27,8 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.IntentData
-import io.legado.app.help.book.changeSourceTo
 import io.legado.app.help.book.delBookCore
-import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
@@ -72,7 +69,6 @@ import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.rememberSharedCoverDestinationBinding
-import io.legado.app.ui.root.toReadRoute
 import io.legado.app.utils.toDurationTime
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -91,8 +87,7 @@ import org.jetbrains.compose.resources.stringResource
  *
  * 对照 app 端 [io.legado.app.ui.book.audio.AudioPlayActivity]:
  * - onActivityCreated viewModel.initData → Init 事件
- * - showChangeSource → ChangeSourceDialogHost 全高底部弹窗 (原版 ChangeBookSourceDialog);
- *   openChapterList → 宽屏右侧面板 / 窄屏 TocDialogHost 全高底部弹窗 (对照原版 push Toc 带 resultKey)
+ * - openChapterList → 宽屏右侧面板 / 窄屏 TocDialogHost 全高底部弹窗 (对照原版 push Toc 带 resultKey)
  * - showLogin / copyAudioUrl / showSourceVariable / showBookVariable / editSource / addBookmark / showAppLog →
  *   构造 [AudioPlayOverflowActions] 交由 shared [io.legado.app.ui.book.audio.AudioPlayScreenContent] 渲染溢出菜单
  * - finish: !inBookshelf 时弹加书架确认 (对照 Activity.finish alert)
@@ -233,8 +228,6 @@ fun AudioPlayRoute(
     // 平台对话框状态 (对照 VideoPlayRoute showLogDialog / pendingBookmark)
     var showLogDialog by remember { mutableStateOf(false) }
     var pendingBookmark by remember { mutableStateOf<Bookmark?>(null) }
-    // 整书换源弹窗显示开关 (对照原版 menu_change_source → showDialogFragment(ChangeBookSourceDialog))
-    var showChangeSourceDialog by remember { mutableStateOf(false) }
     // 目录弹窗显示开关 (窄屏目录入口, 对照阅读页 ReaderDialogEvent.Toc → TocDialogHost)
     var showTocDialog by remember { mutableStateOf(false) }
 
@@ -402,10 +395,6 @@ fun AudioPlayRoute(
                 AppRoute.BookInfo(book.toRouteRef()),
                 resultKey = RouteResults.BOOK_INFO,
             )
-        },
-        onOpenChangeSource = {
-            // 对照原版 menu_change_source → showDialogFragment(ChangeBookSourceDialog) 全高底部弹窗
-            showChangeSourceDialog = true
         },
         onOpenToc = {
             // 对照 app 端 AudioPlayActivity.openChapterList: 未加书架的书目录不落库, 走内存传递。
@@ -598,53 +587,6 @@ fun AudioPlayRoute(
                 }
             },
             onDismiss = { showTocDialog = false },
-        )
-    }
-
-    // 整书换源弹窗 (对照原版 menu_change_source → ChangeBookSourceDialog 全高底部弹窗, 同阅读页/详情页同款)
-    if (showChangeSourceDialog) {
-        ChangeSourceDialogHost(
-            book = AudioPlayShared.book ?: book,
-            onSourceChanged = changeSource@{ source, newBook, toc ->
-                showChangeSourceDialog = false
-                if (!newBook.isAudio) {
-                    // 非音频书: 停播 + 迁移落库 + 跳对应阅读路由 + 退出音频页
-                    scope.launch {
-                        runCatching {
-                            AudioPlayShared.book?.changeSourceTo(
-                                newBook,
-                                toc,
-                                AudioPlayShared.inBookshelf
-                            )
-                        }.onFailure {
-                            AppLog.put("换源失败\n$it", it, true)
-                        }
-                        AudioPlayShared.stop()
-                        navigator.replace(newBook.toReadRoute())
-                    }
-                    return@changeSource
-                }
-                // 1) migrateTo 迁移进度/分组 2) 书架书落库 3) 切源数据落地
-                scope.launch {
-                    runCatching {
-                        AudioPlayShared.book?.changeSourceTo(
-                            newBook,
-                            toc,
-                            AudioPlayShared.inBookshelf
-                        )
-                    }.onFailure {
-                        AppLog.put("换源失败\n$it", it, true)
-                    }
-                    AudioPlayShared.chapterList = toc
-                    AudioPlayShared.resetData(newBook, source)
-                    screenModel.dispatch(AudioPlayUiEvent.UpdateInShelf(!newBook.isNotShelf))
-                }
-            },
-            onEditSource = { origin ->
-                navigator.push(AppRoute.BookSourceEdit(origin), RouteResults.BOOK_SOURCE_EDIT)
-            },
-            onBookSourceManage = { navigator.push(AppRoute.BookSourceManage) },
-            onDismiss = { showChangeSourceDialog = false },
         )
     }
 }

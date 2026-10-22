@@ -91,7 +91,6 @@ import kotlinx.coroutines.withContext
 fun SharedAudioPlayScreenContent(
     state: AudioPlayUiState,
     onBack: () -> Unit,
-    onOpenChangeSource: () -> Unit,
     onOpenBookInfo: () -> Unit,
     onOpenToc: () -> Unit,
     onOpenBookSourceEdit: (String) -> Unit,
@@ -140,7 +139,6 @@ fun SharedAudioPlayScreenContent(
         lrcActiveColor = palette?.lrcPrimary,
         lrcInactiveColor = palette?.lrcSecondary,
         onBack = onBack,
-        onOpenChangeSource = onOpenChangeSource,
         onOpenBookInfo = onOpenBookInfo,
         onCoverClick = { onEvent(AudioPlayUiEvent.CoverClick) },
         onCoverLongClick = onOpenCover,

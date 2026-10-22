@@ -52,7 +52,6 @@ interface AudioPlayPlatformProvider {
     fun Content(
         state: AudioPlayUiState,
         onBack: () -> Unit,
-        onOpenChangeSource: () -> Unit,
         /** 点顶栏标题进书籍详情 */
         onOpenBookInfo: () -> Unit,
         onOpenToc: () -> Unit,
