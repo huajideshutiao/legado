@@ -150,6 +150,20 @@ object ActiveReadAloudHostPorts : ReadAloudHostPorts {
         return advanced
     }
 
+    /**
+     * 章内位置所在页的页首偏移。
+     *
+     * 朗读自己翻页后阅读位置就停在页首, 朗读宿主据此把"自己翻的页"与"用户手动翻页"区分开
+     * (见 [io.legado.app.help.tts.ReadAloudHostShared] 的翻页监听)。
+     */
+    override fun pageStartOf(chapterIndex: Int, chapterPosition: Int): Int? {
+        val chapter = currentChapter ?: return null
+        if (chapter.chapterIndex != chapterIndex) return null
+        val pageIndex = chapter.getPageIndexByCharIndex(chapterPosition)
+        if (pageIndex < 0 || pageIndex >= chapter.pageSize) return null
+        return chapter.getReadLength(pageIndex)
+    }
+
     override val currentPosition: ReadAloudPosition?
         get() = ownerSnapshot?.readBook?.let {
             ReadAloudPosition(it.durChapterIndexValue, it.durChapterPosValue)

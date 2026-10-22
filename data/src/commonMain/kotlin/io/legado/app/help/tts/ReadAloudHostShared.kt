@@ -317,6 +317,16 @@ abstract class ReadAloudHostShared(
                 if (state != ReadAloudState.PLAYING) return@collect
                 if (position.chapterPosition == lastSyncedPos) return@collect
                 if (position.chapterIndex != controller.chapterIndex.value) return@collect
+                // 朗读自己翻的页: [advanceReadAloudPage] 把阅读位置写成新页页首 (与用户手动翻页
+                // 落在同一位置空间), 这里按"当前朗读段所在页的页首"识别并忽略。
+                // 漏掉这一步就会每次翻页都 [startAt] → 停引擎 + 整章重排 + 从页首重读,
+                // 听感正是"每读一页停一下"; 对照 app 端 TTS_PROGRESS 只写 durChapterPos,
+                // 不触发 curPageChanged 的朗读分支。
+                if (lastSyncedPos >= 0 &&
+                    position.chapterPosition == ports.pageStartOf(position.chapterIndex, lastSyncedPos)
+                ) {
+                    return@collect
+                }
                 if (position.chapterPosition in currentParagraphRange()) return@collect
                 startAt(position.chapterIndex, position.chapterPosition)
             }
@@ -443,4 +453,12 @@ interface ReadAloudHostPorts {
 
     /** 朗读位置推进联动: 返回是否发生了翻页; 无活动阅读页时 no-op 返回 false。 */
     fun advanceReadAloudPage(chapterIndex: Int, readingPos: Int): Boolean = false
+
+    /**
+     * [chapterPosition] 所在页的页首字符位置 (章内偏移); 无页概念或该章未排版时返回 null。
+     *
+     * 朗读自己驱动的翻页把阅读位置写成新页页首, 与用户手动翻页在位置空间上无差别, 宿主靠本
+     * 方法把两者区分开 (见 [ReadAloudHostShared] 的翻页监听)。
+     */
+    fun pageStartOf(chapterIndex: Int, chapterPosition: Int): Int? = null
 }
