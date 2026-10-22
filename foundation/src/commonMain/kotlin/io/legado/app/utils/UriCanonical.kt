@@ -59,6 +59,50 @@ fun String.canonicalizeUri(): String {
 }
 
 /**
+ * 网络请求入口的地址校验: 对齐 okhttp 5 `String.toHttpUrl()`（`Builder().parse(null, this)`）
+ * 的三类拒绝与文案：
+ * - 无可识别的 scheme（okhttp: `no scheme was found for <前 6 字符>...`）
+ * - scheme 非 http/https（okhttp: `but was '<scheme>'`）
+ * - authority 段无 host（okhttp: `Invalid URL host: "<host 段>"`，空串取不到 canonical host）
+ *
+ * 由上层 (StrResponse 构造) catch 后回退 http://localhost/。
+ * 只用于网络层 (KmpHttpUrl / Ktor 请求构造), 不用于打开系统链接或 WebView 加载 ——
+ * 那些场景允许 file:/tel: 等任意 scheme, 不能套 http(s) 白名单。
+ */
+fun String.requireHttpScheme(): String {
+    val colon = schemeDelimiterIndex(this)
+    if (colon <= 0) {
+        val truncated = if (length > 6) take(6) + "..." else this
+        throw IllegalArgumentException(
+            "Expected URL scheme 'http' or 'https' but no scheme was found for $truncated"
+        )
+    }
+    val scheme = substring(0, colon)
+    if (!scheme.equals("http", ignoreCase = true) && !scheme.equals("https", ignoreCase = true)) {
+        throw IllegalArgumentException(
+            "Expected URL scheme 'http' or 'https' but was '$scheme'"
+        )
+    }
+    val authorityStart = colon + 1
+    if (!startsWith("//", authorityStart)) {
+        throw IllegalArgumentException("Invalid URL host: \"\"")
+    }
+    val authorityEnd = (authorityStart + 2 until length).firstOrNull {
+        this[it] == '/' || this[it] == '?' || this[it] == '#'
+    } ?: length
+    val hostAndPort = substring(authorityStart + 2, authorityEnd).substringAfterLast('@')
+    val host = if (hostAndPort.startsWith("[")) {
+        hostAndPort.substring(1).substringBefore(']')
+    } else {
+        hostAndPort.substringBefore(':')
+    }
+    if (host.isEmpty()) {
+        throw IllegalArgumentException("Invalid URL host: \"$hostAndPort\"")
+    }
+    return this
+}
+
+/**
  * `scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )` (RFC 3986 §3.1)。
  * 返回 scheme 与下一段之间的 `:` 下标，不匹配时返回 -1（整串按 path 处理）。
  */

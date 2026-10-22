@@ -9,6 +9,7 @@ import io.legado.app.utils.Closeable
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.canonicalizeUri
+import io.legado.app.utils.requireHttpScheme
 import io.legado.app.utils.toInputStream
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -583,9 +584,10 @@ actual class KmpFormBodyBuilder actual constructor() {
 actual fun KmpFormBodyBuilder.buildKmpRequestBody(): KmpRequestBody = this.buildFormBody()
 
 /**
- * nativeMain 端 [KmpHttpUrl] 实现: 持有语法合法的 URI 字符串。
+ * nativeMain 端 [KmpHttpUrl] 实现: 持有语法合法的 http(s) URI 字符串。
  *
- * 构造即做 RFC 3986 逐段合法化 ([canonicalizeUri]) —— 「urlStr 恒为合法 URI」是本类型的不变式。
+ * 构造即做 RFC 3986 逐段合法化 ([canonicalizeUri]) 并校验 scheme ([requireHttpScheme]),
+ * 非 http/https 直接抛 —— 「urlStr 恒为合法 http(s) URI」是本类型的不变式。
  * 不做 OkHttp `toHttpUrl()` 级别的语义规范化 (默认端口移除/路径合并等)。
  */
 actual class KmpHttpUrl {
@@ -595,7 +597,8 @@ actual class KmpHttpUrl {
     constructor()
 
     internal constructor(urlStr: String) {
-        this.urlStr = urlStr.canonicalizeUri()
+        // 对齐 okhttp: 非 http/https 直接抛(消息同 HttpUrl.parse), 由上层 catch 后回退 localhost
+        this.urlStr = urlStr.canonicalizeUri().requireHttpScheme()
     }
 
     actual fun newBuilder(): KmpHttpUrlBuilder {
