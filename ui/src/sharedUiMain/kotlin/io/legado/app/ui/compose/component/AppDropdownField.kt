@@ -1,6 +1,7 @@
 package io.legado.app.ui.compose.component
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -88,6 +89,9 @@ internal fun AppSingleChoiceMenu(
  * 行内不留死区。
  *
  * [leading] 非空时与值区同处一个热区 (筛选行把标题放进来, 整行点开菜单)。
+ *
+ * [onLongClick] 非空时长按整块锚点触发 (筛选行行名长按打开可搜索选择弹窗); 为空时
+ * 只认点按, 手势与原来完全一致。
  */
 @Composable
 internal fun AppDropdownAnchor(
@@ -95,11 +99,22 @@ internal fun AppDropdownAnchor(
     modifier: Modifier = Modifier,
     leading: (@Composable RowScope.() -> Unit)? = null,
     enabled: Boolean = true,
+    onLongClick: (() -> Unit)? = null,
     menuContent: @Composable (dismiss: () -> Unit) -> Unit,
 ) {
     val colors = AppTheme.colors
     var expanded by remember { mutableStateOf(false) }
-    Box(modifier.clickable(enabled = enabled) { expanded = true }) {
+    val openMenu = { expanded = true }
+    val anchorModifier = if (onLongClick == null) {
+        Modifier.clickable(enabled = enabled, onClick = openMenu)
+    } else {
+        Modifier.combinedClickable(
+            enabled = enabled,
+            onClick = openMenu,
+            onLongClick = onLongClick,
+        )
+    }
+    Box(modifier.then(anchorModifier)) {
         Row(
             Modifier
                 .align(Alignment.CenterEnd)

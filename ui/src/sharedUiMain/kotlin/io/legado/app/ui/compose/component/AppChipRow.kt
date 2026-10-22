@@ -43,18 +43,23 @@ fun AppChipRow(
     )
 }
 
-/** chip 行标题 chip: 粗体 + 0.8 透明, 点按通常为重置/打开选择器。 */
+/**
+ * chip 行标题 chip: 粗体 + 0.8 透明, 点按通常为重置/打开选择器,
+ * 长按为打开该行的可搜索选择弹窗。
+ */
 @Composable
 fun AppChipRowTitle(
     text: String,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
 ) {
     AppFilletTextButton(
         text = text,
         modifier = modifier,
         alpha = 0.8f,
         bold = true,
+        onLongClick = onLongClick,
         onClick = onClick,
     )
 }
@@ -62,12 +67,14 @@ fun AppChipRowTitle(
 /**
  * chip 行选项 chip: 自带前置 spacingXs 间距; 选中全亮、未选中半透明
  * (alpha 作用于整颗 chip 含背景, 对齐原版 setUpExploreOptions 语义)。
+ *
+ * [onClick] 为空时是纯展示 chip (多选行的已选标签: 点按冒泡到整行, 由整行打开选择弹窗)。
  */
 @Composable
 fun AppChipRowOption(
     text: String,
     selected: Boolean = true,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)? = null,
 ) {
     Spacer(Modifier.width(DesignTokens.spacingXs))
     AppFilletTextButton(

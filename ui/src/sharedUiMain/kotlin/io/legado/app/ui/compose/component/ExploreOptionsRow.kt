@@ -15,10 +15,12 @@ import io.legado.app.model.webBook.ExploreOption
  * 参数筛选行 (下沉 app 端 `ExploreOptionView.setUpExploreOptions`)。
  *
  * 主页展示项 (HomeSectionAdapter.updateOptions)、发现结果页 (ExploreShowActivity) 与搜索页单源
- * 搜索选项共用同一视图, 故三处都消费本组件。每个 [ExploreOption] 一行, 选项交给
- * [AppChoiceRowGroup] / [AppMultiChoiceRowGroup] 统一裁决 (选项数 > 4 出横向滚动 chip 行, 否则
- * 下拉并排); 单选行的标题可点重置默认 (对齐原版点标题 chip 重置), 菜单热区占标题以外整行,
- * 多选行点 chip / 下拉项即切。任意变化调 [onOptionSelected]。
+ * 搜索选项共用同一视图, 故三处都消费本组件。每个 [ExploreOption] 一行:
+ * - 单选行交给 [AppChoiceRowGroup]: 选项数 > 4 出横向滚动 chip 行, 否则下拉并排; 标题可点
+ *   重置默认 (对齐原版点标题 chip 重置), 菜单热区占标题以外整行。
+ * - 多选行交给 [AppMultiChoiceRowGroup]: 只列已选标签, 点按整行打开带搜索的选择弹窗
+ *   (对齐原版), 确认时一次写回并只重搜一次。
+ * - 行名长按 / 整行鼠标右键在任何行上都能打开同一个可搜索选择弹窗。
  *
  * [ExploreOption] 的 selectedValue / selectedValues 是普通可变字段, 不被 Compose 跟踪;
  * 点击后 bump 本地 revision 重取快照刷新选中态。
@@ -76,13 +78,13 @@ private fun ExploreOption.toMultiChoiceField(onChanged: () -> Unit) = AppMultiCh
     title = name,
     options = options.map { it.first },
     selectedIndexes = options.indices.filter { options[it].second in selectedValues }.toSet(),
-    onToggle = { index ->
-        val value = options[index].second
-        if (value in selectedValues) {
-            selectedValues.remove(value)
-        } else {
-            selectedValues.add(value)
+    // 弹窗确认时整份写回, 只触发一次重搜 (逐项回调会让每个勾选都发一轮请求)
+    onSelectionChange = { indexes ->
+        val values = indexes.mapTo(mutableSetOf()) { options[it].second }
+        if (values != selectedValues) {
+            selectedValues.clear()
+            selectedValues.addAll(values)
+            onChanged()
         }
-        onChanged()
     },
 )
