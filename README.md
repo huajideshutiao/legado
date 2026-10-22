@@ -29,10 +29,10 @@ Legado 已基于 Kotlin Multiplatform (KMP) 重构，同一套代码覆盖以下
 |------------------------------|--------------------------------------|
 | Android                      | ✅ 主力平台，功能完整                          |
 | 桌面端（Windows / macOS / Linux） | ✅ Compose Multiplatform 桌面版          |
-| iOS                          | 🚧 理论可用（iosApp）                      |
+| iOS                          | 🟡 基本可用（iosApp）                      |
 | 鸿蒙（HarmonyOS / OpenHarmony）  | 🚧 理论可用，构建时需开启 `enableOhosTarget` 开关 |
 
-> 注：除 Android 外，其余平台目前处于开发/理论支持阶段，功能以 Android 版为准。
+> 注：iOS 与鸿蒙暂只提供未签名包；功能完善度以 Android 版为准。
 
 <a href="#readme">
     <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
@@ -56,13 +56,13 @@ Legado 已基于 Kotlin Multiplatform (KMP) 重构，同一套代码覆盖以下
 
 # Download-下载 [![](https://img.shields.io/badge/-Download-F5F5F5.svg)](#Download-下载-)
 
-#### Android
+#### Android / 桌面端（Windows / macOS / Linux）
 
 * [发行版（Releases）](https://github.com/huajideshutiao/legado/releases/latest)
 
-#### iOS
+#### iOS / 鸿蒙（HarmonyOS）
 
-* 未签名 IPA - [GitHub Releases](https://github.com/huajideshutiao/legado/releases/latest)（可用
+* 未签名 IPA 与未签名 HAP - [多平台测试版](https://github.com/huajideshutiao/legado/releases/tag/multiplatform-test)（iOS 可用
   SideStore / AltStore 自签侧载）
 
 <a href="#readme">

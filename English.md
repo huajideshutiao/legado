@@ -29,11 +29,11 @@ platforms:
 |-----------------------------------|------------------------------------------------------------------------|
 | Android                           | ✅ Primary platform, full features                                      |
 | Desktop (Windows / macOS / Linux) | ✅ Compose Multiplatform desktop app                                    |
-| iOS                               | 🚧 Theoretically available (iosApp)                                    |
+| iOS                               | 🟡 Basically usable (iosApp)                                           |
 | HarmonyOS (OpenHarmony)           | 🚧 Theoretically available, requires the `enableOhosTarget` build flag |
 
-> Note: except for Android, the other platforms are currently under development / theoretical
-> support; features are subject to the Android version.
+> Note: iOS and HarmonyOS are currently distributed as unsigned packages only; features are subject
+> to the Android version.
 
 <a href="#readme">
     <img src="https://img.shields.io/badge/-Top-orange.svg" alt="#" align="right">
@@ -60,14 +60,14 @@ platforms:
 
 # Download [![](https://img.shields.io/badge/-Download-F5F5F5.svg)](#Download-)
 
-#### Android
+#### Android / Desktop (Windows / macOS / Linux)
 
 * [Releases](https://github.com/huajideshutiao/legado/releases/latest)
 
-#### iOS
+#### iOS / HarmonyOS
 
-* Unsigned IPA - [GitHub Releases](https://github.com/huajideshutiao/legado/releases/latest) (
-  sideload with SideStore / AltStore)
+* Unsigned iOS IPA and HarmonyOS HAP - [multiplatform-test release](https://github.com/huajideshutiao/legado/releases/tag/multiplatform-test) (
+  sideload the IPA with SideStore / AltStore)
 
 <a href="#readme">
     <img src="https://img.shields.io/badge/-Top-orange.svg" alt="#" align="right">
