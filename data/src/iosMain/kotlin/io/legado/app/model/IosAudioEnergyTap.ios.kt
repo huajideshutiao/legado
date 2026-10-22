@@ -2,10 +2,7 @@
 
 package io.legado.app.model
 
-import io.legado.app.model.audio.AudioPulseEnvelope
-import io.legado.app.model.audio.AudioEnergyMeter
-import io.legado.app.model.audio.AudioLoudnessMeter
-import io.legado.app.model.audio.AudioSpectrum
+import io.legado.app.model.audio.AudioVisualAnalyzer
 import kotlinx.cinterop.StableRef
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CPointerVar
@@ -53,7 +50,7 @@ private const val FORMAT_FLAG_IS_NON_INTERLEAVED = 32u
 /**
  * iOS 端的音频能量采集: 在播放中的 PCM 上挂一个 AudioProcessingTap。
  *
- * 响度与能量归一化全部复用共享层 ([AudioLoudnessMeter] + [AudioEnergyMeter]),
+ * 响度、频谱与按 hop 的能量归一化全部复用共享层 ([AudioVisualAnalyzer]),
  * 与安卓的 PCM 拦截、桌面端从播放器滤镜取电平同口径。
  *
  * 平台约束 (Apple 说明): MTAudioProcessingTap 只对逐帧可取的音源生效, HLS 一类分段流拿不到
@@ -65,12 +62,10 @@ object IosAudioEnergyTap {
     internal class TapState {
         /** 本 tap 自己的 StableRef: 终结回调用它释放, 不依赖类级单槽 */
         var handle: StableRef<TapState>? = null
-        var loudness: AudioLoudnessMeter? = null
-        var spectrum: AudioSpectrum? = null
-        val energyMeter = AudioEnergyMeter()
-        val bandMeter = AudioPulseEnvelope(AudioSpectrum.BAND_COUNT)
 
-        var sampleRate: Double = 44100.0
+        /** 按 hop 分析与包络累计 (四端口径同一份实现), prepare 拿到采样率后创建 */
+        var analyzer: AudioVisualAnalyzer? = null
+
         var channels: Int = 2
         var bytesPerSample: Int = 4
         var isFloat: Boolean = true
@@ -146,7 +141,7 @@ private fun onTapInit(
 
 private fun onTapFinalize(tap: MTAudioProcessingTapRef?) {
     val state = tapStateOf(tap)
-    state?.loudness?.reset()
+    state?.analyzer?.reset()
     // 终结的是这个 tap 自己的运行态, 不碰其他 tap (每个 tap 自持自己的 StableRef)
     state?.handle?.dispose()
     state?.handle = null
@@ -161,21 +156,17 @@ private fun onTapPrepare(
     val state = tapStateOf(tap) ?: return
     val format = processingFormat?.pointed ?: return
     val sampleRate = format.mSampleRate
-    state.sampleRate = if (sampleRate > 0.0) sampleRate else 44100.0
+    val rate = if (sampleRate > 0.0) sampleRate.toInt() else 44100
     state.channels = format.mChannelsPerFrame.toInt().coerceAtLeast(1)
     val bits = format.mBitsPerChannel.toInt().coerceAtLeast(16)
     state.bytesPerSample = (bits / 8).coerceAtLeast(2)
     state.isFloat = (format.mFormatFlags and FORMAT_FLAG_IS_FLOAT) != 0u
     state.isNonInterleaved = (format.mFormatFlags and FORMAT_FLAG_IS_NON_INTERLEAVED) != 0u
-    state.loudness = AudioLoudnessMeter(state.sampleRate.toInt())
-    state.spectrum = AudioSpectrum(state.sampleRate.toInt())
-    state.energyMeter.reset()
-    state.bandMeter.reset()
+    state.analyzer = AudioVisualAnalyzer(rate)
 }
 
 private fun onTapUnprepare(tap: MTAudioProcessingTapRef?) {
-    tapStateOf(tap)?.loudness?.reset()
-    tapStateOf(tap)?.spectrum?.reset()
+    tapStateOf(tap)?.analyzer?.reset()
 }
 
 private fun onTapProcess(
@@ -200,23 +191,19 @@ private fun onTapProcess(
     val frames = (numberFramesOut?.pointed?.value ?: numberFrames).toInt()
     if (frames <= 0) return
     val state = tapStateOf(tap) ?: return
-    val loudness = state.loudness ?: return
-    val spectrum = state.spectrum ?: return
+    val analyzer = state.analyzer ?: return
 
-    analyzePcm(state, loudness, spectrum, bufferListInOut, frames)
-    val dtMs = frames.toDouble() / state.sampleRate * 1000.0
-    // 窗口未满时仍推能量 (低频段计 0), 只有频段值要等首帧 FFT 出来
-    val frame = spectrum.analyze()
-    val energy = state.energyMeter.pushFrame(dtMs, loudness.momentaryLkfs(), frame?.lowBand ?: 0.0)
-    // 各段独立起伏: 边缘光效按频段分开驱动
-    AudioPlayShared.publishVisual(energy, frame?.let { state.bandMeter.push(dtMs, it.bands) })
+    analyzer.playSpeed = AudioPlayShared.playSpeed
+    analyzer.beginBuffer()
+    analyzePcm(state, analyzer, bufferListInOut, frames)
+    // 一缓冲只派发一次: 块内每个 hop 的起伏已按真实时长累进两条包络
+    if (analyzer.hasFrame) AudioPlayShared.publishVisual(analyzer.energy, analyzer.bands)
 }
 
-/** 按 ASBD 描述的采样格式把多声道混成单声道后喂给响度计与频谱 */
+/** 按 ASBD 描述的采样格式把多声道混成单声道后喂给分析器 */
 private fun analyzePcm(
     state: IosAudioEnergyTap.TapState,
-    loudness: AudioLoudnessMeter,
-    spectrum: AudioSpectrum,
+    analyzer: AudioVisualAnalyzer,
     bufferList: CPointer<AudioBufferList>,
     frames: Int,
 ) {
@@ -234,9 +221,7 @@ private fun analyzePcm(
                 used++
             }
             if (used > 0) {
-                val value = mono / used
-                loudness.pushSample(value)
-                spectrum.pushSample(value)
+                analyzer.pushSample(mono / used)
             }
         }
     } else {
@@ -247,9 +232,7 @@ private fun analyzePcm(
             for (ch in 0 until channels) {
                 mono += readSample(data, frame * channels + ch, state)
             }
-            val value = mono / channels
-            loudness.pushSample(value)
-            spectrum.pushSample(value)
+            analyzer.pushSample(mono / channels)
         }
     }
 }

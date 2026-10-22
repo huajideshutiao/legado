@@ -5,10 +5,7 @@ import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.audio.TeeAudioProcessor
 import io.legado.app.model.AudioPlayShared
-import io.legado.app.model.audio.AudioPulseEnvelope
-import io.legado.app.model.audio.AudioEnergyMeter
-import io.legado.app.model.audio.AudioLoudnessMeter
-import io.legado.app.model.audio.AudioSpectrum
+import io.legado.app.model.audio.AudioVisualAnalyzer
 import java.nio.ByteBuffer
 
 /**
@@ -17,132 +14,93 @@ import java.nio.ByteBuffer
  * 旁路（tee）只观察、不改写：输入格式与输出格式完全一致，下游的静音跳过与变速
  * 处理器拿到的仍是原始的 16 位 PCM。
  *
- * 每 hop（512 帧）产出一帧驱动：K 加权 400ms 瞬时响度（LKFS）做底色，
- * 1024 点谱通量做律动；解码按管道给出的编码分支处理，多声道取平均成单声道。
+ * 这里只负责按管道给出的编码把多声道 PCM 混成单声道；按 hop 分析与包络累计统一由
+ * [AudioVisualAnalyzer] 负责（四端口径同一份实现）。
  */
 @OptIn(UnstableApi::class)
 class EnergyAudioBufferSink : TeeAudioProcessor.AudioBufferSink {
 
-    private companion object {
-        /** 分析步长: 512 帧 ≈ 11.6ms @44.1k */
-        const val HOP_FRAMES = 512
-    }
-
-    private var loudness: AudioLoudnessMeter? = null
-    private var spectrum: AudioSpectrum? = null
-    private var energyMeter = AudioEnergyMeter()
-    private val bandMeter = AudioPulseEnvelope(AudioSpectrum.BAND_COUNT)
-    private var pendingFrames = 0
-    private var sampleRate = 44100
+    private var analyzer: AudioVisualAnalyzer? = null
     private var channels = 2
     private var encoding = C.ENCODING_PCM_16BIT
 
+    /** 每帧字节数; 不支持的编码给 0 */
+    private val bytesPerSample: Int
+        get() = when (encoding) {
+            C.ENCODING_PCM_16BIT -> 2
+            C.ENCODING_PCM_24BIT -> 3
+            C.ENCODING_PCM_32BIT -> 4
+            C.ENCODING_PCM_FLOAT -> 4
+            else -> 0
+        }
+
     override fun flush(sampleRateHz: Int, channelCount: Int, encoding: Int) {
-        sampleRate = sampleRateHz.coerceAtLeast(8000)
+        val sampleRate = sampleRateHz.coerceAtLeast(8000)
         channels = channelCount.coerceAtLeast(1)
         this.encoding = encoding
-        loudness = AudioLoudnessMeter(sampleRate)
-        spectrum = AudioSpectrum(sampleRate)
-        energyMeter.reset()
-        bandMeter.reset()
-        pendingFrames = 0
+        analyzer = AudioVisualAnalyzer(sampleRate)
         AudioPlayShared.publishLevelOnly(0f)
     }
 
     override fun handleBuffer(buffer: ByteBuffer) {
-        val loudness = loudness ?: return
-        val spectrum = spectrum ?: return
-        val frames = when (encoding) {
-            C.ENCODING_PCM_16BIT -> feedShorts(buffer, loudness, spectrum)
-            C.ENCODING_PCM_32BIT -> feedInts(buffer, loudness, spectrum)
-            C.ENCODING_PCM_FLOAT -> feedFloats(buffer, loudness, spectrum)
-            C.ENCODING_PCM_24BIT -> feed24Bit(buffer, loudness, spectrum)
-            else -> return
-        }
+        val analyzer = analyzer ?: return
+        val bytesPerFrame = bytesPerSample * channels
+        if (bytesPerFrame <= 0) return
+        val frames = buffer.remaining() / bytesPerFrame
         if (frames <= 0) return
 
-        pendingFrames += frames
-        val hopMs = HOP_FRAMES.toDouble() / sampleRate * 1000.0
-        val speed = AudioPlayShared.playSpeed.coerceAtLeast(0.1f)
-        while (pendingFrames >= HOP_FRAMES) {
-            pendingFrames -= HOP_FRAMES
-            val lkfs = loudness.momentaryLkfs()
-            val frame = spectrum.analyze()
-            val dtMs = hopMs / speed
-            val energy = energyMeter.pushFrame(dtMs, lkfs, frame?.lowBand ?: 0.0)
-            // 各段独立起伏: 边缘光效按频段分开驱动, 不与上面那条合成曲线同涨同落
-            AudioPlayShared.publishVisual(energy, frame?.let { bandMeter.push(dtMs, it.bands) })
+        analyzer.playSpeed = AudioPlayShared.playSpeed
+        analyzer.beginBuffer()
+        when (encoding) {
+            C.ENCODING_PCM_16BIT -> feedShorts(buffer, frames, analyzer)
+            C.ENCODING_PCM_32BIT -> feedInts(buffer, frames, analyzer)
+            C.ENCODING_PCM_FLOAT -> feedFloats(buffer, frames, analyzer)
+            C.ENCODING_PCM_24BIT -> feed24Bit(buffer, frames, analyzer)
         }
+        // 一缓冲只派发一次: 块内每个 hop 的起伏已按真实时长累进两条包络
+        if (analyzer.hasFrame) AudioPlayShared.publishVisual(analyzer.energy, analyzer.bands)
     }
 
-    private fun feedShorts(
-        buffer: ByteBuffer,
-        loudness: AudioLoudnessMeter,
-        spectrum: AudioSpectrum,
-    ): Int {
+    private fun feedShorts(buffer: ByteBuffer, frames: Int, analyzer: AudioVisualAnalyzer) {
         val view = buffer.asShortBuffer()
-        val frames = view.remaining() / channels
         for (frame in 0 until frames) {
             var mono = 0.0
             for (channel in 0 until channels) {
                 mono += view.get(frame * channels + channel) / 32768.0
             }
-            val value = mono / channels
-            loudness.pushSample(value)
-            spectrum.pushSample(value)
+            analyzer.pushSample(mono / channels)
         }
-        return frames
     }
 
-    private fun feedInts(
-        buffer: ByteBuffer,
-        loudness: AudioLoudnessMeter,
-        spectrum: AudioSpectrum,
-    ): Int {
+    private fun feedInts(buffer: ByteBuffer, frames: Int, analyzer: AudioVisualAnalyzer) {
         val view = buffer.asIntBuffer()
-        val frames = view.remaining() / channels
         for (frame in 0 until frames) {
             var mono = 0.0
             for (channel in 0 until channels) {
                 mono += view.get(frame * channels + channel) / 2147483648.0
             }
-            val value = mono / channels
-            loudness.pushSample(value)
-            spectrum.pushSample(value)
+            analyzer.pushSample(mono / channels)
         }
-        return frames
     }
 
-    private fun feedFloats(
-        buffer: ByteBuffer,
-        loudness: AudioLoudnessMeter,
-        spectrum: AudioSpectrum,
-    ): Int {
+    private fun feedFloats(buffer: ByteBuffer, frames: Int, analyzer: AudioVisualAnalyzer) {
         val view = buffer.asFloatBuffer()
-        val frames = view.remaining() / channels
         for (frame in 0 until frames) {
             var mono = 0.0
             for (channel in 0 until channels) {
                 mono += view.get(frame * channels + channel)
             }
-            val value = mono / channels
-            loudness.pushSample(value)
-            spectrum.pushSample(value)
+            analyzer.pushSample(mono / channels)
         }
-        return frames
     }
 
     /** 24 位小端有符号: 3 字节一组, 最高位为符号位 */
-    private fun feed24Bit(
-        buffer: ByteBuffer,
-        loudness: AudioLoudnessMeter,
-        spectrum: AudioSpectrum,
-    ): Int {
-        val frames = buffer.remaining() / (3 * channels)
+    private fun feed24Bit(buffer: ByteBuffer, frames: Int, analyzer: AudioVisualAnalyzer) {
         for (frame in 0 until frames) {
             var mono = 0.0
             for (channel in 0 until channels) {
-                val base = (frame * channels + channel) * 3
+                // 绝对下标以缓冲起点为基准 (asShortBuffer 那一类视图是按当前位置算的, 两者口径要对齐)
+                val base = buffer.position() + (frame * channels + channel) * 3
                 val b0 = buffer.get(base).toInt() and 0xFF
                 val b1 = buffer.get(base + 1).toInt() and 0xFF
                 val b2 = buffer.get(base + 2).toInt() and 0xFF
@@ -150,10 +108,7 @@ class EnergyAudioBufferSink : TeeAudioProcessor.AudioBufferSink {
                 if (value and 0x800000 != 0) value = value or -0x1000000
                 mono += value / 8388608.0
             }
-            val value = mono / channels
-            loudness.pushSample(value)
-            spectrum.pushSample(value)
+            analyzer.pushSample(mono / channels)
         }
-        return frames
     }
 }

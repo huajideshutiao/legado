@@ -158,7 +158,7 @@ private fun Color.glowTone(): Color {
     val hsl = FloatArray(3)
     ColorUtils.colorToHSL(toArgb(), hsl)
     hsl[1] = hsl[1].coerceIn(0.35f, 0.95f)
-    hsl[2] = hsl[2].coerceIn(0.45f, 0.75f)
+    hsl[2] = hsl[2].coerceIn(0.50f, 0.82f)
     return Color(ColorUtils.HSLToColor(hsl))
 }
 

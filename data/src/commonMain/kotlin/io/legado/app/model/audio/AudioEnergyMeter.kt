@@ -6,9 +6,9 @@ import kotlin.math.pow
 /**
  * 音频能量驱动：感知响度做底色，低频能量包络做律动。
  *
- * - **底色**（50%）：K 加权 150ms 瞬时响度（LKFS）映射到以最近 30 秒响度为中心、
+ * - **底色**（30%）：K 加权 150ms 瞬时响度（LKFS）映射到以最近 30 秒响度为中心、
  *   上下 8dB 的区间，再取 0.5 次幂（Stevens 亮度指数范围）。绝对量，越响越亮。
- * - **律动**（50%）：低频段（20–320Hz）能量的快包络 ÷ 慢平均（MilkDrop/Butterchurn 的写法：
+ * - **律动**（70%）：低频段（20–320Hz）能量的快包络 ÷ 慢平均（MilkDrop/Butterchurn 的写法：
  *   快包络上升保留 0.2、下降 0.5，慢平均 0.992，均按 `keep^(dt*30/1000)` 换算帧率）。
  *   这是一条连续曲线，随鼓点起伏；不用离散的起音检测（会漏拍、会卡）。
  *
@@ -22,8 +22,12 @@ class AudioEnergyMeter {
         private const val LONG_TERM_KEEP = 0.9995
         private const val BASE_POWER = 0.5
 
-        private const val BASE_WEIGHT = 0.5
-        private const val PULSE_WEIGHT = 0.5
+        /**
+         * 底色权重: 150ms 响度窗本身带约 75ms 的群延迟 (它只当"够不够响"的底),
+         * 贴拍的瞬态全部交给律动通道 —— 底色占一半时整个驱动值会比拍子慢 60~90ms。
+         */
+        private const val BASE_WEIGHT = 0.3
+        private const val PULSE_WEIGHT = 0.7
 
         /** 线性幅度转分贝; 静音钳到下限, 避免负无穷 */
         fun linearToDb(linear: Double): Double {

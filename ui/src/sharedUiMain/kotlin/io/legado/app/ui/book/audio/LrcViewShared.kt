@@ -68,6 +68,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -149,10 +150,12 @@ fun LrcViewShared(
             lrc.energy = 0f
             return@LaunchedEffect
         }
-        AudioPlayShared.audioEnergy.collect {
+        // drop(1): 订阅一开始状态流会回放缓存帧 (暂停前那一帧), 它不是新样本 —— 当成新样本会把
+        // 采样时刻打成当下, 恢复播放瞬间辉光直接跳到暂停前水平, 而不是随新音频淡入。
+        AudioPlayShared.audioVisual.drop(1).collect { frame ->
             // 记下派发时刻: 绘制期据此判断音频管道是否还在供数 (断供才衰减)
-            lrc.energy = it
-            lrc.energyAtMs = positionNowMs()
+            lrc.energy = frame.energy
+            lrc.energyAtMs = positionNowMs().toLong()
         }
     }
 
@@ -165,7 +168,7 @@ fun LrcViewShared(
         var lastFrameNs = 0L
         while (isActive) {
             // 暂停时目标恒为 0: 显示包络自行收干净, 不依赖播放侧清零
-            val target = if (isPlaying) lrc.decayedEnergy(positionNowMs()) else 0f
+            val target = if (isPlaying) lrc.decayedEnergy(positionNowMs().toLong()) else 0f
             if (target <= AudioEnergyEnvelope.SILENT_THRESHOLD &&
                 lrc.smoothEnergy <= AudioEnergyEnvelope.SILENT_THRESHOLD
             ) {
@@ -1497,7 +1500,7 @@ private class LrcRuntime {
         set(value) {
             energyEnvelope.energy = value
         }
-    var energyAtMs: Int
+    var energyAtMs: Long
         get() = energyEnvelope.energyAtMs
         set(value) {
             energyEnvelope.energyAtMs = value
@@ -1514,7 +1517,7 @@ private class LrcRuntime {
     var colorJob: Job? = null
 
     /** 绘制期取用当前驱动值 (断供衰减见 [AudioEnergyEnvelope.decayedEnergy]) */
-    fun decayedEnergy(nowMs: Int): Float = energyEnvelope.decayedEnergy(nowMs)
+    fun decayedEnergy(nowMs: Long): Float = energyEnvelope.decayedEnergy(nowMs)
 
     /** 静音/暂停: 显示值归零, 避免恢复播放瞬间从陈旧的亮度跳下来 */
     fun resetEnergyEnvelope() = energyEnvelope.resetDisplay()

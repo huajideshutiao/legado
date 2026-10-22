@@ -120,28 +120,35 @@ object AudioPlayShared {
     var durCoverUrl: String? = null
 
     /**
-     * 底层播放器实时音频物理 PCM 能量强度 (0.0f ~ 1.0f)。
+     * 一帧音频可视信号: 整体能量 + 各频段幅度。
      *
-     * 由底层播放器 (Android ExoPlayer PCM 采样) 真实音频物理电平驱动,
-     * 用于实时调制歌词微弱柔光与背景流光的呼吸收放。
+     * 派发方必须保证每帧都是新实例, 不能改旧实例的字段: 订阅方把"收到一帧"当作
+     * "管道还在供数"的依据 (相同数值也必须照常通知), 并用 [bands] 换数组建立重绘依赖。
      *
-     * 只在播放器真的产出 PCM 时更新; 暂停后值停在最后一帧, 所以**显示侧自己按播放状态
-     * 收到 0**(见 AudioEnergyEnvelope 的两个使用方), 不依赖谁去清零。
+     * @param energy 整体能量 0~1: 供歌词辉光
+     * @param bands 各频段幅度 0~1 (长度 [AudioSpectrum.BAND_COUNT]): 供页面边缘光效按段驱动
      */
-    val audioEnergy = MutableStateFlow(0f)
+    class AudioVisualFrame(
+        val energy: Float,
+        val bands: FloatArray,
+    )
 
     /**
-     * 底层播放器实时多频段幅度 (每段 0.0f ~ 1.0f, 长度 [io.legado.app.model.audio.AudioSpectrum.BAND_COUNT])。
+     * 底层播放器实时音频可视信号。
      *
-     * 供页面边缘光效按频段分别驱动 (低频、人声、高频各占不同位置), 与 [audioEnergy] 的单值
-     * 口径不同: 那边是给歌词辉光的合成曲线, 这边保留各段独立起伏。
+     * 由底层播放器真实音频物理 PCM 驱动: [AudioVisualFrame.energy] 用于实时调制歌词微弱柔光与
+     * 背景流光的呼吸收放, [AudioVisualFrame.bands] 供页面边缘光效按频段分别驱动 (低频、人声、
+     * 高频各占不同位置), 两者同源但口径不同。
      *
      * 无频谱能力的端 (桌面走播放器峰值电平、鸿蒙只给整体幅度) 用整体电平填满各段 ——
      * 如实退化, 不伪造频谱。
      *
-     * 与 [audioEnergy] 同源, 同样由显示侧按播放状态收尾。
+     * 只在播放器真的产出 PCM 时更新; 暂停后值停在最后一帧, 所以**显示侧自己按播放状态
+     * 收到 0**(见 AudioEnergyEnvelope 的两个使用方), 不依赖谁去清零。
      */
-    val audioBands = MutableStateFlow(FloatArray(AudioSpectrum.BAND_COUNT))
+    val audioVisual = MutableStateFlow(
+        AudioVisualFrame(0f, FloatArray(AudioSpectrum.BAND_COUNT))
+    )
 
     /**
      * 当前章节歌词 (null = 无歌词/未就绪)。
@@ -252,11 +259,12 @@ object AudioPlayShared {
     /**
      * 发布一帧音频可视信号 (能量 + 各频段)。
      *
-     * [bands] 会被复制一份, 调用方可以直接传自己复用的数组 (不要依赖“必须拷贝”的口头约定)。
+     * [bands] 会被复制一份, 调用方可以直接传自己复用的数组 (不要依赖“必须拷贝”的口头约定);
+     * 传 null 表示该帧没有新的频段值, 沿用上一帧的。
      */
     fun publishVisual(energy: Float, bands: FloatArray?) {
-        audioEnergy.value = energy
-        bands?.let { audioBands.value = it.copyOf() }
+        val previous = audioVisual.value
+        audioVisual.value = AudioVisualFrame(energy, bands?.copyOf() ?: previous.bands)
     }
 
     /**
@@ -265,8 +273,7 @@ object AudioPlayShared {
      * 也是“没有信号了”(停止/拆链/flush) 的清零入口。
      */
     fun publishLevelOnly(energy: Float) {
-        audioEnergy.value = energy
-        audioBands.value = FloatArray(AudioSpectrum.BAND_COUNT) { energy }
+        audioVisual.value = AudioVisualFrame(energy, FloatArray(AudioSpectrum.BAND_COUNT) { energy })
     }
 
     /**
