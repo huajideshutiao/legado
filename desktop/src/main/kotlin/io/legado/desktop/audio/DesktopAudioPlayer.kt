@@ -18,6 +18,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.openani.mediamp.MediaStatus
 import org.openani.mediamp.MediampPlayer
 import org.openani.mediamp.PlaybackEvent
@@ -103,6 +104,13 @@ class DesktopAudioPlayer {
 
     /** 上一次失败是否仅因媒体播放组件未安装 (下载完成后要能重新起播, 不能当粘性错误留着) */
     private var runtimePending = false
+
+    /** 播放器滤镜里没有 astats 时置位: 每个播放器实例只探一次, 避免每章重复失败与日志噪音 */
+    @Volatile
+    private var energyMeterUnavailable = false
+
+    /** 能量轮询协程是否已启动 (滤镜可用时启动一次, 跨会话复用) */
+    private var energyPolling = false
 
     private val engineLock = Any()
 
@@ -223,6 +231,7 @@ class DesktopAudioPlayer {
         }
         lastCommandJob?.join()
         if (released) return
+        clearEnergyFilter(engine)
         try {
             engine.setMediaData(
                 data = UriMediaData(theUrl, headers),
@@ -238,6 +247,7 @@ class DesktopAudioPlayer {
         }
         currentCoroutineContext().ensureActive()
         if (released) return
+        attachEnergyMeter(engine)
         listener?.onReady(durationMs)
     }
 
@@ -339,7 +349,6 @@ class DesktopAudioPlayer {
             MediampPlayer(Unit, controlScope.coroutineContext).also {
                 engine = it
                 startStateCollectors(it)
-                startEnergyMeter(it)
             }
         } catch (e: Throwable) {
             engineError = "mediamp 初始化失败: ${e.message}"
@@ -396,29 +405,57 @@ class DesktopAudioPlayer {
     }
 
     /**
-     * 音频能量采集: libmpv 没有 PCM 回调, 但可以把 `astats` 滤镜挂进音频链,
-     * 读取滤镜发布的逐帧元数据 (mpv 手册的 `af-metadata/<filter-label>` 属性)。
+     * 装载前摘掉分析滤镜, 保证带进装载的滤镜列表里没有未经校验的分析滤镜。
+     *
+     * mpv 的 `af` 命令只在音频链已配置时才能校验滤镜能否创建; 链不存在时命令直接报成功,
+     * 滤镜只被写进 `af` 配置 (mpv 手册 input.rst 对该行为的说明: 命令在链配置前执行时
+     * 无法执行这项校验, 创建链时会失败)。这样的滤镜会随配置进入下一次装载, 让装载时的链
+     * 初始化失败并摘掉整条音轨 (NOTHING_TO_PLAY)。
+     */
+    private suspend fun clearEnergyFilter(engine: MediampPlayer) {
+        withContext(Dispatchers.Main) {
+            if (released) return@withContext
+            val mpv = engine.impl as? MPVHandle ?: return@withContext
+            if (mpv.getPropertyString("af")?.contains(ENERGY_FULL_LABEL) != true) return@withContext
+            mpv.command("af", "remove", "@$ENERGY_FULL_LABEL")
+        }
+    }
+
+    /**
+     * 音频能量采集: libmpv 没有 PCM 回调, 只能把 `astats` 滤镜挂进音频链,
+     * 再读滤镜发布的逐帧元数据 (mpv 手册的 `af-metadata/<filter-label>` 属性)。
+     *
+     * 挂载时机受 mpv 约束: `af add` 只有在音频链已配置时才会真正创建滤镜并回报失败
+     * (mpv 的 reinit_audio_filters 在无音频链时直接返回成功); 音频链配置前挂上的滤镜只是
+     * 写进 `af` 配置, 由装载时的链初始化创建 —— 创建失败会让 mpv 摘掉整条音轨
+     * (NOTHING_TO_PLAY), 整次播放报错。本方法只在 [prepare] 装载完成 (音频链已配置) 后调用。
+     *
+     * 音频链已配置时创建失败是安全的: mpv 丢弃新建的那条链, 旧链原样保留, 命令返回失败。
+     * 据此判定滤镜可用性: 不可用即本次会话只试一次, 界面后果只是辉光不随音乐起伏。
      *
      * 只挂一条整带测量: `astats` 只测不改, 对输出逐字节透明。mpv 的音频滤镜是**一条串行链**
      * (`af add` 是往后追加), 链尾输出就是扬声器输入 —— 任何窄带滤波 (如 `lowpass`)
-     * 挂上去都会把用户听到的声音一起滤掉, 因此不得为分频把分析滤镜串进播放链。
+     * 挂上去都会把用户听到的声音一起滤掉, 不得为分频把分析滤镜串进播放链。
      *
      * 固有上限: 引擎只暴露"最近一帧"的统计值, 这里每 [ENERGY_POLL_MS] 轮询一次,
      * 两次采样之间的瞬态会漏掉; 安卓/iOS 逐块连续喂 PCM 不存在这一处丢失。
-     *
-     * 滤镜不可用 (mpv 构建缺少 lavfi/astats) 时直接放弃: 界面上的后果只是辉光不随音乐起伏。
      */
-    private fun startEnergyMeter(engine: MediampPlayer) {
-        val mpv = engine.impl as? MPVHandle ?: return
-        val fullAdded = mpv.command(
-            "af", "add",
-            "@$ENERGY_FULL_LABEL:lavfi=[$ASTATS_FILTER]",
-        )
-        if (!fullAdded) {
-            AppLog.put("音频能量: 播放器滤镜不可用, 辉光不随音乐起伏", tag = "音频能量")
-            return
-        }
+    private fun attachEnergyMeter(engine: MediampPlayer) {
+        if (energyMeterUnavailable) return
         controlScope.launch {
+            if (released) return@launch
+            val mpv = engine.impl as? MPVHandle ?: return@launch
+            val fullAdded = mpv.command(
+                "af", "add",
+                "@$ENERGY_FULL_LABEL:lavfi=[$ASTATS_FILTER]",
+            )
+            if (!fullAdded) {
+                energyMeterUnavailable = true
+                AppLog.put("音频能量: 播放器滤镜不可用, 辉光不随音乐起伏", tag = "音频能量")
+                return@launch
+            }
+            if (energyPolling) return@launch
+            energyPolling = true
             val meter = AudioEnergyMeter()
             var lastMs = 0L
             while (isActive) {
