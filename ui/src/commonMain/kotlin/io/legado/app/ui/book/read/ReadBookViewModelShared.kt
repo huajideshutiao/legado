@@ -671,12 +671,14 @@ class ReadBookViewModelShared(
         }
 
         override fun chapterText(chapterIndex: Int): String? {
-            if (chapterIndex == readBook.durChapterIndexValue) {
-                readBook.curTextChapter.value?.let { chapter ->
-                    if (chapter.pages.isNotEmpty() && !chapter.pages.first().isMsgPage) {
-                        return chapter.pages.joinToString("") { it.text }
-                    }
-                }
+            // 优先取已排版章节的页文本: 章标题是排版产物 (SimpleChapterLayout 的 displayTitle),
+            // 净化/替换规则也在排版链路里才生效。直接读缓存原文会丢标题、漏替换规则, 段落位置也
+            // 与页边界对不上 (表现为: 换章不读标题、该过滤的还照读、目录标蓝落后一章)。
+            val layout = readBook.curTextChapter.value?.takeIf { it.chapterIndex == chapterIndex }
+                ?: readBook.nextTextChapter.value?.takeIf { it.chapterIndex == chapterIndex }
+                ?: readBook.prevTextChapter.value?.takeIf { it.chapterIndex == chapterIndex }
+            if (layout != null && layout.pages.isNotEmpty() && !layout.pages.first().isMsgPage) {
+                return layout.pages.joinToString("") { it.text }
             }
             val book = readBook.bookValue ?: return null
             val chapter = readBook.chapterListValue?.getOrNull(chapterIndex) ?: return null

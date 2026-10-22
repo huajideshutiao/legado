@@ -549,6 +549,48 @@ class ReadAloudControllerShared(
     }
 
     /**
+     * 同章内换位置 (用户手动翻页): 只换队列续读, 不拆会话。
+     *
+     * [start] 是"新会话"语义: 重新解析并注册 TTS 路由、重登章节、重置整套状态。用户翻页只是
+     * "从这一页开头接着念", 用不着这一套 —— 那正是翻页后卡一段时间、甚至把引擎停在那儿不动
+     * 的直接原因。这里保留引擎路由与订阅令牌, 只重建段落队列再提交当前段。
+     *
+     * @param chapterPosition 翻页后阅读页的页首 (章内字符位置); 拿不到计划时回落 [start]
+     */
+    fun seekTo(chapterPosition: Int) {
+        val index = _chapterIndex.value
+        if (index < 0 || _state.value != ReadAloudState.PLAYING) {
+            if (index >= 0) start(index, chapterPosition)
+            return
+        }
+        val plan = runCatching {
+            chapterData.loadChapterPlan(index, chapterPosition, false)
+        }.getOrNull()
+        // 拿不到计划, 或起点之后已没有可朗读段: 回落完整重启路径 (它会按章顺延/报错)
+        if (plan == null || plan.paragraphs.none { !it.matches(AppPattern.notReadAloudRegex) }) {
+            start(index, chapterPosition)
+            return
+        }
+        invalidatePlayback()
+        stopEngine()
+        // 对照 [start] 的新起点登记: 翻页后翻页联动从新页重新起算
+        ActiveReadAloudHostPorts.resetReadAloudPageCursor(chapterPosition)
+        pendingChapterRequest.value = null
+        _chapterIndex.value = index
+        _paragraphIndex.value = -1
+        _chapterPosition.value = plan.chapterPosition
+        _currentText.value = ""
+        playbackQueue.reset(
+            contentList = plan.paragraphs,
+            nowSpeak = plan.paragraphIndex,
+            readAloudNumber = plan.chapterPosition,
+            paragraphStartPos = plan.paragraphOffset,
+        )
+        playbackQueue.seekSpeakable()
+        playCurrent()
+    }
+
+    /**
      * 停止朗读并清空状态。
      *
      * 调用方退出阅读 / 用户主动停止时调用。

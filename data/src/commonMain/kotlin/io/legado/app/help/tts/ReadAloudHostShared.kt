@@ -420,7 +420,11 @@ abstract class ReadAloudHostShared(
                     return@collect
                 }
                 if (position.chapterPosition in currentParagraphRange()) return@collect
-                startAt(position.chapterIndex, position.chapterPosition)
+                // 同章翻页: 软定位即可 —— 重建整场会话 (startAt) 会让翻页后卡一段甚至把
+                // 引擎停住; 这里只换队列, 引擎路由与订阅令牌原样保留。
+                lastSyncedPos = position.chapterPosition
+                pausedPosition = null
+                controller.seekTo(position.chapterPosition)
             }
         }
     }
