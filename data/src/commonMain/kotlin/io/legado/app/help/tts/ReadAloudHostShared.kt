@@ -403,6 +403,12 @@ abstract class ReadAloudHostShared(
                 if (state != ReadAloudState.PLAYING) return@collect
                 if (position.chapterPosition == lastSyncedPos) return@collect
                 if (position.chapterIndex != controller.chapterIndex.value) return@collect
+                // 换章时阅读页会把阅读位置落成章首 0 (loadChapterInternal 的跳章落位), 这不是
+                // 用户翻页; 朗读此刻也在章首 (段 0 / 尚未起段), 放行就会立刻 startAt 把刚起的
+                // 这一章再拆一次, 正是章首那声停顿的来源。
+                if (position.chapterPosition == 0 && controller.paragraphIndex.value <= 0) {
+                    return@collect
+                }
                 // 朗读自己翻的页: [advanceReadAloudPage] 把阅读位置写成新页页首 (与用户手动翻页
                 // 落在同一位置空间), 这里按"当前朗读段所在页的页首"识别并忽略。
                 // 漏掉这一步就会每次翻页都 [startAt] → 停引擎 + 整章重排 + 从页首重读,

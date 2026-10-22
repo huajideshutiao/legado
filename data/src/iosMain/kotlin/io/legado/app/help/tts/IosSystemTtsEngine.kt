@@ -2,6 +2,7 @@
 
 package io.legado.app.help.tts
 
+import io.legado.app.constant.AppLog
 import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -118,6 +119,7 @@ class IosSystemTtsEngine : SystemTtsEngine {
             didStartSpeechUtterance: AVSpeechUtterance
         ) {
             idOf(didStartSpeechUtterance)?.let {
+                AppLog.put("TTS start $it")
                 listeners.onStart(it)
             }
         }
@@ -131,6 +133,7 @@ class IosSystemTtsEngine : SystemTtsEngine {
             speakingState = false
             pausedState = false
             removeId(didFinishSpeechUtterance)?.let {
+                AppLog.put("TTS done $it")
                 listeners.onDone(it)
             }
         }
@@ -144,7 +147,7 @@ class IosSystemTtsEngine : SystemTtsEngine {
             // 仅在非主动 stop 的取消场景触发 (AVSpeechSynthesizer 自动取消极少见)
             speakingState = false
             pausedState = false
-            removeId(didCancelSpeechUtterance)
+            removeId(didCancelSpeechUtterance)?.let { AppLog.put("TTS cancel $it") }
         }
 
         @ObjCSignatureOverride
@@ -242,6 +245,7 @@ class IosSystemTtsEngine : SystemTtsEngine {
             )
         }
         bindId(utterance, utteranceId)
+        AppLog.put("TTS speak len=${text.length} $utteranceId")
         synthesizer.speakUtterance(utterance)
         return true
     }
@@ -280,6 +284,7 @@ class IosSystemTtsEngine : SystemTtsEngine {
      * 在 delegate 中清 speakingState/pausedState (不触发 onError, 与 desktop 行为一致)。
      */
     override fun stop() {
+        if (speakingState || pausedState) AppLog.put("TTS stop")
         synthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.AVSpeechBoundaryImmediate)
         clearIds()
         speakingState = false

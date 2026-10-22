@@ -795,10 +795,54 @@ class ReadAloudControllerShared(
         if (playbackQueue.stepNextOrEnd()) {
             // 还有段落, 朗读下一段
             playCurrent()
-        } else {
-            // 本章节末段已朗读完 → 切下一章并续读 (不在队列推进内调 navigator)
-            nextChapter()
+            return
         }
+        // 章末: 下一章正文已经能建出计划时直接换队列续读, 不拆会话重来。
+        // 每次换章都 stop 引擎 + 重新注册 + 重新开始, 既不必要, 也让章末变成最容易卡住的地方。
+        if (continueIntoNextChapter()) return
+        // 本章节末段已朗读完 → 切下一章并续读 (不在队列推进内调 navigator)
+        nextChapter()
+    }
+
+    /**
+     * 无缝续读下一章: 换队列继续念, 不走 [start] 的整场重建。
+     *
+     * 只在下一章正文已就绪 (能同步建出段落计划且含有可朗读段) 时接手; 否则返回 false, 由
+     * [nextChapter] 走原路径 (置 WAITING 等装载, 由等章看门狗兜底)。
+     *
+     * 与 [start] 的差别只有"不拆会话": 引擎路由、订阅令牌、播放轮次、状态全部保留, 章末只是
+     * 换一份队列再提交下一段 —— 和段与段之间没有区别, 因此不会出现"引擎停了却迟迟不开口"。
+     */
+    private fun continueIntoNextChapter(): Boolean {
+        val next = _chapterIndex.value + 1
+        if (next < 0 || next >= chapterData.chapterCount) return false
+        val plan = runCatching {
+            chapterData.loadChapterPlan(next, 0, false)
+        }.getOrNull() ?: return false
+        // 整章没有可朗读段 (纯空章/纯标点) 时不接: 交回 nextChapter 的顺延逻辑
+        if (plan.paragraphs.none { !it.matches(AppPattern.notReadAloudRegex) }) return false
+
+        val request = PendingChapterRequest(next, 0, false)
+        pendingChapterRequest.value = request
+        // 对照 [start] 的新会话起点登记: 换章后翻页联动从章首重新起算
+        ActiveReadAloudHostPorts.resetReadAloudPageCursor(0)
+        _chapterIndex.value = next
+        _paragraphIndex.value = -1
+        _chapterPosition.value = 0
+        _currentText.value = ""
+        chapterNavigation.moveToChapter(next)
+        _chapterSize.value = chapterData.chapterCount
+        playbackQueue.reset(
+            contentList = plan.paragraphs,
+            nowSpeak = plan.paragraphIndex,
+            readAloudNumber = plan.chapterPosition,
+            paragraphStartPos = plan.paragraphOffset,
+        )
+        // 上面已保证章内有可朗读段, 这里必然停在某一段上
+        playbackQueue.seekSpeakable()
+        pendingChapterRequest.compareAndSet(request, null)
+        playCurrent()
+        return true
     }
 
     /**
