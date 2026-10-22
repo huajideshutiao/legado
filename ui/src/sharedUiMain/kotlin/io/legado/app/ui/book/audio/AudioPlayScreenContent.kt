@@ -70,7 +70,6 @@ import io.legado.app.model.AudioPlayShared
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSlider
-import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
@@ -115,8 +114,7 @@ enum class AudioPlaySidePanelKind { TOC, REVIEW }
  * - [titleBarTrailingSlot]: 标题栏尾部 (默认评论钮, 四端一致; 见 SharedAudioPlayScreenContent)
  * - [timerDialogSlot]/[speedDialogSlot]: 定时/倍速弹窗 (四端共用 AlertDialog 实现)
  *
- * 视觉参数 (图标/回显标签底色/控制排透明度/内边距) 已统一为 app 原版值,
- * 不再暴露平台参数 (原 desktop 半透明黑标签/1f 透明度/8dp 标题栏内边距等已移除);
+ * 视觉参数 (图标/控制排透明度/内边距) 由本文件统一给出, 不接受平台注入;
  * 控制钮按压底用 Compose 默认指示 (不绘制 arco_fill_3 圆形底)。
  *
  * @param title 标题 (书名)
@@ -357,7 +355,7 @@ fun AudioPlayScreenContent(
                         )
                     }
                 }
-                // 定时回显标签 (左上; 底色统一 arco_fill_3 跟随主题)
+                // 定时回显标签 (左上; 底色固定半透明黑, 见 FilletLabel)
                 if (timerMinute > 0) {
                     FilletLabel(
                         text = "${timerMinute}m",
@@ -367,7 +365,7 @@ fun AudioPlayScreenContent(
                             .padding(DesignTokens.spacingLg),
                     )
                 }
-                // 倍速回显标签 (右上; 底色统一 arco_fill_3 跟随主题)
+                // 倍速回显标签 (右上; 底色固定半透明黑, 见 FilletLabel)
                 if (speed != 1f) {
                     FilletLabel(
                         text = "%.1fX".format(speed),
@@ -621,9 +619,12 @@ private fun CoverImage(
     }
 }
 
-// ---- 定时/倍速回显标签 (圆角填充底 + 可选图标 + 白字) ----
-// 底色统一 arco_fill_3 (亮 #FFE6E6E6 / 暗 #FF2A2A2A, 跟随主题), 与移动端/master 一致;
-// 原 desktop 半透明黑 0x66000000 已移除 (见 AudioPlayScreenContent 参数收拢)。
+// ---- 定时/倍速回显标签 (半透明黑圆角底 + 可选图标 + 白字) ----
+// 底色固定半透明黑, 不跟随主题: 本页背景恒为模糊封面 + 深色压暗层, 主题填充色在浅色主题下
+// 是近白 #FFE6E6E6, 与白字同色, 标签读不出来。白字配 50% 黑底, 纯白封面下对比度仍约 6:1。
+
+/** 回显标签底色: 50% 黑, 保证白字在任意封面图上可读。 */
+private val FilletLabelBackground = Color(0x80000000)
 
 @Composable
 private fun FilletLabel(
@@ -633,7 +634,7 @@ private fun FilletLabel(
 ) {
     Row(
         modifier
-            .background(rememberColor("arco_fill_3"), DesignTokens.shapeDefault)
+            .background(FilletLabelBackground, DesignTokens.shapeDefault)
             .padding(horizontal = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
