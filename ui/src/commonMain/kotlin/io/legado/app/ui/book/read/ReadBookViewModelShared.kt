@@ -694,6 +694,24 @@ class ReadBookViewModelShared(
             nextPage()
         }
 
+        override fun isChapterLoading(chapterIndex: Int): Boolean =
+            loadGuard.currentJob(chapterIndex) != null
+
+        /**
+         * 预取指定章正文 (朗读侧调用)。
+         *
+         * 只走 [loadContent] 的装载链路, 不写 durChapterIndex、不动页面流, 因此不会把阅读位置
+         * 挪到被预取的那一章上; 装载成功后正文落盘, 章末换章直接命中缓存, 不必再等网络。
+         *
+         * @param force true 时替换在途任务 (卡在联网正文上的那次没有谁会取消它, 等章看门狗靠它重发)
+         */
+        override fun prefetchChapter(chapterIndex: Int, force: Boolean) {
+            if (chapterIndex < 0 || chapterIndex >= readBook.chapterSize) return
+            // 非强制时避开在途任务: 同章 launch 会取消并替换它, 反而打断正在跑的那次装载
+            if (!force && loadGuard.currentJob(chapterIndex) != null) return
+            loadGuard.launch(chapterIndex) { loadContent(chapterIndex, silent = true) }
+        }
+
         override fun uploadProgress() = this@ReadBookViewModelShared.uploadProgress()
     }
 

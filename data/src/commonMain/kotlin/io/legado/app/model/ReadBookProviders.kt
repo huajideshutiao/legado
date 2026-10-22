@@ -75,6 +75,16 @@ interface ActiveReadAloudOwner {
     fun moveToChapter(chapterIndex: Int)
     fun moveToNextPage()
     fun uploadProgress()
+
+    /** 该章是否有在途装载任务 (朗读等章看门狗据此判定"装载已无声结束")。 */
+    fun isChapterLoading(chapterIndex: Int): Boolean
+
+    /**
+     * 预取该章正文; 默认只在没有在途任务时启动。
+     *
+     * @param force true 时连在途任务一起替换 (朗读等章看门狗用它重发卡死的装载)
+     */
+    fun prefetchChapter(chapterIndex: Int, force: Boolean)
 }
 
 /**
@@ -162,6 +172,25 @@ object ActiveReadAloudHostPorts : ReadAloudHostPorts {
         val pageIndex = chapter.getPageIndexByCharIndex(chapterPosition)
         if (pageIndex < 0 || pageIndex >= chapter.pageSize) return null
         return chapter.getReadLength(pageIndex)
+    }
+
+    /**
+     * 该章正文是否就绪: 当前章槽命中, 且首屏不是占位/消息页。
+     *
+     * 朗读的等章看门狗用它判定"可以续读", 不依赖 `curTextChapter` 的更新事件是否送达。
+     */
+    override fun isChapterTextReady(chapterIndex: Int): Boolean {
+        val chapter = currentChapter ?: return false
+        if (chapter.chapterIndex != chapterIndex) return false
+        val first = chapter.pages.firstOrNull() ?: return false
+        return !first.isMsgPage
+    }
+
+    override fun isChapterLoading(chapterIndex: Int): Boolean =
+        ownerSnapshot?.isChapterLoading(chapterIndex) ?: false
+
+    override fun prefetchChapter(chapterIndex: Int, force: Boolean) {
+        ownerSnapshot?.prefetchChapter(chapterIndex, force)
     }
 
     override val currentPosition: ReadAloudPosition?

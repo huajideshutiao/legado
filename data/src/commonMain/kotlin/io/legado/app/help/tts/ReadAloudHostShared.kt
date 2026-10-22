@@ -20,6 +20,7 @@ import io.legado.app.service.ReadAloudPlanBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
@@ -58,6 +59,9 @@ abstract class ReadAloudHostShared(
 
     /** 章节装载就绪监听槽: 与 [stop] 分属不同线程。 */
     private val chapterWatch = SingleJobSlot(scope)
+
+    /** 章末等章看门狗: 装载无声夭折时补发/上报, 与 [stop] 分属不同线程。 */
+    private val waitingWatch = SingleJobSlot(scope)
 
     /** [controller] 的裸引用: 供 lazy 初始化期间启动的协程读取, 避免回环触发 lazy。 */
     @Volatile
@@ -141,6 +145,7 @@ abstract class ReadAloudHostShared(
     override fun stop() {
         chapterWatch.cancel()
         positionWatch.cancel()
+        waitingWatch.cancel()
         pausedPosition = null
         sleepTimer.cancel()
         controllerRef?.stop()
@@ -257,6 +262,13 @@ abstract class ReadAloudHostShared(
         scope.launch {
             instance.lastError.collect { AppLog.put(it) }
         }
+        scope.launch {
+            // 进入一章就先备好下一章的正文: 章末换章不该再等一次网络往返
+            // (正文章节已在磁盘缓存时, 章末 chapterText 直接命中, 不会落到 WAITING)
+            instance.chapterIndex.collect { index ->
+                if (index >= 0) ports.prefetchChapter(index + 1)
+            }
+        }
         startChapterWatch()
         return instance
     }
@@ -267,7 +279,81 @@ abstract class ReadAloudHostShared(
         startChapterWatch()
         applySpeechRate()
         controller.start(chapterIndex, pos)
+        retryWaitingIfReadyNow()
         startPositionWatch()
+    }
+
+    /**
+     * 控制器刚落到 [ReadAloudState.WAITING] 时立刻补一次就绪检查。
+     *
+     * `curTextChapter` 的就绪事件可能早于 WAITING 建立 (装载任务与 [startAt] 并发), 那样
+     * [startChapterWatch] 会把该事件按"状态不是 WAITING"丢弃, 之后再没有事件可等 ——
+     * 这正是"章末停住再也不恢复"的一条路径。这里在 [ReadAloudControllerShared.start] 返回后
+     * 按当前状态对齐一次, 不依赖那次事件是否送达。
+     */
+    private fun retryWaitingIfReadyNow() {
+        val chapterIndex = controller.chapterIndex.value
+        if (chapterIndex < 0) return
+        if (controller.state.value != ReadAloudState.WAITING) return
+        if (!ports.isChapterTextReady(chapterIndex)) return
+        controller.retryWaiting(chapterIndex)
+    }
+
+    /**
+     * 章末等章看门狗: 覆盖 [startChapterWatch] 覆盖不到的两类停摆。
+     *
+     * 换章时控制器置 [ReadAloudState.WAITING], 正常由 `curTextChapter` 的就绪事件唤起续读。但
+     * 装载任务可能**无声结束**: `loadContent` 在目录未就绪 / 章节表越界 / 窗口外等分支直接
+     * return, 不产生任何 TextChapter, 也就既没有更新事件、也没有错误 —— 朗读就此永久停在
+     * WAITING, 听感是"章末停住, 有时几分钟后自己接上, 有时再也不恢复"。
+     *
+     * 本看门狗补三件事:
+     * - 就绪即续读 (不依赖事件送达);
+     * - 装载迟迟不完成 (联网正文卡住) 时隔一段重发一次, 卡死的那次不再拖着整场朗读;
+     * - 等太久仍不成就上报错误, 把"永久静音"变成可见的停止。
+     */
+    private fun startWaitingWatch() {
+        waitingWatch.restart {
+            val chapterIndex = controller.chapterIndex.value
+            if (chapterIndex < 0) return@restart
+            AppLog.put("朗读等待第 ${chapterIndex + 1} 章正文")
+            var deadRetries = 0
+            var forces = 0
+            var nextForceAt = WAITING_FORCE_INTERVAL_MS
+            var waited = 0L
+            while (true) {
+                delay(WAITING_POLL_MS)
+                waited += WAITING_POLL_MS
+                if (controller.state.value != ReadAloudState.WAITING) return@restart
+                if (ports.isChapterTextReady(chapterIndex)) {
+                    AppLog.put("朗读续读第 ${chapterIndex + 1} 章 (等待 ${waited}ms)")
+                    if (controller.retryWaiting(chapterIndex)) return@restart
+                }
+                if (!ports.isChapterLoading(chapterIndex)) {
+                    // 装载已无声结束 (目录缺失 / 越界 / 窗口外等分支直接 return, 不产生 TextChapter):
+                    // 没有谁会再来通知, 只能补发一次
+                    deadRetries++
+                    if (deadRetries > WAITING_MAX_RETRIES) {
+                        AppLog.put("朗读第 ${chapterIndex + 1} 章装载反复失败, 已停止")
+                        controller.reportError("第 ${chapterIndex + 1} 章加载失败, 朗读已停止")
+                        return@restart
+                    }
+                    AppLog.put("朗读重发第 ${chapterIndex + 1} 章装载 ($deadRetries)")
+                    ports.prefetchChapter(chapterIndex)
+                } else if (waited >= nextForceAt && forces < WAITING_MAX_FORCES) {
+                    // 在途装载久不完成 (卡在联网正文上): 没人会取消它, 换掉重来
+                    forces++
+                    nextForceAt = waited + WAITING_FORCE_INTERVAL_MS
+                    AppLog.put("朗读等章过久, 强制重发第 ${chapterIndex + 1} 章装载 ($forces)")
+                    ports.prefetchChapter(chapterIndex, force = true)
+                }
+                if (waited >= WAITING_TIMEOUT_MS) {
+                    AppLog.put("朗读等待第 ${chapterIndex + 1} 章超时, 已停止")
+                    controller.reportError("等待第 ${chapterIndex + 1} 章超时, 朗读已停止")
+                    return@restart
+                }
+            }
+        }
     }
 
     /**
@@ -365,6 +451,8 @@ abstract class ReadAloudHostShared(
 
     /** 朗读态广播; 暂停/停止时的清高亮由阅读页的 ALOUD_STATE 订阅负责。 */
     private fun onStateChanged(state: ReadAloudState) {
+        // 只有 WAITING 需要看门狗; 落在其它状态说明等章已结束, 看门狗无事可做
+        if (state != ReadAloudState.WAITING) waitingWatch.cancel()
         when (state) {
             ReadAloudState.PLAYING -> {
                 // 本类平台无 BaseReadAloudService, 朗读计时由状态广播承担,
@@ -388,7 +476,9 @@ abstract class ReadAloudHostShared(
                 ports.mediaControl.release()
             }
 
-            ReadAloudState.IDLE, ReadAloudState.WAITING -> Unit
+            ReadAloudState.WAITING -> startWaitingWatch()
+
+            ReadAloudState.IDLE -> Unit
         }
     }
 
@@ -413,6 +503,23 @@ abstract class ReadAloudHostShared(
         }
     }
     // endregion
+
+    private companion object {
+        /** WAITING 看门狗的轮询间隔 (就绪检查与超时计时共用)。 */
+        const val WAITING_POLL_MS = 3_000L
+
+        /** 装载任务已无声结束时, 最多补发几次装载。 */
+        const val WAITING_MAX_RETRIES = 3
+
+        /** 在途装载久不完成时, 隔多久强制换掉重发一次。 */
+        const val WAITING_FORCE_INTERVAL_MS = 180_000L
+
+        /** 最多强制重发几次 (再久就是源站不可用, 留给超时兜底)。 */
+        const val WAITING_MAX_FORCES = 2
+
+        /** WAITING 最长等待: 超过即上报错误, 不让朗读无声地无限等下去。 */
+        const val WAITING_TIMEOUT_MS = 10 * 60 * 1000L
+    }
 }
 
 data class ReadAloudPosition(val chapterIndex: Int, val chapterPosition: Int)
@@ -461,4 +568,29 @@ interface ReadAloudHostPorts {
      * 方法把两者区分开 (见 [ReadAloudHostShared] 的翻页监听)。
      */
     fun pageStartOf(chapterIndex: Int, chapterPosition: Int): Int? = null
+
+    /**
+     * [chapterIndex] 的正文是否已排版就绪 (当前章命中该章, 且不是占位消息页)。
+     *
+     * 供等章看门狗判定"可以续读了": 不依赖 `curTextChapter` 的那一次更新事件是否送达。
+     */
+    fun isChapterTextReady(chapterIndex: Int): Boolean = false
+
+    /**
+     * [chapterIndex] 是否有在途装载任务。
+     *
+     * false 且正文未就绪 = 装载已无声结束 (目录缺失/越界等分支直接 return), 再等也不会有人来通知,
+     * 需要调用方补发一次装载。
+     */
+    fun isChapterLoading(chapterIndex: Int): Boolean = false
+
+    /**
+     * 预取 [chapterIndex] 的正文 (不改变当前阅读位置、不动页面流)。
+     *
+     * 朗读进入一章时就把下一章备好, 章末换章才不会退化成"等一次网络往返"。
+     *
+     * @param force true 时连在途任务一起替换 —— 卡在联网正文上的装载没有谁会去取消它,
+     *   等章看门狗靠它把卡死的那一次重发掉
+     */
+    fun prefetchChapter(chapterIndex: Int, force: Boolean = false) = Unit
 }
