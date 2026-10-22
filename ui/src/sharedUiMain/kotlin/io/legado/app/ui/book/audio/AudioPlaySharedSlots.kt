@@ -1,9 +1,8 @@
 package io.legado.app.ui.book.audio
 
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.withInfiniteAnimationFrameNanos
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -36,6 +35,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -58,15 +58,19 @@ import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.rememberRouteVisibleState
+import kotlinx.coroutines.flow.StateFlow
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.image_cover_default
 import legado.ui.generated.resources.timer_m
 import org.jetbrains.compose.resources.imageResource
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.PI
 import kotlin.math.roundToInt
-import kotlin.random.Random
+import kotlin.math.sin
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
@@ -90,6 +94,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun SharedAudioPlayScreenContent(
     state: AudioPlayUiState,
+    progress: StateFlow<AudioPlayProgress>,
     onBack: () -> Unit,
     onOpenBookInfo: () -> Unit,
     onOpenToc: () -> Unit,
@@ -127,9 +132,7 @@ fun SharedAudioPlayScreenContent(
         coverVisible = state.coverVisible,
         timerMinute = state.timerMinute,
         speed = state.speed,
-        progressMs = state.progressMs,
-        durationMs = state.durationMs,
-        bufferMs = state.bufferMs,
+        progress = progress,
         isPlaying = state.isPlaying,
         loading = state.loading,
         playMode = state.playMode,
@@ -153,7 +156,9 @@ fun SharedAudioPlayScreenContent(
         overflowActions = overflowActions,
         onTapOutsideSidePanel = onTapOutsideSidePanel,
         coverSlot = { url, modifier -> SharedAudioCoverSlot(url, modifier) },
-        blurBgSlot = { url, modifier -> SharedAudioBlurBgSlot(url, modifier) },
+        blurBgSlot = { url, modifier, playing ->
+            SharedAudioBlurBgSlot(url, modifier, playing)
+        },
         edgeGlowSlot = if (overflowActions.edgeGlowEnabled) {
             { modifier ->
                 AudioPlayEdgeGlow(
@@ -290,68 +295,103 @@ private suspend fun loadAudioCover(loader: BookImageLoader, coverUrl: String?): 
 /** 背景模糊半径 (dp): 绘制期模糊与被预模糊位图共用同一值 */
 private val BG_BLUR_RADIUS = 24.dp
 
-/** 背景浮动的放大基准: 留出位移余量, 移动时不会露出底色 */
-private const val BG_DRIFT_SCALE_BASE = 1.10f
+/** 背景呼吸的位移上限 (dp) */
+private const val BG_BREATH_DRIFT_DP = 10f
 
-/** 背景浮动的最定位移 (dp) */
-private const val BG_DRIFT_MAX_DP = 12f
-
-/** 背景浮动的缩放变化幅度 (±) */
-private const val BG_DRIFT_SCALE_RANGE = 0.02f
-
-/** 背景浮动单程时长区间 (ms): 随机取值, 不跟着音乐变 */
-private const val BG_DRIFT_MIN_MS = 6000
-private const val BG_DRIFT_MAX_MS = 14000
+/** 背景呼吸的缩放变化幅度 (±) */
+private const val BG_BREATH_SCALE_RANGE = 0.025f
 
 /**
- * 背景模糊图的轻微浮动: 每段随机游走, 与音频能量无关 (不看音量、不跟着拍子)。
+ * 呼吸周期 (ms): 主周期互质, 两个轴各再叠一条更长的次周期 ——
+ * 合成路径不是简单椭圆, 也不会在同一时间点同时回头。
+ */
+private const val BG_BREATH_X_MS = 13_700.0
+private const val BG_BREATH_Y_MS = 17_900.0
+private const val BG_BREATH_SCALE_MS = 9_300.0
+private const val BG_BREATH_X2_MS = 23_300.0
+private const val BG_BREATH_Y2_MS = 31_100.0
+
+/** 次周期在位移里的占比 */
+private const val BG_BREATH_MINOR = 0.35
+
+/** 两轴呼吸的相位差 (弧): 起止点错开, 路径不沿对角线往返 */
+private const val BG_SECOND_PHASE = PI / 3.0
+
+/**
+ * 背景模糊图的轻微呼吸: 位移与缩放由时间驱动的连续正弦给出, 任何时刻速度都不为零 ——
+ * 不存在"挪到位就停住再起步"的顿挫; 与音频能量无关 (不看音量、不跟着拍子)。
  *
- * 位移与缩放都在绘制阶段读取, 只失效重绘不重组; 图预先放大 [BG_DRIFT_SCALE_BASE]
- * 保证移动后边缘不露出底色。墨水屏由调用方整条修饰符不挂 (既不浮动也不放大)。
+ * 位移与缩放都在绘制阶段读取, 只失效重绘不重组。放大倍数按位移上限与缩放向下摆幅反算,
+ * 摆到极限时四边也不会露出底色。墨水屏由调用方整条修饰符不挂 (既不浮动也不放大)。
  */
 @Composable
-private fun Modifier.bgDrift(): Modifier {
+private fun Modifier.bgBreath(isPlaying: Boolean): Modifier {
     val density = LocalDensity.current
-    val maxOffsetPx = with(density) { BG_DRIFT_MAX_DP.dp.toPx() }
-    val driftX = remember { mutableFloatStateOf(0f) }
-    val driftY = remember { mutableFloatStateOf(0f) }
-    val driftScale = remember { mutableFloatStateOf(BG_DRIFT_SCALE_BASE) }
-    LaunchedEffect(maxOffsetPx) {
-        val random = Random.Default
-        var fromX = 0f
-        var fromY = 0f
-        var fromScale = BG_DRIFT_SCALE_BASE
+    val breathAmpPx = with(density) { BG_BREATH_DRIFT_DP.dp.toPx() }
+    val breathX = remember { mutableFloatStateOf(0f) }
+    val breathY = remember { mutableFloatStateOf(0f) }
+    val breathScale = remember { mutableFloatStateOf(0f) }
+    // 页面不在前台时停住相位 (不空转帧循环), 回到前台从停下的位置接着走
+    val visible = rememberRouteVisibleState()
+    // 暂停时冻结相位: 不推进、不写值、不请求帧, 恢复时从冻结点接着走。
+    // 播放状态不能当启动键 —— 否则暂停/恢复会重启整段动画, 累计时间清零, 背景会跳一下。
+    val playing = rememberUpdatedState(isPlaying)
+    LaunchedEffect(breathAmpPx) {
+        var elapsedNs = 0L
+        var lastFrameNs = 0L
         while (isActive) {
-            val toX = (random.nextFloat() * 2f - 1f) * maxOffsetPx
-            val toY = (random.nextFloat() * 2f - 1f) * maxOffsetPx
-            val toScale = BG_DRIFT_SCALE_BASE +
-                (random.nextFloat() * 2f - 1f) * BG_DRIFT_SCALE_RANGE
-            val durationMs = BG_DRIFT_MIN_MS +
-                random.nextInt(BG_DRIFT_MAX_MS - BG_DRIFT_MIN_MS + 1)
-            animate(
-                initialValue = 0f,
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = durationMs, easing = FastOutSlowInEasing),
-            ) { progress, _ ->
-                driftX.floatValue = fromX + (toX - fromX) * progress
-                driftY.floatValue = fromY + (toY - fromY) * progress
-                driftScale.floatValue = fromScale + (toScale - fromScale) * progress
+            if (!visible.value || !playing.value) {
+                // 不可见或暂停: 相位原地不动 (丢掉这一帧的时间基准, 恢复时不跳),
+                // 并挂起等到重新可见且在播放才继续 (不定期醒来查)
+                lastFrameNs = 0L
+                snapshotFlow { visible.value && playing.value }.first { it }
+                continue
             }
-            fromX = toX
-            fromY = toY
-            fromScale = toScale
+            withInfiniteAnimationFrameNanos { frameNs ->
+                if (lastFrameNs != 0L) elapsedNs += frameNs - lastFrameNs
+                lastFrameNs = frameNs
+                val seconds = elapsedNs / 1_000_000_000.0
+                breathX.floatValue = breathAmpPx * breathWave(
+                    seconds, BG_BREATH_X_MS, BG_BREATH_X2_MS, phase = 0.0,
+                )
+                breathY.floatValue = breathAmpPx * breathWave(
+                    seconds, BG_BREATH_Y_MS, BG_BREATH_Y2_MS, phase = BG_SECOND_PHASE,
+                )
+                breathScale.floatValue = (BG_BREATH_SCALE_RANGE *
+                    sin(2.0 * PI * seconds / (BG_BREATH_SCALE_MS / 1000.0))).toFloat()
+            }
         }
     }
     return graphicsLayer {
-        translationX = driftX.floatValue
-        translationY = driftY.floatValue
-        scaleX = driftScale.floatValue
-        scaleY = driftScale.floatValue
+        // 基准按位移上限反算, 再留缩放呼吸的向下摆幅: 两者叠到极限时四边仍被图覆盖
+        val budgetX = breathAmpPx * 2f / size.width.coerceAtLeast(1f)
+        val budgetY = breathAmpPx * 2f / size.height.coerceAtLeast(1f)
+        val scale = 1f + maxOf(budgetX, budgetY) + BG_BREATH_SCALE_RANGE + breathScale.floatValue
+        scaleX = scale
+        scaleY = scale
+        translationX = breathX.floatValue
+        translationY = breathY.floatValue
     }
 }
 
+/** 主周期正弦 + 占比较小的次周期正弦: 位移连续, 方向不回头的时刻不重合 */
+private fun breathWave(
+    seconds: Double,
+    majorPeriodMs: Double,
+    minorPeriodMs: Double,
+    phase: Double,
+): Float {
+    val major = sin(2.0 * PI * seconds / (majorPeriodMs / 1000.0) + phase)
+    val minor = sin(2.0 * PI * seconds / (minorPeriodMs / 1000.0) + phase * 0.5)
+    return ((1.0 - BG_BREATH_MINOR) * major + BG_BREATH_MINOR * minor).toFloat()
+}
+
 @Composable
-private fun SharedAudioBlurBgSlot(coverUrl: String?, modifier: Modifier) {
+private fun SharedAudioBlurBgSlot(
+    coverUrl: String?,
+    modifier: Modifier,
+    isPlaying: Boolean,
+) {
     val loader = remember { BookImageLoaders.getOrNull() }
     // 框架的模糊修饰符在 Android 12 以下不生效: 这些端改为加载后一次性算好模糊位图
     val drawBlur = PlatformCapabilityProviders.get().drawBlurSupported
@@ -388,7 +428,7 @@ private fun SharedAudioBlurBgSlot(coverUrl: String?, modifier: Modifier) {
     }
     val eInk = LocalEInk.current
     // 墨水屏不浮动 (连放大基准也不挂, 不白裁一圈)
-    val driftModifier = if (eInk) Modifier else Modifier.bgDrift()
+    val breathModifier = if (eInk) Modifier else Modifier.bgBreath(isPlaying)
     // 不生效的端不再叠一层空操作的绘制期模糊
     val blurModifier = if (drawBlur) Modifier.blur(BG_BLUR_RADIUS) else Modifier
     Box(modifier) {
@@ -404,14 +444,14 @@ private fun SharedAudioBlurBgSlot(coverUrl: String?, modifier: Modifier) {
                 bmp != null -> Image(
                     bitmap = bmp,
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize().then(driftModifier).then(blurModifier),
+                    modifier = Modifier.fillMaxSize().then(breathModifier).then(blurModifier),
                     contentScale = ContentScale.Crop,
                 )
                 // 默认图集也为空: 内置默认封面 (对照原版 loadBlur 的内置回落, 同样模糊)
                 showBuiltIn -> Image(
                     bitmap = rememberBuiltInBlurBg(loader, drawBlur, blurRadiusPx),
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize().then(driftModifier).then(blurModifier),
+                    modifier = Modifier.fillMaxSize().then(breathModifier).then(blurModifier),
                     contentScale = ContentScale.Crop,
                 )
                 // 加载中占位: 页面默认背景色 (原版露 Activity 深色背景; 原实现闪主题蓝

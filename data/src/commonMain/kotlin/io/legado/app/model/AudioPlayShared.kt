@@ -277,16 +277,40 @@ object AudioPlayShared {
     }
 
     /**
-     * 按两个辉光开关同步底层 offload 策略 (开关切换后调用, 无需重起播)。
+     * 按两个辉光开关与音频页可见性同步底层 offload 策略 (开关切换、页面进出可见态后调用)。
      *
-     * 采样旁路常挂, offload 是运行时参数: 都关时省电, 任一开启时取 PCM 供光效使用。
+     * 采样旁路常挂, offload 是运行时参数: 页面不可见时一律开 offload 省电, 可见时只在
+     * 两个辉光开关都关时才开 (任一开启要取 PCM 供光效使用)。
      */
     fun syncAudioOffload() = AudioPlayCommanders.get().syncAudioOffload()
 
     /**
+     * 音频页当前处于 RESUMED 的页面 id 集合。
+     *
+     * 用集合而不是单个布尔: 换书时旧页退场与新页进场同帧发生, 两个回调的先后顺序不确定,
+     * 单个布尔会被后到的 "离开" 覆盖成不可见; 按 id 记账后结果与顺序无关。
+     */
+    private val resumedAudioPages = mutableSetOf<Long>()
+
+    /**
+     * 记录一个音频页进入/离开可见态 (RESUMED = 栈顶且 app 在前台)。
+     *
+     * 只有聚合结果翻转时才下发一次策略: 被盖住/退后台算不可见, 回来算可见。
+     */
+    fun setAudioPageResumed(pageId: Long, resumed: Boolean) {
+        val before = resumedAudioPages.isNotEmpty()
+        if (resumed) resumedAudioPages += pageId else resumedAudioPages -= pageId
+        if (resumedAudioPages.isNotEmpty() != before) syncAudioOffload()
+    }
+
+    /** 音频页是否可见 (RESUMED); 没有任何音频页在场时为 false。 */
+    fun isAudioPageResumed(): Boolean = resumedAudioPages.isNotEmpty()
+
+    /**
      * 两个辉光开关任一开启即需要 PCM 采样。
      *
-     * 这是“要不要关解码省电”的唯一判定处: 播放服务、界面开关都只看这里, 不再各自拼条件。
+     * 这是“要不要关解码省电”的开关判定处: 播放服务、界面开关都只看这里, 不再各自拼条件。
+     * 实际是否关 offload 还要叠加页面可见性, 见 [isAudioPageResumed]。
      */
     fun needsAudioPcm(): Boolean {
         val prefs = PreferenceProviders.get()

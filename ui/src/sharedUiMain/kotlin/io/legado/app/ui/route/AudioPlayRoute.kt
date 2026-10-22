@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.PreferKey
@@ -142,9 +143,9 @@ fun AudioPlayRoute(
             if (shortcut.key == Key.DirectionRight) {
                 keyLongPress.onRelease(
                     onShortPress = {
-                        val s = screenModel.state.value
+                        val p = screenModel.progress.value
                         screenModel.dispatch(
-                            AudioPlayUiEvent.Seek((s.progressMs + 10_000).coerceAtMost(s.durationMs))
+                            AudioPlayUiEvent.Seek((p.progressMs + 10_000).coerceAtMost(p.durationMs))
                         )
                     },
                     onLongPressRelease = {
@@ -157,7 +158,9 @@ fun AudioPlayRoute(
         when (shortcut.key) {
             Key.Spacebar -> screenModel.dispatch(AudioPlayUiEvent.TogglePlay)
             Key.DirectionLeft -> screenModel.dispatch(
-                AudioPlayUiEvent.Seek((state.progressMs - 10_000).coerceAtLeast(0))
+                AudioPlayUiEvent.Seek(
+                    (screenModel.progress.value.progressMs - 10_000).coerceAtLeast(0),
+                )
             )
             Key.DirectionRight -> keyLongPress.onPress(scope, longPressTimeoutMs) {
                 // 长按激活: 记录长按前倍速, 切 当前倍速×2 (与视频页长按语义一致, 不加配置项)
@@ -180,6 +183,15 @@ fun AudioPlayRoute(
     // 挂本页 Lifecycle 的"在栈期间" (STARTED): 出栈才落库, 被压栈 (进书源编辑等) 不落。
     // saveRead 内部会发 UP_BOOKSHELF 让书架重启分组流强制重查 durChapterTime
     OnRouteLifecycle(onLeave = { AudioPlayShared.saveRead() })
+
+    // 可见性入账: 本页 RESUMED (栈顶且 app 在前台) 才需要 PCM 供光效使用; 被盖住/退后台
+    // 即开 offload 省电。不用单个布尔: 换书时旧页退场与新页进场同帧发生, 按页 id 记账后
+    // 结果与回调顺序无关。
+    OnRouteLifecycle(
+        minState = Lifecycle.State.RESUMED,
+        onEnter = { AudioPlayShared.setAudioPageResumed(entry.id.value, true) },
+        onLeave = { AudioPlayShared.setAudioPageResumed(entry.id.value, false) },
+    )
 
     // 订阅子页结果回填 (对照 VideoPlayRoute navigator.resultsFor(entry.id).collect)
     LaunchedEffect(Unit) {
@@ -359,7 +371,7 @@ fun AudioPlayRoute(
             val b = AudioPlayShared.book ?: return@AudioPlayOverflowActions
             val chapter = AudioPlayShared.durChapter
             val pos = AudioPlayShared.durChapterPos
-            val total = state.durationMs
+            val total = screenModel.progress.value.durationMs
             val bookmark = Bookmark(bookName = b.name, bookAuthor = b.author).apply {
                 chapterIndex = AudioPlayShared.durChapterIndex
                 chapterPos = pos
@@ -388,6 +400,7 @@ fun AudioPlayRoute(
     CompositionLocalProvider(LocalSharedCoverBinding provides coverBinding) {
     platform.Content(
         state = pageState,
+        progress = screenModel.progress,
         onBack = onBack,
         // 点顶栏标题进书籍详情 (对照 app 端 AudioPlayActivity 的顶栏标题点击)
         onOpenBookInfo = {

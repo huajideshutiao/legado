@@ -3,8 +3,11 @@ package io.legado.app.ui.root
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -40,6 +43,28 @@ internal class RouteLifecycleOwner : LifecycleOwner {
 
 /** 本页的生命周期载体; null = 不在页面栈渲染上下文中 (独立预览、跨窗口内容)。 */
 internal val LocalRouteLifecycleOwner = compositionLocalOf<RouteLifecycleOwner?> { null }
+
+/**
+ * 本页当前是否可见: 栈顶且在 app 前台才为 true。
+ *
+ * 被压栈、退到后台都算不可见 —— 逐帧视觉动画 (背景呼吸/歌词变色/边缘光效) 与它们的采样订阅
+ * 该停就停; 业务状态、后台播放与锁屏歌词不在这条线之内。
+ *
+ * 不在页面栈渲染上下文中 (独立预览、跨窗口内容) 恒为可见。
+ */
+@Composable
+internal fun rememberRouteVisibleState(): State<Boolean> {
+    val owner = LocalRouteLifecycleOwner.current
+    val visible = remember(owner) { mutableStateOf(owner == null) }
+    if (owner != null) {
+        OnRouteLifecycle(
+            minState = Lifecycle.State.RESUMED,
+            onEnter = { visible.value = true },
+            onLeave = { visible.value = false },
+        )
+    }
+    return visible
+}
 
 /**
  * 把页面级副作用挂在本页 Lifecycle 上: 本页至少处于 [minState] 且 [enabled] 时执行 [onEnter],

@@ -103,9 +103,11 @@ class AudioPlayService : BaseService(), AudioPlaySessionHost {
          * 就是让歌词顶掉标题 —— 也正因为会顶掉, 它必须由用户开关控制。
          */
         /**
-         * 按两个辉光开关同步 offload 策略 (开关切换后调用, 无需重起播)。
+         * 按辉光开关与音频页可见性同步 offload 策略 (开关切换、页面进出可见态后调用,
+         * 无需重起播)。
          *
-         * 采样旁路常挂, offload 是运行时参数: 都关时省电, 任一开启时关掉以拿到 PCM。
+         * 采样旁路常挂, offload 是运行时参数: 页面不可见时一律开 offload 省电; 可见时只在
+         * 两个辉光都关时才开, 任一开启则关掉以拿到 PCM。
          */
         private fun syncAudioOffload() {
             instance?.exoPlayer?.applyOffloadPolicy()
@@ -564,14 +566,18 @@ class AudioPlayService : BaseService(), AudioPlaySessionHost {
 }
 
 /**
- * 按“是否需要 PCM 采样”设定解码省电策略: 需要时关 offload, 不需要时开 offload 省电。
+ * 按“当前是否需要 PCM 采样”设定解码省电策略: 需要时关 offload, 不需要时开 offload 省电。
+ *
+ * 需要 PCM = 音频页可见 (RESUMED) 且两个辉光开关任一开着: 页面不可见时视觉管道已停,
+ * 采样没人消费, 一律开 offload。
  *
  * 旁路与 offload 官方互斥 (offload 模式不参与音频处理), 所以两者状态必须一致。
  * 另外还要求设备支持“变速场景下的 offload”(速度切换是常规操作), 不支持时该请求被
- * 采媒库静默忽略 —— 即“都关才省电”只在这种设备上真实生效。
+ * 采媒库静默忽略 —— 即“不需要 PCM 才省电”只在这种设备上真实生效。
  */
 private fun ExoPlayer.applyOffloadPolicy() {
-    val mode = if (AudioPlayShared.needsAudioPcm()) {
+    val needsPcm = AudioPlayShared.isAudioPageResumed() && AudioPlayShared.needsAudioPcm()
+    val mode = if (needsPcm) {
         AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED
     } else {
         AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED

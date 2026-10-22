@@ -39,6 +39,8 @@ import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,11 +55,15 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.ui.compose.component.AppDropdownMenu
@@ -73,6 +79,7 @@ import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.root.PhotoSharedCoverHost
 import io.legado.app.utils.format
 import io.legado.app.utils.toDurationTime
+import kotlinx.coroutines.flow.StateFlow
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.audio_edge_glow_title
 import legado.ui.generated.resources.audio_energy_glow_title
@@ -117,7 +124,7 @@ enum class AudioPlaySidePanelKind { TOC, REVIEW }
  * @param coverVisible 封面圆形图显隐 (点击封面切到 false, 由调用方管理状态)
  * @param timerMinute 定时分钟数 (>0 时左上角回显标签)
  * @param speed 倍速 (!=1f 时右上角回显标签)
- * @param progressMs 当前播放位置 ms
+ * @param progress 位置/缓冲/时长子状态 (只有进度区在这一层订阅, 心跳不牵动整页重组)
  * @param durationMs 总时长 ms
  * @param bufferMs 缓冲进度 ms
  * @param isPlaying 播放中 (回显播放/暂停钮)
@@ -155,9 +162,7 @@ fun AudioPlayScreenContent(
     coverVisible: Boolean,
     timerMinute: Int,
     speed: Float,
-    progressMs: Int,
-    durationMs: Int,
-    bufferMs: Int,
+    progress: StateFlow<AudioPlayProgress>,
     isPlaying: Boolean,
     loading: Boolean,
     playMode: AudioPlayShared.PlayMode,
@@ -181,7 +186,7 @@ fun AudioPlayScreenContent(
     onSetSpeed: (Float) -> Unit,
     overflowActions: AudioPlayOverflowActions? = null,
     coverSlot: @Composable (String?, Modifier) -> Unit,
-    blurBgSlot: (@Composable (String?, Modifier) -> Unit)? = null,
+    blurBgSlot: (@Composable (String?, Modifier, Boolean) -> Unit)? = null,
     edgeGlowSlot: (@Composable (Modifier) -> Unit)? = null,
     lrcSlot: @Composable (Modifier) -> Unit,
     titleBarTrailingSlot: @Composable RowScope.() -> Unit = {},
@@ -205,7 +210,7 @@ fun AudioPlayScreenContent(
         if (eInk) snap() else tween(durationMillis = 300, easing = FastOutSlowInEasing)
     val panelWidthAnim: FiniteAnimationSpec<Dp> =
         if (eInk) snap() else tween(durationMillis = 300, easing = FastOutSlowInEasing)
-    val animatedPanelWidth by animateDpAsState(
+    val animatedPanelWidth = animateDpAsState(
         targetValue = if (sidePanelVisible) sidePanelWidth else 0.dp,
         animationSpec = panelWidthAnim,
         label = "audioSidePanelWidth",
@@ -218,8 +223,9 @@ fun AudioPlayScreenContent(
         // 含 → 长短按: 短按 seek +10s / 长按 2x 倍速松手恢复), 本层不再挂键盘处理器
     ) {
         // 模糊封面背景 (平台 blurBgSlot 加载; null 时复用 coverSlot)
-        val bgSlot = blurBgSlot ?: coverSlot
-        bgSlot(coverUrl, Modifier.matchParentSize())
+        val bgSlot: @Composable (String?, Modifier, Boolean) -> Unit =
+            blurBgSlot ?: { url, modifier, _ -> coverSlot(url, modifier) }
+        bgSlot(coverUrl, Modifier.matchParentSize(), isPlaying)
         // 半透明遮罩 (对照 app 端 0x3A000000): 压暗背景保证歌词与控件的对比度
         Box(Modifier.matchParentSize().background(Color(0x3A000000)))
         // 边缘光效: 在遮罩之上、内容之下 —— 光在文字背后, 不糊内容
@@ -229,7 +235,7 @@ fun AudioPlayScreenContent(
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(end = animatedPanelWidth)
+                .sidePanelSqueeze(animatedPanelWidth)
                 .tapOnUnconsumed { onTapOutsideSidePanel?.invoke() },
         ) {
             AudioTitleBar(
@@ -372,9 +378,7 @@ fun AudioPlayScreenContent(
                 }
             }
             ProgressRow(
-                progressMs = progressMs,
-                bufferMs = bufferMs,
-                durationMs = durationMs,
+                progress = progress,
                 accentColor = accentColor,
                 lrcActiveColor = lrcActiveColor,
                 lrcInactiveColor = lrcInactiveColor,
@@ -645,9 +649,7 @@ private fun FilletLabel(
 
 @Composable
 private fun ProgressRow(
-    progressMs: Int,
-    bufferMs: Int,
-    durationMs: Int,
+    progress: StateFlow<AudioPlayProgress>,
     accentColor: Color,
     lrcActiveColor: Color?,
     lrcInactiveColor: Color?,
@@ -656,6 +658,11 @@ private fun ProgressRow(
     // 拖动中的值 (拖动期间不回显事件进度): 只用于左侧进度文本; 滑块位置由 AppSlider 自己按手指位置持有,
     // 因此这里不回灌给滑条 —— 调整被中断时本预览不会回滚, 回灌会把作废的预览当成业务值把滑块冻住
     var dragValue by remember { mutableStateOf<Int?>(null) }
+    // 位置/缓冲/时长只在这一层收集: 播放心跳每秒钟只重组进度区, 不牵动标题、菜单与背景
+    val snapshot by progress.collectAsState()
+    val progressMs = snapshot.progressMs
+    val bufferMs = snapshot.bufferMs
+    val durationMs = snapshot.durationMs
     // 时长未知 (流式资源 READY 前/无时长): 显示 --:-- 并禁用拖动, 避免“进度超过时长”的观感
     val durationKnown = durationMs > 0
     Row(
@@ -843,6 +850,24 @@ private fun playModeIconKey(mode: AudioPlayShared.PlayMode): String = when (mode
     AudioPlayShared.PlayMode.RANDOM -> "ic_play_mode_random"
     AudioPlayShared.PlayMode.LIST_LOOP -> "ic_play_mode_list_loop"
 }
+
+/**
+ * 右侧面板挤压: 宽度在测量期读, 动画每帧只重测不改组。
+ *
+ * 逐条对应 Foundation `padding(end = width)` 的 PaddingNode 做法: 子级可用宽度扣掉挤压量,
+ * 自身尺寸含挤压量, 子级按 placeRelative 落位 —— 从右到左布局时空出的那条边自动换到左侧。
+ * 在组合期读这个值会让整页组装在 300ms 里逐帧重跑。
+ */
+private fun Modifier.sidePanelSqueeze(width: State<Dp>): Modifier =
+    layout { measurable, constraints ->
+        val squeeze = width.value.roundToPx()
+        val placeable = measurable.measure(constraints.offset(-squeeze, 0))
+        val measuredWidth = constraints.constrainWidth(placeable.width + squeeze)
+        val measuredHeight = constraints.constrainHeight(placeable.height)
+        layout(measuredWidth, measuredHeight) {
+            placeable.placeRelative(0, 0)
+        }
+    }
 
 /**
  * 只响应未被子级消费的点击 (子级按钮/歌词等消费后不触发); 用于"面板打开时点击外部关闭"。

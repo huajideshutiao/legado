@@ -27,13 +27,14 @@ import io.legado.app.model.AudioPlayShared
 import io.legado.app.model.audio.AudioSpectrum
 import io.legado.app.ui.compose.platform.LocalOverlayTopInset
 import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.ui.root.rememberRouteVisibleState
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.time.TimeSource
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 
 // ==================== 页面边缘光效 ====================
@@ -323,7 +324,7 @@ private fun buildGlowRing(w: Float, h: Float, top: Float): GlowRing {
  * - 整圈是一条顶点色三角网 (外沿贴屏、内沿为波浪), 逐行向内收到透明; 角落只覆盖一次。
  * - 淡出只压亮度、不改形状: 暂停时形状保留最后一帧, 由淡出曲线慢慢压下去。
  * - 绘制期只读运行态: 按 Compose 阶段约定, 绘制期读快照状态只失效重绘, 不触发重组。
- * - 静音段 (暂停/停止/缓冲断供) 显示值衰减到 0 后转低频轮询, 不空转帧循环。
+ * - 静音段 (暂停/停止/缓冲断供) 显示值衰减到 0 后挂起等下一帧有声的采样, 不轮询也不空转帧循环。
  * - E-Ink 不绘制 (项目惯例: 墨水屏不做动效)。
  * - 顶部光带从 [LocalOverlayTopInset] 之下起画: 桌面窗口控制条是 native 层,
  *   恒压在 Compose 画布之上, 不让开会在顶部断一截。
@@ -360,12 +361,16 @@ internal fun AudioPlayEdgeGlow(
     val baseThicknessPx = with(density) { GLOW_BASE_THICKNESS.toPx() }
     val topInsetPx = with(density) { LocalOverlayTopInset.current.toPx() }
 
+    // 本页不可见 (被压栈/退后台) 时视觉整条管道停摆: 不收采样、不请求帧;
+    // 音频本身与业务状态照旧, 回到前台由 effect 重启并按当下重新校准
+    val routeVisible = rememberRouteVisibleState().value
+
     // 观察音频可视帧: 播放中一律照单收下 (各段同时为 0 是真实静默, 形状该跟着落);
     // 暂停/停止时不再收, 保留最后一帧形状交给 fade 收尾 (播放侧那时会发清零帧)。
     // drop(1): 订阅一开始状态流会回放缓存帧 (暂停前那一帧), 它不是新样本 —— 当成新样本会把
     // 采样时刻打成当下, 恢复播放瞬间亮度直接跳到暂停前水平, 而不是随新音频淡入。
-    LaunchedEffect(isPlaying) {
-        if (!isPlaying) return@LaunchedEffect
+    LaunchedEffect(isPlaying, routeVisible) {
+        if (!isPlaying || !routeVisible) return@LaunchedEffect
         AudioPlayShared.audioVisual.drop(1).collect { frame ->
             fast.energy = frame.energy
             fast.energyAtMs = glowNowMs()
@@ -376,7 +381,14 @@ internal fun AudioPlayEdgeGlow(
     var fade by remember { mutableFloatStateOf(0f) }
 
     // 帧循环: 有信号才推进; 完全淡出后转低频轮询 (播放中) 或直接停帧 (暂停)
-    LaunchedEffect(isPlaying) {
+    LaunchedEffect(isPlaying, routeVisible) {
+        if (!routeVisible) {
+            // 整圈收干净并归零相位: 回到前台随新音频重新亮起, 不残留离开时的形状
+            fast.resetDisplay()
+            slow.resetDisplay()
+            fade = 0f
+            return@LaunchedEffect
+        }
         var lastFrameNs = 0L
         while (isActive) {
             // 暂停时目标恒为 0: 显示包络自行收干净, 不依赖播放侧清零
@@ -389,9 +401,12 @@ internal fun AudioPlayEdgeGlow(
             if (!isPlaying) {
                 if (settled) return@LaunchedEffect
             } else if (settled && bands.all { it <= SILENT_BAND }) {
-                // 播放中的静音段: 低频轮询即可 (省电); 恢复时从当前帧重新计时
+                // 播放中的静音段: 挂起等到下一帧真的有声的采样 (不按定时醒来查);
+                // 静默期的同值帧不会让光带有任何变化, 叫醒只会白白走一帧
                 lastFrameNs = 0L
-                delay(AudioEnergyEnvelope.IDLE_POLL_MS)
+                AudioPlayShared.audioVisual.drop(1).first { frame ->
+                    frame.energy > SILENT_BAND || frame.bands.any { it > SILENT_BAND }
+                }
                 continue
             }
             withFrameNanos { frameNs ->
