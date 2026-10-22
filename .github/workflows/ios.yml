@@ -359,4 +359,6 @@ jobs:
     with:
       tag: multiplatform-test
       artifact-name-pattern: ${{ inputs.stage == 'simulator' && 'ios-simulator' || 'ios-ipa-unsigned' }}
+      # 测试包不得抢占 releases/latest: 正式版链接要停在含安卓与桌面安装件的版本上
+      prerelease: true
       name: multiplatform-test

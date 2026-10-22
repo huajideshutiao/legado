@@ -91,6 +91,13 @@ jobs:
             exit 1
           fi
           TAG="${{ inputs.tag }}"
+          # 预发布标记沿用 inputs.prerelease, 与全产物发布路径同一语义:
+          # multiplatform-test 不保持预发布就会被 GitHub 当成 latest, releases/latest 漂到只含
+          # ipa/hap 的版本上, README 的桌面/安卓下载链接取不到安装件。
+          PRERELEASE_FLAG=""
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
           if [ "${{ inputs.artifact-name-pattern }}" = "ios-ipa-unsigned" ]; then
             # 真机 ipa 发包: 删除 Release+tag 重建, tag 指向触发时 HEAD, 提交与排位都刷到最新;
             # 重建清空全部旧资产 (模拟器包与手动上传的 hap 需重新上传), 正文原样写回
@@ -98,13 +105,13 @@ jobs:
             [ -n "$BODY" ] || BODY="iOS 未签名 ipa (SideStore/AltStore 自签侧载) 与模拟器构建包"
             gh release delete "$TAG" -y --cleanup-tag --repo "$GH_REPO" || true
             gh release create "$TAG" --target "${{ github.sha }}" --repo "$GH_REPO" \
-              --title "${{ inputs.name }}" --notes "$BODY"
+              --title "${{ inputs.name }}" --notes "$BODY" $PRERELEASE_FLAG
           else
             # 模拟器包发包: 只上传不动 Release 与既有资产 (ios-remote 按资产名排序取最新)
             gh release view "$TAG" --repo "$GH_REPO" >/dev/null 2>&1 || \
               gh release create "$TAG" --repo "$GH_REPO" \
                 --title "${{ inputs.name }}" \
-                --notes "iOS 未签名 ipa (SideStore/AltStore 自签侧载) 与模拟器构建包"
+                --notes "iOS 未签名 ipa (SideStore/AltStore 自签侧载) 与模拟器构建包" $PRERELEASE_FLAG
           fi
           gh release upload "$TAG" "${files[@]}" --repo "$GH_REPO" --clobber
         env:
