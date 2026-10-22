@@ -1,6 +1,7 @@
 package io.legado.app.model
 
 import io.legado.app.api.controller.ReadBookStateProvider
+import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.help.media.SystemMediaControl
@@ -16,8 +17,6 @@ import io.legado.app.service.ReadAloudChapterNavigationPort
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadBookViewModelPort
 import io.legado.app.ui.book.read.page.entities.TextChapterShared
-import kotlinx.atomicfu.locks.SynchronizedObject
-import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -114,50 +113,42 @@ object ActiveReadAloudHostPorts : ReadAloudHostPorts {
     fun moveToNextPage() = ownerSnapshot?.moveToNextPage()
     fun uploadProgress() = ownerSnapshot?.uploadProgress()
 
-    // 朗读进度→阅读页翻页联动游标 (原版散在朗读服务内的 pageIndex, 下沉后单例持有)。
-    // 登记起点 (阅读页 UI 线程 / 朗读服务主线程) 与推进 (Android TTS 回调的 binder 线程、
-    // 其余端朗读宿主的 Dispatchers.Default) 分属不同线程, 游标与起点成对读写, 故用锁收口
-    // (与同模块 RemoteZipWrapper 同一写法)。
-    private val readAloudPageLock = SynchronizedObject()
-    private var readAloudPageCursor: Int = -1
-    private var readAloudPageStartPos: Int = 0
-
     /**
-     * 登记一次新朗读会话的起点 (对照原版 newReadAloud 开头的 pageIndex 重置);
-     * 游标页在排版产物就绪后由 [advanceReadAloudPage] 反算。
-     */
-    override fun resetReadAloudPageCursor(chapterPosition: Int) {
-        synchronized(readAloudPageLock) {
-            readAloudPageStartPos = chapterPosition.coerceAtLeast(0)
-            readAloudPageCursor = -1
-        }
-    }
-
-    /**
-     * 朗读位置推进联动: 朗读位置越过下一页起点时把阅读页翻过去 (对照原版
-     * TTSReadAloudService onStart/onRangeStart 与 HttpReadAloudService upPlayPos 的判定)。
+     * 登记一次新朗读会话的起点。
      *
-     * 翻页回调在锁外调 (阅读页实现可能反向进入朗读宿主, 与 ReadAloudControllerShared
-     * 的"锁外调 navigator"同一约定)。
+     * 翻页联动已改为按"阅读页当前页位 vs 朗读段页位"直接推导 (见 [advanceReadAloudPage]),
+     * 不再维护独立游标; 保留本方法对齐各端调用点。
+     */
+    override fun resetReadAloudPageCursor(chapterPosition: Int) = Unit
+
+    /**
+     * 朗读位置推进联动: 朗读所在段落在阅读页之后的页上时, 把阅读页翻过去。
+     *
+     * 判定基准是**阅读页当前页位**与**该段所在页**的比较。原实现另养了一个游标, 和阅读页的
+     * 实际页位是两套状态: 一旦段落坐标与排版坐标有偏差 (首屏只有标题、页面里的空行等),
+     * 游标就会抢在阅读页前面把页翻掉 —— 表现正是"第一段读完就跳到下一页"。
+     *
+     * 一次调用最多翻一页: 段与段之间会再次进来追平; 不在此连翻, 免得多翻的页反过来触发
+     * 宿主的位置监听。
      */
     override fun advanceReadAloudPage(chapterIndex: Int, readingPos: Int): Boolean {
         val chapter = currentChapter ?: return false
         if (chapter.chapterIndex != chapterIndex) return false
-        val advanced = synchronized(readAloudPageLock) {
-            if (readAloudPageCursor < 0) {
-                readAloudPageCursor = chapter.getPageIndexByCharIndex(readAloudPageStartPos)
-            }
-            if (readAloudPageCursor + 1 < chapter.pageSize
-                && readingPos > chapter.getReadLength(readAloudPageCursor + 1)
-            ) {
-                readAloudPageCursor++
-                true
-            } else {
-                false
-            }
+        val current = currentPosition?.takeIf { it.chapterIndex == chapterIndex }
+            ?.chapterPosition ?: return false
+        val currentPage = chapter.getPageIndexByCharIndex(current)
+        val targetPage = chapter.getPageIndexByCharIndex(readingPos)
+        if (currentPage < 0 || targetPage <= currentPage) return false
+        if (currentPage >= chapter.pageSize - 1) return false
+        // 跨了两页以上说明位置与排版可能不同源, 留一条痕迹便于定位"乱跳页"
+        if (targetPage > currentPage + 1) {
+            AppLog.put(
+                "朗读翻页跳页: 第 ${chapterIndex + 1} 章 第 $currentPage 页 -> 第 $targetPage 页" +
+                    " (pos=$readingPos 页数=${chapter.pageSize})"
+            )
         }
-        if (advanced) moveToNextPage()
-        return advanced
+        moveToNextPage()
+        return true
     }
 
     /**
