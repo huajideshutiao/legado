@@ -179,6 +179,16 @@ fun decodeAnyMapOrNull(json: String?): Map<String, Any?>? {
 }
 
 /**
+ * Map<String, Any?> → JSON 文本, 与 [decodeAnyMapOrNull] 互为读写配对。
+ *
+ * 序列化策略: Boolean/Number/String 按字面量写入 (Number 不加引号), 读回按
+ * [decodeAnyMapOrNull] 的整数取整策略还原; 非 JSON 原生类型 toString 兜底。
+ * 写入与读取必须同用这对工具, put 存的值经一来一回后同形态读回。
+ */
+fun encodeAnyMap(map: Map<String, Any?>): String =
+    KS_JSON.encodeToString(AnyMapSerializer, map)
+
+/**
  * 严格/宽松双栈 List 解析, 复刻 `GSONStrict.fromJsonArray<T>(json).getOrNull() ?: GSON.fromJsonArray<T>(json).getOrNull()` 语义。
  *
  * 先用 [KS_JSON_STRICT] 严格解析, 失败则降级到 [KS_JSON] 宽松解析,
