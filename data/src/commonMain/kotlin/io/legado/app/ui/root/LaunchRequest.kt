@@ -1,5 +1,6 @@
 package io.legado.app.ui.root
 
+import io.legado.app.utils.isAbsUrl
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -16,7 +17,11 @@ sealed interface LaunchRequest {
 
     @Serializable
     data class SearchBook(
-        /** 搜索词, 可空 (对照 master SearchActivity.receiptIntent: key 空则聚焦输入框) */
+        /**
+         * 搜索词, 可空 (对照 master SearchActivity.receiptIntent: key 空则聚焦输入框)。
+         * 整段就是一条 http(s) 地址时不当搜索词用, 与分享文本走同一条自动识别导入分流
+         * (判据见 [shareTextTarget])。
+         */
         val key: String? = null,
         /** 搜索范围 (格式 "名称::书源URL", 对齐 AppRoute.Search.searchScope) */
         val searchScope: String? = null,
@@ -49,7 +54,8 @@ sealed interface LaunchRequest {
 
     /**
      * 选中文本 / 分享纯文本 (原版 `AssociationActivity.dispose()` 的唯一载荷):
-     * 空白什么都不做, 整段是链接则当书籍地址添加, 否则进搜索页 —— 判据见 [shareTextTarget]。
+     * 空白什么都不做, 整段是一条 http(s) 地址则交深链"自动识别类型"导入链, 否则进搜索页
+     * —— 判据见 [shareTextTarget]。
      */
     @Serializable
     data class ProcessText(val text: String) : LaunchRequest
@@ -110,16 +116,29 @@ fun navigateToRoute(routeName: String?, bookUrl: String? = null): LaunchRequest.
  * ([LaunchRequest.ProcessText]), 端侧要直达路由时按本判据取 [ShareTextTarget.SEARCH];
  * 消费侧见 LegadoApp 的启动请求分发, 不得各自另立判据。
  *
- * `http.+` 口径逐字取自原版 `AssociationActivity.dispose()`, 但作用对象是**整段文本**
- * (原版是 `text.split("\\s")` 后逐 token 判); 原版整串命中只把一级入口带回前台且从不使用该链接,
- * 此处按用户拍板改为整段命中即把该链接当书籍地址添加。
+ * 与原版的对应关系: 原版 `AssociationActivity.dispose()` 把文本按空白分词 (`text.split("\\s")`) 后
+ * 逐 token 判 `http.+`, 命中只把主界面带回前台且从不使用该链接; 此处按已拍板改为"整段命中即把该链接
+ * 交给深链自动识别类型导入", 但口径收到"整段就是一条 http(s) 绝对地址":
+ * - [isAbsUrl] —— 必须带 `http://` / `https://` 协议头, 大小写不敏感。`http.+` 这种不看协议头
+ *   的写法会把 `http不是地址` 这类以 http 开头的普通文本也算成链接。
+ * - 整段不含空白 —— 空白在 RFC 3986 里必须百分号编码, 含空白就不是"一条链接": 前导空白与换行、
+ *   "链接 + 一句推荐"、"标题↵链接" 这类投递全部落 [ShareTextTarget.SEARCH] (不 trim, 不替用户改原文本)。
  */
 enum class ShareTextTarget {
     /** 文本空白: 原版 `finish()` 后直接 return —— 不打开任何页面, 也不提示。 */
     NOTHING,
 
-    /** 整段文本匹配 `http.+`: 当书籍地址走 legado://addToBookshelf 的导入链 (抓详情进详情页)。 */
-    ADD_TO_BOOKSHELF,
+    /**
+     * 整段文本就是一条 http(s) 绝对地址: 交 legado:// 深链的自动识别链
+     * (DeepLinkImportType.UNKNOWN, 消费侧见 DeepLinkImportHost.runSchemeImport):
+     * 1. 先零网络按书源认领判书籍 (WebBook.matchBookSourceByUrl: UrlOption 的 origin /
+     *    同 baseUrl 可添加书籍的源 / `bookUrlPattern` 整段匹配) —— 被认领就带着这个源抓详情进
+     *    详情页;
+     * 2. 不认领才下载内容嗅探类型: 排版配置 zip 一步导入; JSON 识别成书源/RSS源/替换规则/主题/
+     *    词典规则/正文规则/HTTP TTS 后弹对应导入页。
+     * 两步都不命中时按"格式不对"报错提示 —— 不会当书源网页去浏览。
+     */
+    AUTO_IMPORT,
 
     /** 其余: 整段文本送搜索页。 */
     SEARCH,
@@ -127,12 +146,9 @@ enum class ShareTextTarget {
 
 fun shareTextTarget(text: String): ShareTextTarget = when {
     text.isBlank() -> ShareTextTarget.NOTHING
-    text.matches(HTTP_LINK) -> ShareTextTarget.ADD_TO_BOOKSHELF
+    text.isAbsUrl() && text.none { it.isWhitespace() } -> ShareTextTarget.AUTO_IMPORT
     else -> ShareTextTarget.SEARCH
 }
-
-/** 整段匹配口径取自原版 `AssociationActivity.dispose()` 的 `url.matches("http.+".toRegex())`。 */
-private val HTTP_LINK = Regex("http.+")
 
 /**
  * 外部请求事件总线 (各端投递侧 → 共享 UI 消费侧)。

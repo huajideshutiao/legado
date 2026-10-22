@@ -684,7 +684,7 @@ private class AndroidExternalRequestService : ExternalRequestService {
  * scheme 区分:
  * - 视频直投 (content/file/http(s) 命中 MIME 或视频扩展名) → [LaunchRequest.OpenRoute] 播放页
  *   (**排在下面书籍分流之前**, 见 [videoDirectTarget]; mp4 不是书, 落到 ImportFile 会被导入流程判不支持)
- * - content/file/app → [LaunchRequest.ImportFile] (走导入书籍流程)
+ * - content/file/app → [LaunchRequest.ImportFile] (消费侧直接交平台文件关联分发)
  * - legado/yuedu/其他 → [LaunchRequest.DeepLink] (legado 系由 [LegadoDeepLinkHandler] 进一步接管导入对话框)
  *
  * 只解析"手里只有字符串标识"的入口 (通知 route extra / alias / 文件 URI / 选中文本);
@@ -697,6 +697,24 @@ internal const val SEARCH_ALIAS = "io.legado.app.ui.book.search.SearchActivity"
 /** 发现show 入口别名: manifest activity-alias 指向 MainActivity (对照 master ExploreShowActivity)。 */
 internal const val EXPLORE_SHOW_ALIAS = "io.legado.app.ui.book.explore.ExploreShowActivity"
 
+/**
+ * 搜索 alias 是否按"直达搜索页"语义处置。
+ *
+ * manifest 把 SEND 的两条 filter (text/plain 与通配 MIME) 也挂在这个 alias 上, 所以**组件名命中不等于
+ * 直达搜索页**: 分享载荷要先过 视频直投 / 文件导入 两道判定, 剩下的文本才轮到搜索分流
+ * (分流判据只有一份, 见 shared 的 shareTextTarget)。
+ *
+ * 两处判定共用本函数 ([Intent.toLaunchRequest] 与 MainActivity.directRouteFromIntent), 不得各自另立。
+ * key 搜索词"是链接就分流"的判定也不在端侧做, 交 shared 消费侧 (LegadoApp 的 dispatchShareText)。
+ */
+internal fun Intent.isSearchAliasEntry(): Boolean = when (action) {
+    // 带显式载荷的 action 不归搜索入口: 载荷交给 toLaunchRequest 的对应分支
+    // (SEND/SEND_MULTIPLE 的 URI 与文本、PROCESS_TEXT 的处理文本、VIEW 的 data)
+    Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE, Intent.ACTION_PROCESS_TEXT -> false
+    Intent.ACTION_VIEW -> component?.className == SEARCH_ALIAS && dataString.isNullOrBlank()
+    else -> component?.className == SEARCH_ALIAS
+}
+
 fun Intent.toLaunchRequest(): LaunchRequest? {
     // 通知/外部入口携带 route extra: 转为 NavigateTo 请求 (bookUrl 一并携带供冷启动兜底)
     navigateToRoute(getStringExtra("route"), getStringExtra("bookUrl"))?.let {
@@ -705,8 +723,10 @@ fun Intent.toLaunchRequest(): LaunchRequest? {
     // 搜索界面 alias 入口 (对照 master SearchActivity.receiptIntent: key/searchScope/submit extra;
     // manifest activity-alias .ui.book.search.SearchActivity 指向本 Activity; 仅 alias 组件名命中
     // 才进入 —— 带 key extra 的普通 VIEW Intent 不再隐式视为搜索, 避免误吞无关 Intent;
-    // key 为空也直达搜索页聚焦输入框, 对齐 master receiptIntent 的 isNullOrBlank 分支)
-    if (component?.className == SEARCH_ALIAS) {
+    // key 为空也直达搜索页聚焦输入框, 对齐 master receiptIntent 的 isNullOrBlank 分支;
+    // 同一 alias 上的 SEND 分享载荷不在此落, 见 [isSearchAliasEntry];
+    // key 是不是链接的分组也不在此判, 原样投出去由 shared 分流 (与分享/长按文本同一份判据)
+    if (isSearchAliasEntry()) {
         return LaunchRequest.SearchBook(
             key = getStringExtra("key"),
             searchScope = getStringExtra("searchScope"),
@@ -746,8 +766,7 @@ fun Intent.toLaunchRequest(): LaunchRequest? {
             getStringExtra(Intent.EXTRA_PROCESS_TEXT)?.let { return LaunchRequest.ProcessText(it) }
 
         Intent.ACTION_SEND -> {
-            // 分享 mp4 给阅读: manifest 的 SEND */* 挂在 ProcessTextActivity alias 上, 以前会
-            // 一路进"导入本地书"页再被判不支持 —— 这里截给播放页
+            // 分享的可播地址排在文本分流之前: 它已经是能播的东西, 不是书也不是搜索词
             videoDirectTarget()?.let {
                 return LaunchRequest.OpenRoute(AppRoute.VideoPlay(it))
             }

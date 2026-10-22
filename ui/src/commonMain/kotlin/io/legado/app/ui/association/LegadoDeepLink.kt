@@ -39,7 +39,10 @@ enum class DeepLinkImportType {
      * 不在书架 → 等同 addToBookshelf (抓详情进详情界面)。
      */
     READ_BOOK,
-    /** 未识别 path (app 端 else 分支 determineType: 下载内容嗅探类型) */
+    /**
+     * 未识别 path (app 端 else 分支 determineType): 自动识别链。先零网络按书源认领判这条地址
+     * 是不是某源的书 (命中就转成 addToBookshelf 抓详情), 不认领才下载内容嗅探类型。
+     */
     UNKNOWN,
 }
 
@@ -221,9 +224,15 @@ object LegadoDeepLinkHandler {
     /**
      * 将导入请求入队; 若当前无处理中的请求则立即暴露给 UI, 否则排入队列等待消费。
      * 线程安全, 支持批量文件或 deep link 连续投递逐个被消费。
+     *
+     * 载荷去重 (类型 + src 结构相等): iOS 上同一份文档打开可能双通道各投一次 (见
+     * iOSApp 外部 URI 闸门), 不拦就是连弹两个相同导入框; 消费完再审同一载荷, 属用户
+     * 再次导入, 照常放行 (判据是确定性的排队比对, 不设时间窗)。
      */
     fun enqueue(request: DeepLinkImportRequest) {
         synchronized(lock) {
+            if (_pending.value?.samePayloadAs(request) == true) return
+            if (queue.any { it.samePayloadAs(request) }) return
             if (_pending.value == null) {
                 _pending.value = request
             } else {
@@ -231,6 +240,10 @@ object LegadoDeepLinkHandler {
             }
         }
     }
+
+    /** 同一导入载荷: 类型与 src (待导入内容的 URL 或纯 JSON 文本) 均一致。 */
+    private fun DeepLinkImportRequest.samePayloadAs(other: DeepLinkImportRequest): Boolean =
+        type == other.type && src == other.src
 
     /** 消费完成 (导入对话框关闭) 后, 从队列中取出下一个请求暴露给 UI; 若队列为空则置 null。 */
     fun consume() {

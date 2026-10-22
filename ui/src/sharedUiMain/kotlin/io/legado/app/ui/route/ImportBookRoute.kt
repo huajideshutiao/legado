@@ -17,7 +17,6 @@ import io.legado.app.ui.book.import.local.ImportBookUiActions
 import io.legado.app.ui.book.import.local.ImportBookUiEvent
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
-import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
@@ -43,7 +42,6 @@ fun ImportBookRoute(
     navigator: AppNavigator,
     screenModelStore: ScreenModelStore,
 ) {
-    val route = entry.route as AppRoute.ImportBook
     val screenModel = screenModelStore.getOrCreateTyped(entry) { ImportBookScreenModel() }
     val platform = PlatformCapabilityProviders.get()
 
@@ -63,12 +61,12 @@ fun ImportBookRoute(
         screenModel.updatePlatformState(items, path, loading, emptyMsgVisible)
     }
 
-    // 对照 onActivityCreated: sortState = viewModel.sort, 初始化目录 (与文件关联处理互不排斥,
-    // 原版 initData() 同样无条件执行); 初始化自报是否还没有可用目录, 是则拉起一次选择器。
-    LaunchedEffect(route.filePath) {
+    // 对照 onActivityCreated: sortState = viewModel.sort, 初始化目录 (原版 initData() 无条件执行);
+    // 初始化自报是否还没有可用目录, 是则拉起一次选择器 (目录选择是导入本地书入口自身的语义,
+    // 随页面进入即生效; 外部文件打开不经本页, 交启动请求消费侧直接分发, 见 LegadoApp ImportFile)
+    LaunchedEffect(Unit) {
         screenModel.dispatch(ImportBookUiEvent.SetSort(AppConfigProviders.get().localBookImportSort))
         if (platform.initImportBookData()) platform.pickImportFolder()
-        route.filePath?.let { filePath -> platform.openImportFile(filePath) }
     }
 
     val state by screenModel.state.collectAsState()

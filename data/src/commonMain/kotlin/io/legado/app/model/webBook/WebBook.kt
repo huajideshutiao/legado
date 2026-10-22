@@ -185,12 +185,22 @@ object WebBook {
         return book
     }
 
-    suspend fun getBookInfoByUrlAwait(bookUrl: String): Book{
-        if(AppDbProviders.get().bookDao.has(bookUrl)) throw NoStackTraceException("已在书架")
-        val baseUrl = NetworkUtils.getBaseUrl(bookUrl)
-            ?: throw NoStackTraceException("书籍地址格式不对")
+    /**
+     * 按书籍地址找认领它的书源 (零网络, 不抓取):
+     * - 地址带 UrlOption 段时只按其中的 `origin` 取源 (没写 origin 就不认领, 分支结构与原版一致);
+     * - 否则先取同 baseUrl 且允许添加书籍的源, 再按各源 `bookUrlPattern` 整段匹配
+     *   (经 [RuleRegexes] 带时间上限: 模式串来自书源, 每次重新编译在 native 端会递归爆栈)。
+     *
+     * @return null = 地址格式不对, 或没有任何书源认领
+     */
+    suspend fun matchBookSourceByUrl(bookUrl: String): BookSource? =
+        matchBookSourceByUrl(bookUrl, NetworkUtils.getBaseUrl(bookUrl))
+
+    /** 已算好 baseUrl 的版本, 供调用方与自己的 baseUrl 解析合为一次。 */
+    private suspend fun matchBookSourceByUrl(bookUrl: String, baseUrl: String?): BookSource? {
+        baseUrl ?: return null
         val urlMatch = AnalyzeUrlCore.paramPattern.find(bookUrl)
-        val source = if (urlMatch != null) {
+        return if (urlMatch != null) {
             // 对齐原版 GSON.fromJsonObject<AnalyzeUrl.UrlOption>(...).getOrNull()
             // decodeOrNull 走宽松策略 (流式状态机容错单引号及非标语法)
             val opt = decodeOrNull(
@@ -200,15 +210,27 @@ object WebBook {
             opt?.origin?.let {
                 AppDbProviders.get().bookSourceDao.getBookSource(it)
             }
-        }else AppDbProviders.get().bookSourceDao.getBookSourceAddBook(baseUrl)
+        } else AppDbProviders.get().bookSourceDao.getBookSourceAddBook(baseUrl)
             ?: AppDbProviders.get().bookSourceDao.hasBookUrlPattern().find { source ->
-            // 经 [RuleRegexes] 以模式串匹配 (带时间上限): 模式串来自书源, 原写法每次重新编译
-            // 且在 native 端编译/匹配都会递归爆栈
-            val pattern = source.bookUrlPattern ?: return@find false
-            RuleRegexes.get().matchesEntire(
-                bookUrl, pattern, multiline = false, timeout = RULE_REGEX_TIMEOUT
-            )
-        }
+                val pattern = source.bookUrlPattern ?: return@find false
+                RuleRegexes.get().matchesEntire(
+                    bookUrl, pattern, multiline = false, timeout = RULE_REGEX_TIMEOUT
+                )
+            }
+    }
+
+    /**
+     * 按书籍地址抓书详情 (未上架, 不写库)。
+     *
+     * @param matchedSource 调用方已经认领到的书源 ([matchBookSourceByUrl] 的结果); 传入时不再
+     *   重算认领 (避免同一个地址连做两次 DB 查询 + `bookUrlPattern` 匹配)
+     * @throws NoStackTraceException 地址已在书架、格式不对、无书源认领或拓取失败
+     */
+    suspend fun getBookInfoByUrlAwait(bookUrl: String, matchedSource: BookSource? = null): Book{
+        if(AppDbProviders.get().bookDao.has(bookUrl)) throw NoStackTraceException("已在书架")
+        val baseUrl = NetworkUtils.getBaseUrl(bookUrl)
+            ?: throw NoStackTraceException("书籍地址格式不对")
+        val source = matchedSource ?: matchBookSourceByUrl(bookUrl, baseUrl)
         // 原版把"没匹配到书源"和"抓取失败"一起裹进 catch-all, 两者都报"未找到匹配书源",
         // 且 source 为 null 时是 `source!!` 抛 NPE 被顺带吞掉。这里把两种失败分开:
         // 真没书源仍报原文案, 抓取失败上报真实原因, 否则用户看到的提示与实际问题无关。

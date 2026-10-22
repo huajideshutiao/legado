@@ -7,6 +7,7 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.topMostViewController
 import io.legado.app.utils.File
+import io.legado.app.ui.root.LaunchRequest
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -21,21 +22,31 @@ import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
-import platform.UIKit.UIApplicationWillEnterForegroundNotification
 
 /**
- * iOS 分享扩展取件: 扫 App Group 共享容器里的收件目录, 把文件交给既有的外部请求链。
+ * iOS 分享扩展取件: 扫 App Group 共享容器里的两个槽, 把文件与文本交给既有的外部请求链。
  *
  * # 为什么需要它
- * 分享扩展**不能拉起宿主 App** (扩展进程里没有通往宿主的 openURL 通道, Apple 限制),
- * 唯一交付通道是"扩展写共享容器 → 宿主来取": 写件侧是
- * `iosApp/ShareExtension/ShareViewController.swift` 的 `deliver`, 取件侧就是本对象。
- * 取件的时机是宿主启动 ([deliverPending] ← `registerIosProviders`) 与应用从后台回到前台
- * ([watchForeground]): 分享发生时别的应用在前台, 本应用只能在后台, 用户切回来即导入,
- * 不必等下次冷启动。
- * 取出的文件走既有链路, 不另立一套:
- * [handleIosLaunchRequest] → `LaunchRequest.ImportFile` → `LaunchRequestBus`
- * → `LegadoApp` 消费 → `AppRoute.ImportBook` → 各端已有的导入分发。
+ * Apple 文档只给 Today / iMessage 两类扩展点开 `NSExtensionContext.open` 这条路, DTS 的口径是
+ * "App extensions are not allowed to open URLs directly" —— 所以**唯一保证送达**的通道是
+ * "扩展写共享容器 → 宿主来取": 写件侧是 `iosApp/ShareExtension/ShareViewController.swift` 的
+ * `deliver`, 取件侧就是本对象。扩展在写完文本后会**尽力**沿 responder chain 调 `UIApplication.open`
+ * 把宿主带到前台 (非文档化契约, 与 Chrome iOS / Readest 同一条实际做法), 被拒绝时不报错也不丢件,
+ * 退回下面的取件时机。
+ * 取件的时机是宿主启动 ([deliverPending] ← `registerIosProviders`) 与应用变成活动态
+ * ([watchActive]): 分享发生时别的应用在前台, 本应用只能在后台, 用户切回来即导入, 不必等下次
+ * 冷启动; 从本应用自己弹出的分享面板里选本扩展时, 应用只是短暂失活 (没进后台, 回前台通知不发),
+ * 同样由活动态通知接住 —— 后台进前台必然紧跟一次变成活动态, 所以只挂活动态这一个钩子。
+ * 取出的内容走既有链路, 不另立一套:
+ * - 文件 → [handleIosLaunchRequest] → `LaunchRequest.ImportFile` → `LaunchRequestBus`
+ *   → `LegadoApp` 消费 → 平台文件关联分发 ([FileAssociationDispatch],
+ *   与原版透明壳同态: 对话框/阅读器直接叠在当前画面上);
+ * - 文本 → [LaunchRequest.ProcessText] → shared 的 shareTextTarget 分流 (与 Android
+ *   长按文字操作 / 分享文本、鸿蒙系统分享文本共用同一份判据)。
+ *
+ * # 为什么文件与文本是两个目录
+ * 收件目录 `ShareInbox/` 里的东西一律被当**文件**交给导入链; 分享进来的一段文字 (一条网页链接、
+ * 一段引文) 落成 `.txt` 混进去就等于把一段话当一本书导入, 故文本走 `ShareText/`。
  *
  * # 取件为什么先落"应用内接收目录"再投递
  * 1. 容器路径不在 App 沙盒内, 也不在用户经"文件"面板授权的目录里 →
@@ -79,6 +90,9 @@ object IosShareInbox {
     /** 容器内的收件目录名 (与 Swift 侧 `legadoInboxDirName` 同一字面量)。 */
     private const val INBOX_DIR_NAME = "ShareInbox"
 
+    /** 容器内的文本槽目录名 (与 Swift 侧 `legadoTextDirName` 同一字面量)。 */
+    private const val TEXT_DIR_NAME = "ShareText"
+
     /** 应用内接收目录名: 容器里的收件先落这里, 再由既有导入链就地读取。 */
     private const val STORE_DIR_NAME = "ShareImports"
 
@@ -98,8 +112,9 @@ object IosShareInbox {
     /** 分享入口不可用时给用户看的说明 (原因 + 可用替代路径)。 */
     private const val SHARE_ENTRY_UNAVAILABLE =
         "分享入口当前不可用：安装包签名不含共享容器（App Groups），" +
-            "从分享面板分享进来的文件收不到。\n" +
-            "可换用带该能力的签名安装，或先把文件存到「文件」App，再用应用内的「导入本地书籍」导入。"
+            "从分享面板分享进来的文件与文本都收不到。\n" +
+            "可换用带该能力的签名安装，或先把文件存到「文件」App，再用应用内的「导入本地书籍」导入；" +
+            "文本可先复制，再在应用内搜索或粘贴地址导入。"
 
     /**
      * 取件扫描跑在 IO 线程: didFinishLaunching 里做同步文件拷贝会拖住启动
@@ -119,9 +134,9 @@ object IosShareInbox {
      */
     private val stagedInProcess = HashSet<String>()
 
-    /** 回到前台的取件钩子只挂一次 (见 [watchForeground])。 */
+    /** 活动态的取件钩子只挂一次 (见 [watchActive])。 */
     @Volatile
-    private var foregroundWatching = false
+    private var activeWatching = false
 
     /** 容器不可用的判定与提示只做一次 (容器能力由签名固定, 见 [notifyEntryUnavailable])。 */
     @Volatile
@@ -133,32 +148,30 @@ object IosShareInbox {
 
     /**
      * 取件入口: 宿主启动链调用一次 (见 `IosProviderRegistry.registerIosProviders`),
-     * 之后应用每次从后台回到前台自动再取一次 ([watchForeground])。
+     * 之后应用每次变成活动态 ([watchActive]) 自动再取一次。
      *
-     * 每次调用都把收件目录里当时存在的文件逐个收进应用内接收目录并交给既有导入链, 末尾对账清理
-     * 接收目录 (启动这次还顺带清掉收件目录里的残留临时件, 见 [discardAbandonedTemps])。
-     * 只处理"当时在容器里"的文件, 收下的原件随后即被清掉, 同一件不会被收两遍。
+     * 每次调用都把容器里当时存在的内容收走: 文件逐个落应用内接收目录并交给导入链, 文本槽逐条交给
+     * 文本分流链, 末尾对账清理接收目录 (启动这次还顺带清掉收件目录里的残留临时件, 见
+     * [discardAbandonedTemps])。
+     * 只处理"当时在容器里"的内容, 收下的原件随后即被清掉, 同一件不会被收两遍。
      * 容器取不到 (无 entitlement) 或接收目录不可用时给用户可见说明并按"本次不取件"处理,
      * 原件留在容器里等下次取件 (不静默, 也不丢件)。
      */
     fun deliverPending() {
-        watchForeground()
+        watchActive()
         scope.launch { pickUp(discardInboxResidue = true) }
     }
 
     /**
-     * 应用从后台回到前台时也取件: 分享扩展写件时本应用只能在后台, 用户切回来就该导入。
-     * 只取件, 不清收件目录里的残留临时件 (原因见 [discardAbandonedTemps])。
-     *
-     * 触发用平台事件本身 ([UIApplicationWillEnterForegroundNotification]): Apple 文档说它只在整应用
-     * 的聚合状态由后台进前台时发 (控制中心/来电横幅这类短暂失活不发), 冷启动直接进前台也会发一次
-     * (那时启动取件已经跑过, 再扫到的是空目录), 后台启动的进程之后再进前台同样会发。
+     * 应用变成活动态时取件: 分享扩展写件时本应用只能在后台, 用户切回来就该导入;
+     * 从本应用自己的分享面板里选该扩展时进程只是短暂失活而没进后台, 回前台通知不发, 同样靠这一钩。
+     * 横幅、控制中心这类短暂失活后也会反复发活动态通知, 而取件对空目录只是一次 listFiles。
      */
-    private fun watchForeground() {
-        if (foregroundWatching) return
-        foregroundWatching = true
+    private fun watchActive() {
+        if (activeWatching) return
+        activeWatching = true
         NSNotificationCenter.defaultCenter.addObserverForName(
-            UIApplicationWillEnterForegroundNotification,
+            UIApplicationDidBecomeActiveNotification,
             `object` = null,
             queue = NSOperationQueue.mainQueue,
         ) {
@@ -167,44 +180,79 @@ object IosShareInbox {
     }
 
     /**
-     * 一次取件: 扫收件目录 → 逐件落应用内接收目录并投给导入链 → 对账清理接收目录。
+     * 一次取件: 扫容器里的两个槽 → 文件落应用内接收目录并投导入链, 文本投分流链 → 对账清理接收目录。
      *
-     * 串行的原因: 冷启动直接进前台时平台事件照发一次, 两次取件会撞上; 并发跑会把同一件收两遍
-     * (投两次导入、删两次原件)。
+     * 串行的原因: 取件钩子有三个 (启动 / 回前台 / 活动态), 冷启动直接进前台时它们会撞上;
+     * 并发跑会把同一件收两遍 (投两次导入、删两次原件)。
      *
      * @param discardInboxResidue 是否顺带清掉收件目录里的残留临时件 (只有启动取件清, 原因见
      * [discardAbandonedTemps])
      */
     private suspend fun pickUp(discardInboxResidue: Boolean) = pickUpMutex.withLock {
-        val inbox = inboxDirectory()
-        val store = storeDirectory()
-        if (inbox != null && store != null) {
-            val entries = inboxEntries(inbox)
-            if (discardInboxResidue) discardAbandonedTemps(entries)
-            for (file in pendingFiles(entries)) {
-                val staged = stage(file, store) ?: continue
-                stagedInProcess += staged.absolutePath
-                deliver(staged, source = file)
-            }
-        } else if (inbox == null) {
+        val container = containerPath()
+        if (container == null) {
             notifyEntryUnavailable()
-        } else {
-            Toasters.get().toast("无法接收分享进来的文件：应用内接收目录不可用")
+            return@withLock
         }
-        // 收件目录或接收目录不可用时也照样对账: 上一轮留下的未导入副本与本次无关
+        val store = storeDirectory()
+        val inbox = slotDirectory(container, INBOX_DIR_NAME)
+        if (inbox != null) {
+            val entries = directoryEntries(inbox)
+            if (discardInboxResidue) discardAbandonedTemps(entries)
+            if (store == null) {
+                Toasters.get().toast("无法接收分享进来的文件：应用内接收目录不可用")
+            } else {
+                for (file in pendingFiles(entries)) {
+                    val staged = stage(file, store) ?: continue
+                    stagedInProcess += staged.absolutePath
+                    deliver(staged, source = file)
+                }
+            }
+        }
+        slotDirectory(container, TEXT_DIR_NAME)?.let { slot ->
+            val textEntries = directoryEntries(slot)
+            // 启动取件顺带清文本槽里写件中断留下的临时件 (与收件目录同一个跨进程命名约定)
+            if (discardInboxResidue) discardAbandonedTemps(textEntries)
+            pickUpTexts(textEntries)
+        }
+        // 接收目录不可用时也照样对账: 上一轮留下的未导入副本与本次无关
         if (store != null) discardUnimported(store)
     }
 
     /**
-     * 容器内的收件目录; 容器取不到 (无 entitlement) 或路径不可用时返回 null。
+     * 文本槽取件: 每条文本原样交给 [LaunchRequest.ProcessText] —— 分流判据在 shared 的
+     * shareTextTarget, 与 Android 分享/长按文本、鸿蒙系统分享文本共用一份, 不在端侧另立。
      *
-     * 目录不存在时创建 (扩展侧也会创建, 两边都做是为了"谁先跑都不出错")。
+     * 投一条删一条; 读不出保留原件等下次取件并记日志 (不静默丢件)。
      */
-    private fun inboxDirectory(): File? {
-        val container = NSFileManager.defaultManager
-            .containerURLForSecurityApplicationGroupIdentifier(APP_GROUP_ID) ?: return null
-        val containerPath = container.path ?: return null
-        return File(containerPath, INBOX_DIR_NAME).apply { mkdirs() }
+    private fun pickUpTexts(entries: List<File>) {
+        for (file in pendingFiles(entries)) {
+            val text = runCatching { file.readText() }
+                .onFailure { AppLog.put("分享取件读文本失败: ${file.name}\n${it.message}", it) }
+                .getOrNull() ?: continue
+            IosLaunchRequests.post(LaunchRequest.ProcessText(text))
+            if (!file.delete()) AppLog.put("分享取件后清理失败: ${file.path}")
+        }
+    }
+
+    /**
+     * App Group 容器路径; 取不到 (签名不含共享容器) 返回 null —— 两个槽都无从谈起。
+     *
+     * 读容器不经 `withLocalDirAccess`: 那层授权是给"用户选的容器外目录"用的, 对自己的共享容器只会误判成越权。
+     */
+    private fun containerPath(): String? = NSFileManager.defaultManager
+        .containerURLForSecurityApplicationGroupIdentifier(APP_GROUP_ID)?.path
+
+    /**
+     * 容器内的一个槽目录 (不存在时创建; 扩展侧也会创建, 两边都做是为了"谁先跑都不出错")。
+     *
+     * 建不出来记日志返回 null, 由调用方按"本次不取这个槽"处理 (原件留在容器里等下次取件)。
+     */
+    private fun slotDirectory(container: String, name: String): File? {
+        val dir = File(container, name)
+        if (dir.mkdirs()) return dir
+        AppLog.put("分享取件: 无法创建容器内槽目录 ${dir.path}")
+        return null
     }
 
     /**
@@ -225,9 +273,9 @@ object IosShareInbox {
         return null
     }
 
-    /** 收件目录里的一次性列出 (目录只扫一遍); 读不到按空处理, 不抛。 */
-    private fun inboxEntries(inbox: File): List<File> = runCatching {
-        inbox.listFiles()?.toList() ?: emptyList()
+    /** 槽目录的一次性列出 (目录只扫一遍); 读不到按空处理, 不抛。 */
+    private fun directoryEntries(dir: File): List<File> = runCatching {
+        dir.listFiles()?.toList() ?: emptyList()
     }.onFailure {
         AppLog.put("分享扩展收件目录扫描失败\n${it.message}", it)
     }.getOrDefault(emptyList())

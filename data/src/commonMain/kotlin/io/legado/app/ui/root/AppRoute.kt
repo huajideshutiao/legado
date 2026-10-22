@@ -266,7 +266,7 @@ sealed interface AppRoute {
 
     @Serializable
     @SerialName("import_book")
-    data class ImportBook(val filePath: String? = null) : AppRoute
+    data object ImportBook : AppRoute
 
     // 三端合并: 配置类 (MY 子项)
     @Serializable

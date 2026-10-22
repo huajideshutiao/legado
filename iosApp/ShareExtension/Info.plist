@@ -8,9 +8,11 @@
       两边必须同步, 说明先在 project.yml 那段。
 
   决定"扩展会不会出现在分享面板"的是 NSExtension 字典; 决定"收什么内容"的是
-  NSExtensionActivationRule。当前唯一激活规则 = 收 1 个文件。
+  NSExtensionActivationRule。当前规则 = Version 2 (至少处理一类) + 收 1 个文件 / 文本 / web 链接,
+  每条的适用条件见 project.yml 同段注释。
   交付与生效前提 (未签名 ipa 拿不到 App Group entitlement, 链路不生效) 见
   project.yml 的 ShareExtension 段与 ShareViewController.swift 头部注释。
+  文本落到与文件不同的槽 (ShareText/), 原因见 ShareViewController.swift 的 legadoTextDirName。
 -->
 <plist version="1.0">
 <dict>
@@ -41,7 +43,13 @@
 		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
 		<key>NSExtensionActivationRule</key>
 		<dict>
+			<key>NSExtensionActivationDictionaryVersion</key>
+			<integer>2</integer>
 			<key>NSExtensionActivationSupportsFileWithMaxCount</key>
+			<integer>1</integer>
+			<key>NSExtensionActivationSupportsText</key>
+			<true/>
+			<key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
 			<integer>1</integer>
 		</dict>
 	</dict>

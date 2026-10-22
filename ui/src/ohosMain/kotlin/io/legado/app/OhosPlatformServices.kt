@@ -297,7 +297,7 @@ object OhosLaunchRequests {
         if (value.startsWith(TEXT_PREFIX)) {
             // 系统分享进来的文本 (ArkTS EntryAbility.handleSharedData 打的前缀): 文本可能含任意
             // 字符, 与普通 uri 无法区分, 故按已有 route:/mime: 同一路数显式标记。
-            // 整段是链接当书籍地址添加 / 其余进搜索页的分流在 [LaunchRequest.ProcessText] 的消费方
+            // 整段是一条 http(s) 地址交自动识别类型导入 / 其余进搜索页的分流在 [LaunchRequest.ProcessText] 的消费方
             // 统一处置 (判据见 shared shareTextTarget), 各端入口只负责原样投递文本。
             val text = value.removePrefix(TEXT_PREFIX)
             if (text.isEmpty()) return null

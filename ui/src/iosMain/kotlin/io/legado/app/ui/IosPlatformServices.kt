@@ -717,16 +717,20 @@ object IosLaunchRequests {
         }
     }
 
-    /** 投递到 [LaunchRequestBus]; 队列已关闭返回 false。 */
-    fun post(request: LaunchRequest): Boolean =
-        runCatching { LaunchRequestBus.dispatch(request) }.isSuccess
+    /** 投递到 [LaunchRequestBus]。队列是无限容量的进程内总线, 不关闭, 投递不会失败。 */
+    fun post(request: LaunchRequest) {
+        LaunchRequestBus.dispatch(request)
+    }
 
     private const val ROUTE_PREFIX = "route:"
 }
 
 /** Swift 侧入口: 解析并投递外部启动请求 (对照 [io.legado.app.handleLegadoDeepLink])。 */
-fun handleIosLaunchRequest(uri: String): Boolean =
-    IosLaunchRequests.parse(uri)?.let(IosLaunchRequests::post) ?: false
+fun handleIosLaunchRequest(uri: String): Boolean {
+    val request = IosLaunchRequests.parse(uri) ?: return false
+    IosLaunchRequests.post(request)
+    return true
+}
 
 /**
  * Swift 侧入口: 把通知中心 delegate 装到 Kotlin 的 [IosNotificationDelegate]。

@@ -3,8 +3,10 @@ package io.legado.app.ui.association
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
+import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.addType
 import io.legado.app.help.config.ReadBookConfigProviders
+import io.legado.app.help.http.KmpResponseBody
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.http.decompressed
 import io.legado.app.help.http.newCallResponseBody
@@ -23,7 +25,9 @@ import io.legado.app.ui.root.toRouteRef
  * - `/addToBookshelf` → [AddToBookshelfShared] (原 `AddToBookshelfHelper.add`)
  * - `/readConfig` → [importReadConfig] (原 `getBytes` + `importReadConfig`)
  * - 其余未识别 path → [determineType] (原 `determineType`: 下载内容按 Content-Type 嗅探,
- *   zip/octet-stream 当排版配置, 否则当 JSON 走 [detectJsonType])
+ *   zip/octet-stream 当排版配置, 否则当 JSON 走 [detectJsonType]); 调用方在嗅探前先用
+ *   [io.legado.app.model.webBook.WebBook.matchBookSourceByUrl] 判这条地址是不是某书源的书,
+ *   是则转成 `/addToBookshelf` (见 DeepLinkImportHost)
  *
  * 均为纯 commonMain 编排 (DB/网络/文件), 不含 Uri/LiveData/Toast, 由
  * [io.legado.app.ui.association.DeepLinkImportHost] 桥接结果到 UI。
@@ -38,31 +42,34 @@ object SchemeImportOps {
      *   JSON 分支返回 [DetermineResult.Json] (交调用方按 [DeepLinkImportType] 继续走导入 VM);
      *   下载/解析失败抛异常, 调用方按 ImportError 处理。
      */
-    suspend fun determineType(url: String): DetermineResult {
-        val body = OkHttpClientProviders.get().okHttpClient.newCallResponseBody {
-            if (url.endsWith("#requestWithoutUA")) {
-                url(url.substringBeforeLast("#requestWithoutUA"))
-                header(AppConst.UA_NAME, "null")
-            } else {
-                url(url)
-            }
-        }.decompressed()
-        try {
-            val contentType = body.contentType()?.toString()
-            return if (contentType == "application/zip" || contentType == "application/octet-stream") {
-                DetermineResult.ReadConfig(importReadConfigBytes(body.bytes()))
-            } else {
-                val json = body.bytes().decodeToString()
-                val type = detectJsonType(json) ?: error("格式不对")
-                DetermineResult.Json(type.toDeepLinkImportType(), json)
-            }
-        } finally {
-            body.close()
+    suspend fun determineType(url: String): DetermineResult = withDownloadedBody(url) { body ->
+        val contentType = body.contentType()?.toString()
+        if (contentType == "application/zip" || contentType == "application/octet-stream") {
+            DetermineResult.ReadConfig(importReadConfigBytes(body.bytes()))
+        } else {
+            val json = body.bytes().decodeToString()
+            // 下载到网页而不是可导入内容: 这条链接没有书源认领, 报"未找到匹配书源"
+            // (与抓书链同一文案), 不把用户引向"文件格式"
+            val jsonType = detectJsonType(json)
+                ?: error(if (json.trimStart().startsWith("<")) "未找到匹配书源" else "格式不对")
+            DetermineResult.Json(jsonType.toDeepLinkImportType(), json)
         }
     }
 
     /** 下载 [url] 后导入排版配置 (对照 app 端 `getBytes` + `importReadConfig`)。 */
-    suspend fun importReadConfig(url: String): String {
+    suspend fun importReadConfig(url: String): String = withDownloadedBody(url) { body ->
+        importReadConfigBytes(body.bytes())
+    }
+
+    /**
+     * 下载 [url] 内容并解压, 把响应体交给 [handle], 用完必关。
+     *
+     * `#requestWithoutUA` 去 UA 的写法与解压只此一份 (类型嗅探与排版配置导入两处共用)。
+     */
+    private suspend fun <T> withDownloadedBody(
+        url: String,
+        handle: (KmpResponseBody) -> T,
+    ): T {
         val body = OkHttpClientProviders.get().okHttpClient.newCallResponseBody {
             if (url.endsWith("#requestWithoutUA")) {
                 url(url.substringBeforeLast("#requestWithoutUA"))
@@ -72,7 +79,7 @@ object SchemeImportOps {
             }
         }.decompressed()
         return try {
-            importReadConfigBytes(body.bytes())
+            handle(body)
         } finally {
             body.close()
         }
@@ -122,9 +129,9 @@ fun JsonType.toDeepLinkImportType(): DeepLinkImportType = when (this) {
 object AddToBookshelfShared {
 
     /** 抓取书籍详情并构建未上架状态的详情页路由 (供多端导航与路由解析复用)。 */
-    suspend fun resolveRoute(bookUrl: String): AppRoute {
+    suspend fun resolveRoute(bookUrl: String, matchedSource: BookSource? = null): AppRoute {
         if (bookUrl.isBlank()) error("url不能为空")
-        val book = getBookInfoByUrlAwait(bookUrl)
+        val book = getBookInfoByUrlAwait(bookUrl, matchedSource)
         book.addType(BookType.notShelf)
         return AppRoute.BookInfo(book.toRouteRef())
     }
@@ -133,9 +140,14 @@ object AddToBookshelfShared {
      * @param beforeNavigate 抓完书、真正 push 之前等的东西。调用方用它把"收起加载框并等它确实
      *   离开界面"插在跳转前面 —— 置隐与跳转落在同一主线程消息时, 系统合成出的第一帧仍是框还在的
      *   画面, 整段页面转场都会带着它 (原版是 "关框 → 打开页面" 的顺序)。
+     * @param matchedSource 调用方已认领到的书源, 传下后不再重算认领。
      */
-    suspend fun add(bookUrl: String, beforeNavigate: suspend () -> Unit = {}) {
-        val route = resolveRoute(bookUrl)
+    suspend fun add(
+        bookUrl: String,
+        beforeNavigate: suspend () -> Unit = {},
+        matchedSource: BookSource? = null,
+    ) {
+        val route = resolveRoute(bookUrl, matchedSource)
         beforeNavigate()
         // getOrNull: Android 透明壳 AssociationActivity 也挂 DeepLinkImportHost, 壳内没有
         // LegadoApp/navigator (壳把书籍类请求拦成 pendingBookNav 转发, 靠的是壳自己的拦截顺序)

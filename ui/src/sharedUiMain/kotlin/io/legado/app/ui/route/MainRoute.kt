@@ -1121,7 +1121,7 @@ private fun BookshelfTabContent(
     val callbacks = remember(navigator, currentGroupId) {
         BookshelfActionsCallbacks(
             onRefresh = { viewModel.upToc() },
-            onAddLocalBook = { navigator.push(AppRoute.ImportBook()) },
+            onAddLocalBook = { navigator.push(AppRoute.ImportBook) },
             onAddRemoteBook = { navigator.push(AppRoute.RemoteBook) },
             onShowAddBookByUrlAlert = { showAddByUrl = true },
             // 对照原版 BaseBookshelfFragment: startActivity<BookshelfManageActivity> {

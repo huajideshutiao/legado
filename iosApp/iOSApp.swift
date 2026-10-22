@@ -68,19 +68,24 @@ private let legadoRouteUserInfoKey = "route"
 ///
 /// # 为什么要闸门
 ///
-/// 「把外部东西交给 legado」在 iOS 上有三个可能的投递点, 且本仓环境无法实测
+/// 「把外部东西交给 legado」在 iOS 上有两个官方投递点, 且本仓环境无法实测
 /// (无 macOS/Xcode):
 /// - SwiftUI `View.onOpenURL` —— 现有 legado:// 深链已经跑在这条路上
-/// - `AppDelegate.application(_:open:options:)` —— 文档类型打开的传统投递点
-/// - `UISceneDelegate.scene(_:openURLContexts:)` —— 补上自定义 scene delegate 后
-///   (为接主屏快捷项) 才会出现的第三个点, 见 [LegadoSceneDelegate]
+/// - `UISceneDelegate.scene(_:openURLContexts:)` (冷启动经 `scene(_:willConnectTo:options:)`
+///   的 `connectionOptions.urlContexts`) —— 见 [LegadoSceneDelegate]
 ///
-/// 三者到底"只走一条"还是"都发"无本地依据, 所以**都接**。同一次打开被多条通道各投一次时,
-/// 由 shared 导航层确定性去重: `LegadoApp.pushIfNeeded` 比对栈顶路由与来路是否结构性相等,
-/// 相等即不再叠第二层。这里**不做时间窗抑制** —— 上一版用 8 秒窗口抹, 会把"退出后立刻
+/// `AppDelegate.application(_:open:options:)` 是被官方废弃的第三条通道: Apple 文档页
+/// 标注 Deprecated iOS 9.0-26.0, 替代说明即 "Use UIScene lifecycle and
+/// scene(_:openURLContexts:) from UISceneDelegate instead."; 场景化生命周期里文档
+/// 打开也不经它, 本壳不接它。
+///
+/// 两口到底"只走一条"还是"都发"无官方条文, 所以**都接**。同一次打开被两条通道各投一次时
+/// 由共享层确定性去重: 导入框在入队时按类型+内容结构相等合并 (LegadoDeepLinkHandler
+/// enqueue), 阅读类由 `LegadoApp.pushIfNeeded` 比对栈顶路由与来路是否结构性相等, 相等
+/// 即不再叠第二层。这里**不做时间窗抑制** —— 时间窗会把"退出后立刻
 /// 再开同一个文件"与"8 秒内重点同一个 legado:// 深链"一起吞掉 (表现为什么也不会发生),
 /// 拿时间窗解"同一载荷到了两次"是兜底而不是方案。
-/// ⚠️ 未查证: 三个点是否真会重复投, 真机上以 `external URI arrived again` 日志行为准;
+/// ⚠️ 未查证: 两个点是否真会重复投, 真机上以 `external URI arrived again` 日志行为准;
 ///
 /// # 为什么不做 stop 配对 security-scoped 授权
 ///
@@ -90,7 +95,7 @@ private let legadoRouteUserInfoKey = "route"
 /// 所以**故意不配对**: 把 URL 收进 `scopedURLs` 持有, 授权随会话有效, 进程退出自然回收。
 /// 如果反过来在 `handle` 里 start 完就 stop, 会把能播的场景做成必失败。
 ///
-/// 所有入口 (onOpenURL / application(_:open:) / scene(_:openURLContexts:)) 都在主线程,
+/// 所有入口 (onOpenURL / scene(_:openURLContexts:)) 都在主线程,
 /// 所以本闸门无需加锁。
 private enum ExternalUriIngress {
 
@@ -100,7 +105,8 @@ private enum ExternalUriIngress {
     private static var lastAt: TimeInterval = 0
     private static var scopedURLs: [Foundation.URL] = []
 
-    /// 系统投递一条外部 URI (URL 形态: onOpenURL / AppDelegate / scene openURLContexts)。
+    /// 系统投递一条外部 URI (URL 形态: onOpenURL / scene openURLContexts, 冷启动经
+    /// willConnectTo 的 connectionOptions.urlContexts)。
     static func handle(_ url: Foundation.URL) {
         let now = ProcessInfo.processInfo.systemUptime
         let key = dedupeKey(url)
@@ -223,7 +229,7 @@ final class LegadoSceneDelegate: NSObject, UIWindowSceneDelegate {
         completionHandler(ShortcutIngress.handle(shortcutItem, coldStart: false))
     }
 
-    /// 场景 URL 投递点 (与 `onOpenURL` 同一闸门, 重复由 shared 导航层抹)。
+    /// 场景 URL 投递点 (与 `onOpenURL` 同一闸门, 双口是否互斥官方无条文, 同载荷重复由共享层去重承接)。
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         for context in URLContexts {
             ExternalUriIngress.handle(context.url)
@@ -283,20 +289,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
         return configuration
     }
-
-    /// 文档类型 / URL scheme 的传统投递点。
-    ///
-    /// 与 `onOpenURL` / `scene(_:openURLContexts:)` 是同一扇门的三张不同票: 在场景化生命周期下
-    /// Apple 到底只发哪几张无本地依据, 故都接; 同一次打开被投多次时由 shared 导航层抹掉
-    /// (`LegadoApp.pushIfNeeded` 比栈顶路由), **不在这里做时间窗抑制**。详见闸门自述。
-    func application(
-        _ application: UIApplication,
-        open url: Foundation.URL,
-        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
-    ) -> Bool {
-        ExternalUriIngress.handle(url)
-        return true
-    }
 }
 
 /// SwiftUI App 入口 (iOS 14+ 生命周期)。
@@ -333,16 +325,18 @@ struct iOSApp: App {
                 ) { note in
                     statusBarHidden = note.userInfo?["hidden"] as? Bool ?? false
                 }
-                // 外部 URI 入口之一 (另两个见上面 AppDelegate.application(_:open:options:)
-                // 与 LegadoSceneDelegate.scene(_:openURLContexts:), 共三处):
-                // 三处都接不是为了重复处理, 而是本仓无 macOS 可实测"系统到底走哪条";
-                // 重复投递由 shared 的 LegadoApp.pushIfNeeded 按"栈顶已是同一载荷"抹掉
-                // (时间窗已删 —— 它会把 8 秒内重同一个 legado:// 深链一起吞掉)。
+                // 外部 URI 入口之一 (另一处见 LegadoSceneDelegate.scene(_:openURLContexts:),
+                // 冷启动经 willConnectTo 的 connectionOptions.urlContexts, 共两处):
+                // 两处都接不是为了重复处理, 而是官方未条文"两口是否互斥";
+                // 同载荷重复到达由共享层确定性去重承接 (导入框入队时按类型+内容合并 /
+                // LegadoApp.pushIfNeeded 比回栈顶路由; 时间窗会把"退出后立刻再开同一个文件"
+                // 与"随时重点同一个 legado:// 深链"一起吞掉)。已废弃的 AppDelegate 打开回调通道不接
+                // (Apple 文档页标注 Deprecated iOS 9.0-26.0, 官方指定 scene 通道替代)。
                 // 分流: legado:// 与 yuedu:// → 既有深链导入链 (行为零变更);
                 // 其余 (含 CFBundleDocumentTypes 命中的 file:// 文档打开) → shared 启动请求解析器
                 // IosLaunchRequests.parse: file|content|app → LaunchRequest.ImportFile,
-                // 再由 LegadoApp.handleLaunchRequest 嗅探视频并改推
-                // AppRoute.VideoPlay(VideoPlayTarget.Direct) (不查书/不落进度/不写书签)。
+                // 由 LegadoApp.handleLaunchRequest 交平台文件关联分发 (视频直推播放页,
+                // JSON 弹导入框, 书籍文件开阅读; 不查书/不落进度/不写书签)。
                 .onOpenURL { url in
                     ExternalUriIngress.handle(url)
                 }

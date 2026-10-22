@@ -298,7 +298,9 @@ targets:
         release:
           PRODUCT_BUNDLE_IDENTIFIER: shutiao.reader.release
     # Share Extension 随主 App 一起打进 Payload/*.app/PlugIns/ (embed 走 Xcode 的
-    # "Embed App Extensions" 复制阶段)。扩展无法拉起宿主, 交付只能走 App Group 容器, 见下段。
+    # "Embed App Extensions" 复制阶段)。Apple 只给 Today / iMessage 两类扩展点开
+    # NSExtensionContext.open 这条路, 因此**保证送达**的通道只能走 App Group 容器;
+    # 扩展在写完文本后会尽力沿 responder chain 调 UIApplication.open 把宿主带到前台 (失败不丢件), 见下段。
     dependencies:
       - target: ShareExtension
         embed: true
@@ -390,9 +392,16 @@ targets:
         NSExtension:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
-          # 一次最多收 1 个文件 (书籍/压缩包都是单文件交付)
+          # 激活规则 (Apple《Keys for App Extensions》Table 3 / NSExtensionActivationDictionaryVersion):
+          # 不设 Version (=1) 时要求扩展能处理投递方提供的**全部**类型, 只声明收文件的本扩展在
+          # "Safari 分享一条链接" (给的是 public.url / public.plain-text) 时根本不出现,
+          # 故取 Version 2 = "至少能处理其中一类"。三类并存: 文件 (epub/txt/视频)、文本
+          # (选段/描述)、web 链接 (浏览器分享的 URL, 按文本取 absoluteString)。
           NSExtensionActivationRule:
+            NSExtensionActivationDictionaryVersion: 2
             NSExtensionActivationSupportsFileWithMaxCount: 1
+            NSExtensionActivationSupportsText: true
+            NSExtensionActivationSupportsWebURLWithMaxCount: 1
     settings:
       base:
         PRODUCT_NAME: ShareExtension

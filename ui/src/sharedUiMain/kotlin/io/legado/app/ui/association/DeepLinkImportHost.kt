@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import io.legado.app.constant.AppLog
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.platform.syncGetString
+import io.legado.app.model.webBook.WebBook.matchBookSourceByUrl
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.ui.widget.dialog.awaitWaitDialogDismissed
 import legado.ui.generated.resources.Res
@@ -34,8 +35,10 @@ private val schemeOnlyTypes = setOf(
  * - ADD_TO_BOOKSHELF: 直接跳详情页;
  * - READ_BOOK: 书架内直接阅读, 不在书架抓详情进详情页;
  * - READ_CONFIG: 一步导入完成;
- * - UNKNOWN: 下载嗅探 —— zip 当排版配置一步完成, JSON 识别出具体类型后转生新请求
- *   (对照 app 端 determineType 的分流, 转生后 pending 不再是 [req], 本函数不再负责消费)。
+ * - UNKNOWN: **先走书籍识别** (零网络按各源 bookUrlPattern 认领这条地址) —— 被认领就直接带
+ *   着这个源进抓书链 (不再重算认领), 不被认领才下载嗅探内容类型 —— zip 当排版配置一步完成,
+ *   JSON 识别出具体类型后转生新请求 (对照 app 端 determineType 的分流, 转生后 pending 不再是 [req],
+ *   本函数不再负责消费)。
  *
  * @param beforeNavigate 两型导航前的等待钩子 (收起加载框并等它离开界面), 由宿主传入。
  */
@@ -62,20 +65,33 @@ private suspend fun runSchemeImport(
             .onSuccess { Toasters.get().toast("导入排版成功: $it") }
             .onFailure { Toasters.get().toast(it.message ?: "导入排版失败") }
 
-        DeepLinkImportType.UNKNOWN -> runCatching { SchemeImportOps.determineType(req.src) }
-            .onSuccess { result ->
-                when (result) {
-                    is SchemeImportOps.DetermineResult.ReadConfig ->
-                        Toasters.get().toast("导入排版成功: ${result.configName}")
+        DeepLinkImportType.UNKNOWN -> {
+            // 先零网络按书源认领: 认领到的源直接带到抓书链, 不让下游再算一遍认领;
+            // 不认领才下载内容嗅探类型 (排版配置 / 各类 JSON 一键导入)。
+            val matchedSource = runCatching { matchBookSourceByUrl(req.src) }
+                .onFailure { AppLog.put("按书源认领 ${req.src} 出错", it) }
+                .getOrNull()
+            if (matchedSource != null) {
+                runCatching { AddToBookshelfShared.add(req.src, beforeNavigate, matchedSource) }
+                    .onFailure {
+                        AppLog.put("添加书籍 ${req.src} 出错", it)
+                        Toasters.get().toast(it.message ?: "")
+                    }
+            } else runCatching { SchemeImportOps.determineType(req.src) }
+                .onSuccess { result ->
+                    when (result) {
+                        is SchemeImportOps.DetermineResult.ReadConfig ->
+                            Toasters.get().toast("导入排版成功: ${result.configName}")
 
-                    is SchemeImportOps.DetermineResult.Json ->
-                        LegadoDeepLinkHandler.handleResolved(
-                            DeepLinkImportRequest(result.type, result.json)
-                        )
+                        is SchemeImportOps.DetermineResult.Json ->
+                            LegadoDeepLinkHandler.handleResolved(
+                                DeepLinkImportRequest(result.type, result.json)
+                            )
+                    }
                 }
-            }
-            // 与 ImportTargetDialog 的 Res.string.wrong_format 同一资源, 避免同语义双文案
-            .onFailure { Toasters.get().toast(it.message ?: syncGetString("wrong_format")) }
+                // 与 ImportTargetDialog 的 Res.string.wrong_format 同一资源, 避免同语义双文案
+                .onFailure { Toasters.get().toast(it.message ?: syncGetString("wrong_format")) }
+        }
 
         else -> Unit
     }

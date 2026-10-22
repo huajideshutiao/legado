@@ -647,12 +647,11 @@ private fun applyWindowPolicy(policy: WindowPolicy) {
 /**
  * 外部投递专用 push: 不重复叠“已经就是栈顶”的那一页。
  *
- * 为什么需要这一层: iOS 上“文档被本 App 打开”到底走 SwiftUI `onOpenURL` 还是
- * `AppDelegate.application(_:open:options:)` 无本地依据 (Apple 文档页拓取 404,
- * 本机无 Xcode), 两条都接是保险做法, 代价是同一次打开可能投递两次 ——
- * 不拦住就是播放页/导入页叠两层。
+ * 为什么需要这一层: iOS 上同一份文档打开可能被 SwiftUI `onOpenURL` 与自定义 scene
+ * delegate 两口各投一次 (官方未条文两口是否互斥, 真机以日志为准) ——
+ * 不拦住就是播放页叠两层 (其余文件载荷交平台文件分发, 双投由导入宿主的载荷去重承接)。
  *
- * 上一版用“同一 URI 8 秒内只放行一次”抹, 那是兜底不是方案: 它会把“退出后立刻
+ * “同一 URI 8 秒内只放行一次”一类时间窗抹法是兜底不是方案: 它会把“退出后立刻
  * 再开同一个文件”连“8 秒内重点同一个 legado:// 深链”一起吞掉 (表现为什么也不会发生)。
  * 栈顶比对是确定性的: 第一条把它推成栈顶 → 第二条同载荷 no-op; 用户真退回再开,
  * 栈顶已变 → 立即能推 (无冷却期)。只用在文件投递分支 (ImportFile), 不给 OpenRoute
@@ -666,6 +665,31 @@ private fun AppNavigator.pushIfNeeded(route: AppRoute) {
     push(route)
 }
 
+/**
+ * 外部投来的一段文本的统一去向 (判据只算一次, 见 [shareTextTarget]):
+ * - 空白: 不打开任何页面, 也不提示 (原版 `finish()` 后直接 return);
+ * - 整段就是一条 http(s) 地址: 交 legado:// 深链的自动识别链
+ *   ([LegadoDeepLinkHandler] → 深链导入宿主: 先按书源认领判书籍, 不认领才下载嗅探类型),
+ *   不在端侧另写一套识别/下载逻辑;
+ * - 其余: 交 [onSearch] 当搜索词处理 —— 搜索页参数由调用方定 (分享/长按直接提交; 搜索入口
+ *   要保留自带的 searchScope/submit), 去向判据本身只此一份。
+ *
+ * 两个投递口共用本函数: 分享/长按文本 ([LaunchRequest.ProcessText]) 与搜索入口带来的
+ * [LaunchRequest.SearchBook] 的 key —— 不管调用方把这段文字叫"分享内容"还是"搜索词",
+ * 是链接就按链接处置。
+ */
+private fun dispatchShareText(text: String, onSearch: (String) -> Unit) {
+    when (shareTextTarget(text)) {
+        ShareTextTarget.NOTHING -> Unit
+
+        ShareTextTarget.AUTO_IMPORT -> LegadoDeepLinkHandler.enqueue(
+            DeepLinkImportRequest(DeepLinkImportType.UNKNOWN, text),
+        )
+
+        ShareTextTarget.SEARCH -> onSearch(text)
+    }
+}
+
 // 启动请求路由分发
 private suspend fun handleLaunchRequest(
     request: LaunchRequest,
@@ -675,13 +699,30 @@ private suspend fun handleLaunchRequest(
     when (request) {
         // 2026-08-06: 深链网页打开走平台 openWebView (桌面端=独立窗口, 移动端=原路由)
         is LaunchRequest.DeepLink -> capabilities.openWebView(request.url)
-        is LaunchRequest.SearchBook -> navigator.push(
-            AppRoute.Search(
-                key = request.key,
-                searchScope = request.searchScope,
-                submit = request.submit,
-            )
-        )
+        is LaunchRequest.SearchBook -> {
+            // 搜索入口投来的词也要过同一份判据 (整段是一条 http(s) 地址 → 交自动识别链);
+            // 空/空白词按原版 receiptIntent 语义直达搜索页 (聚焦输入框), 不做链接分流。
+            val key = request.key
+            if (key.isNullOrBlank()) {
+                navigator.push(
+                    AppRoute.Search(
+                        key = key,
+                        searchScope = request.searchScope,
+                        submit = request.submit,
+                    )
+                )
+            } else {
+                dispatchShareText(key) {
+                    navigator.push(
+                        AppRoute.Search(
+                            key = it,
+                            searchScope = request.searchScope,
+                            submit = request.submit,
+                        )
+                    )
+                }
+            }
+        }
         // 书籍类请求需 BookRef: shared 无 DB 能力, 委托平台能力按 bookUrl 解析后导航
         // (bookUrl 在各子类独立声明, 未上提到 LaunchRequest, 故分支独立处理以正确 smart-cast)
         is LaunchRequest.OpenBook -> {
@@ -721,30 +762,20 @@ private suspend fun handleLaunchRequest(
             )
         )
 
-        // 分享/处理文本 (判据见 [shareTextTarget], 全端同一份):
-        // - 文本空白: 不打开任何页面, 也不提示
-        // - 整段文本是链接: 当书籍地址走 legado://addToBookshelf 的导入链 —— 复用其既有消费点
-        //   ([LegadoDeepLinkHandler] → 深链导入宿主 → AddToBookshelfShared.add), 不在端侧另写加书逻辑
-        // - 其余: 整段文本送搜索页
-        is LaunchRequest.ProcessText -> when (shareTextTarget(request.text)) {
-            ShareTextTarget.NOTHING -> Unit
-
-            ShareTextTarget.ADD_TO_BOOKSHELF -> LegadoDeepLinkHandler.enqueue(
-                DeepLinkImportRequest(DeepLinkImportType.ADD_TO_BOOKSHELF, request.text)
-            )
-
-            ShareTextTarget.SEARCH ->
-                navigator.push(AppRoute.Search(key = request.text, submit = true))
+        // 分享/处理文本 (判据见 [shareTextTarget], 全端同一份): 去向统一交 [dispatchShareText]
+        is LaunchRequest.ProcessText -> dispatchShareText(request.text) {
+            navigator.push(AppRoute.Search(key = it, submit = true))
         }
 
         // 外部投来的文件: 视频直接进播放页 (不是“书”, 不得先去导入页转一手),
-        // 其余走导入书籍流程
+        // 其余直接交平台文件关联分发 (JSON 弹导入框 / 书籍文件开阅读 / 压缩包解包分发;
+        // 对照原版透明壳承载, 不落“导入本地书”页当背景)
         is LaunchRequest.ImportFile -> {
             val direct = VideoDirect.targetFor(request.filePath)
             if (direct != null) {
                 navigator.pushIfNeeded(AppRoute.VideoPlay(direct))
             } else {
-                navigator.pushIfNeeded(AppRoute.ImportBook(request.filePath))
+                capabilities.openImportFile(request.filePath)
             }
         }
         // 进程内直投的完整路由 (透明壳深链 / 文件关联 / 直达入口): 载荷即引用, 不查库不反序列化。

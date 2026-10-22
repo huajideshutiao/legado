@@ -5,7 +5,8 @@
   引用, 文件本身不进构建产物, 已列在 ShareExtension.sources.excludes)。
 
   这里的 App Group 值必须与主 App 的 iosApp/iosApp.entitlements 完全相同 ——
-  扩展进程只能写共享容器, 宿主才能扫到 (扩展无法拉起宿主, 见 project.yml 的 ShareExtension 段)。
+  扩展进程只能写共享容器, 宿主才能扫到 (这是唯一的保证送达通道, 见 project.yml 的 ShareExtension 段;
+  文本交接额外尽力沿 responder chain 把宿主带到前台)。
 
   ⚠️ 未签名 ipa 拿不到 entitlement (CI 用 CODE_SIGNING_ALLOWED=NO 归档),
   此时 FileManager.containerURL(forSecurityApplicationGroupIdentifier:) 恒返回 nil,

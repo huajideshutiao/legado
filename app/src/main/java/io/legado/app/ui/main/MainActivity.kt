@@ -659,9 +659,9 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     /**
      * 解析外部 Intent (DeepLink / 文件关联 / PROCESS_TEXT / 直达入口) 并投递到 shared:
      * - legado:// / yuedu:// → [LegadoDeepLinkHandler] → DeepLinkImportHost 弹导入对话框
-     * - file:// / content:// / app:// → [LaunchRequest.ImportFile] → 导入书籍
-     * - PROCESS_TEXT / SEND → [LaunchRequest.ProcessText] (空白什么都不做, 整段是链接则当书籍地址
-     *   添加, 其余搜索)
+     * - file:// / content:// / app:// → [LaunchRequest.ImportFile] (消费侧直接交平台文件关联分发)
+     * - PROCESS_TEXT / SEND → [LaunchRequest.ProcessText] (空白什么都不做, 整段是一条 http(s) 地址
+     *   则交自动识别类型导入, 其余搜索)
      * - search/explore-show alias → [LaunchRequest.OpenRoute] 直达 (书架不进导航栈)
      *
      * 一律投 [LaunchRequestBus] (无限队列, UI 未就绪自然排队), 不再有第二条通路。
@@ -696,68 +696,49 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     }
 
     /**
-     * Intent → 可直达的目标路由 (仅创建路径用, 见 [handleExternalIntent]):
-     * - SearchActivity alias (key/searchScope/submit extra)
-     * - ExploreShowActivity alias (exploreName/exploreUrl/sourceUrl extra, 查源下沉路由内)
-     * - 视频直投 (content/file/http(s) 可播地址 → 播放页, 排在书籍导入之前)
-     * - 文件关联 / PROCESS_TEXT / SEND (分享/处理文本里只要不落搜索就不在此定路由: 空白什么都不做、
-     *   整段是链接则当书籍地址添加, 两者都交 [LaunchRequest.ProcessText] 由 shared 统一处置)
+     * Intent → 可直达的目标路由 (仅创建路径用, 见 [handleExternalIntent])。
      *
+     * 去向判据只此一份 ([Intent.toLaunchRequest]): 这里只做"请求 → 冷启动直达路由"的映射。
+     * 要进导入/深链宿主的请求 (深链、通知路由) 不在此定路由, 由启动请求消费侧处置。
      * 书籍类直达 (透明壳深链 / 文件关联打开书籍) 不在此: 它们的载荷是内存对象,
      * 由投递方直接构造 [LaunchRequest.OpenRoute] 带引用进队列, 不经 Intent 与全局槽。
      */
-    private fun directRouteFromIntent(intent: Intent?): AppRoute? {
-        // 搜索 alias: 对照 master SearchActivity.receiptIntent (key 空聚焦输入框)
-        if (intent?.component?.className == SEARCH_ALIAS) {
-            return AppRoute.Search(
-                key = intent.getStringExtra("key"),
-                searchScope = intent.getStringExtra("searchScope"),
-                submit = intent.getBooleanExtra("submit", true),
-            )
-        }
-        // 发现show alias: 对照 master ExploreShowActivity 冷启动直开; 查源下沉到路由内
-        if (intent?.component?.className == EXPLORE_SHOW_ALIAS) {
-            val sourceUrl = intent.getStringExtra("sourceUrl")
-                ?.takeIf { it.isNotBlank() } ?: return null
-            return AppRoute.ExploreShowByUrl(
-                sourceUrl = sourceUrl,
-                title = intent.getStringExtra("exploreName"),
-                exploreUrl = intent.getStringExtra("exploreUrl"),
-            )
-        }
-        // 视频直投排在书籍分流之前 (判据与 toLaunchRequest 共用 [Intent.videoDirectTarget]):
-        // 外部给的 mp4/m3u8 已是可播地址, 不是书 —— 落到 AppRoute.ImportBook 会进"导入本地书"
-        // 页再被嗅探判为不支持格式。命中即冷启动直达播放页 (调用方处包 asRoot, back 即退调用方)。
-        intent?.videoDirectTarget()?.let { return AppRoute.VideoPlay(it) }
-        // 文件关联 / PROCESS_TEXT / SEND (对齐 toLaunchRequest 分支)
-        return when (intent?.action) {
-            Intent.ACTION_VIEW -> intent.dataString?.let { url ->
-                when (intent.data?.scheme) {
-                    "content", "file", "app" -> AppRoute.ImportBook(url)
+    private fun directRouteFromIntent(intent: Intent?): AppRoute? =
+        when (val request = intent?.toLaunchRequest()) {
+            is LaunchRequest.SearchBook -> {
+                val key = request.key
+                when {
+                    // key 空: 直达搜索页聚焦输入框
+                    key.isNullOrBlank() -> AppRoute.Search(
+                        key = key,
+                        searchScope = request.searchScope,
+                        submit = request.submit,
+                    )
+                    // 整段是一条 http(s) 地址: 不当搜索词, 交启动请求消费侧走自动识别导入
+                    shareTextTarget(key) == ShareTextTarget.SEARCH -> AppRoute.Search(
+                        key = key,
+                        searchScope = request.searchScope,
+                        submit = request.submit,
+                    )
+
                     else -> null
                 }
             }
 
-            // 分享/处理文本只有落搜索页的才在此定路由 (判据见 shared [shareTextTarget], 不在此另立):
-            // 整段是链接的当书籍地址添加、空白文本什么都不做, 两者都让请求落回下面的
-            // [LaunchRequest.ProcessText] 由 shared 统一处置, 不是多压一层搜索页。
-            Intent.ACTION_PROCESS_TEXT ->
-                intent.getStringExtra(Intent.EXTRA_PROCESS_TEXT)
-                    ?.takeIf { shareTextTarget(it) == ShareTextTarget.SEARCH }
-                    ?.let { AppRoute.Search(key = it, submit = true) }
+            is LaunchRequest.ExploreShow -> AppRoute.ExploreShowByUrl(
+                sourceUrl = request.sourceUrl,
+                title = request.exploreName,
+                exploreUrl = request.exploreUrl,
+            )
 
-            Intent.ACTION_SEND -> {
-                @Suppress("DEPRECATION")
-                intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let {
-                    AppRoute.ImportBook(it.toString())
-                } ?: intent.getStringExtra(Intent.EXTRA_TEXT)
-                    ?.takeIf { shareTextTarget(it) == ShareTextTarget.SEARCH }
-                    ?.let { AppRoute.Search(key = it, submit = true) }
-            }
+            is LaunchRequest.OpenRoute -> request.route
+            // 只有落搜索页的文本才在此定路由: 整段是一条链接的交自动识别链, 空白文本什么都不做
+            is LaunchRequest.ProcessText -> request.text
+                .takeIf { shareTextTarget(it) == ShareTextTarget.SEARCH }
+                ?.let { AppRoute.Search(key = it, submit = true) }
 
             else -> null
         }
-    }
 
     override fun onStart() {
         super.onStart()
