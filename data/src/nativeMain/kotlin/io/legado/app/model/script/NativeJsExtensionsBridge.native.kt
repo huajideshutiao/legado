@@ -113,7 +113,7 @@ import kotlinx.atomicfu.locks.synchronized
  * - 1100-1199: AsymmetricCrypto 对象方法 (setPrivateKey/setPublicKey/decrypt/encrypt/decryptStr/encryptHex/encryptBase64)
  * - 1200-1299: Sign 对象方法 (setPrivateKey/setPublicKey/sign/signHex/verify)
  * - 300-399: 网络族手写特例 (ajax/ajaxAll/connect/webView 系/getCookie; 309-311 java get/head/post,
- *   312 java.post 字节体重载)
+ *   312 java.post 字节体重载, 313 java.strResponse)
  * - 400-499: UI/杂项手写特例 (log/logType/openUrl/startBrowser 系/startBrowserAwait)
  * - 500-599: 字体族手写特例
  * - 600-699: 文件/压缩族手写特例 (getZip/getRar/get7zStringContent、decompressString 613、
@@ -170,6 +170,18 @@ object NativeJsExtensionsBridge {
         val handle = handleCounter
         handleTable[handle] = obj
         handle
+    }
+
+    /**
+     * 注册 dispatch 返回的新对象, 并把 handle 挂到当前 eval scope 上。
+     *
+     * 只登记到全局表而不挂 scope 的 handle 在 eval 结束后无人注销 (强引用残留),
+     * 随每次脚本调用累积; 挂到 scope 后与 [NativeJsEngine] 的 scope 关闭回收同路。
+     */
+    fun registerScopedObject(obj: Any): Long {
+        val handle = registerObject(obj)
+        NativeJsEngine.currentScope()?.handles?.add(handle)
+        return handle
     }
 
     /** 取 Kotlin 对象 */
@@ -384,7 +396,7 @@ object NativeJsExtensionsBridge {
                     is BaseSource -> obj // BaseSource.getSource() 返回自身 (与 JVM 行为一致)
                     else -> null
                 }
-                qjs_NewFloat64(ctx, (source?.let { registerObject(it) } ?: 0L).toDouble())
+                qjs_NewFloat64(ctx, (source?.let { registerScopedObject(it) } ?: 0L).toDouble())
             }
 
             obj is JsExtensionsCommon && methodId == 24 -> {
@@ -446,13 +458,13 @@ object NativeJsExtensionsBridge {
             obj is AnalyzeRuleCore && methodId == 31 -> {
                 // setContent(content[, baseUrl]) → this (JS 层 __createAnalyzeObj 包装, 支持链式)
                 obj.setContent(args.getOrNull(0), args.getOrNull(1) as? String)
-                qjs_NewFloat64(ctx, registerObject(obj).toDouble())
+                qjs_NewFloat64(ctx, registerScopedObject(obj).toDouble())
             }
 
             obj is AnalyzeRuleCore && methodId == 32 -> {
                 // setBaseUrl(baseUrl) → this
                 obj.setBaseUrl(args.getOrNull(0) as? String)
-                qjs_NewFloat64(ctx, registerObject(obj).toDouble())
+                qjs_NewFloat64(ctx, registerScopedObject(obj).toDouble())
             }
 
             obj is AnalyzeRuleCore && methodId == 33 -> {
@@ -509,24 +521,19 @@ object NativeJsExtensionsBridge {
                 val iv = args.getOrNull(2).toBytesOrNull()
                 val crypto = NativeSymmetricCrypto(transformation, key)
                 if (iv != null && iv.isNotEmpty()) crypto.setIv(iv)
-                val handle = registerObject(crypto)
-                // 注意: crypto handle 不添加到 scope.handles, 因为调用方 scope 不可达
-                // crypto 对象生命周期与 JS 引用绑定, handle 泄漏量可控 (每次调用一个)
-                qjs_NewFloat64(ctx, handle.toDouble())
+                qjs_NewFloat64(ctx, registerScopedObject(crypto).toDouble())
             }
             obj is JsExtensionsCommon && methodId == 202 -> {
                 // createAsymmetricCrypto(transformation) → cryptoHandle (iOS Security.framework / 鸿蒙 napi 桥接)
                 val transformation = args.getString(0)
                 val crypto = NativeAsymmetricCrypto(transformation)
-                val handle = registerObject(crypto)
-                qjs_NewFloat64(ctx, handle.toDouble())
+                qjs_NewFloat64(ctx, registerScopedObject(crypto).toDouble())
             }
             obj is JsExtensionsCommon && methodId == 203 -> {
                 // createSign(algorithm) → signHandle (iOS Security.framework / 鸿蒙 napi 桥接)
                 val algorithm = args.getString(0)
                 val sign = NativeSign(algorithm)
-                val handle = registerObject(sign)
-                qjs_NewFloat64(ctx, handle.toDouble())
+                qjs_NewFloat64(ctx, registerScopedObject(sign).toDouble())
             }
 
             // ============ SymmetricCrypto 对象方法 (1000-1099) ============
@@ -662,7 +669,7 @@ object NativeJsExtensionsBridge {
                 responses.forEachIndexed { i, resp ->
                     JS_SetPropertyUint32(
                         ctx, arr, i.toUInt(),
-                        qjs_NewFloat64(ctx, registerObject(resp).toDouble())
+                        qjs_NewFloat64(ctx, registerScopedObject(resp).toDouble())
                     )
                 }
                 arr
@@ -670,7 +677,7 @@ object NativeJsExtensionsBridge {
             obj is JsExtensionsCommon && methodId == 303 -> {
                 // connect(urlStr[, header]) → StrResponse handle (header null 时与单参重载等价)
                 val resp = obj.connect(args.getString(0), args.getOrNull(1) as? String)
-                qjs_NewFloat64(ctx, registerObject(resp).toDouble())
+                qjs_NewFloat64(ctx, registerScopedObject(resp).toDouble())
             }
             obj is JsExtensionsCommon && methodId == 304 -> {
                 // webView(html, url, js[, delayTime]) — common 内部 runBlocking 同步返回
@@ -722,23 +729,28 @@ object NativeJsExtensionsBridge {
                 // java.get(url, headers) — 网络 GET (单参 java.get(key) 走 25 变量读取; 双参分派对齐 JVM)
                 // headers 由 JS 层 JSON.stringify (对象/JSON 字符串都转成 JSON 文本), 此处解析回 Map
                 val headerMap = parseHeaderArg(args.getOrNull(1))
-                qjs_NewFloat64(ctx, registerObject(obj.get(args.getString(0), headerMap)).toDouble())
+                qjs_NewFloat64(ctx, registerScopedObject(obj.get(args.getString(0), headerMap)).toDouble())
             }
             obj is JsExtensionsCommon && methodId == 310 -> {
                 // java.head(url, headers)
                 val headerMap = parseHeaderArg(args.getOrNull(1))
-                qjs_NewFloat64(ctx, registerObject(obj.head(args.getString(0), headerMap)).toDouble())
+                qjs_NewFloat64(ctx, registerScopedObject(obj.head(args.getString(0), headerMap)).toDouble())
             }
             obj is JsExtensionsCommon && methodId == 311 -> {
                 // java.post(url, body, headers)
                 val headerMap = parseHeaderArg(args.getOrNull(2))
-                qjs_NewFloat64(ctx, registerObject(obj.post(args.getString(0), args.getString(1), headerMap)).toDouble())
+                qjs_NewFloat64(ctx, registerScopedObject(obj.post(args.getString(0), args.getString(1), headerMap)).toDouble())
             }
             obj is JsExtensionsCommon && methodId == 312 -> {
                 // java.post(url, bodyBytes, headers)
                 val headerMap = parseHeaderArg(args.getOrNull(2))
                 val body = args.getDataArgOrNull(1) as? ByteArray ?: ByteArray(0)
-                qjs_NewFloat64(ctx, registerObject(obj.post(args.getString(0), body, headerMap)).toDouble())
+                qjs_NewFloat64(ctx, registerScopedObject(obj.post(args.getString(0), body, headerMap)).toDouble())
+            }
+            obj is JsExtensionsCommon && methodId == 313 -> {
+                // java.strResponse(url, body) — 构造响应对象供登录检查JS替换本次响应
+                val resp = obj.strResponse(args.getString(0), args.getStringOrNull(1))
+                qjs_NewFloat64(ctx, registerScopedObject(resp).toDouble())
             }
 
             // ============ Connection.Response 对象方法 (700-799, java.get/head/post 返回值) ============
@@ -761,7 +773,7 @@ object NativeJsExtensionsBridge {
                 // startBrowserAwait(url, title[, refetchAfterSuccess]) → StrResponse handle
                 val refetch = (args.getOrNull(2) as? Boolean) ?: false
                 val resp = obj.startBrowserAwait(args.getString(0), args.getString(1), refetch)
-                qjs_NewFloat64(ctx, registerObject(resp).toDouble())
+                qjs_NewFloat64(ctx, registerScopedObject(resp).toDouble())
             }
             // ============ 字体族 (500-599) ============
             obj is JsExtensionsCommon && methodId == 501 -> {
@@ -769,13 +781,13 @@ object NativeJsExtensionsBridge {
                 val data = args.getDataArgOrNull(0)
                 val useCache = (args.getOrNull(1) as? Boolean) ?: true
                 val ttf = obj.queryTTF(data, useCache)
-                qjs_NewFloat64(ctx, (ttf?.let { registerObject(it) } ?: 0L).toDouble())
+                qjs_NewFloat64(ctx, (ttf?.let { registerScopedObject(it) } ?: 0L).toDouble())
             }
             obj is JsExtensionsCommon && methodId == 502 -> {
                 // queryBase64TTF(data) — 已过时, 转发保持书源兼容
                 @Suppress("DEPRECATION")
                 val ttf = obj.queryBase64TTF(args.getOrNull(0) as? String)
-                qjs_NewFloat64(ctx, (ttf?.let { registerObject(it) } ?: 0L).toDouble())
+                qjs_NewFloat64(ctx, (ttf?.let { registerScopedObject(it) } ?: 0L).toDouble())
             }
             obj is JsExtensionsCommon && methodId == 503 -> {
                 // replaceFont(text, errTTFHandle, corTTFHandle[, filter]) — handle 由 JS 包装层传回
@@ -1002,6 +1014,7 @@ function __createJavaObj(handle) {
         return out;
     };
     obj.connect = function(urlStr, header) { return __createStrResponseObj(__nativeDispatch(handle, 303, [urlStr, header])); };
+    obj.strResponse = function(urlStr, body) { return __createStrResponseObj(__nativeDispatch(handle, 313, [urlStr, body])); };
     obj.webView = function(html, url, js, delayTime) { return __nativeDispatch(handle, 304, [html, url, js, delayTime]); };
     obj.webViewGetSource = function(html, url, js, sourceRegex, delayTime) { return __nativeDispatch(handle, 305, [html, url, js, sourceRegex, delayTime]); };
     obj.webViewGetOverrideUrl = function(html, url, js, overrideUrlRegex, delayTime) { return __nativeDispatch(handle, 306, [html, url, js, overrideUrlRegex, delayTime]); };

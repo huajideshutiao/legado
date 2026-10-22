@@ -864,6 +864,12 @@ object NativeJsEngine : JsEngine {
             // Uint8Array/TypedArray (解密脚本返回值): 直接拷回 ByteArray,
             // ImageUtils.decode 的 is ByteArray 分支直接消费, 无需 List 中间态
             tryGetUint8ArrayBytes(ctx, v)?.let { return it }
+            // 桥接对象 (java.strResponse / connect 等 API 返回的 JS 包装) 带 __h: 按句柄表还原
+            // 成原 Kotlin 对象。JVM 端由 JNI 包装解包, native 端无此层, 不还原就会被拍成 Map,
+            // 上层对这类返回值做类型转换必失败。
+            bridgeObjectHandle(ctx, v)?.let { handle ->
+                NativeJsExtensionsBridge.getObject(handle)?.let { return it }
+            }
             // 判断 array 还是 plain object
             if (JS_IsArray(v)) {
                 return fromJsArray(ctx, v, depth)
@@ -876,6 +882,22 @@ object NativeJsEngine : JsEngine {
             cstr.toKString()
         } finally {
             qjs_FreeCString(ctx, cstr)
+        }
+    }
+
+    /**
+     * 桥接对象的句柄 (`__h`); 普通 JSON 对象/数组返回 null。
+     *
+     * `__h` 只由 NativeJsExtensionsBridge 的 JS 工厂函数写入 (__createStrResponseObj 等),
+     * 句柄表由该 object 维护。
+     */
+    private fun bridgeObjectHandle(ctx: CPointer<JSContext>, obj: CValue<JSValue>): Long? {
+        val handleValue = JS_GetPropertyStr(ctx, obj, "__h")
+        try {
+            if (qjs_IsNumber(handleValue) == 0) return null
+            return qjs_ValueGetFloat64(handleValue).toLong().takeIf { it > 0 }
+        } finally {
+            JS_FreeValue(ctx, handleValue)
         }
     }
 

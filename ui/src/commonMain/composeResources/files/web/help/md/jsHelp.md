@@ -147,10 +147,20 @@ java.getWebViewUA(): String
 ```js
 java.ajax(url): String
 java.ajaxAll(urlList: Array<String>): Array<StrResponse>
-//返回StrResponse 方法body() code() message() headers() raw() toString() 
+//返回StrResponse 方法body() code() message() headers() url() raw() toString()
 java.connect(urlStr): StrResponse
 //header为json字符串
 java.connect(urlStr, header: String?): StrResponse
+
+//构造响应对象, 供登录检查JS替换本次响应: result = java.strResponse(java.url, 正文)
+java.strResponse(url: String, body: String?): StrResponse
+//正文为空时可只传地址
+java.strResponse(url: String): StrResponse
+
+> 登录检查JS的返回值会被强转为 StrResponse, JS 侧无法自行构造它: iOS/鸿蒙没有 Java 反射
+> (`Packages` / `importClass` 均不可用), 安卓/桌面虽有但属 JVM 专有写法 —— 四端统一用此工厂。
+> 只能造新的替换旧的, 不能改已有实例 (raw/body/errorBody 均为 private set)。
+> StrResponse 实例可调用 body()/code()/message()/headers()/url()/raw()/toString()。
 
 java.post(url: String, body: String, headers: Map<String, String>): Connection.Response
 //请求体为原始字节 (加密请求体/二进制上传用这个重载)

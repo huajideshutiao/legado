@@ -457,6 +457,20 @@ interface JsExtensionsCommon {
     }
 
     /**
+     * 构造响应对象 (供登录检查JS替换本次响应)
+     *
+     * 登录检查JS的返回值会被强转为 StrResponse, 而 JS 侧无法自行构造它:
+     * iOS/鸿蒙没有 Java 反射 (`Packages` / `importClass` 不可用), 安卓/桌面虽有但属 JVM 专有写法,
+     * 所以四端统一用此工厂: `result = java.strResponse(java.url, 解密后的正文)`。
+     * 只能造新的替换旧的, 不能改已有实例 (raw/body/errorBody 均为 private set)。
+     */
+    fun strResponse(url: String, body: String?): StrResponse = StrResponse(url, body)
+
+    // 单参重载: JVM 端反射按实参个数选方法, 缺该重载时 java.strResponse(url) 在安卓/桌面
+    // 报找不到方法 (native 端 getStringOrNull 容忍缺省), 靠它补平跨端差异
+    fun strResponse(url: String): StrResponse = StrResponse(url, null)
+
+    /**
      * 访问网络,返回Response<String>
      */
     fun connect(urlStr: String): StrResponse {
