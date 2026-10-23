@@ -53,8 +53,8 @@ import org.jetbrains.compose.resources.stringResource
  * 点按/长按整行打开带搜索的选择弹窗, 确认时一次写回。分类动辄上百项时不会撑成超长滚动带,
  * 也不会每点一项就重搜一次。
  *
- * 入口统一: 行名长按、整行鼠标右键、多选行的整行点按都打开同一个可搜索选择弹窗;
- * 单选行的点按语义不变 (点标题重置默认、点选项切换)。
+ * 入口统一: 整行长按 (chip 内与 chip 间空白)、整行鼠标右键、多选行的整行点按都打开同一个
+ * 可搜索选择弹窗; 单选行的点按语义不变 (点标题重置默认、点选项切换)。
  */
 const val OptionChipThreshold = 4
 
@@ -177,24 +177,37 @@ private fun buildChoiceGroups(rows: List<ChoiceRow>): List<List<ChoiceRow>> {
     return groups
 }
 
-/** 单选 chip 行: 标题点按重置默认、长按打开弹窗; 选项 chip 点按即切换。
+/** 单选 chip 行: 标题点按重置默认; 选项 chip 点按即切换; 长按整行打开弹窗。
  *
- * 整行右键热区包在横向滚动外层: 内容比屏幕窄时右侧空白同样能触发。
+ * 长按热区覆盖整行: chip 自己带长按 (子节点会消费按下事件, 外层收不到), 空白与横向滚动
+ * 外层再兜 chip 之间的空白与内容右侧空白, 鼠标右键同样包在外层。
  */
 @Composable
 private fun SingleChoiceChipRow(row: ChoiceRow) {
     var pickerOpen by remember { mutableStateOf(false) }
-    Box(Modifier.fillMaxWidth().then(rememberSecondaryClickModifier { pickerOpen = true })) {
+    val open = { pickerOpen = true }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                interactionSource = null,
+                indication = null,
+                onClick = {},
+                onLongClick = open,
+            )
+            .then(rememberSecondaryClickModifier(open)),
+    ) {
         AppChipRow {
             AppChipRowTitle(
                 text = row.title,
                 onClick = row.onReset,
-                onLongClick = { pickerOpen = true },
+                onLongClick = open,
             )
             row.options.forEachIndexed { index, label ->
                 AppChipRowOption(
                     text = label,
                     selected = index in row.selectedIndexes,
+                    onLongClick = open,
                     onClick = { row.onSelect(index) },
                 )
             }
@@ -317,7 +330,7 @@ private fun ChoiceRow.intrinsicWidth(
 /**
  * 单行下拉: 菜单热区占满标题以外的整行 (不再只圈住值 + ▾, 行内不留死区);
  * 标题本身有重置语义 ([ChoiceRow.onReset] 非空, 对齐原版点标题 chip 重置) 时留作重置钮,
- * 否则标题并入热区, 点标题也开菜单。行名长按与整行鼠标右键都打开选择弹窗。
+ * 否则标题并入热区, 点标题也开菜单。整行长按与整行鼠标右键都打开选择弹窗。
  */
 @Composable
 private fun ChoiceDropdown(row: ChoiceRow, modifier: Modifier) {

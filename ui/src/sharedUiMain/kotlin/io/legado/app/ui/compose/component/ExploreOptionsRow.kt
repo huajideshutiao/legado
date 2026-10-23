@@ -20,7 +20,7 @@ import io.legado.app.model.webBook.ExploreOption
  *   重置默认 (对齐原版点标题 chip 重置), 菜单热区占标题以外整行。
  * - 多选行交给 [AppMultiChoiceRowGroup]: 只列已选标签, 点按整行打开带搜索的选择弹窗
  *   (对齐原版), 确认时一次写回并只重搜一次。
- * - 行名长按 / 整行鼠标右键在任何行上都能打开同一个可搜索选择弹窗。
+ * - 长按整行 / 整行鼠标右键在任何行上都能打开同一个可搜索选择弹窗。
  *
  * [ExploreOption] 的 selectedValue / selectedValues 是普通可变字段, 不被 Compose 跟踪;
  * 点击后 bump 本地 revision 重取快照刷新选中态。

@@ -68,18 +68,21 @@ fun AppChipRowTitle(
  * chip 行选项 chip: 自带前置 spacingXs 间距; 选中全亮、未选中半透明
  * (alpha 作用于整颗 chip 含背景, 对齐原版 setUpExploreOptions 语义)。
  *
- * [onClick] 为空时是纯展示 chip (多选行的已选标签: 点按冒泡到整行, 由整行打开选择弹窗)。
+ * [onClick] 为空时是纯展示 chip (多选行的已选标签: 点按冒泡到整行, 由整行打开选择弹窗);
+ * [onLongClick] 非空时长按同样由 chip 自己消化, 供整行长按打开选择弹窗的行补齐 chip 内热区。
  */
 @Composable
 fun AppChipRowOption(
     text: String,
     selected: Boolean = true,
+    onLongClick: (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
     Spacer(Modifier.width(DesignTokens.spacingXs))
     AppFilletTextButton(
         text = text,
         alpha = if (selected) 1f else 0.5f,
+        onLongClick = onLongClick,
         onClick = onClick,
     )
 }
