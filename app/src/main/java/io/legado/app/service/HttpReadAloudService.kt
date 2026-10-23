@@ -41,7 +41,6 @@ import io.legado.app.help.tts.HttpTtsDownloadCallback
 import io.legado.app.help.tts.HttpTtsDownloadScheduler
 import io.legado.app.help.tts.HttpTtsFileInfo
 import io.legado.app.help.tts.ReadAloudQueue
-import io.legado.app.model.ActiveReadAloudHostPorts
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.book.read.page.entities.getNeedReadAloud
@@ -318,7 +317,6 @@ class HttpReadAloudService : BaseReadAloudService(),
         playIndexJob = lifecycleScope.launch {
             // 一次取快照: 本协程按当前段时长逐字上报, 逐次重读队列会跨段/跨章取到混合值
             val playback = readAloudController.playbackQueue.snapshot
-            upTtsProgress(playback.readAloudNumber + 1)
             if (exoPlayer.duration <= 0) {
                 return@launch
             }
@@ -329,13 +327,8 @@ class HttpReadAloudService : BaseReadAloudService(),
             val sleep = exoPlayer.duration / speakTextLength
             val start = speakTextLength * exoPlayer.currentPosition / exoPlayer.duration
             for (i in start..speakTextLength.toLong()) {
-                // 上报与翻页联动各走一路 (与 TTS 的 onStart/onRangeStart 同口径):
-                // 不把位置上报的条件搭在翻页判定结果上
-                val readingPos = playback.readAloudNumber + i.toInt()
-                ActiveReadAloudHostPorts.advanceReadAloudPage(
-                    readAloudController.chapterIndex.value, readingPos
-                )
-                upTtsProgress(readingPos)
+                // 播放器无字级回调, 按已播时长折算段内偏移; 位置合成与发布只在共享层做一份
+                readAloudController.reportEngineRangeStart(currentPlaybackToken, i.toInt())
                 delay(sleep)
             }
         }

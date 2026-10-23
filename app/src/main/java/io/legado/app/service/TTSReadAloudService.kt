@@ -12,7 +12,6 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.tts.TextToSpeechEngine
 import io.legado.app.lib.dialogs.SelectItem
-import io.legado.app.model.ActiveReadAloudHostPorts
 import io.legado.app.model.ReadAloud
 import io.legado.app.utils.GSON
 import io.legado.app.utils.LogUtils
@@ -157,11 +156,7 @@ class TTSReadAloudService : BaseReadAloudService() {
             if (paragraph.matches(AppPattern.notReadAloudRegex)) {
                 nextParagraph(s.removePrefix(AppConst.APP_TAG).toLongOrNull() ?: return)
             }
-            ActiveReadAloudHostPorts.advanceReadAloudPage(
-                readAloudController.chapterIndex.value,
-                playback.readAloudNumber + 1
-            )
-            upTtsProgress(playback.readAloudNumber + 1)
+            // 进度发布与翻页联动由共享层订阅 speakPosition/paragraphIndex 驱动, 引擎回调不再自算位置
         }
 
         override fun onDone(s: String) {
@@ -180,13 +175,8 @@ class TTSReadAloudService : BaseReadAloudService() {
                     "start:$start end:$end frame:$frame"
             )
             textChapter ?: return
-            // 上报与翻页联动各走一路: 位置上报不因翻页判定结果被抑制
-            // (宿主端 syncReadPosition 与 onStart 同口径)
-            val readingPos = playback.readAloudNumber + start
-            ActiveReadAloudHostPorts.advanceReadAloudPage(
-                readAloudController.chapterIndex.value, readingPos
-            )
-            upTtsProgress(readingPos)
+            // 位置合成 (段起点+段内偏移) 只在共享层做一份; 旧轮次由令牌校验挡掉
+            readAloudController.reportEngineRangeStart(currentPlaybackToken, start)
         }
 
         override fun onError(utteranceId: String?, errorCode: Int) {

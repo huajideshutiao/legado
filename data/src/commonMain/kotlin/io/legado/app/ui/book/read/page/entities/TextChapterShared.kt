@@ -60,3 +60,7 @@ class TextChapterShared(
     }
 
 }
+
+/** 该排版章可作为朗读正文来源: 章号匹配、有页面且首屏不是占位/消息页。 */
+fun TextChapterShared.isReadablePagedChapter(chapterIndex: Int): Boolean =
+    this.chapterIndex == chapterIndex && pages.isNotEmpty() && !pages.first().isMsgPage

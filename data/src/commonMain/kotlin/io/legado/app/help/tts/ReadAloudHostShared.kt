@@ -43,10 +43,6 @@ abstract class ReadAloudHostShared(
     /** 段落计划构建器 (与 Android 朗读服务共用同一算法, 状态由它持有)。 */
     private val planBuilder = ReadAloudPlanBuilder()
 
-    /** 本宿主最近一次写入的 durChapterPos, 用于把自身写入与用户翻页区分开。 */
-    @Volatile
-    private var lastSyncedPos: Int = -1
-
     /** 暂停期间发生过翻页；记录与章节绑定的新位置，resume 按它重建。 */
     @Volatile
     private var pausedPosition: ReadAloudPosition? = null
@@ -249,7 +245,13 @@ abstract class ReadAloudHostShared(
         )
         controllerRef = instance
         scope.launch {
-            instance.paragraphIndex.collect { syncReadPosition(it) }
+            instance.paragraphIndex.collect {
+                chapterCoordinator.syncParagraphStart(it, planBuilder.snapshot)
+            }
+        }
+        scope.launch {
+            // 字级进度: 长段跨页时按念到的字推进阅读页, 段级进度要等整段念完才动
+            instance.speakPosition.collect { chapterCoordinator.syncSpeakPosition(it) }
         }
         scope.launch {
             instance.state.collect { onStateChanged(it) }
@@ -262,7 +264,6 @@ abstract class ReadAloudHostShared(
     }
 
     private fun startAt(chapterIndex: Int, pos: Int) {
-        lastSyncedPos = pos
         pausedPosition = null
         startChapterWatch()
         applySpeechRate()
@@ -274,18 +275,23 @@ abstract class ReadAloudHostShared(
      * 监听章节装载就绪 (对照原版 BaseReadAloudService.armChapterWatch):
      * 跨章未缓存时控制器置 WAITING, 待章节加载排版完成后自动续播。
      */
+    /**
+     * 监听章节进展: 排版产物就绪 (阅读页装载完成) 与装载结束答复合并看。
+     *
+     * 跨章未缓存时控制器置 WAITING, 待章节可读后自动续播; 装不出来则由装载答复上报停止。
+     */
     private fun startChapterWatch() {
         // 已在跑就不重建: 重建会丢掉订阅间隙里的事件, 置 WAITING 的章节可能再也不续播
         chapterWatch.restartIfInactive {
-            ports.chapterUpdates.collect { update ->
-                if (controller.state.value == ReadAloudState.WAITING &&
-                    update.chapterIndex == controller.chapterIndex.value
-                ) {
-                    if (update.error != null) controller.reportError(update.error)
-                    else if (update.ready) controller.retryWaiting(update.chapterIndex)
-                }
-            }
+            chapterCoordinator.startWatch()
         }
+    }
+
+    /**
+     * 等章链路交给共享协调器: 平台侧只提供正文是否到手、装载请求与答复、有无阅读页这些事实。
+     */
+    private val chapterCoordinator by lazy {
+        ReadAloudChapterCoordinator(ports) { controller }
     }
 
     /** AppConfig.ttsSpeechRate (0..45) 折算为控制器倍率 (与一次性朗读共用 [ttsSpeechRateScale])。 */
@@ -305,53 +311,29 @@ abstract class ReadAloudHostShared(
     private fun startPositionWatch() {
         positionWatch.restart {
             ports.positionUpdates.collect { position ->
-                val state = controller.state.value
-                if (state == ReadAloudState.PAUSED) {
-                    if (position.chapterIndex != controller.chapterIndex.value ||
-                        position.chapterPosition !in currentParagraphRange()
-                    ) {
-                        pausedPosition = position
-                    }
-                    return@collect
-                }
-                if (state != ReadAloudState.PLAYING) return@collect
-                if (position.chapterPosition == lastSyncedPos) return@collect
-                if (position.chapterIndex != controller.chapterIndex.value) return@collect
-                if (position.chapterPosition in currentParagraphRange()) return@collect
-                startAt(position.chapterIndex, position.chapterPosition)
+                chapterCoordinator.onPosition(
+                    position = position,
+                    paragraphRange = ::currentParagraphRange,
+                    onFollow = { follow ->
+                        AppLog.putDebug(
+                            "朗读跟随阅读位置: 第 ${controller.chapterIndex.value + 1} 章 -> " +
+                                "第 ${follow.chapterIndex + 1} 章"
+                        )
+                        pausedPosition = null
+                        controller.seekTo(follow.chapterPosition, follow.chapterIndex)
+                    },
+                    onPauseMove = { pausedPosition = it },
+                )
             }
         }
     }
 
     /** 当前朗读段在章内占据的字符区间。 */
-    private fun currentParagraphRange(): IntRange {
-        val index = controllerRef?.paragraphIndex?.value ?: return IntRange.EMPTY
-        // 几何一次取值: 段起点与裁剪偏移必须同源 (逐字段读会取到跨版本混合值)
-        val geometry = planBuilder.snapshot
-        val real = geometry.paragraphBase + index.coerceAtLeast(0)
-        val start = geometry.paragraphStart(real) ?: return IntRange.EMPTY
-        val length = geometry.paragraphs.getOrNull(real)?.length ?: return IntRange.EMPTY
-        return start until (start + length + 1)
-    }
-
-    /**
-     * 朗读推进到某段时把进度发给阅读页 (对照原版 `BaseReadAloudService.upTtsProgress`):
-     * 阅读页的 TTS_PROGRESS 订阅负责写 durChapterPos 与朗读高亮。
-     */
-    private fun syncReadPosition(index: Int) {
-        if (index < 0) return
-        val controller = controllerRef ?: return
-        val position = ports.currentPosition ?: return
-        if (position.chapterIndex != controller.chapterIndex.value) return
-        // 几何一次取值: 段起点与裁剪偏移必须同源 (逐字段读会取到跨版本混合值)
-        val geometry = planBuilder.snapshot
-        val real = geometry.paragraphBase + index
-        var pos = geometry.paragraphStart(real) ?: return
-        if (index == 0) pos += geometry.firstParagraphSkip
-        lastSyncedPos = pos
-        ports.advanceReadAloudPage(controller.chapterIndex.value, pos)
-        ports.positionPublisher.publishPosition(pos)
-    }
+    private fun currentParagraphRange(): IntRange =
+        chapterCoordinator.paragraphRange(
+            paragraphIndex = controllerRef?.paragraphIndex?.value ?: -1,
+            geometry = planBuilder.snapshot,
+        )
 
     /** 朗读态广播; 暂停/停止时的清高亮由阅读页的 ALOUD_STATE 订阅负责。 */
     private fun onStateChanged(state: ReadAloudState) {
@@ -378,7 +360,9 @@ abstract class ReadAloudHostShared(
                 ports.mediaControl.release()
             }
 
-            ReadAloudState.IDLE, ReadAloudState.WAITING -> Unit
+            ReadAloudState.IDLE -> Unit
+
+            ReadAloudState.WAITING -> chapterCoordinator.onWaiting()
         }
     }
 
@@ -401,11 +385,28 @@ abstract class ReadAloudHostShared(
             val text = chapterText(chapterIndex) ?: return null
             return planBuilder.buildPlan(text, chapterPosition, fromLastSpeakable)
         }
+
+        override fun isChapterPaged(chapterIndex: Int): Boolean =
+            ports.isChapterTextReady(chapterIndex)
     }
     // endregion
 }
 
-data class ReadAloudPosition(val chapterIndex: Int, val chapterPosition: Int)
+data class ReadAloudPosition(
+    val chapterIndex: Int,
+    val chapterPosition: Int,
+    /** 这次位置变化是谁写的: 朗读自己推进的不该被当成用户翻页。 */
+    val origin: io.legado.app.model.PositionOrigin = io.legado.app.model.PositionOrigin.User,
+)
+
+/** 等章方需要重新评估的原因。 */
+sealed interface ReadAloudChapterSignal {
+    /** 章号 [chapterIndex] 的装载任务已结束 (无论成或不成)。 */
+    data class Settled(val chapterIndex: Int) : ReadAloudChapterSignal
+
+    /** 阅读实例更换: 之前发起的装载答复已不再有意义, 按新实例重新评估。 */
+    object SourceSwitched : ReadAloudChapterSignal
+}
 data class ReadAloudChapterUpdate(
     val chapterIndex: Int,
     val ready: Boolean,
@@ -438,9 +439,31 @@ interface ReadAloudHostPorts {
     val positionUpdates: Flow<ReadAloudPosition> get() = emptyFlow()
     val chapterUpdates: Flow<ReadAloudChapterUpdate> get() = emptyFlow()
 
-    /** 登记一次新朗读会话的起点; 无活动阅读页时 no-op。 */
-    fun resetReadAloudPageCursor(chapterPosition: Int) = Unit
-
     /** 朗读位置推进联动: 返回是否发生了翻页; 无活动阅读页时 no-op 返回 false。 */
     fun advanceReadAloudPage(chapterIndex: Int, readingPos: Int): Boolean = false
+
+    /** [chapterIndex] 的正文是否已排版就绪 (三章滑窗内命中该章, 且不是占位消息页)。 */
+    fun isChapterTextReady(chapterIndex: Int): Boolean = false
+
+    /**
+     * 当前是否有能提供正文的阅读页。
+     *
+     * 朗读等章时先查这个状态: 没有阅读页就不会有任何答复, 不能静默等。
+     */
+    val chapterSourceAvailable: Boolean get() = false
+
+    /**
+     * 等章方需要重新评估的信号: 装载任务结束 (无论从哪条分支) 与阅读实例更换。
+     *
+     * 等章方据此重新评估, 不轮询状态; 能否续读以控制器能否建出计划为准。
+     */
+    val chapterSignals: Flow<ReadAloudChapterSignal> get() = emptyFlow()
+
+    /**
+     * 请求装载 [chapterIndex] 的正文 (不改变当前阅读位置、不动页面流)。
+     *
+     * 进入一章时就把下一章备好, 章末换章才不会退化成"等一次网络往返"; 进入 WAITING
+     * 时也用它请求装载。装载结束的答复经 [chapterSignals] 回来。
+     */
+    fun prefetchChapter(chapterIndex: Int) = Unit
 }

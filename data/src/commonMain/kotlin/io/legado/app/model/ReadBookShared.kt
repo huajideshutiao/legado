@@ -32,6 +32,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.concurrent.Volatile
 
 /**
  * 跨平台阅读状态核心（app 端 `io.legado.app.model.ReadBook` 单例下沉产物）。
@@ -106,13 +107,35 @@ open class ReadBookShared : CoroutineScope {
     private val _durChapterPos = MutableStateFlow(0)
     val durChapterPos: StateFlow<Int> = _durChapterPos.asStateFlow()
 
+    /**
+     * 阅读位置与它的写入来源成对发布。
+     *
+     * 朗读推进与用户翻页写同一个位置字段; 两者分开记录会让值与来源在并发下错配
+     * (朗读推进被当成用户翻页而重建会话), 所以位置与来源作为一个快照一起发出。
+     */
+    private val _positionSnapshot = MutableStateFlow(PositionSnapshot(0, PositionOrigin.User))
+
+    /** 当前阅读位置与写入来源的配对快照。 */
+    val positionSnapshot: StateFlow<PositionSnapshot> = _positionSnapshot.asStateFlow()
+
     /** app 端 `ReadBook.durChapterPos` 可写视图 */
     var durChapterPosValue: Int
         get() = _durChapterPos.value
         set(value) {
-            _durChapterPos.value = value
-            _durPageIndex.value = durPageIndexValue
+            writePosition(value, PositionOrigin.User)
         }
+
+    /** 写入阅读位置并标明来源; 位置与来源在同一次发布里生效。 */
+    fun writePosition(pos: Int, origin: PositionOrigin) {
+        _positionSnapshot.value = PositionSnapshot(pos, origin)
+        _durChapterPos.value = pos
+        _durPageIndex.value = durPageIndexValue
+    }
+
+    /** 朗读推进写入阅读位置: 来源记为朗读, 位置监听据此不把它当作一次用户翻页。 */
+    fun updateDurChapterPosByReadAloud(pos: Int) {
+        writePosition(pos, PositionOrigin.ReadAloud)
+    }
 
     private val _durPageIndex = MutableStateFlow(0)
     val durPageIndex: StateFlow<Int> = _durPageIndex.asStateFlow()
@@ -288,13 +311,13 @@ open class ReadBookShared : CoroutineScope {
         }
     }
 
-    fun moveToNextPage(): Boolean {
+    fun moveToNextPage(origin: PositionOrigin = PositionOrigin.User): Boolean {
         var hasNextPage = false
         curChapter?.let {
             val nextPagePos = it.getNextPageLength(durChapterPosValue)
             if (nextPagePos >= 0) {
                 hasNextPage = true
-                durChapterPosValue = nextPagePos
+                writePosition(nextPagePos, origin)
                 callback?.upContent()
             }
         }
@@ -532,8 +555,8 @@ open class ReadBookShared : CoroutineScope {
     }
 
     /** 下一页 (对照 app 端 ReadBook.moveToNextPage)。false=已到章末需切章。 */
-    fun nextPage(): Boolean {
-        if (!moveToNextPage()) return false
+    fun nextPage(origin: PositionOrigin = PositionOrigin.User): Boolean {
+        if (!moveToNextPage(origin)) return false
         callback?.onPageChanged()
         return true
     }
@@ -579,3 +602,25 @@ open class ReadBookShared : CoroutineScope {
         fun onBookContentChanged() {}
     }
 }
+
+/** 阅读位置的写入来源。 */
+enum class PositionOrigin {
+    /** 用户翻页/跳章等主动操作。 */
+    User,
+
+    /** 朗读自己推进进度。 */
+    ReadAloud,
+}
+
+/** 阅读位置与写入来源的配对快照。 */
+data class PositionSnapshot(
+    val chapterPosition: Int,
+    val origin: PositionOrigin,
+)
+
+/**
+ * 阅读位置待定的编码: 要落的页尚未排版 (例如回上一章且该章未预载)。
+ *
+ * 排版完成后归一为实际页首, 不是在位数值域内的真实位置。
+ */
+const val POSITION_PENDING_PAGE: Int = Int.MAX_VALUE

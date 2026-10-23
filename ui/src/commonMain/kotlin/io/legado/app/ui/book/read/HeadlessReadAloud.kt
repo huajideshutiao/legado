@@ -211,6 +211,7 @@ object HeadlessReadAloud {
         synchronized(lock) { if (session === target) session = null }
         target.viewModel.cancelPreDownloadTask()
         ActiveReadBookRegistry.detach(target.readBook)
+        target.viewModel.detachReadAloudPorts()
         target.scope.cancel()
     }
 }

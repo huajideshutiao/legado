@@ -210,6 +210,15 @@ class ReadAloudControllerShared(
     private val _chapterPosition = MutableStateFlow(0)
     val chapterPosition: StateFlow<Int> = _chapterPosition.asStateFlow()
 
+    /**
+     * 正在念到的字在章内的位置 (段起点 + 引擎字级偏移)。
+     *
+     * 长段跨页时只有字级进度才能让阅读页跟着念到的字翻页; 段级进度要等整段念完才推进,
+     * 跨页期间高亮会被页边界裁掉。引擎不给字级回调时保持段起点 (不影响段级行为)。
+     */
+    private val _speakPosition = MutableStateFlow(0)
+    val speakPosition: StateFlow<Int> = _speakPosition.asStateFlow()
+
     /** 当前段落文本 (供 UI 显示"正在朗读"高亮)。 */
     private val _currentText = MutableStateFlow("")
     val currentText: StateFlow<String> = _currentText.asStateFlow()
@@ -271,7 +280,10 @@ class ReadAloudControllerShared(
         }
 
         override fun onRangeStart(utteranceId: String, start: Int, end: Int, frame: Int) {
-            // 范围进度: 桌面命令行 TTS 不提供, no-op
+            // 只认本轮当前段的回调, 旧轮次迟到的 range 不得推动阅读页
+            val round = playbackRound.value
+            if (utteranceId != round.expectedUtteranceId) return
+            reportEngineRangeStart(round.token, start)
         }
     }
 
@@ -321,8 +333,6 @@ class ReadAloudControllerShared(
             fromLastSpeakable = fromLastSpeakable,
         )
         pendingChapterRequest.value = request
-        // 对应原版 newReadAloud 开头的 pageIndex 重置: 每次新会话翻页联动游标回到起点
-        ActiveReadAloudHostPorts.resetReadAloudPageCursor(request.chapterPosition)
         if (chapterIndex !in 0 until chapterData.chapterCount) {
             pendingChapterRequest.value = null
             _lastError.tryEmit("章节索引越界: $chapterIndex")
@@ -411,7 +421,7 @@ class ReadAloudControllerShared(
                 _state.value = ReadAloudState.ERROR
                 return false
             }
-            if (plan == null) {
+            if (plan == null || !chapterData.isChapterPaged(index)) {
                 // WAITING 只表示章节正文未就绪, 就绪后由 retryWaiting 重试; 起点之后无内容不属此类
                 // (stopInternal 内取走并释放 HttpTTS 路由, 就绪重试时再按最新配置解析)
                 stopInternal(clearState = false)
@@ -546,6 +556,59 @@ class ReadAloudControllerShared(
             _state.value = ReadAloudState.PLAYING
             if (engine?.isPaused == true) engine.resume() else playCurrent()
         }
+    }
+
+    /**
+     * 用户手动翻页换位置: 只换队列续读, 不拆会话。
+     *
+     * [start] 是"新会话"语义: 重新解析并注册 TTS 路由、重登章节、重置整套状态。用户翻页只是
+     * "从这一页开头接着念", 用不着这一套 —— 那正是翻页后卡一段时间、甚至把引擎停在那里的原因。
+     * 这里保留引擎路由与订阅令牌, 只重建段落队列再提交当前段。
+     *
+     * 跨章翻页同样走这里 (传目标 [chapterIndex]): 换章只是换一份章节计划, 没必要拆会话。
+     *
+     * @param chapterPosition 翻页后阅读页的页首 (章内字符位置); 拿不到计划时回落 [start]
+     * @param chapterIndex 目标章; 默认当前章
+     */
+    fun seekTo(chapterPosition: Int, chapterIndex: Int = _chapterIndex.value) {
+        val index = chapterIndex
+        if (index < 0 || _state.value != ReadAloudState.PLAYING) {
+            if (index >= 0) start(index, chapterPosition)
+            return
+        }
+        val plan = chapterData.loadChapterPlan(index, chapterPosition, false)
+        // 拿不到计划, 或起点之后已没有可朗读段: 回落完整重启路径 (它会按章顺延/报错)
+        if (plan == null || plan.paragraphs.none { !it.matches(AppPattern.notReadAloudRegex) }) {
+            start(index, chapterPosition)
+            return
+        }
+        invalidatePlayback()
+        stopEngine()
+        pendingChapterRequest.value = null
+        swapChapterPlan(index, plan)
+        playCurrent()
+    }
+
+    /**
+     * 换一份章节计划就地续念: 只换段落队列, 不拆会话。
+     *
+     * 跨章翻页 ([seekTo]) 与章末续读 ([continueIntoNextChapter]) 共用; 引擎在播与否由
+     * 调用方先行处置。已在该章时切章是无害 no-op。
+     */
+    private fun swapChapterPlan(index: Int, plan: ReadAloudChapterPlan) {
+        _chapterIndex.value = index
+        _paragraphIndex.value = -1
+        _chapterPosition.value = plan.chapterPosition
+        _currentText.value = ""
+        chapterNavigation.moveToChapter(index)
+        _chapterSize.value = chapterData.chapterCount
+        playbackQueue.reset(
+            contentList = plan.paragraphs,
+            nowSpeak = plan.paragraphIndex,
+            readAloudNumber = plan.chapterPosition,
+            paragraphStartPos = plan.paragraphOffset,
+        )
+        playbackQueue.seekSpeakable()
     }
 
     /**
@@ -716,6 +779,7 @@ class ReadAloudControllerShared(
         val text = speakable.text
         _paragraphIndex.value = playback.nowSpeak
         _chapterPosition.value = playback.readAloudNumber
+        _speakPosition.value = playback.readAloudNumber
         _currentText.value = text
         val playbackText = text.substring(playback.paragraphStartPos.coerceIn(0, text.length))
         val token = playbackToken.incrementAndGet()
@@ -789,16 +853,52 @@ class ReadAloudControllerShared(
     /** 平台播放器完成当前段时回调；令牌不匹配说明它属于已停止的旧播放。 */
     fun paragraphCompleted(token: Long) = onParagraphDone(token)
 
+    /**
+     * 平台引擎的字级进度入口: [rangeStart] 是引擎给出的段内字符偏移。
+     *
+     * 段起点与偏移的合成只在共享层做一份; 令牌不匹配说明回调属于已作废的旧轮次。
+     */
+    fun reportEngineRangeStart(playbackToken: Long, rangeStart: Int) {
+        if (playbackToken != playbackRound.value.token) return
+        _speakPosition.value = _chapterPosition.value + rangeStart.coerceAtLeast(0)
+    }
+
     private fun onParagraphDone(token: Long) {
         if (_state.value != ReadAloudState.PLAYING || token != playbackRound.value.token) return
         invalidatePlayback()
         if (playbackQueue.stepNextOrEnd()) {
             // 还有段落, 朗读下一段
             playCurrent()
-        } else {
-            // 本章节末段已朗读完 → 切下一章并续读 (不在队列推进内调 navigator)
-            nextChapter()
+            return
         }
+        // 章末: 下一章正文已经能建出计划时直接换队列续读, 不拆会话重来
+        if (continueIntoNextChapter()) return
+        // 本章节末段已朗读完 → 切下一章并续读 (不在队列推进内调 navigator)
+        nextChapter()
+    }
+
+    /**
+     * 无缝续读下一章: 换队列继续念, 不走 [start] 的整场重建。
+     *
+     * 只在下一章正文已就绪 (能建出段落计划且含有可朗读段) 时接手; 否则返回 false, 由
+     * [nextChapter] 走原路径 (置 WAITING 等装载)。
+     */
+    private fun continueIntoNextChapter(): Boolean {
+        val next = _chapterIndex.value + 1
+        if (next < 0 || next >= chapterData.chapterCount) return false
+        val plan = chapterData.loadChapterPlan(next, 0, false) ?: return false
+        // 未排版时正文来自缓存原文, 坐标与页账本不同源: 不在此接手, 等排版完成后经等章信号续读
+        if (!chapterData.isChapterPaged(next)) return false
+        // 整章没有可朗读段 (纯空章/纯标点) 时不接: 交回 nextChapter 的顺延逻辑
+        if (plan.paragraphs.none { !it.matches(AppPattern.notReadAloudRegex) }) return false
+
+        val request = PendingChapterRequest(next, 0, false)
+        pendingChapterRequest.value = request
+        // 上面已保证章内有可朗读段, 换队列后必然停在某一段上
+        swapChapterPlan(next, plan)
+        pendingChapterRequest.compareAndSet(request, null)
+        playCurrent()
+        return true
     }
 
     /**
@@ -910,6 +1010,14 @@ interface ReadAloudChapterDataPort {
         chapterPosition: Int = 0,
         fromLastSpeakable: Boolean = false,
     ): ReadAloudChapterPlan?
+
+    /**
+     * 该章正文是否来自排版产物 (否则是缓存原文回落)。
+     *
+     * 段落坐标与页账本只在排版产物上同源: 原文回落的坐标与 durChapterPos/页边界不同源,
+     * 换章时用它接手会让翻页联动与标蓝错位。
+     */
+    fun isChapterPaged(chapterIndex: Int): Boolean = true
 }
 
 /** 章节导航端口：只负责让阅读宿主切到目标章节。 */

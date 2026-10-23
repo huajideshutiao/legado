@@ -30,6 +30,7 @@ import io.legado.app.help.MediaHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.media.AudioFocusController
+import io.legado.app.help.tts.ReadAloudChapterCoordinator
 import io.legado.app.help.media.BecomingNoisyReceiver
 import io.legado.app.help.media.MediaPlaybackLock
 import io.legado.app.help.media.MediaNotificationHost
@@ -49,6 +50,7 @@ import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.telephonyManager
 import io.legado.app.ui.book.read.page.entities.TextChapterShared
 import io.legado.app.ui.book.read.page.entities.getNeedReadAloud
+import io.legado.app.ui.book.read.page.entities.isReadablePagedChapter
 import io.legado.app.ui.book.read.page.entities.title
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.LogUtils
@@ -165,6 +167,12 @@ abstract class BaseReadAloudService : BaseService() {
     )
     private var registeredPhoneStateListener = false
     private var chapterWatchJob: Job? = null
+    private var positionWatchJob: Job? = null
+
+    /** 等章链路与其余端共用同一份协调器: 本服务只提供通知/媒体/生命周期外壳。 */
+    private val chapterCoordinator by lazy {
+        ReadAloudChapterCoordinator(ActiveReadAloudHostPorts) { readAloudController }
+    }
     private var cover: Bitmap = BookCover.notificationDefaultCover
 
     /** 前台通知宿主 (去重 + 刷新 + 前台启动, 与音频共用同一实现)。 */
@@ -206,9 +214,8 @@ abstract class BaseReadAloudService : BaseService() {
             chapterPosition: Int,
             fromLastSpeakable: Boolean,
         ): ReadAloudChapterPlan? {
-            val chapter = readBook?.curTextChapter?.value
-                ?.takeIf { it.chapterIndex == chapterIndex && it.pages.isNotEmpty() && !it.pages.first().isMsgPage }
-                ?: return null
+            // 三章滑窗里取章: 章末要读的下一章在相邻槽, 只看当前槽会让章末续读永远判未就绪
+            val chapter = pagedChapterOf(chapterIndex) ?: return null
             textChapter = chapter
             readAloudByPage = AppConfig.readAloudByPage
             // 段落计划与 shared 朗读宿主共用同一构建器 (安卓获得段界 skip 钳制)
@@ -218,6 +225,17 @@ abstract class BaseReadAloudService : BaseService() {
                 fromLastSpeakable,
             )
         }
+
+        override fun isChapterPaged(chapterIndex: Int): Boolean =
+            pagedChapterOf(chapterIndex) != null
+    }
+
+    /** 三章滑窗 (前/当前/后) 里命中 [chapterIndex] 的已排版章节 (就绪判据与其余端同一扩展)。 */
+    private fun pagedChapterOf(chapterIndex: Int): TextChapterShared? {
+        val book = readBook ?: return null
+        return book.curTextChapter.value?.takeIf { it.isReadablePagedChapter(chapterIndex) }
+            ?: book.nextTextChapter.value?.takeIf { it.isReadablePagedChapter(chapterIndex) }
+            ?: book.prevTextChapter.value?.takeIf { it.isReadablePagedChapter(chapterIndex) }
     }
 
     @CallSuper
@@ -235,6 +253,9 @@ abstract class BaseReadAloudService : BaseService() {
         lifecycleScope.launch {
             readAloudController.state.collectLatest { state ->
                 if (state == ReadAloudControllerShared.ReadAloudState.COMPLETED) stopSelf()
+                if (state == ReadAloudControllerShared.ReadAloudState.WAITING) {
+                    chapterCoordinator.onWaiting()
+                }
             }
         }
         sleepTimer = SleepTimer(
@@ -340,27 +361,66 @@ abstract class BaseReadAloudService : BaseService() {
     }
 
     /**
-     * 盯活动阅读页的当前章排版产物: 换章 / 重排 / 阅读页重建后按新章重建朗读队列。
+     * 盯活动阅读页的章节进展与装载答复。
      *
-     * 对照原版 `ReadBookShared.curPageChanged` → `readAloud(!isReadAloudPause)` 那条回环:
-     * Compose 阅读页切章走 ViewModel, 不经 curPageChanged, 故由本服务自己盯 StateFlow。
+     * 换章 / 重排 / 阅读页重建后的续读判定全在共享协调器里, 本服务不再自备一份监听。
      */
     private fun armChapterWatch() {
         chapterWatchJob?.cancel()
         chapterWatchJob = lifecycleScope.launch {
-            ActiveReadAloudHostPorts.chapterUpdates.collectLatest { update ->
-                val error = update.error
-                if (error != null) {
-                    readAloudController.reportError(error)
-                } else if (update.ready &&
-                    readAloudController.state.value == ReadAloudControllerShared.ReadAloudState.WAITING &&
-                    update.chapterIndex == readAloudController.chapterIndex.value
-                ) {
-                    readAloudController.retryWaiting(update.chapterIndex)
-                }
+            chapterCoordinator.startWatch()
+        }
+        armPositionWatch()
+        armProgressWatch()
+    }
+
+    /**
+     * 盯段落与字级进度: 位置合成、进度发布与翻页联动全在共享协调器里, 与其余端宿主同一份;
+     * 本服务与引擎回调都不再自算位置。
+     */
+    private fun armProgressWatch() {
+        lifecycleScope.launch {
+            readAloudController.paragraphIndex.collect { index ->
+                chapterCoordinator.syncParagraphStart(index, planBuilder.snapshot)
+            }
+        }
+        lifecycleScope.launch {
+            readAloudController.speakPosition.collect { pos ->
+                chapterCoordinator.syncSpeakPosition(pos)
             }
         }
     }
+
+    /**
+     * 盯阅读位置: 用户翻页/翻章时跟上, 朗读自己驱动的那几帧不跟。
+     *
+     * 判定在共享协调器里, 本服务只提供"暂停时暂存的位置"与"当前段区间"。
+     */
+    private fun armPositionWatch() {
+        positionWatchJob?.cancel()
+        positionWatchJob = lifecycleScope.launch {
+            ActiveReadAloudHostPorts.positionUpdates.collect { position ->
+                chapterCoordinator.onPosition(
+                    position = position,
+                    paragraphRange = ::currentParagraphRange,
+                    onFollow = { follow ->
+                        readAloudController.seekTo(follow.chapterPosition, follow.chapterIndex)
+                    },
+                    onPauseMove = { moved ->
+                        requestedChapterPosition = moved.chapterPosition
+                        pageChanged = true
+                    },
+                )
+            }
+        }
+    }
+
+    /** 当前朗读段在章内占据的字符区间。 */
+    private fun currentParagraphRange(): IntRange =
+        chapterCoordinator.paragraphRange(
+            paragraphIndex = readAloudController.paragraphIndex.value,
+            geometry = planBuilder.snapshot,
+        )
 
     open fun play() {
         playbackLock.acquire()
@@ -414,10 +474,6 @@ abstract class BaseReadAloudService : BaseService() {
     protected fun onPlaybackResumed() = resumeReadAloudInternal()
 
     abstract fun upSpeechRate(reset: Boolean = false)
-
-    fun upTtsProgress(progress: Int) {
-        ActiveReadAloudHostPorts.positionPublisher.publishPosition(progress)
-    }
 
     private fun prevP() = readAloudController.prevParagraph()
 

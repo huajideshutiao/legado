@@ -5,6 +5,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.help.media.SystemMediaControl
 import io.legado.app.help.tts.ReadAloudChapterDataHostPort
+import io.legado.app.help.tts.ReadAloudChapterSignal
 import io.legado.app.help.tts.ReadAloudChapterUpdate
 import io.legado.app.help.tts.ReadAloudHostPorts
 import io.legado.app.help.tts.ReadAloudMediaControlPort
@@ -16,14 +17,15 @@ import io.legado.app.service.ReadAloudChapterNavigationPort
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadBookViewModelPort
 import io.legado.app.ui.book.read.page.entities.TextChapterShared
-import kotlinx.atomicfu.locks.SynchronizedObject
-import kotlinx.atomicfu.locks.synchronized
+import io.legado.app.ui.book.read.page.entities.isReadablePagedChapter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.merge
 import kotlin.concurrent.Volatile
 
 /** 当前 shared 阅读页的活动阅读状态。 */
@@ -73,8 +75,19 @@ interface ActiveReadAloudOwner {
     val chapterUpdates: Flow<ReadAloudChapterUpdate>
     fun chapterText(chapterIndex: Int): String?
     fun moveToChapter(chapterIndex: Int)
-    fun moveToNextPage()
+
+    /**
+     * 翻到下一页; [origin] 标明是谁发起的翻页, 朗读自己翻的页不该再被当成用户翻页。
+     * 返回是否真翻了页 (已到章末为 false), 朗读补翻循环据此如实收口。
+     */
+    fun moveToNextPage(origin: PositionOrigin = PositionOrigin.User): Boolean
     fun uploadProgress()
+
+    /** 等章方需要重新评估的信号: 装载任务结束与阅读实例更换。 */
+    val chapterSignals: Flow<ReadAloudChapterSignal>
+
+    /** 请求装载该章正文; 不打断已在跑的装载, 结束后必定通知一次。 */
+    fun prefetchChapter(chapterIndex: Int)
 }
 
 /**
@@ -101,53 +114,51 @@ object ActiveReadAloudHostPorts : ReadAloudHostPorts {
 
     val currentReadBook: ReadBookShared? get() = ownerSnapshot?.readBook
     val currentChapter: TextChapterShared? get() = ownerSnapshot?.readBook?.curTextChapter?.value
-    fun moveToNextPage() = ownerSnapshot?.moveToNextPage()
+    fun moveToNextPage(origin: PositionOrigin = PositionOrigin.User): Boolean =
+        ownerSnapshot?.moveToNextPage(origin) ?: false
     fun uploadProgress() = ownerSnapshot?.uploadProgress()
 
-    // 朗读进度→阅读页翻页联动游标 (原版散在朗读服务内的 pageIndex, 下沉后单例持有)。
-    // 登记起点 (阅读页 UI 线程 / 朗读服务主线程) 与推进 (Android TTS 回调的 binder 线程、
-    // 其余端朗读宿主的 Dispatchers.Default) 分属不同线程, 游标与起点成对读写, 故用锁收口
-    // (与同模块 RemoteZipWrapper 同一写法)。
-    private val readAloudPageLock = SynchronizedObject()
-    private var readAloudPageCursor: Int = -1
-    private var readAloudPageStartPos: Int = 0
-
     /**
-     * 登记一次新朗读会话的起点 (对照原版 newReadAloud 开头的 pageIndex 重置);
-     * 游标页在排版产物就绪后由 [advanceReadAloudPage] 反算。
-     */
-    override fun resetReadAloudPageCursor(chapterPosition: Int) {
-        synchronized(readAloudPageLock) {
-            readAloudPageStartPos = chapterPosition.coerceAtLeast(0)
-            readAloudPageCursor = -1
-        }
-    }
-
-    /**
-     * 朗读位置推进联动: 朗读位置越过下一页起点时把阅读页翻过去 (对照原版
-     * TTSReadAloudService onStart/onRangeStart 与 HttpReadAloudService upPlayPos 的判定)。
+     * 朗读位置推进联动: 朗读所在段落在阅读页之后的页上时, 把阅读页翻过去。
      *
-     * 翻页回调在锁外调 (阅读页实现可能反向进入朗读宿主, 与 ReadAloudControllerShared
-     * 的"锁外调 navigator"同一约定)。
+     * 判定基准是**阅读页当前页位**与**该段所在页**的比较。另养一个游标会和阅读页的实际页位
+     * 成为两套状态: 一旦段落坐标与排版坐标有偏差 (首屏只有标题、页面里的空行等), 游标就会抢
+     * 在阅读页前面把页翻掉 —— 表现正是"第一段读完就跳到下一页"。
+     *
+     * 一次调用翻到目标页: 段比阅读页超前多页时 (长段、重定位后) 逐页补翻, 否则朗读段所在页
+     * 永远追不上, 宿主会把每一次追赶都当成用户翻页。
      */
     override fun advanceReadAloudPage(chapterIndex: Int, readingPos: Int): Boolean {
         val chapter = currentChapter ?: return false
         if (chapter.chapterIndex != chapterIndex) return false
-        val advanced = synchronized(readAloudPageLock) {
-            if (readAloudPageCursor < 0) {
-                readAloudPageCursor = chapter.getPageIndexByCharIndex(readAloudPageStartPos)
-            }
-            if (readAloudPageCursor + 1 < chapter.pageSize
-                && readingPos > chapter.getReadLength(readAloudPageCursor + 1)
-            ) {
-                readAloudPageCursor++
-                true
-            } else {
-                false
-            }
+        val current = currentPosition?.takeIf { it.chapterIndex == chapterIndex }
+            ?.chapterPosition ?: return false
+        val currentPage = chapter.getPageIndexByCharIndex(current)
+        val targetPage = chapter.getPageIndexByCharIndex(readingPos)
+        if (currentPage < 0 || targetPage <= currentPage) return false
+        var turned = 0
+        while (turned < targetPage - currentPage) {
+            // 翻不动 (章被并发切换/已到章末) 即如实报失败, 不虚报完成
+            if (!moveToNextPage(PositionOrigin.ReadAloud)) return false
+            turned++
         }
-        if (advanced) moveToNextPage()
-        return advanced
+        return true
+    }
+
+    /**
+     * 该章正文是否已排版就绪: 三章滑窗内命中该章, 且首屏不是占位/消息页。
+     *
+     * 与取正文的口径一致: 章末换章时朗读要读的那一章通常在 next/prev 槽, 不能只看当前槽。
+     */
+    override fun isChapterTextReady(chapterIndex: Int): Boolean =
+        pagedChapterOf(chapterIndex) != null
+
+    /** 三章滑窗 (前/当前/后) 里命中 [chapterIndex] 的已排版章节。 */
+    private fun pagedChapterOf(chapterIndex: Int): TextChapterShared? {
+        val book = ownerSnapshot?.readBook ?: return null
+        return book.curTextChapter.value?.takeIf { it.isReadablePagedChapter(chapterIndex) }
+            ?: book.nextTextChapter.value?.takeIf { it.isReadablePagedChapter(chapterIndex) }
+            ?: book.prevTextChapter.value?.takeIf { it.isReadablePagedChapter(chapterIndex) }
     }
 
     override val currentPosition: ReadAloudPosition?
@@ -160,6 +171,22 @@ object ActiveReadAloudHostPorts : ReadAloudHostPorts {
 
     override val chapterUpdates: Flow<ReadAloudChapterUpdate> =
         _owner.flatMapLatest { it?.chapterUpdates ?: kotlinx.coroutines.flow.emptyFlow() }
+
+    override val chapterSourceAvailable: Boolean get() = ownerSnapshot != null
+
+    override val chapterSignals: Flow<ReadAloudChapterSignal> =
+        _owner.flatMapLatest { owner ->
+            if (owner == null) {
+                flowOf(ReadAloudChapterSignal.SourceSwitched)
+            } else {
+                // 换到新实例先让等章方重评一次: 旧实例发起的装载答复已无意义
+                merge(flowOf(ReadAloudChapterSignal.SourceSwitched), owner.chapterSignals)
+            }
+        }
+
+    override fun prefetchChapter(chapterIndex: Int) {
+        ownerSnapshot?.prefetchChapter(chapterIndex)
+    }
 
     override val chapterData = object : ReadAloudChapterDataHostPort {
         override val chapterCount: Int get() = ownerSnapshot?.readBook?.simulatedChapterSize ?: 0

@@ -28,12 +28,15 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
+import io.legado.app.help.tts.ReadAloudChapterSignal
 import io.legado.app.help.tts.ReadAloudChapterUpdate
 import io.legado.app.help.tts.ReadAloudPosition
 import io.legado.app.model.ActiveReadAloudHostPorts
 import io.legado.app.model.ActiveReadAloudOwner
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.CacheBookShared
+import io.legado.app.model.POSITION_PENDING_PAGE
+import io.legado.app.model.PositionOrigin
 import io.legado.app.model.ReadBookPlatforms
 import io.legado.app.model.ReadBookShared
 import io.legado.app.model.chapter.ChapterLoadingGuard
@@ -54,6 +57,7 @@ import io.legado.app.ui.book.read.page.entities.TextChapterShared
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import io.legado.app.ui.book.read.page.entities.getNeedReadAloud
 import io.legado.app.ui.book.read.page.entities.tryPatchReviewCounts
 import io.legado.app.ui.book.read.page.overlay.HighlightOverlay
 import io.legado.app.ui.book.read.page.overlay.TTSHighlightOverlay
@@ -79,9 +83,12 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import okio.FileNotFoundException
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
@@ -652,17 +659,24 @@ class ReadBookViewModelShared(
      * 拉到该段, 跨页时页面流随之翻页。
      */
     fun updateReadPosition(pos: Int) {
-        readBook.updateDurChapterPos(pos)
+        readBook.updateDurChapterPosByReadAloud(pos)
         syncPageFlows()
     }
 
     // endregion
 
+    /** 朗读等章需要的信号: 装载任务结束与阅读实例更换。 */
+    private val readAloudChapterSignals =
+        MutableSharedFlow<ReadAloudChapterSignal>(extraBufferCapacity = 8)
+
     private val readAloudOwner = object : ActiveReadAloudOwner {
         override val readBook: ReadBookShared get() = this@ReadBookViewModelShared.readBook
-        override val positionUpdates = readBook.durChapterPos.map {
-            ReadAloudPosition(readBook.durChapterIndexValue, it)
-        }
+        // 章号、位置、来源三者在同一帧里读出: 翻章时位置值可能不变 (0→0), 章号变化
+        // 必须自己驱动一次; 来源与位置同一次发布, 不会错配
+        override val positionUpdates =
+            combine(readBook.durChapterIndex, readBook.positionSnapshot) { index, snapshot ->
+                ReadAloudPosition(index, snapshot.chapterPosition, snapshot.origin)
+            }
         override val chapterUpdates = readBook.curTextChapter.mapNotNull { chapter ->
             chapter ?: return@mapNotNull null
             val error = chapter.pages.firstOrNull()?.takeIf { it.isMsgPage }
@@ -671,16 +685,16 @@ class ReadBookViewModelShared(
         }
 
         override fun chapterText(chapterIndex: Int): String? {
-            if (chapterIndex == readBook.durChapterIndexValue) {
-                readBook.curTextChapter.value?.let { chapter ->
-                    if (chapter.pages.isNotEmpty() && !chapter.pages.first().isMsgPage) {
-                        return chapter.pages.joinToString("") { it.text }
-                    }
-                }
-            }
-            val book = readBook.bookValue ?: return null
-            val chapter = readBook.chapterListValue?.getOrNull(chapterIndex) ?: return null
-            return BookHelpShared.getContent(book, chapter)
+            // 朗读正文只有一个来源: 已排版章节的页文本。章标题是排版产物 (displayTitle), 净化/替换
+            // 规则也在排版链路里才生效, 段落坐标与页边界同源。缓存原文是另一套坐标空间, 拿它念会
+            // 丢标题、漏替换, 并让翻页联动与标蓝错位。未排版时返回 null, 由等章机制等排版完成。
+            val layout = readBook.curTextChapter.value?.takeIf { it.chapterIndex == chapterIndex }
+                ?: readBook.nextTextChapter.value?.takeIf { it.chapterIndex == chapterIndex }
+                ?: readBook.prevTextChapter.value?.takeIf { it.chapterIndex == chapterIndex }
+            if (layout == null || layout.pages.isEmpty() || layout.pages.first().isMsgPage) return null
+            // 按页朗读偏好与安卓同一口径: 页间补一个换行, 让每页从新段起读
+            val byPage = PreferenceProviders.get().getBoolean(PreferKey.readAloudByPage, false)
+            return layout.getNeedReadAloud(0, byPage, 0)
         }
 
         override fun moveToChapter(chapterIndex: Int) {
@@ -690,8 +704,39 @@ class ReadBookViewModelShared(
             }
         }
 
-        override fun moveToNextPage() {
-            nextPage()
+        override fun moveToNextPage(origin: PositionOrigin): Boolean = nextPage(origin)
+
+        override val chapterSignals: Flow<ReadAloudChapterSignal> = readAloudChapterSignals
+
+        /**
+         * 请求装载指定章正文 (朗读侧调用)。
+         *
+         * 只走 [loadContent] 的装载链路, 不写 durChapterIndex、不动页面流, 因此不会把阅读位置
+         * 挪到被请求的那一章上; 装载成功后正文落盘, 章末换章直接命中缓存, 不必再等网络。
+         *
+         * 不打断已在跑的装载: 等它结束后再答复, 以免阅读页正在看的那一章重装一次。
+         * 被取消 (跳章/重排/切书) 的那次不答复: 没有结论, 由接手的任务或阅读实例变化覆盖。
+         */
+        override fun prefetchChapter(chapterIndex: Int) {
+            if (chapterIndex < 0 || chapterIndex >= readBook.chapterSize) {
+                // 没有可装载的章: 直接答复, 让等章方上报
+                readAloudChapterSignals.tryEmit(ReadAloudChapterSignal.Settled(chapterIndex))
+                return
+            }
+            val running = loadGuard.currentJob(chapterIndex)
+            if (running != null) {
+                scope.launch {
+                    running.join()
+                    // 已有接手任务就由它答复, 此时回答会被当成终态而导致误停
+                    if (loadGuard.currentJob(chapterIndex) != null) return@launch
+                    readAloudChapterSignals.tryEmit(ReadAloudChapterSignal.Settled(chapterIndex))
+                }
+                return
+            }
+            loadGuard.launch(chapterIndex) {
+                loadContent(chapterIndex, silent = true)
+                readAloudChapterSignals.tryEmit(ReadAloudChapterSignal.Settled(chapterIndex))
+            }
         }
 
         override fun uploadProgress() = this@ReadBookViewModelShared.uploadProgress()
@@ -1478,7 +1523,7 @@ class ReadBookViewModelShared(
                     // 保留滚动偏移与页位, 只更新页状态, 不触发 preDownload (避免网络请求/JS执行)
                     pageList.clear()
                     pageList.addAll(textChapter.pages)
-                    if (readBook.durChapterPos.value == Int.MAX_VALUE) {
+                    if (readBook.durChapterPos.value == POSITION_PENDING_PAGE) {
                         readBook.updateDurChapterPos(textChapter.lastReadLength)
                     }
                     syncPageFlows()
@@ -1497,8 +1542,8 @@ class ReadBookViewModelShared(
      * 翻到下一页（委托 [ReadBookShared.nextPage] 做 durChapterPos 位移，对照 app 端 moveToNextPage）。
      * 已到章末返回 false，由调用方触发 [moveToNextChapter]。
      */
-    fun nextPage(): Boolean {
-        if (!readBook.nextPage()) return false
+    fun nextPage(origin: PositionOrigin = PositionOrigin.User): Boolean {
+        if (!readBook.nextPage(origin)) return false
         // 手动翻页离开朗读页即清高亮（对照原版 moveToNextPage 的 removePageAloudSpan）
         _ttsHighlight.value = null
         syncPageFlows()
@@ -1588,7 +1633,7 @@ class ReadBookViewModelShared(
      * 切到上一章（对照 app 端 `ReadBook.moveToPrevChapter`）：三章滑窗后移。
      *
      * @param toLast true=落到上一章末页（durChapterPos = prev.lastReadLength，
-     *   未预载时用 Int.MAX_VALUE 编码，排版后自然落到 pages.lastIndex；原版默认值）；
+     *   未预载时用 [POSITION_PENDING_PAGE] 编码，排版后自然落到 pages.lastIndex；原版默认值）；
      *   false=落到上一章第一页
      * @param resetOffset true=滚动模式切章后滚动偏移归零，新章严格从第一页顶部开始
      *   （方向键切章用）；默认 false 保留偏移连续折算（对照原版 toFirst=false，
@@ -1599,7 +1644,7 @@ class ReadBookViewModelShared(
         val curIndex = readBook.durChapterIndex.value
         if (curIndex > 0) {
             val prevPos = if (toLast) {
-                readBook.prevTextChapter.value?.lastReadLength ?: Int.MAX_VALUE
+                readBook.prevTextChapter.value?.lastReadLength ?: POSITION_PENDING_PAGE
             } else {
                 0
             }
@@ -1614,7 +1659,7 @@ class ReadBookViewModelShared(
             } else {
                 // 当前章未装载: 铺占位后由本次装载替换, 理由同 moveToNextChapter。
                 // 位置随装载传入 (对照原版 moveToPrevChapter 先写 durChapterPos 再 loadContent):
-                // toLast 时 prevPos 可能是 Int.MAX_VALUE 哨兵, 排版完成后自然落到末页
+                // toLast 时 prevPos 可能是待定位置, 排版完成后自然落到末页
                 syncPageFlows()
                 loadChapterInternal(
                     index = curIndex - 1,
@@ -1799,6 +1844,16 @@ class ReadBookViewModelShared(
             HeadlessReadAloud.takeOverFromPage(readBook)
         } else false
         clearNow(pageCleanup, cleanUnshelved = !handedOver)
+    }
+
+    /**
+     * 摘掉本实例的朗读端口。
+     *
+     * 端口按引用判等, 已被新阅读实例接管时不影响新实例。实例已经无法提供正文 (例如无头会话作废)
+     * 时必须摘掉: 留着会让朗读侧以为还有阅读页可提供正文, 从而无限等章。
+     */
+    fun detachReadAloudPorts() {
+        ActiveReadAloudHostPorts.detach(readAloudOwner)
     }
 
     private fun clearNow(pageCleanup: () -> Unit, cleanUnshelved: Boolean) {
@@ -2305,8 +2360,8 @@ class ReadBookViewModelShared(
         }
         // 跨章朗读起点已随 openChapter 的完成回调携带 (见 [readAloudFromVisibleStart]),
         // 无需在此消费待办标记
-        // toLast 且上一章未预载时的 Int.MAX_VALUE 哨兵：落到末页后归一为该页页首
-        if (readBook.durChapterPos.value == Int.MAX_VALUE) {
+        // toLast 且上一章未预载时的待定位置：落到末页后归一为该页页首
+        if (readBook.durChapterPos.value == POSITION_PENDING_PAGE) {
             readBook.updateDurChapterPos(textChapter.lastReadLength)
         }
         syncPageFlows()
