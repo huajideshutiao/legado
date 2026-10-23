@@ -189,6 +189,7 @@
 # 扩展/jar 运行时引用的宿主 API 面：扩展 APK 按 eu.kanade.tachiyomi.*
 # 以 compileOnly 编译，这些类型仅在扩展 dex 中被引用，R8 静态不可见，
 # 缺 keep 即被收缩/合并出 dex，扩展加载即 ClassNotFound（规则对齐 Mihon 官方 proguard-rules.pro）
+# 本规则只承担保名与不裁剪；扩展实现/继承面的禁止优化由 data 模块消费规则声明，重叠处取禁止优化。
 ############################
 -keep,allowoptimization class eu.kanade.** { *; }
 -keep,allowoptimization class androidx.preference.** { public protected *; }

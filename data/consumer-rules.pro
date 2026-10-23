@@ -29,3 +29,15 @@
 
 # RemoteBook 原 @Keep（GSON 反射读写远程书信息）。
 -keep class io.legado.app.model.remote.RemoteBook { *; }
+
+# Tachiyomi/Aniyomi 扩展宿主面：扩展 APK 以 compileOnly 引用宿主类型，并继承/覆盖这些类型的成员。
+# R8 的成员 final 化会把可覆盖成员改成 final，扩展类加载阶段即 LinkageError(overrides final method)，
+# 故扩展实现/继承/构造的类型禁止优化（规则面与 Aniyomi 随源码发布的扩展保留规则同构）。
+# 成员范围取全部而非 public protected：宿主启用混淆，扩展经反射替换的请求头委托字段为私有。
+-keep class eu.kanade.tachiyomi.source.model.** { *; }
+-keep class eu.kanade.tachiyomi.source.online.** { *; }
+-keep class eu.kanade.tachiyomi.source.** extends eu.kanade.tachiyomi.source.Source { *; }
+
+-keep class eu.kanade.tachiyomi.animesource.model.** { *; }
+-keep class eu.kanade.tachiyomi.animesource.online.** { *; }
+-keep class eu.kanade.tachiyomi.animesource.** extends eu.kanade.tachiyomi.animesource.AnimeSource { *; }

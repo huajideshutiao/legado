@@ -656,11 +656,13 @@ class ReadBookViewModelShared(
      *
      * 对照 app 端 ReadBookActivity 的 TTS_PROGRESS 观察者
      * (`ReadBook.durChapterPos = chapterStart` + upContent): 朗读推进到某段时把阅读位置
-     * 拉到该段, 跨页时页面流随之翻页。
+     * 拉到该段。滚动模式下与原版一致地把拼接基准页换成当前段所在页并归零滚动偏移 ——
+     * 基准页换了偏移却不归零, 当前段就会被视口上下裁切甚至整个落在视口外。
      */
     fun updateReadPosition(pos: Int) {
         readBook.updateDurChapterPosByReadAloud(pos)
         syncPageFlows()
+        if (isScrollPageAnim) resetScrollOffset()
     }
 
     // endregion
