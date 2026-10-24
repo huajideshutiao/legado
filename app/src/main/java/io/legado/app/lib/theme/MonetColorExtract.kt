@@ -8,9 +8,9 @@ import android.os.Looper
 import androidx.annotation.ColorInt
 import androidx.annotation.MainThread
 import androidx.annotation.RequiresApi
-import com.google.android.material.color.utilities.Hct
-import com.google.android.material.color.utilities.MaterialDynamicColors
-import com.google.android.material.color.utilities.SchemeContent
+import com.google.material.colorutilities.hct.Hct
+import com.google.material.colorutilities.dynamiccolor.MaterialDynamicColors
+import com.google.material.colorutilities.scheme.SchemeContent
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProviders
@@ -18,9 +18,9 @@ import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.config.currentEInkMode
 
 /**
- * 莫奈取色 (Android 12+): 取系统壁纸主色作种子, 经 material 库内置的 Google 官方
- * material-color-utilities (com.google.android.material.color.utilities) 派生日/夜两组
- * SchemeContent 色板, 映射写入现有主题色 8 键, 走既有刷新管线生效。
+ * 莫奈取色 (Android 12+): 取系统壁纸主色作种子, 经随仓 vendor 的 Google 官方
+ * material-color-utilities 源码 (com.google.material.colorutilities, 见同包 README)
+ * 派生日/夜两组 SchemeContent 色板, 映射写入现有主题色 8 键, 走既有刷新管线生效。
  *
  * 取色即默认跟随壁纸变化: [applyFromWallpaper] 派生后注册 OnColorsChangedListener,
  * 壁纸变化回调内重派生; 手动改色/选预设经 [abandonFollowIfActive] 接管拆除跟随
@@ -35,7 +35,6 @@ import io.legado.app.help.config.currentEInkMode
  * 壁纸取不到 (无壁纸主色或系统异常) 时: 回调 onWallpaperMissing (调用方 toast),
  * 不写任何 pref、不挂监听、不触发刷新。
  */
-@Suppress("RestrictedApi")
 object MonetColorExtract {
 
     private val dynamicColors = MaterialDynamicColors()

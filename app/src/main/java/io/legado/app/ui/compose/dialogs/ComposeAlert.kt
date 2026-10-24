@@ -332,13 +332,5 @@ fun Fragment.alert(
     init: (AlertBuilder.() -> Unit)? = null
 ) = requireActivity().alert(title, message, init)
 
-fun Fragment.alert(
-    titleResource: Int? = null,
-    messageResource: Int? = null,
-    init: (AlertBuilder.() -> Unit)? = null
-) = requireActivity().alert(titleResource, messageResource, init)
-
-fun Fragment.alert(init: AlertBuilder.() -> Unit) = requireContext().alert(init)
-
 
 

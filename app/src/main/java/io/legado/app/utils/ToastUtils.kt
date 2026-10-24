@@ -50,6 +50,3 @@ fun Context.longToastOnUiLegacy(message: CharSequence) {
 fun Fragment.toastOnUi(message: Int) = requireActivity().toastOnUi(message)
 
 fun Fragment.toastOnUi(message: CharSequence) = requireActivity().toastOnUi(message)
-fun Fragment.longToast(message: Int) = requireContext().longToastOnUi(message)
-
-fun Fragment.longToast(message: CharSequence) = requireContext().longToastOnUi(message)

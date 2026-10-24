@@ -3,7 +3,6 @@
 package io.legado.app.utils
 
 import androidx.appcompat.app.AppCompatActivity
-import androidx.fragment.app.Fragment
 import androidx.lifecycle.LifecycleService
 
 /**
@@ -26,24 +25,6 @@ inline fun <reified EVENT : Any> AppCompatActivity.observeEvent(
 }
 
 inline fun <reified EVENT : Any> AppCompatActivity.observeEventSticky(
-    vararg tags: String,
-    noinline observer: (EVENT) -> Unit
-) {
-    tags.forEach {
-        FlowBus.observeSticky<EVENT>(this, it, observer)
-    }
-}
-
-inline fun <reified EVENT : Any> Fragment.observeEvent(
-    vararg tags: String,
-    noinline observer: (EVENT) -> Unit
-) {
-    tags.forEach {
-        FlowBus.observe<EVENT>(this, it, observer)
-    }
-}
-
-inline fun <reified EVENT : Any> Fragment.observeEventSticky(
     vararg tags: String,
     noinline observer: (EVENT) -> Unit
 ) {

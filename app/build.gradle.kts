@@ -108,7 +108,6 @@ android {
     }
     buildFeatures {
         buildConfig = true
-        viewBinding = true
         compose = true
     }
     androidResources {
@@ -288,7 +287,6 @@ dependencies {
 
     implementation(libs.core.ktx)
     implementation(libs.appcompat.appcompat)
-    implementation(libs.activity.ktx)
     implementation(libs.fragment.ktx)
 
     implementation(libs.runtime)
@@ -298,12 +296,8 @@ dependencies {
     implementation(libs.compose.activity)
     implementation(libs.compose.lifecycle.runtime)
 
-    implementation(libs.androidx.constraintlayout)
-    implementation(libs.androidx.recyclerview)
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.documentfile)
-
-    implementation(libs.material)
 
     implementation(libs.lifecycle.service)
 

@@ -17,8 +17,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-import io.legado.app.ui.root.AppNavigatorProviders
-import io.legado.app.ui.root.AppOverlay
 
 val WindowManager.windowSize: DisplayMetrics
     get() {
@@ -198,16 +196,4 @@ fun Activity.toggleSystemBar(show: Boolean) {
             systemBarsBehavior = BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
     }
-}
-
-/////以下方法需要在View完全被绘制出来之后调用，否则判断不了,在比如 onWindowFocusChanged（）方法中可以得到正确的结果/////
-
-/**
- * 显示目录help下的帮助文档
- * 帮助文档对话框已下沉 shared (HelpDialog): 经 help Overlay 读 web/help/md/{fileName}.md 渲染
- */
-fun AppCompatActivity.showHelp(fileName: String) {
-    AppNavigatorProviders.get().showOverlay(
-        AppOverlay.Dialog(key = "help", payload = fileName)
-    )
 }

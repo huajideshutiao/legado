@@ -6,12 +6,11 @@ import android.content.Context
 import android.graphics.drawable.GradientDrawable
 import androidx.annotation.ColorInt
 import androidx.core.content.ContextCompat
-import androidx.fragment.app.Fragment
 import io.legado.app.R
 import io.legado.app.utils.ColorUtils
 
 /**
- * 主题相关的 Context / Fragment 扩展属性。
+ * 主题相关的 Context 扩展属性。
  *
  * @author Karim Abou Zeid (kabouzeid)
  *
@@ -95,26 +94,3 @@ val Context.filletBackground: GradientDrawable
         background.setColor(bottomBackground)
         return background
     }
-
-// ===== Fragment 扩展属性（委托给 requireContext()） =====
-
-val Fragment.primaryColor: Int
-    get() = requireContext().primaryColor
-
-val Fragment.accentColor: Int
-    get() = requireContext().accentColor
-
-val Fragment.backgroundColor: Int
-    get() = requireContext().backgroundColor
-
-val Fragment.bottomBackground: Int
-    get() = requireContext().bottomBackground
-
-val Fragment.primaryTextColor: Int
-    get() = requireContext().primaryTextColor
-
-val Fragment.secondaryTextColor: Int
-    get() = requireContext().secondaryTextColor
-
-val Fragment.isDarkTheme: Boolean
-    get() = requireContext().isDarkTheme

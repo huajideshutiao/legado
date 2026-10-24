@@ -66,12 +66,10 @@ media = "1.8.0"
 media3 = "1.10.1"
 webkit = "1.16.0"
 documentfile = "1.1.0"
-constraintlayout = "2.2.1"
-recyclerview = "1.4.0"
+
 sqlite = "2.7.0"
 room = "3.0.1"
 collection = "1.6.0"
-material = "1.14.0"
 libarchive = "1.1.6"
 playServicesCronet = "18.1.1"
 # Android Baseline Profile: 生成器 (benchmark 1.5.0) 与运行时安装器 (profileinstaller);
@@ -165,7 +163,6 @@ compose-lifecycle-runtime-multiplatform = { module = "org.jetbrains.androidx.lif
 multiplatformMarkdown = { module = "com.mikepenz:multiplatform-markdown-renderer", version.ref = "multiplatformMarkdown" }
 multiplatformMarkdown-coil3 = { module = "com.mikepenz:multiplatform-markdown-renderer-coil3", version.ref = "multiplatformMarkdown" }
 reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
-material = { module = "com.google.android.material:material", version.ref = "material" }
 
 # ===== 桌面视频 (mediamp-mpv, KMP 自动选 desktop 变体) =====
 mediamp-mpv = { module = "org.openani.mediamp:mediamp-mpv", version.ref = "mediamp" }
@@ -197,7 +194,6 @@ slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4jNop" }
 core-ktx = { module = "androidx.core:core-ktx", version.ref = "core" }
 appcompat-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
 vectordrawable-animated = { module = "androidx.vectordrawable:vectordrawable-animated", version = "1.1.0" }
-activity-ktx = { module = "androidx.activity:activity-ktx", version.ref = "activity" }
 fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "fragment" }
 lifecycle-service = { module = "androidx.lifecycle:lifecycle-service", version.ref = "lifecycle" }
 media-media = { module = "androidx.media:media", version.ref = "media" }
@@ -211,8 +207,6 @@ androidx-media3-ui = { module = "androidx.media3:media3-ui", version.ref = "medi
 media3-datasource-okhttp = { module = "androidx.media3:media3-datasource-okhttp", version.ref = "media3" }
 androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
 androidx-documentfile = { module = "androidx.documentfile:documentfile", version.ref = "documentfile" }
-androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version.ref = "constraintlayout" }
-androidx-recyclerview = { module = "androidx.recyclerview:recyclerview", version.ref = "recyclerview" }
 androidx-sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sqlite" }
 androidx-sqlite-framework = { module = "androidx.sqlite:sqlite-framework", version.ref = "sqlite" }
 room-common = { module = "androidx.room3:room3-common", version.ref = "room" }

@@ -3,7 +3,6 @@
 package io.legado.app.lib.theme
 
 import android.content.Context
-import androidx.fragment.app.Fragment
 import io.legado.app.R
 
 /**
@@ -27,13 +26,6 @@ val Context.space: ArcoSpacing get() = ArcoSpacing(this)
 val Context.radius: ArcoRadius get() = ArcoRadius(this)
 val Context.viewHeight: ArcoViewHeight get() = ArcoViewHeight(this)
 val Context.stroke: ArcoStroke get() = ArcoStroke(this)
-
-// ===== Fragment 扩展（委托 requireContext()） =====
-
-val Fragment.space: ArcoSpacing get() = requireContext().space
-val Fragment.radius: ArcoRadius get() = requireContext().radius
-val Fragment.viewHeight: ArcoViewHeight get() = requireContext().viewHeight
-val Fragment.stroke: ArcoStroke get() = requireContext().stroke
 
 // ===== 包装类（dimen 值随 Context 资源获取） =====
 
