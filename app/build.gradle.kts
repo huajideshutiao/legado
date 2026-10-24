@@ -277,6 +277,9 @@ dependencies {
     // JVM 单测解析 TvBox json/聚合返回体需要真实 org.json (android.jar 的 org.json 在单测里是 stub)
     testImplementation(libs.json)
     androidTestImplementation(libs.bundles.androidTest)
+    // 仪器化测试的 TvBox 端到端用例直接起本地 Web 服务器 (Web 实现在 core/data, 运行时经它们入包)
+    androidTestImplementation(libs.nanohttpd.nanohttpd)
+    androidTestImplementation(libs.nanohttpd.websocket)
 
     implementation(libs.kotlin.stdlib)
     implementation(libs.bundles.coroutines)
@@ -341,10 +344,7 @@ dependencies {
     implementation(libs.coil3.network.okhttp)
 
     implementation(libs.androidsvg)
-    implementation(libs.nanohttpd.nanohttpd)
-    implementation(libs.nanohttpd.websocket)
     implementation(libs.libarchive)
 
-    implementation(libs.quick.chinese.transfer.core)
     implementation(libs.hutool.crypto)
 }

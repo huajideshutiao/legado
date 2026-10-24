@@ -93,19 +93,26 @@ fun AppTitleBar(
                     tint = colors.primaryText,
                 )
             }
-            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                val titleModifier = if (onTitleClick != null) {
-                    // 对照视频播放页: 标题区占满整行, 点标题右侧空白也进详情
-                    Modifier
-                        .weight(1f)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onTitleClick,
-                        )
-                } else {
-                    Modifier
-                }
+            // 标题容器: 给了标题点击且未用自定义标题槽时整栏高可点 (对照原版 Toolbar
+            // 整体可点), 无按压反馈, 与阅读/漫画/音频/视频页顶栏手感一致
+            Row(
+                Modifier
+                    .weight(1f)
+                    .then(
+                        if (onTitleClick != null && titleContent == null) {
+                            Modifier
+                                .heightIn(min = DesignTokens.viewHeightMax)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = onTitleClick,
+                                )
+                        } else {
+                            Modifier
+                        }
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 if (titleContent != null) {
                     titleContent()
                 } else if (subtitle.isNullOrBlank()) {
@@ -115,10 +122,9 @@ fun AppTitleBar(
                         fontSize = 20.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = titleModifier,
                     )
                 } else {
-                    Column(titleModifier) {
+                    Column {
                         Text(
                             text = title,
                             color = colors.primaryText,

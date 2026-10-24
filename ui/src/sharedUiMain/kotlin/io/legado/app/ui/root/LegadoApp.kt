@@ -70,6 +70,7 @@ import io.legado.app.ui.book.read.HeadlessReadAloud
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.readerAutoPageActive
+import io.legado.app.ui.book.read.readerMenuLayoutVisible
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.browser.WebViewSheetContent
@@ -217,7 +218,7 @@ fun LegadoApp(
         val windowPolicy = currentRoute?.let { route ->
             if (route is AppRoute.Reader) {
                 WindowPolicies.Reader.copy(
-                    systemBars = readerSystemBarsPolicy(menuVisible = false),
+                    systemBars = readerSystemBarsPolicy(menuVisible = readerMenuLayoutVisible),
                     orientation = readerOrientationPolicy(),
                     // Android 阅读页不直接作用（MainActivity.applyWindowKeepScreenOn 改走
                     // keepLight 计时管理），桌面/移动端按 keepLight 直接驱动平台常亮
@@ -254,7 +255,7 @@ fun LegadoApp(
             val route = currentRouteState.value
             val policy = if (route is AppRoute.Reader) {
                 WindowPolicies.Reader.copy(
-                    systemBars = readerSystemBarsPolicy(menuVisible = false),
+                    systemBars = readerSystemBarsPolicy(menuVisible = readerMenuLayoutVisible),
                     orientation = readerOrientationPolicy(),
                     keepScreenOn = readerKeepScreenOnPolicy() || readerAutoPageActive,
                 )

@@ -59,7 +59,6 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -311,27 +310,10 @@ fun VideoTitleBar(
     onTitleClick: () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    val colors = AppTheme.colors
     AppTitleBar(
-        title = "",
+        title = bookName,
         onBack = onBack,
-        titleContent = {
-            Box(
-                Modifier
-                    .weight(1f)
-                    .heightIn(min = DesignTokens.viewHeightMax)
-                    .clickable { onTitleClick() },
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Text(
-                    text = bookName,
-                    color = colors.primaryText,
-                    fontSize = 20.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        },
+        onTitleClick = onTitleClick,
         actions = actions,
     )
 }

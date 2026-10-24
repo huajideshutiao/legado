@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -92,9 +94,11 @@ fun KeywordHighlightEditDialog(
         contentPadding = PaddingValues(0.dp),
         properties = AppDialogSizes.properties(),
     ) {
+        // 多行输入框随内容增高, 超高时整体滚动 (对齐原版表单弹窗 ScrollView 包裹全字段, 不裁切)
         Column(
             Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = DesignTokens.spacingDefault),
         ) {
             AppUnderlineTextField(

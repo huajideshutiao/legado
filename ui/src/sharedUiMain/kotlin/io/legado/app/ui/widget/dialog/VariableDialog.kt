@@ -15,6 +15,8 @@
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -120,32 +122,43 @@ private fun VariableEditDialogContent(
                 .padding(horizontal = DesignTokens.spacingDefault),
         ) {
             // 变量原文编辑框 (对照 TextInputLayout + tv_variable: hint "variable" 浮动 label,
-            // 初始单行贴合高度, 多行输入随内容增高 —— 对齐 wrap_content 语义)
+            // TextInputLayout 为 match_parent: 输入框吃满对话框剩余高度, 内容超长在框内滚动,
+            // 说明区恒在输入框下方可见 —— 不能随内容撑高把说明区压出弹窗)
             AppUnderlineTextField(
                 value = text,
                 onValueChange = onTextChange,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false),
                 singleLine = false,
                 label = "variable",
             )
-            // 注释标题 (对照 AccentTextView: accent 色跟随主题 + 4dp 四周 padding = arco_spacing_xs)
-            Text(
-                text = stringResource(Res.string.variable_comment),
-                color = AppTheme.colors.accent,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(DesignTokens.spacingXs),
-            )
-            // 注释正文 (对照 tv_comment: secondaryText + 默认 14sp + 4dp 四周 padding + textIsSelectable)
-            // 去掉固定 120dp 限高: 原版 NestedScrollView wrap_content, 超高才在剩余空间内滚动;
+            // 注释区 (对照原版 NestedScrollView 包 AccentTextView + tv_comment):
+            // wrap_content, 超高时在输入框吃剩的剩余空间内滚动, 不挤死输入框;
             // SelectableText (readOnly BasicTextField): 长按拖选/拖手柄越界自动滚动
-            SelectableText(
-                text = comment.orEmpty(),
-                color = AppTheme.colors.secondaryText,
-                fontSize = 14.sp,
-                modifier = Modifier
+            Column(
+                Modifier
                     .fillMaxWidth()
-                    .padding(DesignTokens.spacingXs),
-            )
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                // 注释标题 (对照 AccentTextView: accent 色跟随主题 + 4dp 四周 padding = arco_spacing_xs)
+                Text(
+                    text = stringResource(Res.string.variable_comment),
+                    color = AppTheme.colors.accent,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(DesignTokens.spacingXs),
+                )
+                // 注释正文 (对照 tv_comment: secondaryText + 默认 14sp + 4dp 四周 padding)
+                SelectableText(
+                    text = comment.orEmpty(),
+                    color = AppTheme.colors.secondaryText,
+                    fontSize = 14.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(DesignTokens.spacingXs),
+                )
+            }
         }
     }
 }

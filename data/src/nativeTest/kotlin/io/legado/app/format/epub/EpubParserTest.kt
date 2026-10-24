@@ -225,6 +225,52 @@ class EpubParserTest {
     }
 
     @Test
+    fun missingEndAnchorDoesNotMergeNextChapterFile() {
+        val book = parse(
+            manifest = """
+                <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+                <item id="next" href="next.xhtml" media-type="application/xhtml+xml"/>
+            """.trimIndent(),
+            spine = """<spine><itemref idref="chapter"/><itemref idref="next"/></spine>""",
+            nav = """<nav epub:type="toc"><ol><li><a href="chapter.xhtml">第一章</a></li><li><a href="next.xhtml#missing">第二章</a></li></ol></nav>""",
+            files = mapOf(
+                "OEBPS/next.xhtml" to """<html><body><h2>第二章</h2><p>第二章正文</p></body></html>""",
+            ),
+        )
+        val content = read(book, book.toc[0], book.toc[1])
+        assertFalse(content.contains("第二章正文"))
+        val second = read(book, book.toc[1])
+        assertContains(second, "第二章正文")
+    }
+
+    @Test
+    fun validEndAnchorStillMergesNextFileUpToAnchor() {
+        val book = parse(
+            manifest = """
+                <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+                <item id="next" href="next.xhtml" media-type="application/xhtml+xml"/>
+            """.trimIndent(),
+            spine = """<spine><itemref idref="chapter"/><itemref idref="next"/></spine>""",
+            nav = """<nav epub:type="toc"><ol><li><a href="chapter.xhtml">第一章</a></li><li><a href="next.xhtml#two">第二章</a></li></ol></nav>""",
+            files = mapOf(
+                "OEBPS/next.xhtml" to """<html><body><h2 id="two">第二章</h2><p>第二章正文</p></body></html>""",
+            ),
+        )
+        val content = read(book, book.toc[0], book.toc[1])
+        assertFalse(content.contains("第二章正文"))
+    }
+
+    @Test
+    fun chaptersWithoutAnchorsInOneXhtmlFallBackToWholeFile() {
+        // 同一 xhtml 内多章且目录项无锚: 数据不含边界信息, 诚实下限 = 每章整个文件
+        val book = parse(
+            nav = """<nav epub:type="toc"><ol><li><a href="chapter.xhtml">第一章</a></li><li><a href="chapter.xhtml">第二章</a></li></ol></nav>""",
+        )
+        val content = read(book, book.toc[0], book.toc[1])
+        assertContains(content, "可以阅读的正文")
+    }
+
+    @Test
     fun chapterImagesResolveAgainstXhtmlLocation() {
         val book = parse(
             files = mapOf(

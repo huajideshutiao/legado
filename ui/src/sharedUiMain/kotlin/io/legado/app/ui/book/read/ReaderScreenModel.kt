@@ -85,6 +85,13 @@ import kotlin.concurrent.Volatile
 var readerAutoPageActive: Boolean by mutableStateOf(false)
 
 /**
+ * 阅读页菜单布局可见状态（阅读菜单 || 搜索底部菜单 || 底部弹层；对照原版 menuLayoutIsVisible），
+ * 由阅读页系统栏外观效果写入，根层窗口策略统一消费（readerSystemBarsPolicy 的 menuVisible 入参），
+ * 菜单显示时状态栏/导航栏一律显示（对照原版 upSystemUiVisibility）。
+ */
+var readerMenuLayoutVisible: Boolean by mutableStateOf(false)
+
+/**
  * 阅读页平台能力注入接口。
  *
  * [ReadMenuState] 实现深度依赖平台宿主（app 端 [ReadMenu] 依赖 Activity/lifecycleScope/
@@ -958,6 +965,7 @@ class ReaderScreenModel(
         // 对照原版 ReadBookActivity.onDestroy: 立即结束阅读计时 (不等待 end 的延迟结算)。
         // 阅读计时与朗读计时独立 (朗读期由朗读侧另记 READ_ALOUD), 朗读豁免期同样立即结束,
         // 避免页面退出后阅读时长虚增
+        readerMenuLayoutVisible = false
         ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.READ_BOOK)
         viewModel.onCleared(pageCleanup = {
             ActiveReadBookRegistry.detach(readBook)

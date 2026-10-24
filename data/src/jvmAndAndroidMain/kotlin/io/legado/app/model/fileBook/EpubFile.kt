@@ -199,7 +199,7 @@ class EpubFile(var book: Book) {
                 findChapterFirstSource = true
                 // 第一个xhtml文件
                 elements.add(
-                    getBody(res, startFragmentId, endFragmentId)
+                    getBody(res, startFragmentId, endFragmentId).first
                 )
                 // 不是最后章节 且 已经遍历到下一章节的内容时停止
                 if (!isLastChapter && res.getHref() == nextChapterFirstResourceHref) break
@@ -207,12 +207,16 @@ class EpubFile(var book: Book) {
             }
             if (nextChapterFirstResourceHref != res.getHref()) {
                 // 其余部分
-                elements.add(getBody(res, null, null))
+                elements.add(getBody(res, null, null).first)
             } else {
                 // 下一章节的第一个xhtml
                 if (includeNextChapterResource) {
-                    //有Fragment 则添加到上一章节
-                    elements.add(getBody(res, null, endFragmentId))
+                    //有Fragment 则添加到上一章节; endFragmentId 在下一资源实际命中才并入,
+                    //锚失效时按当前资源边界收束, 防下一章整文件并入当前章末尾造成内容错位重复
+                    val (body, endAnchorHit) = getBody(res, null, endFragmentId)
+                    if (endAnchorHit) {
+                        elements.add(body)
+                    }
                 }
                 break
             }
@@ -236,9 +240,16 @@ class EpubFile(var book: Book) {
         return HtmlFormatter.formatKeepImg(html)
     }
 
-    private fun getBody(res: Resource, startFragmentId: String?, endFragmentId: String?): Element {
+    /**
+     * 返回 (正文, endFragmentId 是否在资源内命中)。endFragmentId 为空时恒 true (无并入要求)。
+     * 锚点命中即边界确定: getElementById 命中元素含唯一 id, 其序列化开始标签(单行且含 id)
+     * 在资源串内唯一, 字符串锚定精确可靠。
+     */
+    private fun getBody(res: Resource, startFragmentId: String?, endFragmentId: String?): Pair<Element, Boolean> {
         // Jsoup可能会修复不规范的xhtml文件 解析处理后再获取
         var bodyElement = Ksoup.parse(String(res.data ?: ByteArray(0), mCharset)).body()
+        val endAnchorHit = endFragmentId.isNullOrBlank() ||
+            bodyElement.getElementById(endFragmentId) != null
         bodyElement.children().run {
             select("script").remove()
             select("style").remove()
@@ -298,7 +309,7 @@ class EpubFile(var book: Book) {
                 it.attr("src", resolvedHref)
             }
         }
-        return bodyElement
+        return bodyElement to endAnchorHit
     }
 
     private fun getImage(href: String): InputStream? {
