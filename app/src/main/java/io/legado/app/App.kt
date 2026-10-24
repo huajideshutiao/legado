@@ -333,7 +333,6 @@ class App : Application() {
             LogUtils.d("App", "onCreate")
             LogUtils.logDeviceInfo()
             createNotificationChannels()
-            // 原在 ReaderProvider.onCreate, 但那早于 Application.onCreate, 取多语言文案会崩
             io.legado.app.api.ShortCuts.buildShortCuts(this@App)
             // 默认数据补齐 (app 端薄壳 DefaultData.upVersion → 下沉件 StartupMaintenanceShared):
             // 三道 (预置分组/键盘助手/三批默认资源) 整包在 `appVersionCode < 当前版本号` 这道版本门内,

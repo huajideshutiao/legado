@@ -85,7 +85,7 @@ platforms:
 
 # API [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-)
 
-* Legado 3.0 The API is provided in 2 ways: `Web way` and `Content Provider way`. You can call it yourself as needed in [here](api.md). 
+* Legado 3.0 The API is provided via `Web way`. You can call it yourself as needed in [here](api.md). 
 * One-click import by url recall reading, url format: legado://import/{path}?src={url}
 * Path Type: bookSource,rssSource,replaceRule,textTocRule,httpTTS,theme,readConfig,dictRule,addToBookshelf,read
 * path type explanation: Book source, subscription source, replacement rules, local txt novel directory rules, online reading engine, theme, reading layout, [add to bookshelf](/app/src/main/java/io/legado/app/ui/association/AddToBookshelfDialog.kt), read directly (open reader if already on the bookshelf, otherwise fetch book info and open the detail page)

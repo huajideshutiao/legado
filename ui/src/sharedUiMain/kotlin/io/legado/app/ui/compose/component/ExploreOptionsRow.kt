@@ -1,10 +1,7 @@
 package io.legado.app.ui.compose.component
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -15,11 +12,12 @@ import io.legado.app.model.webBook.ExploreOption
  * 参数筛选行 (下沉 app 端 `ExploreOptionView.setUpExploreOptions`)。
  *
  * 主页展示项 (HomeSectionAdapter.updateOptions)、发现结果页 (ExploreShowActivity) 与搜索页单源
- * 搜索选项共用同一视图, 故三处都消费本组件。每个 [ExploreOption] 一行:
- * - 单选行交给 [AppChoiceRowGroup]: 选项数 > 4 出横向滚动 chip 行, 否则下拉并排; 标题可点
- *   重置默认 (对齐原版点标题 chip 重置), 菜单热区占标题以外整行。
- * - 多选行交给 [AppMultiChoiceRowGroup]: 只列已选标签, 点按整行打开带搜索的选择弹窗
- *   (对齐原版), 确认时一次写回并只重搜一次。
+ * 搜索选项共用同一视图, 故三处都消费本组件。全部选项一次交给 [AppMixedChoiceRowGroup],
+ * 相邻同类聚段由组件内单点裁决:
+ * - 单选段: 选项数 > 4 出横向滚动 chip 行, 否则下拉按可用宽度并排 (放不下换行);
+ *   标题可点重置默认 (对齐原版点标题 chip 重置), 菜单热区占标题以外整行。
+ * - 多选段: 只列已选标签, 点按整行打开带搜索的选择弹窗 (对齐原版), 确认时一次写回
+ *   并只重搜一次。
  * - 长按整行 / 整行鼠标右键在任何行上都能打开同一个可搜索选择弹窗。
  *
  * [ExploreOption] 的 selectedValue / selectedValues 是普通可变字段, 不被 Compose 跟踪;
@@ -36,26 +34,17 @@ fun ExploreOptionsRow(
     if (options.isEmpty()) return
     var revision by remember { mutableIntStateOf(0) }
     @Suppress("UNUSED_EXPRESSION") optionsVersion
-    Column(Modifier.fillMaxWidth()) {
-        options.forEach { option ->
-            key(option.name) {
-                @Suppress("UNUSED_EXPRESSION") revision
-                val onChanged = {
-                    revision++
-                    onOptionSelected()
-                }
-                if (option.multiSelect) {
-                    AppMultiChoiceRowGroup(
-                        fields = listOf(option.toMultiChoiceField(onChanged)),
-                    )
-                } else {
-                    AppChoiceRowGroup(
-                        fields = listOf(option.toChoiceField(onChanged)),
-                    )
-                }
-            }
-        }
+    val onChanged = {
+        revision++
+        onOptionSelected()
     }
+    @Suppress("UNUSED_EXPRESSION") revision
+    AppMixedChoiceRowGroup(
+        fields = options.map { option ->
+            if (option.multiSelect) option.toMultiChoiceField(onChanged)
+            else option.toChoiceField(onChanged)
+        }
+    )
 }
 
 private fun ExploreOption.toChoiceField(onChanged: () -> Unit) = AppChoiceField(

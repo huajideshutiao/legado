@@ -364,12 +364,6 @@
         </receiver>
 
         <provider
-            android:name=".api.ReaderProvider"
-            android:authorities="${applicationId}.readerProvider"
-            android:enabled="true"
-            android:exported="true"
-            tools:ignore="ExportedContentProvider" />
-        <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileProvider"
             android:exported="false"

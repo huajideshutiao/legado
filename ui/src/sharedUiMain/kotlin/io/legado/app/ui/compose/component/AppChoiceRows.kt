@@ -63,6 +63,11 @@ private val DropdownActionExtent = 40.dp
 
 private val ChoiceFontSize = 14.sp
 
+/** 筛选行字段: 单选 [AppChoiceField] 与多选 [AppMultiChoiceField] 的统一入口模型,
+ * 供选项类型混排的调用方 (如 [ExploreOptionsRow]) 一次传全, 相邻同类聚段由本组件单点裁决。
+ */
+sealed interface AppOptionField
+
 /** 单选筛选行 (onReset 非空时标题可点重置到默认, 对齐原版点标题 chip 重置); selectedIndex 为 -1 表示当前值不在选项内, 下拉如实留空而不是预选第一档。 */
 data class AppChoiceField(
     val title: String,
@@ -70,7 +75,7 @@ data class AppChoiceField(
     val selectedIndex: Int,
     val onSelect: (Int) -> Unit,
     val onReset: (() -> Unit)? = null,
-)
+) : AppOptionField
 
 /**
  * 多选筛选行 (已选集合为空 = 不过滤)。
@@ -83,7 +88,7 @@ data class AppMultiChoiceField(
     val options: List<String>,
     val selectedIndexes: Set<Int>,
     val onSelectionChange: (Set<Int>) -> Unit,
-)
+) : AppOptionField
 
 @Composable
 fun AppChoiceRowGroup(
@@ -99,6 +104,23 @@ fun AppMultiChoiceRowGroup(
     modifier: Modifier = Modifier,
 ) {
     ChoiceRows(modifier = modifier, rows = fields.map { it.toChoiceRow() })
+}
+
+/** 单选/多选混排入口: 全部字段一次传入, 相邻同类聚段与 chip/下拉裁决都在 [buildChoiceGroups] 单点。 */
+@Composable
+fun AppMixedChoiceRowGroup(
+    fields: List<AppOptionField>,
+    modifier: Modifier = Modifier,
+) {
+    ChoiceRows(
+        modifier = modifier,
+        rows = fields.map { field ->
+            when (field) {
+                is AppChoiceField -> field.toChoiceRow()
+                is AppMultiChoiceField -> field.toChoiceRow()
+            }
+        },
+    )
 }
 
 /** 内部统一行模型: 单选与多选只差 [multiSelect] 与回调, 分行与弹窗共用。
@@ -163,7 +185,8 @@ private fun ChoiceRows(
     }
 }
 
-/** 连续的单选下拉行合并为一段 (段内统一按可用宽度分行), 多选行与 chip 行各自成段。 */
+/** 相邻同类聚段的单点裁决: 连续的单选下拉行合并为一段 (段内统一按可用宽度分行), 多选行
+ * 与 chip 行各自成段; 混排调用方走 [AppMixedChoiceRowGroup], 不在调用方再建分段规则。 */
 private fun buildChoiceGroups(rows: List<ChoiceRow>): List<List<ChoiceRow>> {
     val groups = ArrayList<ArrayList<ChoiceRow>>()
     rows.forEach { row ->

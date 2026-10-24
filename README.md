@@ -80,7 +80,7 @@ Legado 已基于 Kotlin Multiplatform (KMP) 重构，同一套代码覆盖以下
 </a>
 
 # API [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-)
-* 阅读3.0 提供了2种方式的API：`Web方式`和`Content Provider方式`。您可以在[这里](api.md)根据需要自行调用。 
+* 阅读3.0 提供 `Web方式` 的API。您可以在[这里](api.md)根据需要自行调用。 
 * 可通过url唤起阅读进行一键导入,url格式: legado://import/{path}?src={url}
 * path类型: bookSource,rssSource,replaceRule,textTocRule,httpTTS,theme,readConfig,dictRule,[addToBookshelf](/app/src/main/java/io/legado/app/ui/association/AddToBookshelfDialog.kt),read
 * path类型解释: 书源,订阅源,替换规则,本地txt小说目录规则,在线朗读引擎,主题,阅读排版,添加到书架,直接阅读(已在书架则直接阅读,否则抓取详情后进入详情页)
