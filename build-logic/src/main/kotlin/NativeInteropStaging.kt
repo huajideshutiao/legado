@@ -24,17 +24,4 @@ fun generateCNamesAliases(outputRoot: File) {
         typealias JSRuntime = cnames.structs.JSRuntime
         """.trimIndent() + "\n"
     )
-    val mbedTlsAliases = outputRoot.resolve(
-        "io/legado/app/nativecrypto/mbedtls/CNamesAliases.kt"
-    )
-    mbedTlsAliases.parentFile.mkdirs()
-    mbedTlsAliases.writeText(
-        """
-        @file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
-
-        package io.legado.app.nativecrypto.mbedtls
-
-        typealias mbedtls_md_info_t = cnames.structs.mbedtls_md_info_t
-        """.trimIndent() + "\n"
-    )
 }

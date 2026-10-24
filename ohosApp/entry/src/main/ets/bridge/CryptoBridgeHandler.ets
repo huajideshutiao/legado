@@ -4,7 +4,8 @@ import { BridgeRequest, BridgeResponse, dispatchBridgeRequest } from './BridgeDi
 import { base64ToUint8, uint8ToBase64 } from './BridgeCodec';
 
 /**
- * ArkTS 侧非对称加解密 + 签名/验签处理器 (方案 B cryptoFramework napi)。
+ * ArkTS 侧加解密/签名/验签/摘要/HMAC/对称处理器 (cryptoFramework napi 桥; 2026-10 起 native 不带
+ * mbedTLS, 本桥是鸿蒙端加解密的主路径)。
  *
  * 接收 Kotlin OhosNativeBridge.invokeCryptoSync 通过 tsfn dispatch 过来的 crypto 请求,
  * 调用 @ohos.security.cryptoFramework (createCipher/createSign/createVerify/createMd/createMac) 执行真实运算,
@@ -19,12 +20,14 @@ import { base64ToUint8, uint8ToBase64 } from './BridgeCodec';
  *   "payload": "<JSON string, action-specific>"
  * }
  *
- * ## encrypt/decrypt payload
+ * ## encrypt/decrypt payload (Kotlin 归一层 AsymCipherSpec 输出的规范形态)
  * {
- *   "algorithm": "<JCA transformation>",          // 如 "RSA" / "RSA/ECB/PKCS1Padding" / "RSA/ECB/OAEPWithSHA-256AndMGF1Padding"
+ *   "padding": "<归一 padding token>",            // PKCS1 / OAEP_SHA1|224|256|384|512 / NOPADDING / SM2
+ *   "keyBits": <number>,                          // RSA 模长位数 (Kotlin 侧从 DER 模长算出; SM2 为 0)
  *   "usePublicKey": <boolean>,                    // true→用公钥加密/解密, false→用私钥
  *   "privateKey": "<base64 PKCS#8 DER>?",         // usePublicKey=false 时取此
  *   "publicKey": "<base64 X.509 DER>?",           // usePublicKey=true 时取此
+ *   "chunk": <number>,                            // 分块大小 (Kotlin 侧按 hutool 语义算好; SM2 为 0)
  *   "data": "<base64>"
  * }
  *
@@ -43,30 +46,45 @@ import { base64ToUint8, uint8ToBase64 } from './BridgeCodec';
  *   "signature": "<base64>"
  * }
  *
- * ## 响应 (ArkTS → Kotlin, 由 legado.cryptoCallback 推送)
+ * ## symEncrypt/symDecrypt payload
+{
+  "algorithm": "AES" | "SM4" | "DESEDE" | "DES",
+  "mode": "ECB" | "CBC" | "CFB" | "OFB" | "CTR",
+  "key": "<base64>",
+  "iv": "<base64>?",
+  "data": "<base64>"
+}
+// NoPadding 裸原语: padding 由 Kotlin 侧 SymPadding 处理, 桥侧恒 NoPadding
+
+## 响应 (ArkTS → Kotlin, 由 legado.cryptoCallback 推送)
  * - encrypt/decrypt/sign 成功: `{ ok: true, data: "<base64>" }`
  * - verify 成功: `{ ok: true, result: true/false }` (result 表示验签是否通过, 不抛异常)
  * - 失败: `{ ok: false, error: "<string>" }`
  *
  * # 算法映射 (JCA → cryptoFramework spec, 对齐 jvmAndAndroid hutool + iOS Security.framework)
  *
- * ## 单一来源说明 (纯映射下沉评估)
- * 本映射仅用于 cryptoFramework **回落** 路径 (mbedTLS 主实现失败/不支持时):
- * - K/N NativeAsymmetricCryptoOps / NativeSignOps 主实现是 mbedTLS (MbedTlsOps), 直接接受
- *   JCA 字符串 (如 "RSA/ECB/PKCS1Padding" / "SHA256withRSA"), **无** JCA → cryptoFramework spec
- *   映射 (两层实现不同, 非重复维护);
- * - ArkTS 本文件的 mapAsyCodecSpec/mapSignSpec 是 mbedTLS 无法覆盖场景 (ECDSA 等) 的
- *   cryptoFramework 回落所需, 与 mbedTLS 处理互斥, 不构成双份。
- * 故不迁移: 保持 ArkTS 侧为 cryptoFramework 的**唯一** spec 映射源。
+ * ## 单一来源说明
+ * 本桥是鸿蒙端加解密的唯一 cryptoFramework 映射源; 摘要/HMAC 的 SM3/RIPEMD160/SHA3 系与
+ * AES/GCM 不走桥 (Kotlin 纯 Kotlin 侧车 GcmNative/KotlinDigestNative 双端同源), 其余算法桥内映射:
+ *
+ * ## 对称 (symEncrypt/symDecrypt)
+ * - AES: `AES<keybits>|<mode>|NoPadding` (ECB/CBC/CFB/OFB/CTR, key 16/24/32B)
+ * - SM4: `SM4_128|<mode>|NoPadding` (SM4 CFB → CFB128 对齐 JCA)
+ * - DESede: `3DES192|<mode>|NoPadding` (仅 24 字节密钥; 16 字节 2-key EDE 无规格, 点名报错)
+ * - DES: `DES64|<mode>|NoPadding` (系统侧 API 20+, 低版本设备报错透传)
  *
  * - RSA encrypt/decrypt:
  *     "RSA" / "RSA/ECB/PKCS1Padding"                 → `RSA<size>|PKCS1`
  *     "RSA/ECB/OAEPWithSHA-<1|256|384|512>AndMGF1Padding"
  *                                                    → `RSA<size>|PKCS1_OAEP|SHA<...>|MGF1_SHA<...>`
- *     "RSA/ECB/NoPadding"                            → `RSA<size>|NoPadding` (cryptoFramework 可能不支持, 错误透传)
+ *     "RSA/ECB/NoPadding"                            → `RSA<size>|NoPadding` (API 9+, 输入须恰为模长字节)
+ * - SM2 encrypt/decrypt:
+ *     "SM2" / "SM2|SM3" / "SM2/SM3"                  → `SM2_256|SM3` (密文 C1C3C2 GM/T 0009 格式)
  * - RSA sign/verify:
  *     "MD5withRSA" / "SHA<1|256|384|512>withRSA"     → `RSA<size>|PKCS1|<MD5|SHA...>`
  *     "SHA<1|256|384|512>WithRSA/PSS"                → `RSA<size>|PSS|SHA<...>|MGF1_SHA<...>`
+ * - SM2 sign/verify:
+ *     "SM2WithSM3" / "SM3withSM2"                    → `SM2_256|SM3`
  * - ECDSA sign/verify:
  *     "SHA<1|256|384|512>withECDSA"                  → `ECC<size>|SHA<...>`
  *
@@ -84,10 +102,12 @@ interface CryptoResponse extends BridgeResponse {
 }
 
 interface AsyCryptoPayload {
-  algorithm: string;
+  padding: string;                   // 归一 padding token (Kotlin AsymCipherSpec): PKCS1 / OAEP_SHA* / NOPADDING / SM2
+  keyBits: number;                   // RSA 模长位数 (Kotlin 侧从 DER 模长算出; SM2 为 0)
   usePublicKey: boolean;
   privateKey?: string;
   publicKey?: string;
+  chunk: number;                     // 分块大小 (Kotlin 侧按 hutool 语义算好; SM2 为 0)
   data: string;
 }
 
@@ -117,9 +137,13 @@ interface HmacPayload {
   data: string;                        // base64 编码的待认证数据
 }
 
-// aesEncrypt/aesDecrypt 请求 payload (Kotlin NativeAesOps → action="aesEncrypt"/"aesDecrypt")
-interface AesPayload {
-  key: string;                         // base64 编码的 AES 密钥 (16/24/32 字节 → AES128/192/256)
+// symEncrypt/symDecrypt 请求 payload (Kotlin PlatformCipherOps → action="symEncrypt"/"symDecrypt")
+// NoPadding 裸原语: padding 由 Kotlin 侧 SymPadding 处理, 桥侧恒 NoPadding
+interface SymPayload {
+  algorithm: string;                   // AES / SM4 / DESEDE / DES
+  mode: string;                        // ECB / CBC / CFB / OFB / CTR (GCM/PCBC 由 Kotlin 侧拦载)
+  key: string;                         // base64 编码的密钥 (AES 16/24/32B, SM4 16B, DESede 24B, DES 8B)
+  iv?: string;                         // base64 编码的 IV (非 ECB 必传)
   data: string;                        // base64 编码的明文/密文
 }
 
@@ -145,17 +169,19 @@ async function handleAction(req: BridgeRequest): Promise<CryptoResponse> {
     case 'verify': return await handleVerify(req.payload ?? '');
     case 'digest': return await handleDigest(req.payload ?? '');
     case 'hmac': return await handleHmac(req.payload ?? '');
-    case 'aesEncrypt': return await handleAesEncryptDecrypt(req.payload ?? '', true);
-    case 'aesDecrypt': return await handleAesEncryptDecrypt(req.payload ?? '', false);
+    case 'symEncrypt': return await handleSymEncryptDecrypt(req.payload ?? '', true);
+    case 'symDecrypt': return await handleSymEncryptDecrypt(req.payload ?? '', false);
     default: return { ok: false, error: 'unknown action: ' + req.action };
   }
 }
 
 // ===== encrypt/decrypt: cryptoFramework.createCipher + init + doFinal =====
+// padding token + keyBits + chunk 均为 Kotlin 归一层 (AsymCipherSpec) 输出的规范形态,
+// 本桥不解析 JCA transformation、不探测 keysize; 密钥转换整次请求一次, 分块循环在桥侧。
 async function handleEncryptDecrypt(payload: string, isEncrypt: boolean): Promise<CryptoResponse> {
   try {
     const p = JSON.parse(payload) as AsyCryptoPayload;
-    // 公钥加密场景需 publicKey; 私钥解密场景需 privateKey; 私钥加密/公钥解密按 usePublicKey 取对应 key
+    // 公钥加密场景需 publicKey; 私钥解密场景需 privateKey
     const keyB64 = p.usePublicKey ? p.publicKey : p.privateKey;
     if (keyB64 == null) {
       return { ok: false, error: (p.usePublicKey ? 'publicKey' : 'privateKey') + ' not set' };
@@ -163,23 +189,59 @@ async function handleEncryptDecrypt(payload: string, isEncrypt: boolean): Promis
     const keyDer = base64ToUint8(keyB64);
     const dataBytes = base64ToUint8(p.data);
 
-    // 探测 RSA keysize (加解密仅支持 RSA, ECC 无 Cipher)
-    const keySize = await detectRsaKeySize(keyDer, !p.usePublicKey);
-    // 映射 JCA transformation → cryptoFramework Cipher spec
-    const spec = mapAsyCodecSpec(p.algorithm, keySize);
+    if (p.padding === 'SM2') {
+      // SM2: 规格 SM2_256|SM3, 密钥 PKCS#8/SPKI 由 Kotlin 侧透传 (不分块)
+      const cipher = cryptoFramework.createCipher('SM2_256|SM3');
+      const keyPair = await convertKey('SM2_256', keyDer, !p.usePublicKey);
+      const key = p.usePublicKey ? keyPair.pubKey : keyPair.priKey;
+      await initAsyCipher(cipher, isEncrypt, key);
+      const resultBytes = await doFinalAsyCipher(cipher, dataBytes);
+      return { ok: true, data: uint8ToBase64(resultBytes) };
+    }
 
-    // 创建 Cipher + 转换密钥 + init + doFinal (RSA 加解密用 createCipher, OHOS 无独立 AsyCodec API)
-    const cipher = cryptoFramework.createCipher(spec);
-    const keyPair = await convertKey('RSA' + keySize, keyDer, !p.usePublicKey);
+    // RSA: 密钥转换一次, doFinal 按 chunk 分块 (每块新建 Cipher, RSA Cipher 不支持重复 init)
+    const spec = mapRsaCipherSpec(p.padding, p.keyBits);
+    const keyPair = await convertKey('RSA' + p.keyBits, keyDer, !p.usePublicKey);
     const key = p.usePublicKey ? keyPair.pubKey : keyPair.priKey;
-    await initAsyCipher(cipher, isEncrypt, key);
-    const resultBytes = await doFinalAsyCipher(cipher, dataBytes);
-
-    return { ok: true, data: uint8ToBase64(resultBytes) };
+    const out: Uint8Array[] = [];
+    for (let off = 0; off < dataBytes.length; off += p.chunk) {
+      const len = Math.min(p.chunk, dataBytes.length - off);
+      const cipher = cryptoFramework.createCipher(spec);
+      await initAsyCipher(cipher, isEncrypt, key);
+      out.push(await doFinalAsyCipher(cipher, dataBytes.subarray(off, off + len)));
+    }
+    let total = 0;
+    for (const b of out) {
+      total += b.length;
+    }
+    const result = new Uint8Array(total);
+    let pos = 0;
+    for (const b of out) {
+      result.set(b, pos);
+      pos += b.length;
+    }
+    return { ok: true, data: uint8ToBase64(result) };
   } catch (e) {
     const err = e as BusinessError;
     return { ok: false, error: err.message ?? String(e) };
   }
+}
+
+// padding token (Kotlin 归一层 AsymCipherSpec 输出) → cryptoFramework RSA Cipher spec
+// spec 格式参考 OHOS 官方文档: RSA2048|PKCS1 / RSA2048|PKCS1_OAEP|SHA256|MGF1_SHA256 / RSA2048|NoPadding
+function mapRsaCipherSpec(padding: string, keyBits: number): string {
+  if (padding === 'PKCS1') {
+    return `RSA${keyBits}|PKCS1`;
+  }
+  const oaepMatch = padding.match(/^OAEP_SHA(1|224|256|384|512)$/);
+  if (oaepMatch) {
+    const md = 'SHA' + oaepMatch[1];
+    return `RSA${keyBits}|PKCS1_OAEP|${md}|MGF1_${md}`;
+  }
+  if (padding === 'NOPADDING') {
+    return `RSA${keyBits}|NoPadding`;
+  }
+  throw new Error('unsupported asymmetric padding token: ' + padding);
 }
 
 // ===== sign: cryptoFramework.createSign + init + sign =====
@@ -192,7 +254,11 @@ async function handleSign(payload: string): Promise<CryptoResponse> {
     const algUpper = p.algorithm.toUpperCase();
     let spec: string;
     let keyPair: cryptoFramework.KeyPair;
-    if (algUpper.includes('ECDSA')) {
+    if (algUpper.includes('SM2')) {
+      // SM2: SM2_256|SM3, 密钥由 Kotlin 侧透传 (PKCS#8)
+      spec = mapSignSpec(p.algorithm, 0, false);
+      keyPair = await convertKey('SM2_256', keyDer, true);
+    } else if (algUpper.includes('ECDSA')) {
       const keySize = await detectEccKeySize(keyDer, true);
       spec = mapSignSpec(p.algorithm, keySize, true);
       keyPair = await convertKey('ECC' + keySize, keyDer, true);
@@ -223,7 +289,10 @@ async function handleVerify(payload: string): Promise<CryptoResponse> {
     const algUpper = p.algorithm.toUpperCase();
     let spec: string;
     let keyPair: cryptoFramework.KeyPair;
-    if (algUpper.includes('ECDSA')) {
+    if (algUpper.includes('SM2')) {
+      spec = mapSignSpec(p.algorithm, 0, false);
+      keyPair = await convertKey('SM2_256', keyDer, false);
+    } else if (algUpper.includes('ECDSA')) {
       const keySize = await detectEccKeySize(keyDer, false);
       spec = mapSignSpec(p.algorithm, keySize, true);
       keyPair = await convertKey('ECC' + keySize, keyDer, false);
@@ -286,30 +355,76 @@ async function handleHmac(payload: string): Promise<CryptoResponse> {
   }
 }
 
-// ===== aesEncrypt/aesDecrypt: cryptoFramework.createCipher + SymKeyGenerator.convertKey + init + doFinal =====
-// KMP NativeAesOps.encryptEcbPkcs7/decryptEcbPkcs7 → action="aesEncrypt"/"aesDecrypt"
-async function handleAesEncryptDecrypt(payload: string, isEncrypt: boolean): Promise<CryptoResponse> {
+// ===== symEncrypt/symDecrypt: cryptoFramework.createCipher + SymKeyGenerator.convertKey + init + doFinal =====
+// NoPadding 裸原语: 输入已在 Kotlin 侧按 padding 补齐到块对齐, 桥侧恒 NoPadding;
+// ECB 无 IV (params=null), CBC/CFB/OFB/CTR 传 IvParamsSpec
+async function handleSymEncryptDecrypt(payload: string, isEncrypt: boolean): Promise<CryptoResponse> {
   try {
-    const p = JSON.parse(payload) as AesPayload;
+    const p = JSON.parse(payload) as SymPayload;
     const keyBytes = base64ToUint8(p.key);
     const dataBytes = base64ToUint8(p.data);
+    const ivBytes = p.iv != null ? base64ToUint8(p.iv) : null;
 
-    // AES key size 由 key 字节长度推断: 16→AES128, 24→AES192, 32→AES256
-    const keySize = detectAesKeySize(keyBytes.length);
-    // ECB + PKCS7 (PKCS7 在 AES 块大小 16 下与 PKCS5 等价, 对齐 KMP NativeAesOps)
-    const cipherSpec = `AES${keySize}|ECB|PKCS7`;
-    const keyGenSpec = `AES${keySize}`;
-
-    const cipher = cryptoFramework.createCipher(cipherSpec);
-    const symKey = await convertSymKey(keyGenSpec, keyBytes);
-    // ECB 模式无 IV, params 传 null
-    await initCipher(cipher, isEncrypt, symKey);
+    const spec = mapSymSpec(p.algorithm, p.mode, keyBytes.length);
+    const cipher = cryptoFramework.createCipher(spec.cipherSpec);
+    const symKey = await convertSymKey(spec.keyGenSpec, keyBytes);
+    // ECB 模式无 IV, params 传 null; 其余模式传 IvParamsSpec
+    const params = spec.mode === 'ECB' ? null : ivParams(ivBytes);
+    await initCipher(cipher, isEncrypt, symKey, params);
     const resultBytes = await doFinalCipher(cipher, dataBytes);
     return { ok: true, data: uint8ToBase64(resultBytes) };
   } catch (e) {
     const err = e as BusinessError;
     return { ok: false, error: err.message ?? String(e) };
   }
+}
+
+/** 对称算法规格映射 (JCA token → cryptoFramework 字符串参数)。 */
+function mapSymSpec(algorithm: string, mode: string, keyByteLength: number): { cipherSpec: string, keyGenSpec: string, mode: string } {
+  let keyGenSpec: string;
+  switch (algorithm.toUpperCase()) {
+    case 'AES':
+      keyGenSpec = 'AES' + keyByteLength * 8;
+      break;
+    case 'SM4':
+      // SM4 仅 128 位密钥, 规格名带下划线 (SM4_128)
+      if (keyByteLength !== 16) {
+        throw new Error('invalid SM4 key length: ' + keyByteLength + ' (must be 16)');
+      }
+      keyGenSpec = 'SM4_128';
+      break;
+    case 'DESEDE':
+      // ohos 仅 3DES192 (24 字节密钥); 16 字节 2-key EDE 无规格, 点名报错
+      if (keyByteLength !== 24) {
+        throw new Error('invalid DESede key length: ' + keyByteLength + ' (ohos only supports 24-byte 3DES192)');
+      }
+      keyGenSpec = '3DES192';
+      break;
+    case 'DES':
+      // DES64 系统侧 API 20+, 低版本设备由 createCipher 报错透传
+      if (keyByteLength !== 8) {
+        throw new Error('invalid DES key length: ' + keyByteLength + ' (must be 8)');
+      }
+      keyGenSpec = 'DES64';
+      break;
+    default:
+      throw new Error('unsupported symmetric algorithm: ' + algorithm);
+  }
+  // JCA "CFB" = CFB128; ohos AES/3DES/DES 的 "CFB" 即 CFB128, SM4 需显式 "CFB128"
+  const ohosMode = algorithm.toUpperCase() === 'SM4' && mode.toUpperCase() === 'CFB' ? 'CFB128' : mode.toUpperCase();
+  return {
+    cipherSpec: `${keyGenSpec}|${ohosMode}|NoPadding`,
+    keyGenSpec,
+    mode: mode.toUpperCase()
+  };
+}
+
+/** 非 ECB 模式的 IvParamsSpec (iv 长度由算法决定: AES/SM4 16B, DES 系 8B, 由桥接调用方保证)。 */
+function ivParams(ivBytes: Uint8Array | null): cryptoFramework.IvParamsSpec {
+  if (ivBytes == null || ivBytes.length === 0) {
+    throw new Error('IV is required for non-ECB mode');
+  }
+  return { algName: 'IvParamsSpec', iv: { data: ivBytes } } as cryptoFramework.IvParamsSpec;
 }
 
 // ===== 算法名归一化 (KMP → OHOS cryptoFramework) =====
@@ -328,7 +443,7 @@ function normalizeDigestAlg(algorithm: string): string {
   }
 }
 
-// hmac: HmacMD5/HmacSHA256/HMAC-SHA512 等 → MD5/SHA1/SHA256/SHA512 (OHOS createMac algName 无连字符, 与 createMd 一致)
+// hmac: HmacMD5/HmacSHA256/HMAC-SHA512 等 → MD5/SHA1/SHA256/SHA512 (OHOS createMac algName 与 createMd 同为无连字符格式)
 function normalizeHmacAlg(algorithm: string): string {
   let alg = algorithm.toUpperCase();
   // 去掉 HMAC/Hmac 前缀 (含连字符变体), 与 iOS krypto actual 归一化逻辑对齐
@@ -349,15 +464,7 @@ function normalizeHmacAlg(algorithm: string): string {
   }
 }
 
-// AES key size 探测: 16→128, 24→192, 32→256 (对齐 KMP NativeAesOps key 字节长度推断)
-function detectAesKeySize(keyByteLength: number): number {
-  switch (keyByteLength) {
-    case 16: return 128;
-    case 24: return 192;
-    case 32: return 256;
-    default: throw new Error('invalid AES key length: ' + keyByteLength + ' (must be 16/24/32)');
-  }
-}
+// AES key size 探测已随 symEncrypt/symDecrypt 通用化移除 (keyGenSpec 由 key 字节长度直接拼接)
 
 // ===== cryptoFramework 对称密钥/摘要/HMAC/Cipher 异步回调包装为 Promise =====
 
@@ -439,11 +546,12 @@ function doFinalMac(mac: cryptoFramework.Mac): Promise<Uint8Array> {
   });
 }
 
-// Cipher: init(mode, key, params=null) + doFinal(data) (ECB 模式无 IV, params 传 null)
-function initCipher(cipher: cryptoFramework.Cipher, isEncrypt: boolean, key: cryptoFramework.SymKey): Promise<void> {
+// Cipher: init(mode, key, params) + doFinal(data); params 为 null (ECB/RSA) 或 IvParamsSpec
+function initCipher(cipher: cryptoFramework.Cipher, isEncrypt: boolean, key: cryptoFramework.SymKey,
+  params: cryptoFramework.IvParamsSpec | null): Promise<void> {
   return new Promise((resolve, reject) => {
     const mode = isEncrypt ? cryptoFramework.CryptoMode.ENCRYPT_MODE : cryptoFramework.CryptoMode.DECRYPT_MODE;
-    cipher.init(mode, key, null, (err: BusinessError) => {
+    cipher.init(mode, key, params, (err: BusinessError) => {
       if (err) {
         reject(err);
       } else {
@@ -465,7 +573,7 @@ function doFinalCipher(cipher: cryptoFramework.Cipher, data: Uint8Array): Promis
   });
 }
 
-// ===== 密钥大小探测 (尝试常见 keysize, 首个 convertKey 成功的即为实际大小) =====
+// ===== 密钥大小探测 (sign/verify 用; cipher 路径的 keyBits 由 Kotlin 侧从 DER 模长算出, 不走探测) =====
 
 async function detectRsaKeySize(der: Uint8Array, isPrivate: boolean): Promise<number> {
   const sizes = [1024, 2048, 3072, 4096, 8192];
@@ -588,31 +696,13 @@ function verifyData(verifier: cryptoFramework.Verify, data: Uint8Array, signatur
 
 // ===== 算法映射 (JCA → cryptoFramework spec) =====
 
-// encrypt/decrypt: JCA transformation → cryptoFramework Cipher spec
-// spec 格式参考 OHOS 官方文档 (无 ECB, OAEP 用 PKCS1_OAEP|<md>|MGF1_<md>):
-//   RSA2048|PKCS1 / RSA2048|PKCS1_OAEP|SHA256|MGF1_SHA256 / RSA2048|NoPadding
-function mapAsyCodecSpec(jcaAlg: string, keySize: number): string {
-  const alg = jcaAlg.toUpperCase();
-  // "RSA" / "RSA/ECB/PKCS1Padding" → PKCS1 (JCA "RSA" 是 PKCS1Padding 的别名, 与 hutool/BC 一致)
-  if (alg === 'RSA' || alg === 'RSA/ECB/PKCS1PADDING') {
-    return `RSA${keySize}|PKCS1`;
-  }
-  // "RSA/ECB/OAEPWithSHA-<N>AndMGF1Padding" → PKCS1_OAEP, md 与 mgf1Md 都用 SHA<N> (对齐 BC 默认)
-  const oaepMatch = alg.match(/^RSA\/ECB\/OAEPWithSHA-(\d+)AndMGF1PADDING$/);
-  if (oaepMatch) {
-    const md = 'SHA' + oaepMatch[1];
-    return `RSA${keySize}|PKCS1_OAEP|${md}|MGF1_${md}`;
-  }
-  // "RSA/ECB/NoPadding" → NoPadding (cryptoFramework 部分版本不支持, 错误由 ArkTS 透传)
-  if (alg === 'RSA/ECB/NOPADDING') {
-    return `RSA${keySize}|NoPadding`;
-  }
-  throw new Error('unsupported encrypt/decrypt algorithm: ' + jcaAlg);
-}
-
 // sign/verify: JCA Signature algorithm → Sign/Verify algName
 function mapSignSpec(jcaAlg: string, keySize: number, isEc: boolean): string {
   const alg = jcaAlg.toUpperCase();
+  if (alg.startsWith('SM2')) {
+    // "SM2WithSM3" → SM2_256|SM3 (鸿蒙 SM2 签名规格)
+    return 'SM2_256|SM3';
+  }
   if (isEc) {
     // "SHA<N>withECDSA" → ECC<size>|SHA<N>
     const ecMatch = alg.match(/^SHA(\d+)WITHECDSA$/);

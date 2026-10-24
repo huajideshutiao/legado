@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# 为 iOS target 预编译 quickjs-ng / mbedtls 静态库。
+# 为 iOS target 预编译 quickjs-ng 静态库。
 # cinterop 只编译 .def 内的 wrapper, 不编 includeDirs 下的 C 源, 缺 .a 时 framework link 阶段必然未定义符号。
 #
 # 用法: scripts/build-ios-native.sh [ios_arm64|ios_simulator_arm64 ...]   (默认两个都编)
-# 产物: data/build/iosNativeLibs/<konanTarget>/libquickjs.a, libmbedtls.a
+# 产物: data/build/iosNativeLibs/<konanTarget>/libquickjs.a
 #       目录名刻意用 konanTarget.name, 与 :data/:ui 的 linkerOpts 一一对应。
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 QUICKJS_DIR="$ROOT_DIR/modules/quickjs/src/main/cinterop/quickjs-ng"
-MBEDTLS_DIR="$ROOT_DIR/data/src/cinterop/mbedtls"
 OUT_ROOT="$ROOT_DIR/data/build/iosNativeLibs"
 # 与 iosApp/project.yml 的 deploymentTarget.iOS 保持一致
 IOS_MIN_VERSION="14.0"
@@ -40,7 +39,7 @@ echo "[ios-native] xcodebuild = $(xcodebuild -version 2>/dev/null | tr '\n' ' ')
 echo "[ios-native] clang      = $(xcrun --sdk iphoneos clang --version 2>/dev/null | head -1)"
 echo "======================================================================"
 
-# $1=库名(quickjs/mbedtls) $2=编译参数串 $3=obj 输出目录 $4=.a 输出目录, 其余为源文件
+# $1=库名(quickjs) $2=编译参数串 $3=obj 输出目录 $4=.a 输出目录, 其余为源文件
 compile_and_archive() {
     local lib_name="$1"; shift
     local flags="$1"; shift
@@ -113,12 +112,6 @@ for KONAN_TARGET in $TARGET_LIST; do
         "$QUICKJS_DIR/libregexp.c" \
         "$QUICKJS_DIR/libunicode.c"
 
-    # mbedtls: 与 mbedtls.def 的 compilerOpts / ohos CMakeLists 同一套 config 宏与 include 路径
-    MBEDTLS_FLAGS="$COMMON_FLAGS -std=gnu99 -DMBEDTLS_CONFIG_FILE=\"legado_mbedtls_config.h\" \
--I$MBEDTLS_DIR/include -I$MBEDTLS_DIR"
-    # shellcheck disable=SC2046
-    compile_and_archive mbedtls "$MBEDTLS_FLAGS" "$OBJ_ROOT/mbedtls" "$OUT_DIR" \
-        $(ls "$MBEDTLS_DIR"/library/*.c)
 done
 
 echo "======================================================================"

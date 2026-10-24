@@ -32,6 +32,17 @@ internal object MD5UtilsCore {
     }
 }
 
+private val hexStringRegex = Regex("^[0-9a-fA-F]+$")
+
+/** 非空且全为 hex 字符（对齐 hutool SecureUtil.decode 的 hex 判定；空串恒为 false）。 */
+fun String.isHexString(): Boolean = isNotEmpty() && hexStringRegex.matches(this)
+
+/** hex 串解码为字节（对齐 hutool HexUtil.decodeHex；长度非偶数抛 IllegalArgumentException）。 */
+fun String.decodeHex(): ByteArray {
+    require(length % 2 == 0) { "invalid hex length: $length" }
+    return ByteArray(length / 2) { substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+}
+
 fun ByteArray.toHexLower(): String {
     val hex = "0123456789abcdef"
     val out = StringBuilder(size * 2)

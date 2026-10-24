@@ -217,8 +217,8 @@ jobs:
             - [ ] `data/src/cinterop/quickjs.def` 的 `qjs_*` wrapper 是否被上游 API 签名变更打断
             - [ ] 是否新增 / 删除了 `.c` 文件 —— 若有，需同步修改列 .c 源文件清单的三处：
                   `modules/quickjs-android-native/src/main/cpp/CMakeLists.txt`（quickjs 4 个）、
-                  `ohosApp/entry/src/main/cpp/CMakeLists.txt`（quickjs 4 个, mbedtls 走 GLOB）、
-                  `scripts/build-ios-native.sh`（quickjs 4 个 + mbedtls 走 ls）。
+                  `ohosApp/entry/src/main/cpp/CMakeLists.txt`（quickjs 4 个）、
+                  `scripts/build-ios-native.sh`（quickjs 4 个）。
                   另外两处不列源文件、但同样会随上游头文件/API 变动而失效：
                   `data/src/cinterop/quickjs.def`（headers 与 qjs_* wrapper）、
                   `data/build.gradle.kts` 的 cinterop 块（defFile 与 includeDirs）。

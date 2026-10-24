@@ -26,45 +26,32 @@ import platform.Security.kSecKeyAlgorithmRSASignatureMessagePSSSHA384
 import platform.Security.kSecKeyAlgorithmRSASignatureMessagePSSSHA512
 
 /**
- * iOS actual: 签名/验签。主实现 mbedTLS [MbedTlsOps] (RSA v1.5 含 MD5withRSA/RIPEMD160withRSA、
- * PSS、NONEwithRSA), 任意异常回落既有 Security.framework 路径; ECDSA 在 mbedTLS 裁剪外
- * (无 ECP) 主实现点名抛异常后由本回落承接 (Security 支持 ECDSA)。
+ * iOS actual: 签名/验签。平台委托: Security.framework SecKey* (2026-10 起 native 不再带 mbedTLS)。
  *
- * 原 "iOS 无 MD5withRSA/NONEwithRSA" 的缺口由 mbedTLS 主实现补上。
- *
- * 回落路径算法映射 (对齐 jvmAndAndroid JCA Signature algorithm):
+ * 算法映射 (对齐 jvmAndAndroid JCA Signature algorithm):
  * - RSA PKCS1 v1.5: SHA1/256/384/512withRSA → kSecKeyAlgorithmRSASignatureMessagePKCS1v15SHA*;
  * - RSA PSS: SHA1/256/384/512WithRSA/PSS → kSecKeyAlgorithmRSASignatureMessagePSSSHA*;
- * - ECDSA: SHA1/256/384/512withECDSA → kSecKeyAlgorithmECDSASignatureMessageX962SHA*。
+ * - ECDSA: SHA1/256/384/512withECDSA → kSecKeyAlgorithmECDSASignatureMessageX962SHA*;
+ * - MD5withRSA / RIPEMD160withRSA / SHA224 系 / NONEwithRSA: Security 无对应算法, 点名抛异常
+ *   (原 mbedTLS 主实现覆盖, 平台委托后 iOS 缺口, 鸿蒙侧经 cryptoFramework 亦无)。
  *
- * sign 用私钥 (PKCS#8 DER), verify 用公钥 (X.509 DER); mbedTLS 主实现另兼容 PEM/PKCS#1。
+ * 密钥格式: RSA 经 [RsaDerKeys] 归一为 PKCS#1 DER; EC 经 [EcDerKeys] 解包为 X9.63 原始字节
+ * (SecKeyCreateWithData 只吃 X9.63: 公钥 0x04||X||Y, 私钥 0x04||X||Y||K, DER 封装会被拒),
+ * PEM 输入先经 stripPemToDer 剥壳; sign 用私钥, verify 用公钥。
  */
 @OptIn(ExperimentalForeignApi::class)
 actual object NativeSignOps {
 
-    actual fun sign(algorithm: String, privateKey: ByteArray?, data: ByteArray): ByteArray = mbedTlsOrFallback(
-        { MbedTlsOps.sign(algorithm, privateKey, data) },
-        { legacySign(algorithm, privateKey, data) }
-    )
-
-    actual fun verify(
-        algorithm: String,
-        publicKey: ByteArray?,
-        data: ByteArray,
-        signature: ByteArray
-    ): Boolean = mbedTlsOrFallback(
-        { MbedTlsOps.verify(algorithm, publicKey, data, signature) },
-        { legacyVerify(algorithm, publicKey, data, signature) }
-    )
-
-    /** Security.framework 回落签名 (ECDSA 等 mbedTLS 裁剪外算法)。 */
-    private fun legacySign(algorithm: String, privateKey: ByteArray?, data: ByteArray): ByteArray {
+    actual fun sign(algorithm: String, privateKey: ByteArray?, data: ByteArray): ByteArray {
         val (keyType, alg) = resolveSignAlgorithm(algorithm)
-        val secKey = IosCryptoNative.secKeyFromDer(
-            privateKey ?: throw IllegalArgumentException("Sign.sign: privateKey not set"),
-            isPrivate = true,
-            keyType = keyType
+        val der = RsaDerKeys.stripPemToDer(
+            privateKey ?: throw IllegalArgumentException("Sign.sign: privateKey not set")
         )
+        val secKey = if (keyType == kSecAttrKeyTypeEC) {
+            IosCryptoNative.secKeyFromDer(EcDerKeys.toX963PrivateWithPoint(der), isPrivate = true, keyType = keyType)
+        } else {
+            IosCryptoNative.secKeyFromDer(RsaDerKeys.toPkcs1Private(der), isPrivate = true, keyType = keyType)
+        }
         return try {
             val msgData = IosCryptoNative.cfData(data)
                 ?: throw UnsupportedOperationException("iOS crypto: CFDataCreate returned null")
@@ -87,19 +74,21 @@ actual object NativeSignOps {
         }
     }
 
-    /** Security.framework 回落验签。 */
-    private fun legacyVerify(
+    actual fun verify(
         algorithm: String,
         publicKey: ByteArray?,
         data: ByteArray,
         signature: ByteArray
     ): Boolean {
         val (keyType, alg) = resolveSignAlgorithm(algorithm)
-        val secKey = IosCryptoNative.secKeyFromDer(
-            publicKey ?: throw IllegalArgumentException("Sign.verify: publicKey not set"),
-            isPrivate = false,
-            keyType = keyType
+        val der = RsaDerKeys.stripPemToDer(
+            publicKey ?: throw IllegalArgumentException("Sign.verify: publicKey not set")
         )
+        val secKey = if (keyType == kSecAttrKeyTypeEC) {
+            IosCryptoNative.secKeyFromDer(EcDerKeys.toX963Public(der), isPrivate = false, keyType = keyType)
+        } else {
+            IosCryptoNative.secKeyFromDer(RsaDerKeys.toPkcs1Public(der), isPrivate = false, keyType = keyType)
+        }
         return try {
             val msgData = IosCryptoNative.cfData(data)
             val sigData = IosCryptoNative.cfData(signature)

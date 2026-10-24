@@ -80,7 +80,7 @@ kotlin {
     if (enableIosTarget) {
         val configureNativeCinterops: KotlinNativeTarget.() -> Unit = {
             if (isMacHost) {
-                // native 库 (quickjs/mbedtls) 由 scripts/build-ios-native.sh 预编译,
+                // native 库 (quickjs) 由 scripts/build-ios-native.sh 预编译,
                 // 产物在 :data/build/iosNativeLibs (与 :data 的 cinterop 同一套 native 库)
                 val nativeLibDir = file("${rootProject.projectDir}/data/build/iosNativeLibs/${konanTarget.name}")
                 binaries {
@@ -90,7 +90,7 @@ kotlin {
                         binaryOption("bundleId", "shutiao.reader.shared")
                     }
                     all {
-                        linkerOpts("-L${nativeLibDir.absolutePath}", "-lquickjs", "-lmbedtls", "-lsqlite3")
+                        linkerOpts("-L${nativeLibDir.absolutePath}", "-lquickjs", "-lsqlite3")
                         optimized = false
                     }
                 }

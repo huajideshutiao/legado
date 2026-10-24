@@ -19,22 +19,23 @@ import javax.crypto.Cipher
 //
 // @Keep 移除：shared 无 androidx.annotation 依赖，JS 桥反射保活改由 consumer-rules.pro -keep 登记（照 JsURL/StrResponse 先例）。
 @Suppress("unused")
-class AsymmetricCryptoAndroid(algorithm: String) : cn.hutool.crypto.asymmetric.AsymmetricCrypto(algorithm), AsymmetricCrypto {
+// transformation 先经 [AsymCipherSpec.canonicalJcaTransformation] 归一 (四端唯一解析点,
+// commonMain): "RSA"/"RSA/None/PKCS1Padding"/"RSA/ECB/PKCS7Padding" 等别名统一为规范
+// "RSA/ECB/PKCS1Padding", OAEP/NoPadding/SM2 同理; 与 iOS/鸿蒙平台委托侧口径一致。
+class AsymmetricCryptoAndroid(algorithm: String) :
+    cn.hutool.crypto.asymmetric.AsymmetricCrypto(AsymCipherSpec.canonicalJcaTransformation(algorithm)),
+    AsymmetricCrypto {
 
     /**
-     * 2026-08-15 教训: 非对称 Cipher 强制走 JCE 默认 provider (SunJCE), 防止 hutool 在
-     * classpath 出现 BC 类时 (GlobalBouncyCastleProvider 自动激活) 用 BC 的 RSA Cipher:
-     * BC 的 RSA getBlockSize()=127 (SunJCE=0), 而 AsymmetricCrypto.encrypt 以 getBlockSize
-     * 作分段大小, 128 字节输入 (>127) 触发 doFinalWithBlock 分段加密 (127+1 两段分别 RSA
-     * 再拼接), 产出错误的 encSecKey → 网易云 weapi 全部 200 空体 (07c2a5e5 引入 bcprov 后
-     * 网易云发现/目录无法加载, 根因见 desktop/build.gradle.kts 注释)。
+     * 非对称 Cipher 走不带 provider 的 JCE 解析 (按 provider 优先序, SunJCE 先于桌面端
+     * 低优先级注册的 BC): RSA getBlockSize()=0, hutool AsymmetricCrypto.encrypt 不分段,
+     * 网易云 weapi 的 128 字节定长输入整段一次 RSA。BC 类若被 hutool 点名强制为 provider
+     * (GlobalBouncyCastleProvider 默认行为), BC 的 RSA getBlockSize()=127 会让 128 字节
+     * 输入被切成 127+1 两段分别 RSA 再拼接, encSecKey 错误 → weapi 全部 200 空体
+     * (2026-08-15 教训); 桌面端 BC 的正确接法是 DesktopCryptoProvider.install()
+     * 关点名 + 低优先级注册, 本 override 是该约束下的第二道防线。
      *
-     * 当前 bcprov 已移除, 本 override 与 hutool 默认行为一致 (JCE 解析); 保留作为防御:
-     * 将来若重新引入 BC 类, 非对称加密仍走 SunJCE (getBlockSize=0 不分段, 结果正确),
-     * BC 仅用于对称/摘要等路径 (AES 输出与 SunJCE 逐字节一致, PKCS7Padding 由
-     * SymmetricCryptoAndroid 归一化解决, 无需 BC)。
-     *
-     * JCE 不支持的 BC 专属算法 (如 SM2) 回退 hutool 默认 (BC)。
+     * JCE 全链都缺的算法 (如未注册 BC 的端遇 SM2) 回退 hutool 默认 (BC)。
      */
     override fun initCipher() {
         try {

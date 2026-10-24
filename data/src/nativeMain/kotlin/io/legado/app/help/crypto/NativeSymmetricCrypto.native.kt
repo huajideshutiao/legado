@@ -1,20 +1,25 @@
 package io.legado.app.help.crypto
 
 import io.legado.app.utils.Base64Lenient
+import io.legado.app.utils.decodeHex
+import io.legado.app.utils.isHexString
 import io.legado.app.utils.textCharsetCodec
 import io.legado.app.utils.toHexLower
 
 /**
  * nativeMain: 对称加解密门面 [SymmetricCrypto] 实现 (iOS / 鸿蒙 两端共用壳)。
  *
- * 路由: AES 的 ECB/CBC/CFB/OFB/CTR 走 [NativeAesOps] (actual 内纯 mbedTLS 实现);
- * PCBC 无 mbedTLS 原生实现, 两端抛异常; AES/GCM 与 DES/DESede 直走 [MbedTlsCipher]。
+ * 路由: AES/GCM 走纯 Kotlin [GcmNative] (平台无公开 GCM API); 其余全部经
+ * [SymPadding] 补/剥 padding 后走 [PlatformCipherOps] NoPadding 裸原语
+ * (iOS=CommonCrypto; 鸿蒙=cryptoFramework napi 桥, 含 SM4, SM4 仅鸿蒙)。
+ * PCBC 无任一平台实现, 两端抛异常。
  *
  * - transformation 解析对齐 JCA "ALGO/MODE/PADDING": 缺省 mode=ECB, 缺省 padding=PKCS5
  *   (块大小 16/8 下与 PKCS7 字节级等价, 归一为 PKCS7)。
  * - 白名单: AES=ECB/CBC/PCBC/CFB/OFB/CTR/GCM (GCM 仅 NoPadding, 密文=cipher||tag16 对齐 JCA);
- *   DES/DESede=ECB/CBC (mbedTLS cipher_wrap 仅注册这两种); RC4/SM4 抛异常点名。
- * - key==null 时生成随机密钥 (AES 16B / DES 8B / DESede 24B, 对齐 hutool KeyUtil.generateKey 默认强度)。
+ *   DES/DESede=ECB/CBC (鸿蒙 DES 系统侧 API 20+, 低版本设备经桥点名失败);
+ *   SM4=ECB/CBC/CFB/OFB/CTR/GCM (仅鸿蒙, iOS 点名抛异常); RC4 两端均无。
+ * - key==null 时生成随机密钥 (AES 16B / DES 8B / DESede 24B / SM4 16B, 对齐 hutool KeyUtil.generateKey 默认强度)。
  * - setIv 真实存 IV; ECB 设 IV 在加解密时报错 (对齐 JCA "ECB mode cannot use IV"),
  *   非 ECB 模式 (含 GCM) 缺 IV 报错 (JCA encrypt 会生成不可取回的随机 IV, 结果不可用, 此处显式报错)。
  * - 密文形态: decrypt(String) 兼容 hex 与 base64, 对齐 hutool SecureUtil.decode 自动识别。
@@ -35,33 +40,35 @@ class NativeSymmetricCrypto(
     init {
         val parts = transformation.uppercase().replace(" ", "").split("/")
         algorithm = when (val algo = parts.getOrNull(0).orEmpty()) {
-            "AES", "DES", "DESEDE" -> algo
+            "AES", "DES", "DESEDE", "SM4" -> algo
             "TRIPLEDES", "3DES" -> "DESEDE"
             else -> throw UnsupportedOperationException(
                 "NativeSymmetricCrypto: algorithm '$algo' is not supported on iOS/鸿蒙 " +
-                    "(only AES/DES/DESede; RC4/SM4 unavailable)"
+                    "(only AES/DES/DESede/SM4; RC4 unavailable)"
             )
         }
         mode = parts.getOrNull(1) ?: "ECB"
-        val supportedModes = if (algorithm == "AES") AES_MODES else DES_MODES
+        val supportedModes = if (algorithm == "AES" || algorithm == "SM4") AES_MODES else DES_MODES
         if (mode !in supportedModes) {
             throw UnsupportedOperationException(
                 "NativeSymmetricCrypto: $algorithm mode '$mode' is not supported " +
-                    "(AES: ${AES_MODES.joinToString("/")}; DES/DESede: ${DES_MODES.joinToString("/")})"
+                    "(AES/SM4: ${AES_MODES.joinToString("/")}; DES/DESede: ${DES_MODES.joinToString("/")})"
             )
         }
         padding = normalizePadding(parts.getOrNull(2) ?: "PKCS5PADDING")
         if (mode == "GCM" && padding != "NOPADDING") {
-            throw UnsupportedOperationException("NativeSymmetricCrypto: AES/GCM only supports NoPadding")
+            throw UnsupportedOperationException("NativeSymmetricCrypto: $algorithm/GCM only supports NoPadding")
         }
         keyBytes = key ?: NativeAesOps.randomKey(defaultKeySize(algorithm))
+        // DESede 仅 24 字节 3DES192: iOS CommonCrypto 与鸿蒙 cryptoFramework 均无 16 字节
+        // 2-key EDE 规格, 在构造期即拒绝 (不放行到加解密期才报错)
         val valid = when (algorithm) {
-            "AES" -> keyBytes.size == 16 || keyBytes.size == 24 || keyBytes.size == 32
+            "AES", "SM4" -> keyBytes.size == 16 || keyBytes.size == 24 || keyBytes.size == 32
             "DES" -> keyBytes.size == 8
-            else -> keyBytes.size == 16 || keyBytes.size == 24
+            else -> keyBytes.size == 24
         }
         require(valid) {
-            "invalid $algorithm key length: ${keyBytes.size} (AES=16/24/32, DES=8, DESede=16/24 bytes)"
+            "invalid $algorithm key length: ${keyBytes.size} (AES/SM4=16/24/32, DES=8, DESede=24 bytes)"
         }
     }
 
@@ -101,51 +108,52 @@ class NativeSymmetricCrypto(
     override fun decrypt(data: ByteArray): ByteArray = doCrypt(encrypt = false, bytes = data)
 
     override fun decrypt(data: String): ByteArray {
-        val bytes = if (hexRegex.matches(data)) decodeHex(data) else Base64Lenient.decode(data)
+        val bytes = if (data.isHexString()) data.decodeHex() else Base64Lenient.decode(data)
         return doCrypt(encrypt = false, bytes = bytes)
     }
 
-    /** AES 非 GCM 走 expect ops (mbedTLS 主 + 既有回落); 其余组合 mbedTLS 直连。 */
+    /** GCM 走纯 Kotlin [GcmNative]; 其余经 [SymPadding] 走平台 NoPadding 裸原语。 */
     private fun doCrypt(encrypt: Boolean, bytes: ByteArray): ByteArray {
         val realIv = resolveIv()
-        return if (algorithm == "AES" && mode != "GCM") {
-            if (encrypt) NativeAesOps.encrypt(keyBytes, bytes, mode, padding, realIv)
-            else NativeAesOps.decrypt(keyBytes, bytes, mode, padding, realIv)
+        if (mode == "GCM") {
+            return if (encrypt) GcmNative.encrypt(keyBytes, realIv, bytes)
+            else GcmNative.decrypt(keyBytes, realIv, bytes)
+        }
+        return if (encrypt) {
+            PlatformCipherOps.encrypt(
+                algorithm, mode, keyBytes, realIv, SymPadding.pad(padding, bytes, blockSize(), mode)
+            )
         } else {
-            if (encrypt) MbedTlsCipherOps.encrypt(algorithm, mode, padding, keyBytes, realIv, bytes)
-            else MbedTlsCipherOps.decrypt(algorithm, mode, padding, keyBytes, realIv, bytes)
+            SymPadding.unpad(
+                padding,
+                PlatformCipherOps.decrypt(algorithm, mode, keyBytes, realIv, bytes),
+                blockSize()
+            )
         }
     }
 
+    private fun blockSize(): Int = if (algorithm == "AES" || algorithm == "SM4") 16 else 8
+
     /** ECB 不接受 IV, 非 ECB (含 GCM) 必须有 IV, 违反即报错 (见类注释)。 */
-    private fun resolveIv(): ByteArray? {
+    private fun resolveIv(): ByteArray {
         val v = iv
         if (mode == "ECB") {
             require(v == null) { "ECB mode cannot use IV" }
-            return null
+            return ByteArray(0)
         }
-        requireNotNull(v) { "IV is required for $algorithm/$mode" }
-        return v
+        return requireNotNull(v) { "IV is required for $algorithm/$mode" }
     }
 
-    private fun decodeHex(hex: String): ByteArray {
-        require(hex.length % 2 == 0) { "invalid hex length: ${hex.length}" }
-        return ByteArray(hex.length / 2) {
-            hex.substring(it * 2, it * 2 + 2).toInt(16).toByte()
-        }
-    }
 
     companion object {
-        private val hexRegex = Regex("^[a-fA-F0-9]+$")
-
-        /** 白名单 (原 SUPPORTED_MODES 扩枚举: AES +GCM, DES/DESede 单列)。 */
+        /** 白名单 (原 SUPPORTED_MODES 扩枚举: AES +GCM, DES/DESede 单列, SM4 与 AES 同面)。 */
         private val AES_MODES = setOf("ECB", "CBC", "PCBC", "CFB", "OFB", "CTR", "GCM")
         private val DES_MODES = setOf("ECB", "CBC")
 
         private fun defaultKeySize(algorithm: String): Int = when (algorithm) {
-            "AES" -> 16
             "DES" -> 8
-            else -> 24
+            "DESEDE" -> 24
+            else -> 16
         }
 
         /** padding 归一 (PKCS5→PKCS7), 白名单外抛异常点名。 */

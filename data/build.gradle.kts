@@ -38,11 +38,9 @@ val ROOM_ENTITIES_SRC_DIR = "src/roomEntitiesMain/kotlin"
 val ENTITY_PACKAGE_PATH = "io/legado/app/data/entities"
 
 // nativeMain 里依赖 C 符号的桥文件: 从 nativeMain 排除, stage 进 leaf 源集
-// (quickjs = model/script JS 桥; mbedtls = help/crypto 加密, generateCNamesAliases 在 build-logic)。
+// (quickjs = model/script JS 桥, generateCNamesAliases 在 build-logic)。
 val nativeInteropSourcePatterns = listOf(
     "io/legado/app/model/script/*.native.kt",
-    "io/legado/app/help/crypto/MbedTls*.native.kt",
-    "io/legado/app/help/crypto/MbedTlsOps.native.kt",
 )
 val nativeInteropSourceRoot = file("src/nativeMain/kotlin")
 
@@ -297,7 +295,7 @@ val verifyOhosRoomDerived = if (enableOhosTarget) {
 // ohosArm64 只存在于 CPF 分支 KGP, 交给 build-logic 的约定插件声明。
 if (enableOhosTarget) {
     pluginManager.apply("legado.kmp.ohos")
-    // cinterop (quickjs/mbedtls) 的 def/头文件在本模块 src/cinterop, 故 cinterop 绑定
+    // cinterop (quickjs) 的 def/头文件在本模块 src/cinterop, 故 cinterop 绑定
     // 也随本模块配置 (旧版在 OhosTargetConventionPlugin 里对全部模块注入, 其它模块无 def
     // 文件导致 cinterop 任务失败)。用标准 targets.named API 配置, 不依赖 CPF DSL。
     extensions.configure<KotlinMultiplatformExtension> {
@@ -308,13 +306,6 @@ if (enableOhosTarget) {
                     // 头文件与 C 源码在 modules/quickjs/src/main/cinterop/quickjs-ng (Android CMake 也引用该目录),
                     // 本模块只编 cinterop 绑定, 链接用预编译 native 库
                     includeDirs(file("${rootProject.projectDir}/modules/quickjs/src/main/cinterop/quickjs-ng"))
-                }
-                create("mbedtls") {
-                    defFile(file("src/cinterop/mbedtls.def"))
-                    includeDirs(
-                        file("${projectDir}/src/cinterop/mbedtls/include"),
-                        file("${projectDir}/src/cinterop/mbedtls"),
-                    )
                 }
             }
         }
@@ -370,7 +361,7 @@ kotlin {
                 val nativeLibDir = file("${projectDir}/build/iosNativeLibs/${konanTarget.name}")
                 binaries {
                     all {
-                        linkerOpts("-L${nativeLibDir.absolutePath}", "-lquickjs", "-lmbedtls", "-lsqlite3")
+                        linkerOpts("-L${nativeLibDir.absolutePath}", "-lquickjs", "-lsqlite3")
                     }
                 }
                 compilations.getByName("main").cinterops {
@@ -379,13 +370,6 @@ kotlin {
                         // 头文件与 C 源码在 modules/quickjs/src/main/cinterop/quickjs-ng (Android CMake 也引用该目录),
                         // 本模块只编 cinterop 绑定, 链接用预编译 native 库
                         includeDirs(file("${rootProject.projectDir}/modules/quickjs/src/main/cinterop/quickjs-ng"))
-                    }
-                    create("mbedtls") {
-                        defFile(file("src/cinterop/mbedtls.def"))
-                        includeDirs(
-                            file("${projectDir}/src/cinterop/mbedtls/include"),
-                            file("${projectDir}/src/cinterop/mbedtls"),
-                        )
                     }
                     create("nskeyvalueobserving") {
                         defFile(file("src/cinterop/nskeyvalueobserving.def"))
@@ -508,7 +492,6 @@ kotlin {
                     kotlin.exclude(
                         *nativeInteropSourcePatterns.toTypedArray(),
                         "io/legado/app/napi/quickjs/CNamesAliases.kt",
-                        "io/legado/app/nativecrypto/mbedtls/CNamesAliases.kt",
                     )
                 }
             }
@@ -519,7 +502,6 @@ kotlin {
                     kotlin.exclude(
                         *nativeInteropSourcePatterns.toTypedArray(),
                         "io/legado/app/napi/quickjs/CNamesAliases.kt",
-                        "io/legado/app/nativecrypto/mbedtls/CNamesAliases.kt",
                     )
                 }
             }

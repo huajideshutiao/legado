@@ -3,29 +3,31 @@
 package io.legado.app.help.crypto
 
 /**
- * iOS actual: 摘要 / HMAC / AES。纯 mbedTLS 实现 ([MbedTlsOps]), 无第三方回落:
- * 2026-08 已移除 korlibs krypto (仓库归档) — mbedTLS md 层已覆盖 MD5/SHA1/SHA224/
- * SHA256/SHA384/SHA512/RIPEMD160, SHA3 由纯 Kotlin [Sha3Native] 补齐; AES 各模式
- * (ECB/CBC/CFB/OFB/CTR/GCM) 由 MbedTlsCipher 提供。
+ * iOS actual: 摘要 / HMAC / AES。
  *
- * 行为回退: PCBC 模式 mbedTLS 无原生实现 (MbedTlsCipher 点名抛异常), 移除 krypto
- * 后 iOS 不再支持 PCBC (与鸿蒙端一致); 书源脚本极少使用 PCBC, 属可接受回退。
- *
- * 注意: mbedTLS 目标码需 mac 侧编 libmbedtls.a 链入 (见 data/src/cinterop/mbedtls/README.md);
- * 缺 .a 是链接期失败而非运行期。
+ * 平台委托 (2026-10 起 native 不再带 mbedTLS):
+ * - MD5/SHA1/SHA224/256/384/512: CommonCrypto ([IosCommonCrypto]);
+ * - SM3/SHA3-* 及其 HMAC: 纯 Kotlin 侧车 ([KotlinDigestNative]/[Sha3Native]), 双端同源;
+ * - AES 全模式: [PlatformCipherOps] (CommonCrypto CCCryptorCreateWithMode),
+ *   AES/GCM 由 NativeSymmetricCrypto 路由到纯 Kotlin [GcmNative];
+ * - 随机密钥: SecRandomCopyBytes (Security.framework)。
  *
  * 行为字节级对齐 jvmAndAndroidMain (javax.crypto / hutool)。
  */
 actual object NativeDigestOps {
 
-    actual fun digest(algorithm: String, data: ByteArray): ByteArray =
-        MbedTlsOps.digest(algorithm, data)
+    actual fun digest(algorithm: String, data: ByteArray): ByteArray {
+        KotlinDigestNative.digest(algorithm, data)?.let { return it }
+        return IosCommonCrypto.digest(KotlinDigestNative.normalize(algorithm), data)
+    }
 }
 
 actual object NativeHmacOps {
 
-    actual fun hmac(algorithm: String, key: ByteArray, data: ByteArray): ByteArray =
-        MbedTlsOps.hmac(algorithm, key, data)
+    actual fun hmac(algorithm: String, key: ByteArray, data: ByteArray): ByteArray {
+        KotlinDigestNative.hmac(algorithm, key, data)?.let { return it }
+        return IosCommonCrypto.hmac(KotlinDigestNative.normalize(KotlinDigestNative.stripHmac(algorithm)), key, data)
+    }
 }
 
 actual object NativeAesOps {
@@ -42,7 +44,9 @@ actual object NativeAesOps {
         mode: String,
         padding: String,
         iv: ByteArray?
-    ): ByteArray = MbedTlsOps.cipherEncrypt("AES", mode, padding, key, iv, data)
+    ): ByteArray = PlatformCipherOps.encrypt(
+        "AES", mode, key, iv, SymPadding.pad(padding, data, 16, mode)
+    )
 
     actual fun decrypt(
         key: ByteArray,
@@ -50,8 +54,12 @@ actual object NativeAesOps {
         mode: String,
         padding: String,
         iv: ByteArray?
-    ): ByteArray = MbedTlsOps.cipherDecrypt("AES", mode, padding, key, iv, data)
+    ): ByteArray = SymPadding.unpad(
+        padding,
+        PlatformCipherOps.decrypt("AES", mode, key, iv, data),
+        16
+    )
 
-    /** mbedTLS CTR_DRBG 熵源生成随机 AES 密钥 (对齐 hutool KeyUtil.generateKey 的 SecureRandom 语义)。 */
-    actual fun randomKey(size: Int): ByteArray = MbedTlsOps.random(size)
+    /** SecRandomCopyBytes 系统熵源 (对齐 hutool KeyUtil.generateKey 的 SecureRandom 语义)。 */
+    actual fun randomKey(size: Int): ByteArray = PlatformCipherOps.randomBytes(size)
 }

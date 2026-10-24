@@ -248,15 +248,15 @@ dependencies {
     // jna-platform 提供 Win32 COM 基础设施 (Ole32/Guid/HRESULT), 供 WindowsFileDialogs 直调
     // IFileDialog 取现代文件对话框 (AWT FileDialog 在 Windows 上是 comdlg32 旧版样式)。
     implementation(libs.jna.platform)
-    // 2026-08-15 教训: 不要重新启用 bcprov! 一旦 BC 类进入运行时 classpath, hutool
-    // SecureUtil.createCipher 会经 GlobalBouncyCastleProvider 用 BC 的 RSA Cipher:
-    // BC 的 RSA getBlockSize()=127 (SunJCE=0), 触发 AsymmetricCrypto.encrypt 的分段加密
-    // (128 字节输入被切成 127+1 两段分别 RSA 再拼接), 产出错误的 encSecKey →
-    // 网易 weapi 全部 200 空体, 网易云发现/目录/歌单无法加载 (07c2a5e5 引入, 根因排查见
-    // shared AsymmetricCryptoAndroid.initCipher 注释)。如需 PKCS7Padding, 请恢复
-    // SymmetricCryptoAndroid 的 normalizePkcs7Padding (PKCS7→PKCS5 字节级等价, 无需 BC),
-    // 不要再加回 bcprov。
-    // implementation(libs.bcprov)
+    // 2026-10 重新启用: BC 仅作 SunJCE 缺口补齐 (SM2/SM3/SM4/PKCS7Padding)。必须配合
+    // DesktopCryptoProvider.install(): 关 hutool GlobalBouncyCastleProvider 的点名行为 +
+    // BC 追加到 provider 链末尾 (最低优先级)。否则 hutool SecureUtil 会强制把 BC 用作
+    // Cipher provider, BC 的 RSA getBlockSize()=127 (SunJCE=0) 触发分段加密, 网易云
+    // weapi 128 字节 encSecKey 被切 127+1 两段全部 200 空体 (07c2a5e5 教训, 根因见
+    // shared AsymmetricCryptoAndroid.initCipher 注释)。install() 必须早于任何 hutool 加解密调用。
+    implementation(libs.bcprov)
+    // DesktopCryptoProvider 直接使用 hutool 的 provider 开关 (关点名行为), 需显式声明加解密库
+    implementation(libs.hutool.crypto)
     // 本地书格式: PDF 渲染 (对照 app 端 PdfRenderer 语义)
     implementation(libs.pdfbox)
     // 压缩包: 7z/tar/gz/bz2/xz (xz 库是 7z LZMA2 默认压缩方法的必需依赖, 非只为 .xz)

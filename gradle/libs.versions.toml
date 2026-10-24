@@ -105,13 +105,12 @@ pdfbox = "3.0.8"
 
 # ===== JS 引擎 / 加密 / 简繁转换 =====
 hutool = "5.8.22"
-# 桌面端 JVM 用: SunJCE 无 PKCS7Padding, 书源 java.createSymmetricCrypto('AES/CBC/PKCS7Padding')
-# 在桌面端报 "Cannot find any provider supporting AES/CBC/PKCS7Padding"; bcprov (Oracle 签名,
-# 通过 JCE provider 认证) 补齐 PKCS7Padding/SM4/RC4 等算法。版本与本地 gradle 缓存一致。
-# ⚠️ 2026-08-15 起已禁用 (desktop/build.gradle.kts 有完整教训注释): BC 类一旦进运行时
-# classpath, hutool SecureUtil 会经 GlobalBouncyCastleProvider 用 BC 的 RSA Cipher,
-# 触发分段加密 → 网易云 weapi 全部 200 空体。如需 PKCS7Padding 请走 PKCS7→PKCS5 字节级
-# 等价替换 (SymmetricCryptoAndroid.normalizePkcs7Padding), 不要再加回 bcprov。
+# 桌面端 JVM 用: SunJCE 无 PKCS7Padding/SM2/SM3/SM4, 书源在桌面端调这些算法时报
+# NoSuchAlgorithmException; bcprov (Oracle 签名, 通过 JCE provider 认证) 以**最低优先级**
+# 注册补齐缺口。⚠️ 必须配合 DesktopCryptoProvider.install(): 关 hutool
+# GlobalBouncyCastleProvider 点名行为 + BC 追加 provider 链末尾, 否则 BC 的 RSA
+# Cipher (getBlockSize=127, SunJCE=0) 会触发 hutool 分段加密, 网易云 weapi 全部 200 空体
+# (2026-08-15 教训)。版本与本地 gradle 缓存一致。
 bouncycastle = "1.79"
 quickChineseTransfer = "0.2.16"
 
@@ -257,7 +256,7 @@ pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
 
 # ===== JS 引擎 / 加密 / 简繁转换 =====
 hutool-crypto = { module = "cn.hutool:hutool-crypto", version.ref = "hutool" }
-# 桌面端 JCE 补丁 provider (见 bouncycastle version 注释); 已禁用, 仅 desktop jvm 曾依赖
+# 桌面端 JCE 补齐 provider (见 bouncycastle version 注释); 仅 desktop jvm 依赖
 bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 quick-chinese-transfer-core = { module = "com.github.liuyueyi.quick-chinese-transfer:quick-transfer-core", version.ref = "quickChineseTransfer" }
 

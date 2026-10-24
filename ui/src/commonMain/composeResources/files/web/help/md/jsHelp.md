@@ -378,9 +378,10 @@ java.toNumChapter(s: String?): String? //如 第一千零三章 -> 第1003章
 
 > 提供在JavaScript环境中快捷调用crypto算法的函数，android/desktop
 > 由[hutool-crypto](https://www.hutool.cn/docs/#/crypto/概述)
-> 实现（[JsEncodeUtilsDefaults](https://github.com/huajideshutiao/legado/blob/master/data/src/jvmAndAndroidMain/kotlin/io/legado/app/help/JsEncodeUtils.kt)）  
+> 实现（[JsEncodeUtilsDefaults](https://github.com/huajideshutiao/legado/blob/master/data/src/jvmAndAndroidMain/kotlin/io/legado/app/help/JsEncodeUtils.kt)；桌面端另以低优先级注册 bcprov 补齐 SM2/SM3/SM4/PKCS7Padding）  
 > 由于兼容性问题，hutool-crypto当前版本为5.8.22  
-> ios/ohos 为各平台原生等价实现，支持算法为 hutool 的子集，明细见下方"platform 变量"一节的能力差异表  
+> ios/ohos 为平台委托实现（iOS=CommonCrypto/Security，鸿蒙=cryptoFramework 桥，另含双端同源
+> 纯 Kotlin 侧车），支持算法为 hutool 的子集，明细见下方"platform 变量"一节的能力差异表  
 
 > 注意：如果输入的参数不是Utf8String 可先调用`java.hexDecodeToByteArray java.base64DecodeToByteArray`转成ByteArray
 * 对称加密
@@ -670,7 +671,7 @@ cache.deleteMemory(key: String)
 
 | 能力                                        | android | ios/ohos      |
 |-------------------------------------------|---------|---------------|
-| crypto 系列（createSymmetricCrypto/Sign/digestHex 等） | 可用（hutool） | 大部分可用（mbedTLS 后端，见下表） |
+| crypto 系列（createSymmetricCrypto/Sign/digestHex 等） | 可用（hutool） | 可用（平台委托：iOS=CommonCrypto/Security，鸿蒙=cryptoFramework，见下表） |
 | java.* 反射调用 Android/JVM 类                  | 可用      | 不可用           |
 | image 对象（图片解密）                             | 可用      | 可用（各平台原生实现）   |
 | webView 系列（java.webView 等）                 | 可用      | 以各平台实现为准      |
@@ -683,39 +684,46 @@ cache.deleteMemory(key: String)
 > `java.HMacBase64`/`java.HMacHex`/`java.digestHex`/`java.base64Encode`（见 crypto 小节，全平台可用）；
 > `ruleHelp.md` 里 `ByteArrayInputStream`/`ByteArrayOutputStream` 图片解密示例同理仅 android/desktop 可用。
 
-crypto 系列各算法明细（android 为 hutool/JCA 全量，ios/ohos 走 mbedTLS 后端）：
+crypto 系列各算法明细（android 为 hutool/JCA 全量；ios=CommonCrypto/Security + 纯 Kotlin 侧车，
+ohos=cryptoFramework 桥 + 纯 Kotlin 侧车；SM3/SHA3/GCM 为双端同源纯 Kotlin 实现）：
 
 | 算法                                          | ios | ohos |
 |---------------------------------------------|-----|------|
-| 摘要/HMac：MD5/SHA-1/SHA-224/SHA-256/SHA-384/SHA-512/RIPEMD160/SHA3-224/256/384/512 | 可用  | 可用   |
+| 摘要/HMac：MD5/SHA-1/SHA-224/SHA-256/SHA-384/SHA-512 | 可用  | 可用   |
+| 摘要/HMac：SM3/SHA3-224/256/384/512               | 可用  | 可用   |
 | AES/ECB（NoPadding/PKCS5\|PKCS7Padding）       | 可用  | 可用   |
 | AES/CBC、CFB、OFB、CTR（支持 iv；padding 另支持 ANSIX923/ISO10126/Zero） | 可用  | 可用   |
-| AES/PCBC（mbedTLS 无此模式，两端均抛异常）        | 不可用 | 不可用  |
+| AES/PCBC（平台无此模式，两端均抛异常）            | 不可用 | 不可用  |
 | AES/GCM/NoPadding（密文=cipher+tag16，须 setIv）    | 可用  | 可用   |
-| DES/DESede（ECB/CBC）                          | 可用  | 可用   |
-| RC4/SM2/SM3/SM4                             | 不可用 | 不可用  |
-| RSA 非对称（encrypt/decrypt/decryptStr/encryptHex/encryptBase64；PKCS1 v1.5/OAEP；含私钥加密/公钥解密反向，反向仅 v1.5） | 可用  | 可用   |
-| Sign 签名/验签（sign/signHex/verify；MD5/SHA-1/224/256/384/512/RIPEMD160withRSA、SHA*withRSA/PSS、NONEwithRSA、ECDSA） | 可用  | 可用   |
+| DES/DESede（ECB/CBC）                          | 可用  | DES 限 API 20+ 设备；DESede 仅 24 字节密钥（16 字节 2-key EDE 无规格）   |
+| SM4（ECB/CBC/CFB/OFB/CTR/GCM）                | 不可用 | 可用   |
+| RC4/SM2                                     | 不可用 | SM2 可用（cipher=SM2_256\|SM3，密文 C1C3C2 GM/T 格式；签名 SM3withSM2）   |
+| RSA 非对称（encrypt/decrypt/decryptStr/encryptHex/encryptBase64；PKCS1 v1.5/OAEP） | 可用  | 可用   |
+| RSA 反向（私钥加密/公钥解密，hutool KeyType 反向）       | 不可用  | NoPadding 仅正向；反向不可用   |
+| Sign 签名/验签（sign/signHex/verify；SHA-1/256/384/512withRSA、SHA*WithRSA/PSS、SHA*withECDSA） | 可用  | 可用   |
+| Sign：MD5withRSA/RIPEMD160withRSA/NONEwithRSA     | 不可用 | 不可用   |
 
 > 对称加密 key 为 null 时各端均使用随机密钥（AES 128 位/DES 8 字节/DESede 24 字节，对齐 hutool KeyUtil）；
 > 不支持的算法/模式会抛出点名异常，便于书源降级判断。
 
 > `PKCS7Padding` 与 `PKCS5Padding` 在块密码（AES 16 字节 / DES 8 字节）下填充字节完全一致，
 > 可互换。android/desktop 端 `java.createSymmetricCrypto` 自动把 `PKCS7Padding` 归一为
-> `PKCS5Padding`（桌面端 JVM SunJCE 无 PKCS7Padding provider，归一后无需额外依赖即可用）；
-> 桌面端书源直调 `cn.hutool.crypto`/`Cipher` 的 PKCS7Padding 不再内置补齐：bcprov 已移除
-> （引入 BC 会让 hutool RSA Cipher 走 BC 分段加密，网易云 weapi encSecKey 错误，见
-> `data/src/jvmAndAndroidMain/.../crypto/AsymmetricCryptoAndroid` 注释）；需自行归一为 PKCS5Padding（Android 内置 Conscrypt/BC 原生支持）。
+> `PKCS5Padding`（归一后无需额外依赖即可用）；桌面端 JCE 补齐 provider（bcprov，低优先级注册）
+> 亦直接提供 PKCS7Padding/SM2/SM3/SM4。
+>
+> RSA 非对称的 JCA 别名四端统一归一：`RSA`、`RSA/None/PKCS1Padding`、`RSA/ECB/PKCS7Padding`
+> 均等价 `RSA/ECB/PKCS1Padding`（v1.5），`OAEPWithSHA-1/224/256/384/512AndMGF1Padding`
+> 连字符可省；鸿蒙 OAEP 加解密（公钥加密/私钥解密）均可用。
 
 示例——算法超出 ios/ohos 支持面时降级：
 
 ```js
-if (platform == 'android') {
-    // SM2/SM3/SM4/RC4 等依赖 BouncyCastle 提供者(安卓系统自带, 桌面端未内置), 桌面端请勿依赖
+if (platform != 'ios') {
+    // SM4: android/desktop 经 BouncyCastle/补齐 provider，ohos 经 cryptoFramework；iOS 无国密
     result = java.createSymmetricCrypto('SM4/ECB/PKCS5Padding', key).decryptStr(result);
 } else {
-    // 其他平台走纯 JS 实现或提示不支持
-    throw '本源的解密仅支持 android';
+    // iOS 走纯 JS 实现或提示不支持
+    throw '本源的解密不支持 ios';
 }
 ```
 

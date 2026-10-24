@@ -191,10 +191,9 @@ fun main(args: Array<String>) {
     // 打栈开关: 对齐 Android BuildConfig.DEBUG 语义, 仅 debug 打栈。
     // build.gradle.kts 的 run 任务注入 -Dlegado.debug=true, 打包产物不注入 = 静默。
     registerJvmDebugState(System.getProperty("legado.debug")?.toBoolean() == true)
-    // 2026-08-15 教训: bcprov 已移除 (见 desktop/build.gradle.kts 注释) —— BC 类在 classpath
-    // 会让 hutool 的 RSA Cipher 走 BC (getBlockSize=127 触发分段加密), 网易云 weapi
-    // encSecKey 错误全站 200 空体。PKCS7Padding 由 SymmetricCryptoAndroid 归一化解决,
-    // 不再需要 JCE 补丁 provider (DesktopCryptoProvider.kt 已删除)。
+    // JCA 补齐 provider (国密/PKCS7Padding): 关 hutool 点名 BC + BC 追加到 provider 链末尾,
+    // SunJCE 认识的算法行为不变 (weapi 分段加密教训见 DesktopCryptoProvider 注释)。必须最先注册。
+    DesktopCryptoProvider.install()
     // 视频渲染: open-ani/mediamp (mediamp-mpv) 后端。Windows 走 Skiko Direct3D 默认渲染
     // (mpv D3D11 → 共享纹理 → Skia D3D12), macOS 默认 Metal, Linux 默认 OpenGL —— 均
     // 为各自平台默认值, 无需 (也不应) 强制 skiko.renderApi。

@@ -56,6 +56,15 @@ internal object IosCryptoNative {
         CFDataCreate(kCFAllocatorDefault, pinned.addressOf(0).reinterpret<UByteVar>(), bytes.size.toLong())
     }
 
+    /** ByteArray 片段 → CFDataRef (RSA 分块加密用, 调用方持有, 用完 CFRelease)。 */
+    fun cfData(bytes: ByteArray, off: Int, len: Int): CFDataRef = bytes.usePinned { pinned ->
+        CFDataCreate(
+            kCFAllocatorDefault,
+            pinned.addressOf(off).reinterpret<UByteVar>(),
+            len.toLong()
+        ) ?: throw UnsupportedOperationException("iOS crypto: CFDataCreate returned null")
+    }
+
     /** CFDataRef → ByteArray。 */
     fun cfDataToBytes(data: CFDataRef?): ByteArray {
         requireNotNull(data) { "iOS crypto: CFData is null" }
@@ -66,9 +75,13 @@ internal object IosCryptoNative {
     }
 
     /**
-     * DER → SecKeyRef (SecKeyCreateWithData)。
+     * 密钥字节 → SecKeyRef (SecKeyCreateWithData)。
      *
-     * @param der 私钥 PKCS#8 或公钥 X.509 DER 字节
+     * SecKeyCreateWithData 只吃与 SecKeyCopyExternalRepresentation 输出同格式的密钥字节:
+     * RSA = PKCS#1 DER (公/私), EC = X9.63 原始字节 (公钥 0x04||X||Y, 私钥 0x04||X||Y||K);
+     * PKCS#8/SPKI/SEC1 等 DER 封装须先经 [RsaDerKeys]/[EcDerKeys] 归一。
+     *
+     * @param der 平台要求的密钥字节 (格式见上)
      * @param isPrivate true=私钥 (kSecAttrKeyClassPrivate), false=公钥 (kSecAttrKeyClassPublic)
      * @param keyType kSecAttrKeyTypeRSA 或 kSecAttrKeyTypeEC
      */

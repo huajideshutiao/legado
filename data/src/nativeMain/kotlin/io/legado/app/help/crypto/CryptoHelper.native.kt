@@ -5,7 +5,7 @@ import io.legado.app.utils.Base64Lenient
 /**
  * nativeMain actual: AES/ECB/PKCS5Padding + Base64 (iOS / 鸿蒙 两端共用壳)。
  *
- * 真实加解密下沉到 [NativeAesOps] (expect object): 两端 actual 均 mbedTLS 主实现, 异常回落 krypto/napi。
+ * 真实加解密下沉到 [NativeAesOps] (expect object): iOS=CommonCrypto, 鸿蒙=cryptoFramework 桥。
  *
  * - PKCS7Padding 在 AES 块大小 (16 字节) 下与 PKCS5Padding 等价
  *   （PKCS#5 是 PKCS#7 在块大小 8 时的特例；AES 块固定 16 字节, 二者填充字节序列完全一致）。

@@ -32,9 +32,10 @@ class SymmetricCryptoAndroid(
     // (桌面端 SunJCE / 个别 Android ROM) 会抛 NoSuchAlgorithmException; 归一后全平台可用,
     // 密文与真 PKCS7 逐字节一致。
     //
-    // 2026-08-15 教训: 不要为了真 PKCS7 引入 bcprov (见 desktop/build.gradle.kts 注释)——
-    // BC 类在 classpath 会让 hutool 的 RSA Cipher 走 BC (getBlockSize=127 触发分段加密),
-    // 网易云 weapi encSecKey 错误全站 200 空体。归一化是唯一需要的 PKCS7 方案。
+    // 2026-08-15 教训: BC 类进 classpath 时 hutool 会点名强制 BC 为 Cipher provider, RSA
+    // 触发分段加密 (weapi 全空体)。2026-10 起桌面端由 DesktopCryptoProvider 关点名 +
+    // 低优先级注册解决, PKCS7Padding 归一化保留: Android 无 bcprov 依赖, 归一化使其不依赖
+    // BC 即可解析 (个别 ROM 无 PKCS7Padding provider)。
     algorithm.normalizePkcs7Padding(),
     key?.let { SecretKeySpec(it, algorithm.substringBefore('/')) }
 ), io.legado.app.help.crypto.SymmetricCrypto {
@@ -87,8 +88,8 @@ class SymmetricCryptoAndroid(
  *
  * 依据: JCE 的 "PKCS5Padding" 实现按 cipher 实际块大小填充 (AES 16 字节/DES 8 字节),
  * 与 PKCS7Padding (RFC 5652) 的填充字节逐字节一致; 对 hutool 支持的块密码 (AES/DES/
- * DESede/SM4) 两者可互换, 不影响密文与解密兼容性。仅 Android/iOS/ohos 的 mbedTLS
- * 原生后端无需此归一 (原生实现直接支持 PKCS7Padding)。
+ * DESede/SM4) 两者可互换, 不影响密文与解密兼容性。仅 Android/iOS/ohos 的平台原生
+ * 路径无需此归一 (iOS CommonCrypto/鸿蒙桥侧恒 NoPadding, padding 由 Kotlin 层处理)。
  */
 internal fun String.normalizePkcs7Padding(): String =
     if (contains("PKCS7Padding", ignoreCase = true)) {

@@ -8,7 +8,7 @@ import kotlin.concurrent.Volatile
 /**
  * JS 加解密面的平台实现入口。
  *
- * commonMain 无平台加密实现 (hutool / krypto + mbedTLS 均为平台能力), JsExtensionsCommon
+ * commonMain 无平台加密实现 (hutool / CommonCrypto / cryptoFramework 桥均为平台能力), JsExtensionsCommon
  * 的加解密默认方法经 [JsCryptoProviders] 转发到各端注册的实现:
  * - jvmAndAndroid: hutool DigestUtil/HMac + SymmetricCryptoAndroid/AsymmetricCryptoAndroid/SignAndroid
  * - native (iOS/鸿蒙): krypto MD5/SHA/HMAC + NativeSymmetricCrypto/NativeAsymmetricCrypto/NativeSign

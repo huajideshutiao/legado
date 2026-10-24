@@ -22,7 +22,7 @@ import io.legado.app.utils.Base64Lenient
  * 默认实现移至 [JsEncodeUtilsDefaults] interface, 由调用方多继承注入。
  *
  * - md5Encode / md5Encode16: 复用 commonMain [MD5Utils] (expect object, 纯 Kotlin 实现)。
- * - digestHex / digestBase64Str: [NativeDigestOps] 提供 MD5/SHA-1/SHA-224/SHA-256/SHA-384/SHA-512/RIPEMD160,
+ * - digestHex / digestBase64Str: [NativeDigestOps] 提供 MD5/SHA-1/SHA-224/SHA-256/SHA-384/SHA-512/SM3/SHA3-*,
  *   与 jvmAndAndroidMain 的 hutool DigestUtil 字节级一致 (标准 FIPS 180-4 / RFC 1321 算法)。
  * - HMacHex / HMacBase64: [NativeHmacOps] HMAC, 与 jvmAndAndroidMain 的 hutool HMac 字节级一致 (RFC 2104)。
  * - Base64 编码: [Base64Lenient.encodeToString] (标准字母表 + padding + 不换行, 对齐 java.util.Base64.getEncoder())。
@@ -94,7 +94,7 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
 /**
  * JS 加解密面 (commonMain [JsCryptoProvider]) 的 native (iOS/鸿蒙) 实现。
  * 摘要/HMAC 复用 [JsEncodeUtilsDefaults]; 工厂创建 NativeSymmetricCrypto/NativeAsymmetricCrypto/NativeSign
- * (mbedTLS 主实现, 异常回落 iOS Security.framework / 鸿蒙 cryptoFramework napi, 见各类注释)。
+ * (平台委托: iOS=CommonCrypto/Security, 鸿蒙=cryptoFramework napi 桥, 见各类注释)。
  */
 object JsCryptoProviderNative : JsCryptoProvider, JsEncodeUtilsDefaults {
 

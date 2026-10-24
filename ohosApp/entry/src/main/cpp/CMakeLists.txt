@@ -27,9 +27,8 @@ find_package(compose REQUIRED CONFIG)
 
 set(LEGADO_SHARED_LIB_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../../libs/${LEGADO_ABI_DIR}/liblegado_shared.so)
 
-# mbedTLS 3.6 LTS 与 QuickJS-NG 仍由 entry 原生层提供，供 K/N cinterop 未定义符号解析。
-set(LEGADO_MBEDTLS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../data/src/cinterop/mbedtls)
-file(GLOB LEGADO_MBEDTLS_SRC ${LEGADO_MBEDTLS_DIR}/library/*.c)
+# QuickJS-NG 由 entry 原生层提供, 供 K/N cinterop 未定义符号解析。
+# (mbedTLS 已于 2026-10 移除: native 加解密改为平台委托, 鸿蒙走 cryptoFramework 桥)
 set(LEGADO_QUICKJS_NG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../modules/quickjs/src/main/cinterop/quickjs-ng)
 set(LEGADO_QUICKJS_NG_SRC
     ${LEGADO_QUICKJS_NG_DIR}/quickjs.c
@@ -40,17 +39,13 @@ set(LEGADO_QUICKJS_NG_SRC
 
 add_library(legado_napi SHARED
     legado_napi.cpp
-    ${LEGADO_MBEDTLS_SRC}
     ${LEGADO_QUICKJS_NG_SRC}
 )
 
 target_include_directories(legado_napi PRIVATE
-    ${LEGADO_MBEDTLS_DIR}/include
-    ${LEGADO_MBEDTLS_DIR}
     ${LEGADO_QUICKJS_NG_DIR}
 )
 target_compile_definitions(legado_napi PRIVATE
-    MBEDTLS_CONFIG_FILE="legado_mbedtls_config.h"
     _GNU_SOURCE
     QUICKJS_NG_BUILD
 )

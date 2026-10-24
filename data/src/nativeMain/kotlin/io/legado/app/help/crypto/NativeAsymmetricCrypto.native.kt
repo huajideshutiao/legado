@@ -1,13 +1,15 @@
 package io.legado.app.help.crypto
 
 import io.legado.app.utils.Base64Lenient
+import io.legado.app.utils.decodeHex
+import io.legado.app.utils.isHexString
 import io.legado.app.utils.toHexLower
 
 /**
  * nativeMain: 非对称加解密门面 [AsymmetricCrypto] 实现 (iOS / 鸿蒙 两端共用壳)。
  *
  * 本类只做 data/key 归一 + Base64/Hex 编码, 真实加解密下沉到 [NativeAsymmetricCryptoOps]
- * (expect object): 两端 actual 均 mbedTLS 主实现, 异常回落 Security.framework/napi。
+ * (expect object): iOS=Security.framework, 鸿蒙=cryptoFramework napi 桥 (平台委托, 无 mbedTLS)。
  *
  * 行为字节级对齐 jvmAndAndroidMain (hutool AsymmetricEncryptor/Decryptor):
  * - setPrivateKey/setPublicKey(String) → encodeToByteArray (UTF-8) 视为 DER (私钥 PKCS#8, 公钥 X.509),
@@ -17,12 +19,16 @@ import io.legado.app.utils.toHexLower
  * - encryptHex/encryptBase64 = encrypt 后 toHexLower/Base64Lenient.encodeToString (对齐 hutool HexUtil/Base64)。
  *
  * usePublicKey 语义 (对齐 jvmAndAndroid getKeyType): true→公钥, false/null→私钥。
- * RSA 四向 (公钥加密/私钥解密/私钥加密/公钥解密) 均由 mbedTLS 主实现支持 (v1.5;
- * 反向仅 v1.5, OAEP 无反向定义); 仅当回落到 iOS Security.framework 时反向不可用。
+ * RSA 仅正向 (公钥加密/私钥解密) 平台可用 (v1.5 + OAEP); 私钥加密/公钥解密反向
+ * (hutool KeyType 反向) 与 NoPadding 裸 RSA: iOS Security.framework 与鸿蒙 cryptoFramework
+ * 均无此操作 (鸿蒙 NoPadding 例外: cryptoFramework API 9+ 支持输入恰为模长字节的裸 RSA)。
  */
 class NativeAsymmetricCrypto(
-    private val algorithm: String,
+    transformation: String,
 ) : AsymmetricCrypto {
+
+    /** transformation 归一 (四端唯一解析点 commonMain [AsymCipherSpec])。 */
+    internal val spec: AsymCipherSpec = AsymCipherSpec.parse(transformation)
 
     private var privateKeyBytes: ByteArray? = null
     private var publicKeyBytes: ByteArray? = null
@@ -49,7 +55,7 @@ class NativeAsymmetricCrypto(
 
     override fun decrypt(data: Any, usePublicKey: Boolean?): ByteArray =
         NativeAsymmetricCryptoOps.decrypt(
-            algorithm, usePublicKey ?: true, privateKeyBytes, publicKeyBytes, decodeInput(data)
+            spec, usePublicKey ?: true, privateKeyBytes, publicKeyBytes, decodeInput(data)
         )
 
     override fun decryptStr(data: Any, usePublicKey: Boolean?): String =
@@ -57,7 +63,7 @@ class NativeAsymmetricCrypto(
 
     override fun encrypt(data: Any, usePublicKey: Boolean?): ByteArray =
         NativeAsymmetricCryptoOps.encrypt(
-            algorithm, usePublicKey ?: true, privateKeyBytes, publicKeyBytes, encodeInput(data)
+            spec, usePublicKey ?: true, privateKeyBytes, publicKeyBytes, encodeInput(data)
         )
 
     override fun encryptHex(data: Any, usePublicKey: Boolean?): String =
@@ -76,32 +82,36 @@ class NativeAsymmetricCrypto(
     /** decrypt 入参: ByteArray 直传, String → Hex 优先否则 Base64 (对齐 hutool SecureUtil.decode)。 */
     private fun decodeInput(data: Any): ByteArray = when (data) {
         is ByteArray -> data
-        is String -> if (hexRegex.matches(data)) decodeHex(data) else Base64Lenient.decode(data)
+        is String -> if (data.isHexString()) data.decodeHex() else Base64Lenient.decode(data)
         else -> throw IllegalArgumentException("AsymmetricCrypto.decrypt: unsupported data type ${data::class}")
     }
+}
 
-    private fun decodeHex(hex: String): ByteArray {
-        require(hex.length % 2 == 0) { "invalid hex length: ${hex.length}" }
-        return ByteArray(hex.length / 2) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+/** 多块输出顺序拼接 (iOS/鸿蒙非对称 actual 共用, 对齐 hutool 分块拼接语义)。 */
+internal fun concatBlocks(parts: List<ByteArray>): ByteArray {
+    if (parts.size == 1) return parts[0]
+    val out = ByteArray(parts.sumOf { it.size })
+    var off = 0
+    for (p in parts) {
+        p.copyInto(out, off)
+        off += p.size
     }
-
-    companion object {
-        private val hexRegex = Regex("^[0-9a-fA-F]+$")
-    }
+    return out
 }
 
 /**
  * native 端非对称加解密真实实现下沉点 (expect object)。
  *
- * 两端 actual 均为 mbedTLS 主实现 (MbedTlsRsa: v1.5/OAEP + 私钥加密/公钥解密反向 + hutool 同款分块),
- * 任意异常回落既有实现: iOS Security.framework (仅公钥加密/私钥解密单向), 鸿蒙 cryptoFramework napi。
+ * 两端 actual: iOS Security.framework SecKey*, 鸿蒙 cryptoFramework 桥 (均带 hutool 同款分块)。
  *
  * usePublicKey: true→用公钥, false/null→用私钥 (对齐 jvmAndAndroid KeyType)。
- * privateKey/publicKey: DER 字节 (私钥 PKCS#8, 公钥 X.509); mbedTLS 主实现另兼容 PKCS#1/PEM。
+ * privateKey/publicKey: DER 或 PEM 字节, 经 [RsaDerKeys] 归一为各平台要求格式
+ * (iOS PKCS#1, 鸿蒙 PKCS#8/SPKI)。
  */
 expect object NativeAsymmetricCryptoOps {
+    /** [spec] 已由 [AsymCipherSpec.parse] 归一, actual 不再解析 transformation 字符串。 */
     fun encrypt(
-        algorithm: String,
+        spec: AsymCipherSpec,
         usePublicKey: Boolean,
         privateKey: ByteArray?,
         publicKey: ByteArray?,
@@ -109,7 +119,7 @@ expect object NativeAsymmetricCryptoOps {
     ): ByteArray
 
     fun decrypt(
-        algorithm: String,
+        spec: AsymCipherSpec,
         usePublicKey: Boolean,
         privateKey: ByteArray?,
         publicKey: ByteArray?,
