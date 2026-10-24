@@ -60,7 +60,6 @@ slf4jNop = "2.0.18"
 core = "1.18.0"
 appcompat = "1.7.1"
 activity = "1.13.0"
-fragment = "1.8.9"
 lifecycle = "2.10.0"
 media = "1.8.0"
 media3 = "1.10.1"
@@ -193,7 +192,6 @@ slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4jNop" }
 core-ktx = { module = "androidx.core:core-ktx", version.ref = "core" }
 appcompat-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
 vectordrawable-animated = { module = "androidx.vectordrawable:vectordrawable-animated", version = "1.1.0" }
-fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "fragment" }
 lifecycle-service = { module = "androidx.lifecycle:lifecycle-service", version.ref = "lifecycle" }
 media-media = { module = "androidx.media:media", version.ref = "media" }
 media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }

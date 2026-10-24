@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * legado:// deep link 导入类型 (对照 app 端 `FileAssociationFragment.handleOnLineImport`
+ * legado:// deep link 导入类型 (对照 app 端 `FileAssociationImport.handleOnLineImport`
  * 的 `uri.path` 分支, 一一对应)。
  */
 enum class DeepLinkImportType {
@@ -61,7 +61,7 @@ data class DeepLinkImportRequest(
  * # 背景
  *
  * app 端一键导入 (书源/替换规则/主题等) 走 AndroidManifest 的 AssociationActivity
- * intent-filter (scheme legado/yuedu) → `FileAssociationFragment.handleOnLineImport`,
+ * intent-filter (scheme legado/yuedu) → `FileAssociationImport.handleOnLineImport`,
  * 按 `uri.path` 分发到各 ImportXxxDialog。本类把该分发语义原样下沉 commonMain,
  * 各端 (desktop 启动参数 / iOS onOpenURL / 鸿蒙 Want.uri) 只做"拿到 URL → 调 [parse]"。
  *
@@ -74,7 +74,7 @@ data class DeepLinkImportRequest(
  *
  * # 与 app 端语义对照
  *
- * - scheme 精确匹配 "legado"/"yuedu" (FileAssociationFragment:98 的相等判断);
+ * - scheme 精确匹配 "legado"/"yuedu" (FileAssociationImport:98 的相等判断);
  * - `src` 取查询串第一个匹配值, percent 解码 + '+'→空格 (Android
  *   `Uri.getQueryParameter` 的 UriCodec.decode(convertPlus=true) 行为);
  * - `#` 后内容按 fragment 截掉 (Android Uri 同);

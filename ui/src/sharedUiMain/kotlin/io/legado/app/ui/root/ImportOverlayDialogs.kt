@@ -25,7 +25,7 @@ import org.jetbrains.compose.resources.stringResource
  */
 
 // 通用导入 Overlay: 6 个 Import 对话框共用 (key="*Import:<DeepLinkImportType.name>", payload=IntentData key)
-// 由 LegadoApp DialogOverlayContent 按类型分发; 调用方 (app 端 FileAssociationFragment / 其他端深链) 用
+// 由 LegadoApp DialogOverlayContent 按类型分发; 调用方 (app 端 FileAssociationImport / 其他端深链) 用
 // AppOverlay.Dialog(key = "*Import:" + type.name, payload = IntentData.put(sourceText)) 弹窗。
 @Composable
 internal fun ImportSourceOverlayContent(

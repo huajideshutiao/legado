@@ -9,7 +9,6 @@ import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import androidx.appcompat.app.AppCompatActivity
 import androidx.documentfile.provider.DocumentFile
-import androidx.fragment.app.Fragment
 import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
@@ -94,41 +93,6 @@ fun AppCompatActivity.readUri(
         if (e is SecurityException) {
             throw e
         }
-    }
-}
-
-/**
- * 读取URI
- */
-@SuppressLint("Recycle") // openInputStream 由下方 .use 关闭, lint 追踪不到回调内传递的流
-fun Fragment.readUri(uri: Uri?, success: (fileDoc: FileDoc, inputStream: InputStream) -> Unit) {
-    uri ?: return
-    try {
-        if (uri.isContentScheme()) {
-            val doc = DocumentFile.fromSingleUri(requireContext(), uri)
-            doc ?: throw NoStackTraceException("未获取到文件")
-            val fileDoc = FileDoc.fromDocumentFile(doc)
-            requireContext().contentResolver.openInputStream(uri)!!.use { inputStream ->
-                success.invoke(fileDoc, inputStream)
-            }
-        } else {
-            PermissionsCompat.Builder()
-                .addPermissions(*Permissions.Group.STORAGE)
-                .rationale(androidAppString("get_storage_per"))
-                .onGranted {
-                    RealPathUtil.getPath(requireContext(), uri)?.let { path ->
-                        val file = File(path)
-                        val fileDoc = FileDoc.fromFile(file)
-                        FileInputStream(file).use { inputStream ->
-                            success.invoke(fileDoc, inputStream)
-                        }
-                    }
-                }
-                .request()
-        }
-    } catch (e: Exception) {
-        e.printOnDebug()
-        AppLog.put("读取Uri出错\n$uri\n$e", e, true)
     }
 }
 

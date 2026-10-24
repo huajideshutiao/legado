@@ -21,7 +21,7 @@ import io.legado.app.utils.printOnDebug
  * 文件关联导入 (txt/epub/zip/json 书源文件等)。
  *
  * 深链 (legado:// / yuedu://) 已统一走 shared [LegadoDeepLinkHandler] (见
- * [FileAssociationFragment] onCreate 与 MainActivity.handleExternalIntent), 本类不再承担
+ * [FileAssociationImport] onCreate 与 MainActivity.handleExternalIntent), 本类不再承担
  * 在线导入/下载嗅探; 原 `getBytes`/`importReadConfig`/`determineType` 已删除, 其逻辑由
  * commonMain [SchemeImportOps] 承担 (deep link 宿主统一走共享实现)。
  */

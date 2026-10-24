@@ -169,7 +169,7 @@ internal fun WebViewScreen(
     }
 
     // 原 WebViewUtil.shouldOverrideUrl: http/https 放行 WebView 自己加载;
-    // legado/yuedu → 内置导入 (原 FileAssociationFragment → shared LegadoDeepLinkHandler);
+    // legado/yuedu → 内置导入 (原 FileAssociationImport → shared LegadoDeepLinkHandler);
     // 其他 scheme → 弹确认后交系统浏览器, 并拦截本次加载。回调在 WebView 线程同步调用,
     // 弹窗状态经 scope.launch 切回主线程设置。
     fun interceptUrl(url: String): Boolean {

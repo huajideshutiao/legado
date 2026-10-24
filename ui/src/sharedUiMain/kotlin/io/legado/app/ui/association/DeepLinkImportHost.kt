@@ -99,7 +99,7 @@ private suspend fun runSchemeImport(
 
 /**
  * legado:// deep link 导入宿主 (Android/iOS/鸿蒙/desktop 共用, 挂载点见各端 UI 顶层;
- * 语义源头是 app 端 AssociationActivity + FileAssociationFragment.handleOnLineImport)。
+ * 语义源头是 app 端 AssociationActivity + FileAssociationImport.handleOnLineImport)。
  *
  * 链路: [LegadoDeepLinkHandler.pending] 非 null → 按类型分流:
  * - 直通四型 → [runSchemeImport] (加载中显示共享 [WaitDialog], 结果 toast);

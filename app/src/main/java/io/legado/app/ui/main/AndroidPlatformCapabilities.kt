@@ -23,9 +23,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.core.net.toUri
-import androidx.fragment.app.commit
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.ViewModelProvider
 import io.legado.app.App
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
@@ -75,6 +74,7 @@ import io.legado.app.model.fileBook.importFromArchive
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.WebService
 import io.legado.app.service.defaultTtsEngineConfig
+import io.legado.app.ui.association.FileAssociationFlows
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.import.ImportBookDirHost
 import io.legado.app.ui.book.import.ImportDirRef
@@ -599,13 +599,9 @@ class AndroidPlatformCapabilities(
     }
 
     override fun openImportFile(filePath: String) {
-        val uri = filePath.toUri()
-        activity.supportFragmentManager.commit {
-            add(
-                io.legado.app.ui.association.FileAssociationFragment(uri),
-                "FileAssociationFragment",
-            )
-        }
+        // 多次导入可并存 (对照原版每次 add 新事务), 流程存进主界面 ViewModelStore
+        // 跨界面重建存活, 各自完成后自移除
+        FileAssociationFlows.of(activity).start(activity, filePath.toUri(), isShellHost = false)
     }
 
     // 对照 ImportBookActivity.onScanFolder / scanFolder

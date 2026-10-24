@@ -95,6 +95,7 @@ import io.legado.app.ui.book.read.refreshReaderImage
 import io.legado.app.ui.book.source.SourceUiEventBridgeHost
 import io.legado.app.ui.book.video.AndroidVideoPlayPlatformProvider
 import io.legado.app.ui.book.video.VideoPlayPlatformProviders
+import io.legado.app.ui.association.FileAssociationFlows
 import io.legado.app.ui.browser.AndroidWebView
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.compose.dialogs.alert
@@ -164,7 +165,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     var pendingBookTreeUriCallback: ((String?) -> Unit)? = null
 
     /** 图片保存目录选择 (对照原版 selectImageDir.launch: SAF 选目录 → 写 ACache imagePathKey)。 */
-    private val selectImageDir = registerHandleFile { result ->
+    private val selectImageDir = registerHandleFile("main.selectImageDir") { result ->
         val uri = result.uri
         if (uri == null) {
             pendingSaveImageSrc = null
@@ -207,7 +208,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     private lateinit var services: AndroidPlatformServices
 
     /** 导入书籍: SAF 选根目录 (对照 ImportBookActivity.selectFolder: 写 pref 后重建 rootDoc 并读目录)。 */
-    private val importSelectFolder = registerHandleFile { result ->
+    private val importSelectFolder = registerHandleFile("main.importSelectFolder") { result ->
         if (result.uri != null) {
             AppConfig.importBookPath = result.uri.toString()
             // 导入根目录下的文件按本地书读入, 登记为书籍用途
@@ -221,7 +222,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     fun launchImportFolderPicker() = importSelectFolder.launch()
 
     /** 其它设置: SAF 选书籍目录 (对照 OtherConfigHost.localBookTreeSelect, DIR_SYS)。 */
-    private val bookTreeUriSelect = registerHandleFile { result ->
+    private val bookTreeUriSelect = registerHandleFile("main.bookTreeUriSelect") { result ->
         result.uri?.let { AndroidDirAuthorizations.remember(it.toString(), DirUsage.BookTree) }
         pendingBookTreeUriCallback?.invoke(result.uri?.toString())
         pendingBookTreeUriCallback = null
@@ -279,6 +280,8 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         initializePlatform()
+        // 界面重建: 存活的文件关联导入流程重挂到新实例继续 (流程状态在 ViewModelStore)
+        FileAssociationFlows.of(this).reattach(this)
         super.onCreate(savedInstanceState)
     }
 

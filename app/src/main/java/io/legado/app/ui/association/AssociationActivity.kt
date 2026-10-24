@@ -8,7 +8,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.net.toUri
-import androidx.fragment.app.commit
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.Theme
 import io.legado.app.help.LifecycleHelp
@@ -56,6 +55,9 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
 
     /** 本壳注册的 capabilities 实例, onDestroy 身份校验用。 */
     private var registeredCapabilities: PlatformCapabilities? = null
+
+    /** 存活的文件关联导入流程宿主 (跨界面重建存活, 壳内可能先后/并行有多条, 各自完成后自移除)。 */
+    private val associationFlows by lazy { FileAssociationFlows.of(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // 冷启动: 壳是首个 Activity, PlatformCapabilities 未注册 (AppDialog.get() 会 error);
@@ -150,7 +152,7 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
             // 不能直接 "pending 为空即 finish": 文件关联走嗅探/权限申请, 期间 pending 恒空;
             // 深链路径 handleIntent 已在组合前置好 pending, 第一步立即通过, 语义不变。
             // 文件关联里不产生导入请求的分支 (书籍导入/权限拒绝/不支持格式) 由
-            // FileAssociationFragment 自己 finish, 本 effect 挂着无副作用。
+            // FileAssociationImport 自己 finish, 本 effect 挂着无副作用。
             LaunchedEffect(Unit) {
                 LegadoDeepLinkHandler.pending.first { it != null }
                 LegadoDeepLinkHandler.pending.first { it == null }
@@ -183,6 +185,12 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         super.onActivityCreated(savedInstanceState)
+        // 界面重建: 流程实例已在 ViewModelStore 存活, 重挂新实例继续 (对照原版
+        // savedInstanceState 非空直接 return 的守卫, 不再按 intent 重建流程)
+        if (savedInstanceState != null) {
+            associationFlows.reattach(this)
+            return
+        }
         handleIntent(intent)
     }
 
@@ -194,7 +202,7 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
 
     private fun handleIntent(intent: Intent?) {
         // 视频直投排在文件关联(书籍)分流之前: manifest 的视频 VIEW filter 就挂在本壳上, 不抢下来
-        // 会被 FileAssociationFragment 当书嗅探并弹"不支持该格式"。判据与 MainActivity 共用
+        // 会被 FileAssociationImport 当书嗅探并弹"不支持该格式"。判据与 MainActivity 共用
         // [videoDirectTarget] (shared VideoDirect 一份); asRoot = 书架不进栈, back 即退调用方。
         intent?.videoDirectTarget()?.let { target ->
             LaunchRequestBus.dispatch(LaunchRequest.OpenRoute(AppRoute.VideoPlay(target), asRoot = true))
@@ -206,13 +214,11 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
             finish()
             return
         }
-        // 文件关联 (content/file/app): 对照原版把三条 VIEW filter 全挂透明壳, 壳内直接挂
-        // FileAssociationFragment(isShellHost = true) —— 嗅探 json/书籍由它承担, 导入对话框
+        // 文件关联 (content/file/app): 对照原版把三条 VIEW filter 全挂透明壳, 壳内直接跑
+        // FileAssociationImport(isShellHost = true) —— 嗅探 json/书籍由它承担, 导入对话框
         // 走 shared pending 链 (壳内 DeepLinkImportHost 渲染), 打开书籍经 route extra 转发主界面
         if (uri.scheme in fileAssociationSchemes) {
-            supportFragmentManager.commit {
-                add(FileAssociationFragment(uri, isShellHost = true), "FileAssociationFragment")
-            }
+            associationFlows.start(this, uri, isShellHost = true)
             return
         }
         val request = LegadoDeepLink.parse(uri.toString())

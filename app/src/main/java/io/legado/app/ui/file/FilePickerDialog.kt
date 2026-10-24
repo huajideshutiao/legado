@@ -2,8 +2,6 @@ package io.legado.app.ui.file
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Bundle
-import android.view.View
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -24,11 +22,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.fragment.app.FragmentManager
-import androidx.fragment.app.viewModels
+import androidx.appcompat.app.AppCompatActivity
+import io.legado.app.App
+import io.legado.app.base.ComposeDialog
 import io.legado.app.help.i18n.androidAppString
-import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.ui.book.import.ImportFileRow
 import io.legado.app.ui.book.import.local.ImportBook
 import io.legado.app.ui.compose.component.DialogTitleBar
@@ -36,6 +33,7 @@ import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.file.HandleFileContract.Companion.FILE
@@ -43,40 +41,39 @@ import io.legado.app.utils.FileDoc
 import io.legado.app.utils.toastOnUi
 import java.io.File
 
-class FilePickerDialog : BaseComposeDialogFragment() {
+class FilePickerDialog private constructor(
+    activity: AppCompatActivity,
+    private val callback: CallBack,
+    private val mode: Int,
+    private val title: String?,
+    initPath: String?,
+    isShowHideDir: Boolean,
+    allowExtensions: Array<String>?,
+) : ComposeDialog(activity) {
 
     companion object {
-        const val tag = "FileChooserDialog"
-
         fun show(
-            manager: FragmentManager,
+            activity: AppCompatActivity,
             mode: Int = FILE,
             title: String? = null,
             initPath: String? = null,
             isShowHideDir: Boolean = false,
             allowExtensions: Array<String>? = null,
+            callback: CallBack,
         ) {
-            FilePickerDialog().apply {
-                val bundle = Bundle()
-                bundle.putInt("mode", mode)
-                bundle.putString("title", title)
-                bundle.putBoolean("isShowHideDir", isShowHideDir)
-                bundle.putString("initPath", initPath)
-                bundle.putStringArray("allowExtensions", allowExtensions)
-                arguments = bundle
-            }.show(manager, tag)
+            FilePickerDialog(activity, callback, mode, title, initPath, isShowHideDir, allowExtensions)
+                .show()
         }
     }
 
-    private val viewModel by viewModels<FilePickerViewModel>()
+    private val viewModel = FilePickerViewModel(App.instance)
     private var items by mutableStateOf<List<ImportBook>>(emptyList())
     private var selected by mutableStateOf<Set<ImportBook>>(emptySet())
     private var path by mutableStateOf("")
     private var emptyVisible by mutableStateOf(false)
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        viewModel.filesLiveData.observe(viewLifecycleOwner) { files ->
+    init {
+        viewModel.filesLiveData.observe(this) { files ->
             emptyVisible = files.isEmpty()
             items = files.map { file ->
                 val isUpDir = file == viewModel.lastDir && file != viewModel.rootDoc
@@ -85,19 +82,20 @@ class FilePickerDialog : BaseComposeDialogFragment() {
             upPath()
         }
         viewModel.initData(
-            mode = arguments?.getInt("mode") ?: FILE,
-            initPath = arguments?.getString("initPath"),
-            isShowHideDir = arguments?.getBoolean("isShowHideDir") ?: false,
-            allowExtensions = arguments?.getStringArray("allowExtensions"),
+            mode = mode,
+            initPath = initPath,
+            isShowHideDir = isShowHideDir,
+            allowExtensions = allowExtensions,
         )
+        setComposeContent { Content() }
     }
 
     @Composable
-    override fun Content() {
+    private fun Content() {
         val colors = AppTheme.colors
         Column {
             DialogTitleBar(
-                title = arguments?.getString("title") ?: if (viewModel.isSelectDir) rememberString("folder_chooser") else rememberString("file_chooser"),
+                title = title ?: if (viewModel.isSelectDir) rememberString("folder_chooser") else rememberString("file_chooser"),
                 actions = {
                     IconButton(onClick = { showCreateFolderAlert() }) {
                         Icon(
@@ -198,26 +196,26 @@ class FilePickerDialog : BaseComposeDialogFragment() {
         if (viewModel.isSelectDir) {
             viewModel.lastDir?.let {
                 setResultData(it.path)
-                dismissAllowingStateLoss()
+                dismiss()
             }
         } else {
             val file = selected.firstOrNull()?.file
             if (file == null) {
-                toastOnUi("请选择文件")
+                context.toastOnUi("请选择文件")
             } else {
                 setResultData(file.toString())
-                dismissAllowingStateLoss()
+                dismiss()
             }
         }
     }
 
     private fun showCreateFolderAlert() {
-        alert(androidAppString("create_folder")) {
+        context.alert(androidAppString("create_folder")) {
             val getText = editTextView(hint = "文件夹名", autoFocus = true)
             okButton {
                 val text = getText()
                 if (text.isBlank()) {
-                    toastOnUi("文件夹名不能为空")
+                    context.toastOnUi("文件夹名不能为空")
                 } else {
                     viewModel.createFolder(text.trim())
                 }
@@ -238,8 +236,7 @@ class FilePickerDialog : BaseComposeDialogFragment() {
 
     private fun setResultData(path: String) {
         val data = Intent().setData(Uri.fromFile(File(path)))
-        (parentFragment as? CallBack)?.onResult(data)
-        (activity as? CallBack)?.onResult(data)
+        callback.onResult(data)
     }
 
     interface CallBack {

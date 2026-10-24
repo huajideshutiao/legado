@@ -11,7 +11,7 @@ import io.legado.app.ui.association.LegadoDeepLinkHandler
  * 系统打开 legado://import/bookSource?src=... (Info.plist CFBundleURLTypes 注册, 见 project.yml)
  *   └── iOSApp.swift WindowGroup.onOpenURL { url in ... }
  *         └── 本函数 → commonMain LegadoDeepLinkHandler.handle(url)
- *               └── LegadoDeepLink.parse 解析 (对照 app 端 FileAssociationFragment.handleOnLineImport)
+ *               └── LegadoDeepLink.parse 解析 (对照 app 端 FileAssociationImport.handleOnLineImport)
  *                     └── LegadoDeepLinkHandler.pending (StateFlow) 记录待导入请求
  * ```
  *

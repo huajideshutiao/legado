@@ -287,7 +287,6 @@ dependencies {
 
     implementation(libs.core.ktx)
     implementation(libs.appcompat.appcompat)
-    implementation(libs.fragment.ktx)
 
     implementation(libs.runtime)
     implementation(libs.foundation)
