@@ -239,6 +239,15 @@ interface JsExtensionsCommon {
     }
 
     /**
+     * 生成摘要，并转为 16 进制字符串（原始字节入参）
+     *
+     * 字符串重载按 UTF-8 编码, 无法对任意二进制数据摘要求值; 本重载按原始字节摘要。
+     */
+    fun digestHex(data: ByteArray, algorithm: String): String {
+        return JsCryptoProviders.get().digestHex(data, algorithm)
+    }
+
+    /**
      * 生成摘要，并转为 Base64 字符串
      */
     fun digestBase64Str(data: String, algorithm: String): String {

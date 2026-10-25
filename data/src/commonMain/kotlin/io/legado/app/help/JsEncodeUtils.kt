@@ -34,6 +34,18 @@ expect interface JsEncodeUtils {
     fun digestHex(data: String, algorithm: String): String
 
     /**
+     * 生成摘要，并转为 16 进制字符串（原始字节入参）
+     *
+     * 字符串重载按 UTF-8 编码，无法对任意二进制数据（如密文前缀、派生素材）摘要求值；
+     * 书源的密钥派生场景需要按原始字节摘要，故提供本重载。
+     *
+     * @param data 被摘要的原始字节
+     * @param algorithm 签名算法
+     * @return 16 进制字符串
+     */
+    fun digestHex(data: ByteArray, algorithm: String): String
+
+    /**
      * 生成摘要，并转为 Base64 字符串
      *
      * @param data 被摘要数据

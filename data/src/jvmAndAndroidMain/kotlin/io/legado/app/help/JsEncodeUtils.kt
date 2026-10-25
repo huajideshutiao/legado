@@ -42,6 +42,12 @@ actual interface JsEncodeUtils {
     actual fun digestHex(data: String, algorithm: String): String
 
     /**
+     * 原始字节入参的摘要：hutool Digester 的 digestHex 有 ByteArray 重载，
+     * 与字符串重载同源（字符串重载内部即按 UTF-8 转字节）。
+     */
+    actual fun digestHex(data: ByteArray, algorithm: String): String
+
+    /**
      * 生成摘要，并转为Base64字符串
      *
      * @param data 被摘要数据
@@ -96,6 +102,10 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
     }
 
     override fun digestHex(data: String, algorithm: String): String {
+        return DigestUtil.digester(algorithm).digestHex(data)
+    }
+
+    override fun digestHex(data: ByteArray, algorithm: String): String {
         return DigestUtil.digester(algorithm).digestHex(data)
     }
 

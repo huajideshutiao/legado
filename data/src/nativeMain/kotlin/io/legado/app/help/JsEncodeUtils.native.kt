@@ -42,6 +42,8 @@ actual interface JsEncodeUtils {
 
     actual fun digestHex(data: String, algorithm: String): String
 
+    actual fun digestHex(data: ByteArray, algorithm: String): String
+
     actual fun digestBase64Str(data: String, algorithm: String): String
 
     @Suppress("FunctionName")
@@ -68,8 +70,11 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
     override fun md5Encode16(str: String): String = MD5Utils.md5Encode16(str)
 
     override fun digestHex(data: String, algorithm: String): String {
-        val bytes = data.encodeToByteArray()
-        return NativeDigestOps.digest(algorithm, bytes).toHexLower()
+        return digestHex(data.encodeToByteArray(), algorithm)
+    }
+
+    override fun digestHex(data: ByteArray, algorithm: String): String {
+        return NativeDigestOps.digest(algorithm, data).toHexLower()
     }
 
     override fun digestBase64Str(data: String, algorithm: String): String {

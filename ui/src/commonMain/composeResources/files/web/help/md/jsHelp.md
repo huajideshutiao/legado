@@ -444,6 +444,8 @@ sign.signHex(data)
 * 摘要
 ```js
 java.digestHex(data: String, algorithm: String): String
+// 原始字节入参(JS 数组)版: 字符串版按 UTF-8 编码, 无法对任意二进制数据摘要求值
+java.digestHex(data: ByteArray, algorithm: String): String
 
 java.digestBase64Str(data: String, algorithm: String): String
 ```

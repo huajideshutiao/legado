@@ -509,6 +509,11 @@ object NativeJsExtensionsBridge {
                     104 -> stringToJsValue(ctx, enc.digestBase64Str(args.getString(0), args.getString(1)))
                     105 -> stringToJsValue(ctx, enc.HMacHex(args.getString(0), args.getString(1), args.getString(2)))
                     106 -> stringToJsValue(ctx, enc.HMacBase64(args.getString(0), args.getString(1), args.getString(2)))
+                    // 107: digestHex(ByteArray, algorithm) — 原始字节摘要, 入参走 JS Array→ByteArray
+                    107 -> stringToJsValue(
+                        ctx,
+                        enc.digestHex(args.getOrNull(0).toBytesOrNull() ?: ByteArray(0), args.getString(1))
+                    )
                     else -> jsUndefined()
                 }
             }
@@ -948,7 +953,10 @@ function __createJavaObj(handle) {
     // JsCryptoProviders 摘要/HMAC 面 (100-199)
     obj.md5Encode = function(str) { return __nativeDispatch(handle, 101, [str]); };
     obj.md5Encode16 = function(str) { return __nativeDispatch(handle, 102, [str]); };
-    obj.digestHex = function(data, algorithm) { return __nativeDispatch(handle, 103, [data, algorithm]); };
+    obj.digestHex = function(data, algorithm) {
+        // 原始字节入参(JS Array)走 107 字节版, 字符串走 103
+        return __nativeDispatch(handle, (data instanceof Array) ? 107 : 103, [data, algorithm]);
+    };
     obj.digestBase64Str = function(data, algorithm) { return __nativeDispatch(handle, 104, [data, algorithm]); };
     obj.HMacHex = function(data, algorithm, key) { return __nativeDispatch(handle, 105, [data, algorithm, key]); };
     obj.HMacBase64 = function(data, algorithm, key) { return __nativeDispatch(handle, 106, [data, algorithm, key]); };
