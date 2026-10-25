@@ -6,15 +6,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import io.legado.app.constant.SourceType
 import io.legado.app.help.SourceLoginContext
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.loadSourceForLogin
 import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.source.SourceLoginDialog
 import io.legado.app.ui.book.source.SourceLoginFormState
 import io.legado.app.utils.decodeStringMapOrNull
+import kotlinx.coroutines.launch
 
 /**
  * 书源登录 Overlay 对话框 (key="sourceLogin"), 只承载表单登录。
@@ -96,6 +99,18 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
     // loginUi 非空走表单登录 (对照原版 BaseSource.showLoginDialog 的 SourceLoginDialog 分支),
     // book/chapter 作为登录 JS 上下文透传
     val formSource = source?.takeIf { !it.loginUi.isNullOrEmpty() }
+
+    // 关闭时落盘未确认的表单改动 (静默, 不执行书源登录脚本)。钩子挂在窗口层而非对话框内部:
+    // WebView 盖住对话框只算挂起 (本组合存活), 对话框节点的销毁不代表关闭。
+    // 保存走独立协程作用域: 关闭不等待写盘, 同确认按钮的写盘路径
+    val saveScope = remember { screenModelScope("书源登录保存", IoDispatcher) }
+    val saveTarget by rememberUpdatedState(formSource)
+    DisposableEffect(Unit) {
+        onDispose {
+            val target = saveTarget ?: return@onDispose
+            saveScope.launch { loginFormState.saveUnsavedChanges(target) }
+        }
+    }
     // URL 登录: 源无 loginUi 时, 源对象缺失则直接用入口 url
     val loginUrl = source?.loginUrl ?: params.sourceUrl
     val urlLogin = formSource == null && loginUrl.isNotBlank()

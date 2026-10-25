@@ -62,6 +62,8 @@ import io.legado.app.utils.toJson
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.copy
@@ -78,7 +80,7 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 书源登录表单状态 (登录数据 + loginUi 行快照)。
+ * 书源登录表单状态 (登录数据 + loginUi 行快照 + 已落盘基线)。
  *
  * 由调用方 (SourceLoginOverlayContent) 持有: 对话框被挂起 (登录 JS startBrowser 推
  * WebView 路由盖住) 再恢复时, [SourceLoginDialog] 重建但表单值不丢 —— 对照原版
@@ -93,6 +95,78 @@ class SourceLoginFormState {
 
     /** 渲染用行快照 (rebuild 时同步) */
     val rows = mutableStateListOf<RowUi>()
+
+    /** 已落盘的表单值 (rebuild 与每次成功落盘后刷新), 与当前值比较即"存在未保存改动" */
+    private var savedSnapshot: Map<String, String> = emptyMap()
+
+    /** 基线时刻的缓存原文: 关闭落盘前与当前缓存比对, 识别登录信息是否已被脚本改写 */
+    private var savedCache: Map<String, String> = emptyMap()
+
+    // 确认与关闭落盘会同时发生 (点完确认立刻关窗), 串行化避免同一份登录信息并发写入
+    private val persistMutex = Mutex()
+
+    /** 按 loginUi 行定义取出待落盘的表单值; 无登录信息行时为空 */
+    fun collectLoginData(): HashMap<String, String> {
+        val data = hashMapOf<String, String>()
+        loginUi?.forEach { rowUi ->
+            when (rowUi.type) {
+                RowUi.Type.text, RowUi.Type.password,
+                RowUi.Type.select, RowUi.Type.toggle ->
+                    loginData[rowUi.name]?.let { data[rowUi.name] = it }
+            }
+        }
+        return data
+    }
+
+    /**
+     * rebuild 完成后调用: 以当前表单值作为已落盘基线。
+     * [cacheInfo] 为 rebuild 读到的缓存原文 (可为 null = 无登录信息), 与表单值的差异
+     * 来自选项归一化 (源改了选项列表后旧值不在列表里), 不能当作缓存被改写。
+     */
+    suspend fun markSaved(cacheInfo: Map<String, String>?) {
+        persistMutex.withLock {
+            savedSnapshot = collectLoginData()
+            savedCache = cacheInfo.orEmpty()
+        }
+    }
+
+    /**
+     * 落盘登录信息 (AES 加密写缓存), 成功后刷新基线。
+     * 空表单 = 清除已存登录信息 (确认按钮的既有语义)。
+     */
+    suspend fun persistLoginInfo(source: BaseSource, data: Map<String, String>): Boolean =
+        persistMutex.withLock { write(source, data) }
+
+    /**
+     * 关闭对话框时落盘未确认的改动, 不执行书源登录脚本。
+     * 未改动的表单不写: 空值写入会让书源把未登录状态判成已登录。
+     * loginUi 解析失败 (表单不存在) 时同样不写, 否则会按空表单清掉已存登录信息。
+     * 登录信息已被源脚本改写过时不写: 脚本结果比表单值新, 回写会把脚本存下的凭证冲掉。
+     */
+    suspend fun saveUnsavedChanges(source: BaseSource) {
+        persistMutex.withLock {
+            if (loginUi == null) return@withLock
+            val data = collectLoginData()
+            if (data == savedSnapshot) return@withLock
+            if (source.getLoginInfoMap().orEmpty() != savedCache) return@withLock
+            write(source, data)
+        }
+    }
+
+    /** 调用方必须已持有 [persistMutex]: 基线与写入结果同步更新, 否则关闭落盘会重复写同一份数据 */
+    private fun write(source: BaseSource, data: Map<String, String>): Boolean {
+        val success = if (data.isEmpty()) {
+            source.removeLoginInfo()
+            true
+        } else {
+            source.putLoginInfo(GSON.toJson(data))
+        }
+        if (success) {
+            savedSnapshot = data
+            savedCache = data
+        }
+        return success
+    }
 }
 
 /**
@@ -104,6 +178,7 @@ class SourceLoginFormState {
  * - GridPackLayout(columnCount=12, rowUnitMinHeight=60dp) 承载 loginUi 各行
  * - 行类型: text/password/select/toggle/button, padding 与原 view 对齐
  * - 确认: loginData 空则 removeLoginInfo + 关闭; 否则 putLoginInfo + 执行 login() JS
+ * - 关闭 (返回/外部点击): 表单有未确认改动时静默落盘登录信息, 不执行 login() JS
  * - 按钮行: action 为 URL 走 [onOpenUrl]; 否则拼 loginJs + buttonFunctionJS 走 evalJS
  *
  * 平台特有行为通过回调注入:
@@ -156,19 +231,7 @@ fun SourceLoginDialog(
     var headerToShow by remember { mutableStateOf<String?>(null) }
     var showAppLog by remember { mutableStateOf(false) }
 
-    fun getLoginData(): HashMap<String, String> {
-        val data = hashMapOf<String, String>()
-        formState.loginUi?.forEach { rowUi ->
-            when (rowUi.type) {
-                RowUi.Type.text, RowUi.Type.password,
-                RowUi.Type.select, RowUi.Type.toggle ->
-                    loginData[rowUi.name]?.let { data[rowUi.name] = it }
-            }
-        }
-        return data
-    }
-
-    fun rebuild() {
+    suspend fun rebuild() {
         formState.loginUi = runCatching { source.loginUi() }.getOrNull()
         val info = source.getLoginInfoMap()
         loginData.clear()
@@ -189,6 +252,7 @@ fun SourceLoginDialog(
         }
         rows.clear()
         formState.loginUi?.let { rows.addAll(it) }
+        formState.markSaved(info)
     }
 
     LaunchedEffect(Unit) {
@@ -211,7 +275,7 @@ fun SourceLoginDialog(
                 runCatching {
                     runScriptWithContext {
                         source.evalJS("$loginJS\n$buttonFunctionJS") {
-                            put("result", { getLoginData() })
+                            put("result", { formState.collectLoginData() })
                             put("book", book)
                             put("chapter", chapter)
                         }
@@ -224,27 +288,29 @@ fun SourceLoginDialog(
         }
     }
 
-    fun login(loginData: HashMap<String, String>) {
+    fun login(data: Map<String, String>) {
         scope.launch(IoDispatcher) {
-            if (loginData.isEmpty()) {
-                source.removeLoginInfo()
-                withContext(mainDispatcher) { onDismiss() }
-            } else if (source.putLoginInfo(GSON.toJson(loginData))) {
-                try {
-                    runScriptWithContext { source.login() }
-                    Toasters.get().toast(successText)
-                    withContext(mainDispatcher) { onDismiss() }
-                } catch (e: Exception) {
-                    // 取消 (如对话框已关闭) 不是登录错误, 按协程约定继续抛出
-                    if (e is CancellationException) throw e
-                    AppLog.put("登录出错\n${e.message}", e)
-                    Toasters.get().toast("登录出错\n${e.message}")
-                    e.printStackTraceOnDebug()
-                }
-            } else {
-                // putLoginInfo 失败 (AES 加密/缓存写入异常, 原版静默留在对话框):
-                // 留在对话框提示错误, 不关闭, 用户可修正后重试
+            // putLoginInfo 失败 (AES 加密/缓存写入异常) 时必须留在对话框,
+            // 用户可修正后重试, 关掉就再没有提示机会
+            if (!formState.persistLoginInfo(source, data)) {
                 Toasters.get().toast("保存登录信息失败")
+                return@launch
+            }
+            // 空表单只清除已存登录信息, 没有可执行的登录脚本
+            if (data.isEmpty()) {
+                withContext(mainDispatcher) { onDismiss() }
+                return@launch
+            }
+            try {
+                runScriptWithContext { source.login() }
+                Toasters.get().toast(successText)
+                withContext(mainDispatcher) { onDismiss() }
+            } catch (e: Exception) {
+                // 取消 (如对话框已关闭) 不是登录错误, 按协程约定继续抛出
+                if (e is CancellationException) throw e
+                AppLog.put("登录出错\n${e.message}", e)
+                Toasters.get().toast("登录出错\n${e.message}")
+                e.printStackTraceOnDebug()
             }
         }
     }
@@ -253,7 +319,7 @@ fun SourceLoginDialog(
         onDismissRequest = onDismiss,
         title = titleText,
         titleActions = {
-            IconButton(onClick = { login(getLoginData()) }) {
+            IconButton(onClick = { login(formState.collectLoginData()) }) {
                 Icon(
                     painter = painterResource(Res.drawable.ic_check),
                     contentDescription = okText,

@@ -219,9 +219,10 @@ fun MainRoute(
         }
 
     // 对照 MainActivity.homePageIndex: defaultHomePage 落点, 目标 tab 隐藏时回落书架
-    val initialPage = remember(configTick, visibleTags, appConfig.defaultHomePage) {
+    val homePageIndex = remember(configTick, visibleTags, appConfig.defaultHomePage) {
         computeHomePageIndex(visibleTags, appConfig.defaultHomePage)
     }
+    val initialPage = homePageIndex
 
     // 对照 MainActivity.pageSelections: 页面跳转指令流 (index to smooth)
     val pageSelections: MutableSharedFlow<Pair<Int, Boolean>> =
@@ -302,8 +303,8 @@ fun MainRoute(
         onLeave = { navigator.unregisterRefreshHandler(entry.id) },
     )
 
-    // 主界面返回键/ESC: 对照原版 MainActivity.onActivityCreated 的 onBackPressedDispatcher 回调——
-    // 非书架 tab → 先切回书架 (不再继续); 书架 tab → 双击退出 (2000ms 窗口, 对齐原版 EXIT_INTERVAL)。
+    // 主界面返回键/ESC: 对齐底栏起始页回退规范与 onBackPressedDispatcher 回调——
+    // 非默认主页 tab → 先切回默认主页; 默认主页 tab → 双击退出 (2000ms 窗口, 对齐原版 EXIT_INTERVAL)。
     // 经 AppBackHandler 注册进统一返回链 (覆盖物→Overlay→页面拦截→出栈): 主界面是根页面,
     // 出栈无效, 故启用时恒消费。书架分组页 (BookshelfScreen2) 的返回拦截在本组合之后注册,
     // 栈序优先 (后注册先分发), 分组内返回键先回根分组, 与"书架内部 back() 优先"语义一致。
@@ -312,14 +313,13 @@ fun MainRoute(
     val backStack by navigator.backStack.collectAsState()
     val overlays by navigator.overlays.collectAsState()
     val isMainTop = backStack.lastOrNull()?.id == entry.id
-    val bookshelfIndex = visibleTags.indexOf(BottomNavTag.BOOKSHELF)
     var exitTime by remember { mutableLongStateOf(0L) }
     val platformCapabilities = LocalPlatformCapabilities.current
     // enabled 条件: 主界面是栈顶 (详情页等打开时不拦截, 返回键正常出栈) 且无 Overlay
     // (Overlay 由 LegadoApp 根部 BackHandler 先关, 对齐原版"对话框先吃返回键")
     AppBackHandler(enabled = backStack.lastOrNull()?.id == entry.id && overlays.isEmpty()) {
-        if (bookshelfIndex >= 0 && currentPage != bookshelfIndex) {
-            pageSelections.tryEmit(bookshelfIndex to true)
+        if (homePageIndex >= 0 && currentPage != homePageIndex) {
+            pageSelections.tryEmit(homePageIndex to true)
             return@AppBackHandler
         }
         // 对照原版 exitTime/EXIT_INTERVAL: 第一次提示, 2000ms 内第二次退出
