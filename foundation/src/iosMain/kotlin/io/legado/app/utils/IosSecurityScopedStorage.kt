@@ -123,6 +123,36 @@ object IosSecurityScopedStorage {
             if (started) url.stopAccessingSecurityScopedResource()
         } ?: return null
         val target = canonicalPath(path)
+        registerAuthorized(usage, target, bookmark)
+        return path
+    }
+
+    /**
+     * 登记系统投递来的 security-scoped 外部文件 (文档打开/其他应用投递): 在系统授予的
+     * 有效授权窗口内对**同一 NSURL** 起 scope → 建 minimal bookmark 并入授权表 → 停 scope
+     * (配对释放, 不挂进程寿命)。后续对该文件的全部访问 (导入读取/书籍复制/视频播放) 走
+     * 既有租约机制 ([acquireLease] 解析 bookmark 配对起停), 长期引用不再需要另行持表。
+     *
+     * 登记 [DirUsage.BookTree]: 外部文件的消费方 (文件关联分发/本地书导入) 均按该用途取租约。
+     * start 返回 false = 沙盒内路径 (无需授权) 或系统未授予: 不登记 —— 沙盒路径本就不需要,
+     * 未授予的后续按授权失败如实报错。
+     *
+     * @return 文件 POSIX 路径; 建 bookmark 失败返回 null (授权无法延续, 调用方按未授权处理)
+     */
+    fun ingestExternalFile(url: NSURL): String? {
+        val path = url.path ?: return null
+        if (!url.startAccessingSecurityScopedResource()) return null
+        val bookmark = try {
+            bookmarkString(url)
+        } finally {
+            url.stopAccessingSecurityScopedResource()
+        } ?: return null
+        registerAuthorized(DirUsage.BookTree, canonicalPath(path), bookmark)
+        return path
+    }
+
+    /** 并入授权集合: 同 (用途, 规范化路径) 去重替换, 其余条目一律保留; 登记后失效解析缓存。 */
+    private fun registerAuthorized(usage: DirUsage, target: String, bookmark: String) {
         synchronized(lock) {
             val stored = storedDirs().toMutableMap()
             val kept = stored[usage].orEmpty().filterNot { existing ->
@@ -132,7 +162,6 @@ object IosSecurityScopedStorage {
             storeDirs(stored)
             roots = emptyList()
         }
-        return path
     }
 
     /** 已登记授权 (用途 → bookmark 列表); 存储损坏时按空集合处理并留痕。 */
@@ -428,3 +457,14 @@ class IosSecurityScopeLease internal constructor(
         fun none(): IosSecurityScopeLease = IosSecurityScopeLease(null, started = false)
     }
 }
+
+
+/**
+ * Swift 侧入口 (本仓 Swift 只调顶层函数): 外部投递的 security-scoped 文件 URL 在有效授权
+ * 窗口内建 bookmark 并入既有授权表, 随即对同一 NSURL 配对停 scope; 之后该文件的导入读取、
+ * 书籍复制与播放访问一律走既有租约机制 (IosSecurityScopedStorage.acquireLease) 配对起停,
+ * 不再持有进程寿命的 URL 表。
+ */
+fun ingestIosSecurityScopedFile(url: NSURL): String? =
+    IosSecurityScopedStorage.ingestExternalFile(url)
+

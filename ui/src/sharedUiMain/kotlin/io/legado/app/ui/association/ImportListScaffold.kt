@@ -60,6 +60,10 @@ fun ImportListScaffold(
     onToggleAll: () -> Unit,
     onCancel: () -> Unit,
     onOk: () -> Unit,
+    // 确认钮可用性: 加载中/解析失败/写入进行中由调用方传入 false (禁止重复确认)
+    okEnabled: Boolean = true,
+    // 非阻断提示 (如写入失败): 列表保留, 提示显示在列表与底栏之间 (与 errorText 替代整个列表不同)
+    noticeText: String? = null,
     titleActions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
 ) {
     val colors = AppTheme.colors
@@ -107,6 +111,15 @@ fun ImportListScaffold(
                 )
             }
         }
+        noticeText?.let {
+            Text(
+                text = it,
+                color = colors.secondaryText,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = DesignTokens.spacingLg),
+            )
+        }
         Box(Modifier.padding(DesignTokens.spacingDefault)) {
             AppDialogBar {
                 // 原 app 端用 stringResource(tpl, selectCount, itemCount) 走 Formatter 填充 %1$d/%2$d,
@@ -123,7 +136,7 @@ fun ImportListScaffold(
                     color = colors.secondaryText,
                     onClick = onCancel,
                 )
-                AppTextButton(text = stringResource(Res.string.ok), onClick = onOk)
+                AppTextButton(text = stringResource(Res.string.ok), enabled = okEnabled, onClick = onOk)
             }
         }
     }

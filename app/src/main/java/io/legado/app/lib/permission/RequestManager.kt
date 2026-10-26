@@ -16,9 +16,6 @@ internal object RequestManager : OnPermissionsResultCallback {
         request?.start()
     }
 
-    private val isCurrentRequestInvalid: Boolean
-        get() = request?.let { System.currentTimeMillis() - it.requestTime > 5 * 1000L } ?: true
-
     init {
         RequestPlugins.setOnPermissionsResultCallback(this)
     }
@@ -41,9 +38,24 @@ internal object RequestManager : OnPermissionsResultCallback {
                 it.push(request)
             }
 
-            if (!it.empty() && isCurrentRequestInvalid) {
+            // 上一条请求真实回传 (granted/denied/error) 清场后才轮到下一条
+            if (!it.empty() && this.request == null) {
                 this.request = it.pop()
                 handler.post(requestRunnable)
+            }
+        }
+    }
+
+    /**
+     * 撤销一条权限请求 (主线程): 未启动的排队项移除; 已进入权限页面的保持回传占用至真实返回,
+     * 仅弃其 granted/denied/error 回调。
+     */
+    fun cancelRequest(request: Request?) {
+        if (request == null) return
+        handler.post {
+            requests?.remove(request)
+            if (this.request === request) {
+                this.request?.clear()
             }
         }
     }

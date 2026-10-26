@@ -80,7 +80,10 @@ interface ImportItemsVm {
     val defaultChecked: List<Boolean>
     fun itemLabel(index: Int): String
     fun itemState(index: Int): ImportItemState
-    fun importSelect(checked: List<Boolean>, finally: () -> Unit)
+
+    /** 确认导入: 写入成功回调 [onSuccess] (供回传完成数量), 失败回调 [onError] (错误文案);
+     *  写入运行在 VM 自身作用域, 对话框关闭不中断写入; 取消不调本方法不报结果。 */
+    fun importSelect(checked: List<Boolean>, onSuccess: () -> Unit, onError: (String) -> Unit)
     fun itemJson(index: Int): String
 
     /** CodeDialog 保存回写, 默认不支持 (对照 app 端 ImportTxtTocRuleDialog 无 Callback)。 */
@@ -110,8 +113,12 @@ fun ImportItemsDialog(
     // key 带默认勾选长度: deep link/桌面在对话框内解析, 条目是后到的
     val checked = remember(vm, vm.defaultChecked.size) { vm.defaultChecked.toMutableStateList() }
     var openIndex by remember { mutableStateOf<Int?>(null) }
-    // 入库进行中 (对照 app 端 tvOk 点击先 WaitDialog.show, importSelect 回调里 dismissSafe)
-    var importing by remember { mutableStateOf(false) }
+    // 写入进行中: 与转圈框可见分开 —— 关闭转圈 (返回键收起提示) 不中断也不解锁确认,
+    // 写入期间禁止重复确认
+    var writing by remember { mutableStateOf(false) }
+    var waitVisible by remember { mutableStateOf(false) }
+    // 写入失败提示 (列表保留供重试/取消勾选; 与解析错误 errorText 分开, 后者替代整个列表)
+    var writeError by remember { mutableStateOf<String?>(null) }
     val stateNew = stringResource(Res.string.import_state_new)
     val stateUpdate = stringResource(Res.string.import_state_update)
     val stateExisting = stringResource(Res.string.import_state_existing)
@@ -145,21 +152,34 @@ fun ImportItemsDialog(
                 onCancel = onDismiss,
                 onOk = {
                     val count = checked.count { it }
-                    importing = true
-                    vm.importSelect(checked.toList()) {
-                        importing = false
-                        onImported(count)
-                        onDismiss()
-                    }
+                    writing = true
+                    waitVisible = true
+                    vm.importSelect(
+                        checked.toList(),
+                        onSuccess = {
+                            writing = false
+                            waitVisible = false
+                            onImported(count)
+                            onDismiss()
+                        },
+                        onError = { message ->
+                            // 写入失败: 只报错误不宣布成功; 列表保留供重试
+                            writing = false
+                            waitVisible = false
+                            writeError = message
+                        },
+                    )
                 },
+                okEnabled = !loading && errorText == null && !writing,
+                noticeText = writeError,
                 titleActions = { titleActions(checked) },
             )
         }
     }
 
-    // 入库转圈 (对照 app 端 WaitDialog.show + onFinally dismissSafe); 返回键只收起提示,
-    // 不取消入库协程, 与原版 WaitDialog 未设 onCancelListener 一致
-    WaitDialog(visible = importing, onDismissRequest = { importing = false })
+    // 写入转圈 (对照原版 WaitDialog.show + dismissSafe); 返回键只收起提示,
+    // 不取消也不解锁写入协程, 与原版 WaitDialog 未设 onCancelListener 一致
+    WaitDialog(visible = waitVisible, onDismissRequest = { waitVisible = false })
 
     openIndex?.let { index ->
         CodeDialog(
@@ -450,8 +470,12 @@ class ImportBookSourceItemsVm(
         }
     }
 
-    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
-        vm.importSelect(checked, finally)
+    override fun importSelect(
+        checked: List<Boolean>,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit,
+    ) =
+        vm.importSelect(checked, onSuccess, onError)
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allSources[index])
 
@@ -484,8 +508,12 @@ class ImportReplaceRuleItemsVm(
         }
     }
 
-    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
-        vm.importSelect(checked, finally)
+    override fun importSelect(
+        checked: List<Boolean>,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit,
+    ) =
+        vm.importSelect(checked, onSuccess, onError)
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allRules[index])
 
@@ -513,8 +541,12 @@ class ImportTxtTocRuleItemsVm(
         }
     }
 
-    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
-        vm.importSelect(checked, finally)
+    override fun importSelect(
+        checked: List<Boolean>,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit,
+    ) =
+        vm.importSelect(checked, onSuccess, onError)
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allSources[index])
 }
@@ -538,8 +570,12 @@ class ImportDictRuleItemsVm(
         }
     }
 
-    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
-        vm.importSelect(checked, finally)
+    override fun importSelect(
+        checked: List<Boolean>,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit,
+    ) =
+        vm.importSelect(checked, onSuccess, onError)
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allSources[index])
 
@@ -567,8 +603,12 @@ class ImportHttpTtsItemsVm(
         }
     }
 
-    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
-        vm.importSelect(checked, finally)
+    override fun importSelect(
+        checked: List<Boolean>,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit,
+    ) =
+        vm.importSelect(checked, onSuccess, onError)
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allSources[index])
 
@@ -596,8 +636,12 @@ class ImportThemeItemsVm(
         }
     }
 
-    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
-        vm.importSelect(checked, finally)
+    override fun importSelect(
+        checked: List<Boolean>,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit,
+    ) =
+        vm.importSelect(checked, onSuccess, onError)
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allSources[index])
 }
@@ -624,8 +668,12 @@ class ImportSourceFilterRuleItemsVm(
         }
     }
 
-    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
-        vm.importSelect(checked, finally)
+    override fun importSelect(
+        checked: List<Boolean>,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit,
+    ) =
+        vm.importSelect(checked, onSuccess, onError)
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allRules[index])
 

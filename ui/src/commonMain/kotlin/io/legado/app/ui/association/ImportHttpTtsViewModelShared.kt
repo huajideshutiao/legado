@@ -6,6 +6,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.http.decompressed
 import io.legado.app.help.http.newCallResponseBody
@@ -20,6 +21,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.withContext
 
 /**
  * 导入 HttpTTS 语音源 VM 共享核心 (commonMain)。
@@ -87,27 +89,50 @@ class ImportHttpTtsViewModelShared(
     val defaultChecked = arrayListOf<Boolean>()
 
     /**
-     * 导入选中的 HttpTTS, 对应 app 端 `importSelect(finally)`。
+     * 导入选中的 HttpTTS, 写入成功返回, 失败抛异常 (确认协议的唯一写入入口, 区分成功/错误)。
      *
-     * # 实现细节保持
-     *
-     * - 遍历 [checked], 选中的项加入 selectSource 列表;
-     * - `appDb.httpTTSDao.insert(*selectSource.toTypedArray())` 批量写入;
-     * - `onFinally` 回调 [finally] (与 app 端 `onFinally { finally.invoke() }` 等价)。
-     *
-     * 业务在 IO 跑, 回调在 mainDispatcher 跑 (与 BaseViewModel.execute 默认值一致)。
-     *
-     * @param finally 导入完成回调 (无论成功/失败均触发, 与 app 端 onFinally 一致)
+     * 遍历 [checked], 选中的项加入 selectSource 后
+     * `appDb.httpTTSDao.insert(*selectSource.toTypedArray())` 批量写入。
+     * 业务在 IO 上执行。
+     */
+    suspend fun importSelectAwait(checked: List<Boolean>) = withContext(IoDispatcher) {
+        val selectSource = arrayListOf<HttpTTS>()
+        checked.forEachIndexed { index, b ->
+            if (b) {
+                selectSource.add(allSources[index])
+            }
+        }
+        appDb.httpTTSDao.insert(*selectSource.toTypedArray())
+    }
+
+    /**
+     * 回调式导入入口 (与原版 `importSelect(finally)` 同形状): 成功/失败都回调 [finally],
+     * 失败仅落日志, 结果由 [importSelectAwait] 的返回/异常区分。
+     */
+    /**
+     * 确认导入 (对话框协议): 写入运行在 VM 自身作用域, 对话框关闭不中断写入;
+     * 成功回调 [onSuccess], 失败回调 [onError] (用户可见文案), 取消不入本协议。
+     */
+    fun importSelect(checked: List<Boolean>, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        Coroutine.async(scope = scope) {
+            importSelectAwait(checked)
+        }.onSuccess {
+            onSuccess()
+        }.onError {
+            AppLog.put("导入语音源失败\n${it.message}", it)
+            onError(it.message ?: it.toString())
+        }
+    }
+
+    /**
+     * 回调式导入入口 (与原版 `importSelect(finally)` 同形状, 规则订阅自动更新钩子用):
+     * 成功/失败都回调 [finally], 失败仅落日志, 结果由 [importSelectAwait] 的返回/异常区分。
      */
     fun importSelect(checked: List<Boolean>, finally: () -> Unit) {
         Coroutine.async(scope = scope) {
-            val selectSource = arrayListOf<HttpTTS>()
-            checked.forEachIndexed { index, b ->
-                if (b) {
-                    selectSource.add(allSources[index])
-                }
-            }
-            appDb.httpTTSDao.insert(*selectSource.toTypedArray())
+            importSelectAwait(checked)
+        }.onError {
+            AppLog.put("导入语音源失败\n${it.message}", it)
         }.onFinally {
             finally.invoke()
         }

@@ -44,6 +44,7 @@ import io.legado.app.ui.book.manage.BookshelfManageUiEvent
 import io.legado.app.ui.book.manage.BookshelfManageViewModelShared
 import io.legado.app.ui.book.manage.DeleteConfirmDialog
 import io.legado.app.ui.book.manage.SourcePickerDialog
+import io.legado.app.ui.bookshelf.CoverSlotRatio
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.dragSelectable
@@ -360,7 +361,7 @@ fun BookshelfManageRoute(
                 }
             },
         ),
-        coverSlot = { book, modifier -> bookCoverSlot(book, modifier, false, 0) },
+        coverSlot = { book, modifier -> bookCoverSlot(book, modifier, CoverSlotRatio.NOVEL, 0) },
         downloadRunning = downloadRunning,
         selectedCount = selectedCount,
         checkedMap = checkedMap,

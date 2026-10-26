@@ -29,7 +29,6 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.help.writeTextAtomically
 import io.legado.app.model.Debug
 import io.legado.app.model.fileBook.FileBook
-import io.legado.app.ui.FileAssociationDispatch
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.info.WebFileImportShared
 import io.legado.app.ui.book.read.config.FontItem
@@ -74,12 +73,14 @@ import io.legado.desktop.help.webview.DesktopWebViewEngines
 import io.legado.desktop.help.webview.WebViewWindowHandle
 import io.legado.desktop.help.webview.WebViewWindowRequest
 import io.legado.desktop.model.fileBook.DesktopImportBook
+import io.legado.desktop.offerAssociationFiles
 import io.legado.desktop.model.fileBook.DesktopImportFile
 import io.legado.desktop.ui.DesktopPlatformCapabilities.saveLog
 import io.legado.desktop.ui.component.FileDialogs
 import io.legado.desktop.ui.tray.DesktopMediaTray
 import io.legado.desktop.ui.tray.ExportTrayBinding
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -704,7 +705,8 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
             val dir = effectiveBookSaveDir()
             val path = dir?.let { File(it, fileName) }
             if (path != null && path.isFile) {
-                FileAssociationDispatch.dispatch(path.absolutePath)
+                // 交主窗口内的文件关联分发队列 (窗口操作寿命, 与冷启动/拖放同一条链)
+                offerAssociationFiles(listOf(path.absolutePath))
                 return@launch
             }
             withContext(Dispatchers.Main) {
@@ -1189,9 +1191,29 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         openImportFile(file.absolutePath)
     }
 
-    // 完整分发链 (压缩包/JSON 一键导入/书籍文件) 见 FileAssociationDispatch, 四端共用
+    // 完整分发链 (压缩包/JSON 一键导入/书籍文件/未知文件确认) 见 FileAssociationDispatch, 四端共用。
+    // 交主窗口内的文件关联分发队列 (窗口操作寿命), 不在平台单例作用域里起文件任务
     override fun openImportFile(filePath: String) {
-        scope.launch { FileAssociationDispatch.dispatch(filePath) }
+        offerAssociationFiles(listOf(filePath))
+    }
+
+    /**
+     * 未知文件导入确认 (经 [DesktopDialogHost] 弹在主窗口, 与其余命令式对话框同一出口):
+     * 确认返回 true 按书籍文件尝试导入, 取消/关闭返回 false。
+     */
+    internal suspend fun confirmUnknownFileImport(fileName: String): Boolean {
+        val done = CompletableDeferred<Boolean>()
+        DesktopDialogs.show(
+            DesktopDialogRequest.Confirm(
+                title = syncGetString("draw"),
+                message = "无法识别的文件: $fileName\n是否按书籍文件尝试导入？",
+                okText = syncGetString("ok"),
+                noText = syncGetString("cancel"),
+                onOk = { done.complete(true) },
+                onNo = { done.complete(false) },
+            )
+        )
+        return done.await()
     }
 
     /**

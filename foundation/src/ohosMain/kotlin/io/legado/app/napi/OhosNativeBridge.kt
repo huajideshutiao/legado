@@ -1261,12 +1261,11 @@ object OhosNativeBridge {
      *   - confirm: `{"title":"...","message":"...","confirmText":"...","cancelText":"..."}`
      *   - form: `{"title":"...","fields":[{"key","label","initial?","hint?","numeric?"}],
      *     "actions":[{"key","text"}],"cancelText?"}`
-     * @param timeoutMs 超时毫秒 (默认 60s: 用户可能长时间思考; 对齐 filePicker/permission 的交互超时。
-     *   form 形态要逐字段打字, 由调用方传更长值)
      * @return ArkTS 返回的结果 JSON (`{ok,index}` / `{ok,confirmed}` / `{ok,action,values}` /
-     *   `{ok,cancelled}` / `{ok:false,error}`); 桥未就绪或超时返回 null (调用方按"未选择"降级)
+     *   `{ok,cancelled}` / `{ok:false,error}`); 桥未就绪返回 null (调用方按"未选择"降级)。
+     *   等用户作答不设任意硬超时 (与文件选择同口径): 用户停留多久都等真实回传
      */
-    fun invokeDialogSync(action: String, payloadJson: String, timeoutMs: Long = 60000L): String? {
+    fun invokeDialogSync(action: String, payloadJson: String): String? {
         val requestId = synchronized(lock) { ++dialogRequestCounter }
         val deferred = CompletableDeferred<String>()
         synchronized(lock) { dialogPendingRequests[requestId] = deferred }
@@ -1288,14 +1287,12 @@ object OhosNativeBridge {
             return null
         }
 
-        // 阻塞等待 ArkTS 回调 (业务线程阻塞, ArkTS 主线程回调 complete, 不同线程无死锁)
-        val result = runBlocking { withTimeoutOrNull(timeoutMs) { deferred.await() } }
+        // 阻塞等待 ArkTS 回调 (业务线程阻塞, ArkTS 主线程回调 complete, 不同线程无死锁);
+        // 用户停留多久都等真实回传, 不设任意硬超时
+        val result = runBlocking { deferred.await() }
         synchronized(lock) { dialogPendingRequests.remove(requestId) }
         return result
     }
-
-    /**
-     * dialog 结果回调 (由 [io.legado.app.napi.OhosPlatformEventChannel] 的 "dialogResult" 事件调用)。
      * ArkTS SysDialogBridgeHandler 弹出系统对话框拿到用户选择后, 经 legado.platformEvent 回送结果
      * JSON, 唤醒 [invokeDialogSync] 中阻塞的 CompletableDeferred。
      *
@@ -1362,10 +1359,9 @@ object OhosNativeBridge {
      *
      * @param action 操作类型: "pickDocuments" / "pickDocumentContent"
      * @param payloadJson 操作参数 JSON (由调用方序列化, 含 fileSuffixes/allowsMultiple 或 uri)
-     * @param timeoutMs 超时毫秒 (默认 60s, 用户选文件可能耗时较长)
-     * @return ArkTS 返回的结果 JSON; tsfn 未注册或超时返回 null (调用方降级处理)
+     * @return ArkTS 返回的结果 JSON; tsfn 未注册或调用失败返回 null (调用方降级处理)
      */
-    fun invokeFilePickerSync(action: String, payloadJson: String, timeoutMs: Long = 60000L): String? {
+    fun invokeFilePickerSync(action: String, payloadJson: String): String? {
         val requestId = synchronized(lock) { ++filePickerRequestCounter }
         val deferred = CompletableDeferred<String>()
         synchronized(lock) { filePickerPendingRequests[requestId] = deferred }
@@ -1385,8 +1381,10 @@ object OhosNativeBridge {
             return null
         }
 
-        // 阻塞等待 ArkTS 回调 (JS 引擎线程阻塞, ArkTS 主线程回调 complete, 不同线程无死锁)
-        val result = runBlocking { withTimeoutOrNull(timeoutMs) { deferred.await() } }
+        // 阻塞等待 ArkTS 回调 (JS 引擎线程阻塞, ArkTS 主线程回调 complete, 不同线程无死锁)。
+        // 等待用户交互的选择接口不设硬超时: 选择完成/用户取消/真实失败都经回调结束等待,
+        // 固定 60 秒会在用户慢慢挑选/首次授权弹窗停留时把能成功的选择掐死
+        val result = runBlocking { deferred.await() }
         synchronized(lock) { filePickerPendingRequests.remove(requestId) }
         return result
     }

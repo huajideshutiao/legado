@@ -16,6 +16,7 @@ import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
 import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
@@ -74,7 +75,10 @@ import io.legado.app.utils.setNavigationBarColorAuto
 import io.legado.app.utils.share
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.writeDocumentBytesAtomically
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -85,7 +89,8 @@ import java.io.FileOutputStream
  * 经 PlatformServiceProviders.register 注册后供 shared LegadoApp 使用。
  *
  * 构造时持有 MainActivity 引用，用于 SAF launcher / 权限请求 / 窗口控制等需 Activity 上下文的能力。
- * SAF launcher 由 MainActivity 在 STARTED 前注册后传入, files 经 runBlocking 阻塞等待回调。
+ * SAF launcher 由 MainActivity 在 STARTED 前注册后传入, files 的选择等待体挂宿主 Job
+ * (宿主销毁取消等待并按空结果收口, 不留孤儿阻塞线程)。
  */
 class AndroidPlatformServices(
     private val activity: MainActivity,
@@ -124,7 +129,8 @@ class AndroidPlatformServices(
 }
 
 // SAF 文件选择/保存桥接: launcher 由 MainActivity 在 STARTED 前注册传入,
-// 调用方均在 IoDispatcher 协程内, runBlocking 阻塞 IO 线程等待主线程 Activity Result 回调
+// 调用方均在 IoDispatcher 协程内阻塞等待主线程 Activity Result 回调; 等待体挂宿主 Job,
+// 宿主销毁取消等待并按空结果收口 (调用方不再继续导入), 不把 IO 改到主线程
 private class AndroidFilePickerService(
     // 选图裁剪 (processWelcomeImage) 需读窗口尺寸与 toast, 与其余能力共用 MainActivity 引用
     private val activity: MainActivity,
@@ -134,7 +140,32 @@ private class AndroidFilePickerService(
     private val openDocumentTreePicker: ActivityResultLauncherAwait<Uri?, Uri?>,
 ) : FilePickerService {
 
-    override fun pickFile(filter: FileFilter): String? = runBlocking {
+    /**
+     * 宿主存活约束的阻塞等待: 挂调用线程等选择器回传, 等待体是宿主生命周期的子任务;
+     * 宿主销毁取消等待并返回 [onHostGone] (取消不继续导入), 异常照原样抛给调用方。
+     * 主线程跳跃只在发起选择时发生, 文件 IO 仍在调用线程。
+     */
+    private fun <O> awaitOnHost(onHostGone: O, block: suspend () -> O): O {
+        val result = CompletableDeferred<O>()
+        activity.lifecycleScope.launch {
+            try {
+                result.complete(block())
+            } catch (e: CancellationException) {
+                result.complete(onHostGone)
+            } catch (e: Throwable) {
+                result.completeExceptionally(e)
+            }
+        }.invokeOnCompletion { cause ->
+            // 触发条件: 宿主销毁后作用域已取消, 协程未能起跑 (body 未执行) ——
+            // 否则 body 内部的收口已把 result 置为完成, 此处不重复
+            if (cause != null && !result.isCompleted) {
+                result.complete(onHostGone)
+            }
+        }
+        return runBlocking { result.await() }
+    }
+
+    override fun pickFile(filter: FileFilter): String? = awaitOnHost<String?>(null) {
         withContext(Dispatchers.Main) { openDocumentPicker.launch(filter.toMimeTypes()) }
             ?.toString()
             ?.takeIf { filter.matchesUri(it) }
@@ -145,7 +176,7 @@ private class AndroidFilePickerService(
      * 多选文件 (书籍/字体导入): 回传 SAF 文档地址与文件名, 不物化副本 ——
      * 书文件直接以文档地址入库 (常驻读权限在此显式落下), 字体由调用方读字节落内置目录。
      */
-    override fun pickFiles(filter: FileFilter): List<PickedFile> = runBlocking {
+    override fun pickFiles(filter: FileFilter): List<PickedFile> = awaitOnHost(emptyList()) {
         val uris = withContext(Dispatchers.Main) { openDocumentsPicker.launch(filter.toMimeTypes()) }
         uris.mapNotNull { uri ->
             // ACTION_OPEN_DOCUMENT 默认只给到进程结束的读权限, 不落常驻权限时重启后书文件读不开;
@@ -166,10 +197,10 @@ private class AndroidFilePickerService(
      * 拿它当文件路径写会失败。
      */
     override fun saveText(suggestedName: String, text: String): SavedRef? =
-        runBlocking {
+        awaitOnHost<SavedRef?>(null) {
             // CreateDocument 由系统决定保存位置, defaultDir 不支持指定
             val uri = withContext(Dispatchers.Main) { createDocumentPicker.launch(suggestedName) }
-                ?: return@runBlocking null
+                ?: return@awaitOnHost null
             // 目标所在目录允许整份就位时先写临时文档再改名, 否则直写
             check(
                 writeDocumentBytesAtomically(
@@ -183,9 +214,9 @@ private class AndroidFilePickerService(
     override fun saveFromFile(
         srcPath: String,
         suggestedName: String
-    ): SavedRef? = runBlocking {
+    ): SavedRef? = awaitOnHost<SavedRef?>(null) {
         val uri = withContext(Dispatchers.Main) { createDocumentPicker.launch(suggestedName) }
-            ?: return@runBlocking null
+            ?: return@awaitOnHost null
         val written = File(srcPath).inputStream().use {
             copyToDocumentAtomically(App.instance, uri, suggestedName, it)
         }
@@ -254,15 +285,16 @@ private class AndroidFilePickerService(
         }
     }
 
-    override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? = runBlocking {
-        // CreateDocument 选位置 → 写入 (对照 master PhotoDialog 的 SAF 保存): 目标所在目录允许整份就位
-        // 时先写临时文档再改名, 否则直写 (见 writeDocumentBytesAtomically; 单文档授权通常只能直写)
-        // 用户取消选择位置返回 null, 调用方静默; 仅写入失败返回 false
-        val uri = withContext(Dispatchers.Main) { createDocumentPicker.launch(suggestedName) }
-            ?: return@runBlocking null
-        runCatching {
-            writeDocumentBytesAtomically(App.instance, uri, suggestedName, bytes)
-        }.getOrDefault(false)
+    override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? =
+        awaitOnHost<Boolean?>(null) {
+            // CreateDocument 选位置 → 写入 (对照 master PhotoDialog 的 SAF 保存): 目标所在目录允许整份就位
+            // 时先写临时文档再改名, 否则直写 (见 writeDocumentBytesAtomically; 单文档授权通常只能直写)
+            // 用户取消选择位置返回 null, 调用方静默; 仅写入失败返回 false
+            val uri = withContext(Dispatchers.Main) { createDocumentPicker.launch(suggestedName) }
+                ?: return@awaitOnHost null
+            runCatching {
+                writeDocumentBytesAtomically(App.instance, uri, suggestedName, bytes)
+            }.getOrDefault(false)
     }
 
     /**
@@ -295,7 +327,7 @@ private class AndroidFilePickerService(
             writeDocumentBytesAtomically(App.instance, dir.toUri(), fileName, bytes)
         }.getOrDefault(false)
 
-    override fun pickDirectory(usage: DirUsage): String? = runBlocking {
+    override fun pickDirectory(usage: DirUsage): String? = awaitOnHost<String?>(null) {
         withContext(Dispatchers.Main) { openDocumentTreePicker.launch(null) }?.let { uri ->
             val modeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
                 Intent.FLAG_GRANT_WRITE_URI_PERMISSION

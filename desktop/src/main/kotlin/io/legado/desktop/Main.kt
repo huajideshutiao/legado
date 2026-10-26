@@ -843,13 +843,14 @@ private fun runDesktopApp() = application {
             notifyAppCrash(System.getProperty("legado.debug")?.toBoolean() == true)
         }
         // 文件关联分发: 队列在 main() 就可能有值 (argv 冷启动), 这里等首帧组合完成
-        // (navigator 已注册) 再消费; 解压/读文件是阻塞 IO, 切 IO 线程
+        // (navigator 已注册) 再消费; 解压/读文件是阻塞 IO, 切 IO 线程;
+        // 本 LaunchedEffect 在主窗口组合内 —— 分发任务随窗口存亡 (窗口操作寿命)
         LaunchedEffect(Unit) {
             pendingAssociationFiles.collect { queued ->
                 if (queued.isEmpty()) return@collect
                 val files = pendingAssociationFiles.getAndUpdate { emptyList() }
                 withContext(Dispatchers.IO) {
-                    files.forEach { FileAssociationDispatch.dispatch(it) }
+                    files.forEach { FileAssociationDispatch.dispatch(it, DesktopPlatformCapabilities::confirmUnknownFileImport) }
                 }
             }
         }

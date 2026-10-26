@@ -7,6 +7,7 @@ import io.legado.app.help.config.ThemeConfigData
 import io.legado.app.help.config.ThemeConfigProvider
 import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.http.decompressed
 import io.legado.app.help.http.newCallResponseBody
@@ -23,6 +24,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.withContext
 
 /**
  * 导入主题配置 VM 共享核心 (commonMain)。
@@ -87,27 +89,49 @@ class ImportThemeViewModelShared(
     val defaultChecked = arrayListOf<Boolean>()
 
     /**
-     * 导入选中的主题配置, 对应 app 端 `importSelect(finally)`。
+     * 导入选中的主题配置, 写入成功返回, 失败抛异常 (确认协议的唯一写入入口, 区分成功/错误)。
      *
-     * # 实现细节保持
-     *
-     * - 遍历 [checked], 选中的项调 `ThemeConfigProviders.get().addConfig(allSources[index])`
-     *   (替代 app 端 `ThemeConfig.addConfig(allSources[index])`, app 端 ThemeConfigProviderImpl
-     *   内部把 [ThemeConfigData] 转回 `ThemeConfig.Config` 后调原 `ThemeConfig.addConfig(newConfig)`,
-     *   保留按 themeName 去重 + save 持久化行为);
-     * - `onFinally` 回调 [finally] (与 app 端 `onFinally { finally.invoke() }` 等价)。
-     *
-     * 业务在 IO 跑, 回调在 mainDispatcher 跑 (与 BaseViewModel.execute 默认值一致)。
-     *
-     * @param finally 导入完成回调 (无论成功/失败均触发, 与 app 端 onFinally 一致)
+     * 遍历 [checked], 选中的项调 `ThemeConfigProviders.get().addConfig(allSources[index])`
+     * (替代原版 `ThemeConfig.addConfig(allSources[index])`, app 端 ThemeConfigProviderImpl
+     * 内部把 [ThemeConfigData] 转回 `ThemeConfig.Config` 后调原 `ThemeConfig.addConfig(newConfig)`,
+     * 保留按 themeName 去重 + save 持久化行为)。业务在 IO 上执行。
+     */
+    suspend fun importSelectAwait(checked: List<Boolean>) = withContext(IoDispatcher) {
+        checked.forEachIndexed { index, b ->
+            if (b) {
+                ThemeConfigProviders.get().addConfig(allSources[index])
+            }
+        }
+    }
+
+    /**
+     * 回调式导入入口 (与原版 `importSelect(finally)` 同形状): 成功/失败都回调 [finally],
+     * 失败仅落日志, 结果由 [importSelectAwait] 的返回/异常区分。
+     */
+    /**
+     * 确认导入 (对话框协议): 写入运行在 VM 自身作用域, 对话框关闭不中断写入;
+     * 成功回调 [onSuccess], 失败回调 [onError] (用户可见文案), 取消不入本协议。
+     */
+    fun importSelect(checked: List<Boolean>, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        Coroutine.async(scope = scope) {
+            importSelectAwait(checked)
+        }.onSuccess {
+            onSuccess()
+        }.onError {
+            AppLog.put("导入主题配置失败\n${it.message}", it)
+            onError(it.message ?: it.toString())
+        }
+    }
+
+    /**
+     * 回调式导入入口 (与原版 `importSelect(finally)` 同形状, 规则订阅自动更新钩子用):
+     * 成功/失败都回调 [finally], 失败仅落日志, 结果由 [importSelectAwait] 的返回/异常区分。
      */
     fun importSelect(checked: List<Boolean>, finally: () -> Unit) {
         Coroutine.async(scope = scope) {
-            checked.forEachIndexed { index, b ->
-                if (b) {
-                    ThemeConfigProviders.get().addConfig(allSources[index])
-                }
-            }
+            importSelectAwait(checked)
+        }.onError {
+            AppLog.put("导入主题配置失败\n${it.message}", it)
         }.onFinally {
             finally.invoke()
         }

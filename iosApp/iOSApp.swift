@@ -87,13 +87,16 @@ private let legadoRouteUserInfoKey = "route"
 /// 拿时间窗解"同一载荷到了两次"是兜底而不是方案。
 /// ⚠️ 未查证: 两个点是否真会重复投, 真机上以 `external URI arrived again` 日志行为准;
 ///
-/// # 为什么不做 stop 配对 security-scoped 授权
+/// # security-scoped 授权的配对释放
 ///
 /// 就地打开 (`LSSupportsOpeningDocumentsInPlace=true`) 的 file URL 指向本 App 沙盒外,
-/// 不 `startAccessingSecurityScopedResource()` 就读不到。而消费方是 Kotlin 异步队列
-/// (播放器要贯穿整个播放会话), Swift 侧没有"读完了"的回调可配对 stop ——
-/// 所以**故意不配对**: 把 URL 收进 `scopedURLs` 持有, 授权随会话有效, 进程退出自然回收。
-/// 如果反过来在 `handle` 里 start 完就 stop, 会把能播的场景做成必失败。
+/// 不 `startAccessingSecurityScopedResource()` 就读不到。授权生命周期归 Kotlin 共享层管:
+/// 本闸门把系统交付的**同一 NSURL** 交 `ingestIosSecurityScopedFile`, 它在有效授权窗口内
+/// 对该 URL 建 bookmark 并入既有授权表 (IosSecurityScopedStorage) 后随即配对 stop;
+/// 之后该文件的 JSON 读取、解压、书籍复制与播放访问一律走既有租约机制
+/// (`acquireLease` 解析 bookmark, 每次访问起停配对, 导入完成/取消即释放),
+/// 长期引用 (视频播放) 也由同一张 bookmark 表延续, 不另持进程寿命的 URL 表。
+/// 在这里 start 完就 stop 不会断授权: 授权已由 bookmark 延续。
 ///
 /// 所有入口 (onOpenURL / scene(_:openURLContexts:)) 都在主线程,
 /// 所以本闸门无需加锁。
@@ -103,7 +106,6 @@ private enum ExternalUriIngress {
     /// 真机上 “同一地址二次到达的间隔” 就是“系统到底走一条还是两条”的唯一证据。
     private static var lastKey: String?
     private static var lastAt: TimeInterval = 0
-    private static var scopedURLs: [Foundation.URL] = []
 
     /// 系统投递一条外部 URI (URL 形态: onOpenURL / scene openURLContexts, 冷启动经
     /// willConnectTo 的 connectionOptions.urlContexts)。
@@ -134,10 +136,8 @@ private enum ExternalUriIngress {
             return
         }
         if url.isFileURL {
-            // 沙盒内路径 (分享面板拷贝进 Inbox) 会返 false = 本就不需要 scope, 忽略返回值即可
-            if url.startAccessingSecurityScopedResource() {
-                scopedURLs.append(url)
-            }
+            // 沙盒内路径无需 scope, ingest 返回 nil 忽略即可 (见本枚举头部说明)
+            _ = IosSecurityScopedStorageKt.ingestIosSecurityScopedFile(url: url)
         }
         // file|content|app → LaunchRequest.ImportFile → shared 自动嗅探视频并改推播放页;
         // route: → NavigateTo; 其余 → DeepLink (见 IosPlatformServices.kt IosLaunchRequests.parse)

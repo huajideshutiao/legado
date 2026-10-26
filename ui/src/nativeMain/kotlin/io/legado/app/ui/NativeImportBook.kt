@@ -21,6 +21,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 /**
  * iOS/鸿蒙本地书条目 (对照 app 端 [io.legado.app.ui.book.import.local.ImportBook] /
@@ -281,20 +283,32 @@ object NativeImportBook {
      * - 普通书: 按文件名查库, 未入库直接返回 (与 Android `getBookByFileName?.let` 行为一致);
      *   入库后确保书文件在沙盒内 (旧数据引用外部目录时复制修正 bookUrl), 再推阅读路由。
      */
-    fun openReader(item: ImportFileItem) {
+    fun openReader(
+        item: ImportFileItem,
+        offerDispatch: (suspend () -> Unit) -> Unit,
+        onUnknownFile: suspend (String) -> Boolean,
+    ) {
         val file = (item as? NativeImportFile)?.file ?: return
         val fileName = file.name
         if (fileName.matches(AppPattern.archiveFileRegex)) {
             // 外部压缩包的解压/导入全程包在授权租约内 (deCompress 直接读原文件;
-            // 解出后的书籍文件已落沙盒, 由后续链路自行处理)
-            scope.launch {
-                try {
-                    withLocalDirAccess(file.path) { FileAssociationDispatch.dispatch(file.path) }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    AppLog.put("打开压缩包失败: ${file.path}\n${e.message}", e)
-                    Toasters.get().toast("无法打开压缩包: ${file.name}\n${e.message}")
+            // 解出后的书籍文件已落沙盒, 由后续链路自行处理); 分发投窗口操作寿命队列
+            // (随窗口存亡), 不再挂平台单例 scope
+            offerDispatch {
+                withContext(IoDispatcher) {
+                    try {
+                        withLocalDirAccess(file.path) {
+                            // 压缩包路径只把书籍文件投进分发 (非书籍不解压分发), 未知文件确认分支
+                            // 在本路径不可达, 也无真实挂起点 —— runBlocking 只是把挂起签名桥回
+                            // 授权块的非挂起回调, 租约仍覆盖整段分发
+                            runBlocking { FileAssociationDispatch.dispatch(file.path, onUnknownFile) }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        AppLog.put("打开压缩包失败: ${file.path}\n${e.message}", e)
+                        Toasters.get().toast("无法打开压缩包: ${file.name}\n${e.message}")
+                    }
                 }
             }
             return

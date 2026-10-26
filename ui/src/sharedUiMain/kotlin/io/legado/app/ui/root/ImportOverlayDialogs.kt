@@ -1,58 +1,22 @@
 package io.legado.app.ui.root
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import io.legado.app.constant.PreferKey
-import io.legado.app.help.IntentData
 import io.legado.app.help.config.PreferenceProviders
-import io.legado.app.ui.association.DeepLinkImportTarget
-import io.legado.app.ui.association.DeepLinkImportType
-import io.legado.app.ui.association.ImportTargetDialog
 import io.legado.app.ui.dialog.TextInputDialog
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.import_file_name
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 6 个 Import 对话框 + 按文件名导入编辑框的 Overlay 渲染实现。
+ * 按文件名导入编辑框的 Overlay 渲染实现。
  *
- * 对照 app 端原命令式对话框基类(已删除) 子类 (ImportBookSourceDialog 等):
- * - source 文本经 [IntentData] 侧信道传递 (可能为大段 JSON, 不直接走 payload 字符串);
- * - VM 创建/下载/解析/勾选渲染统一走 [DeepLinkImportTarget] + [ImportTargetDialog]
- *   (与 deep link 宿主、规则订阅同一条链, 不再各自内联构造 VM 与 collect success/error)。
+ * 对照 app 端原命令式对话框基类(已删除) 的 alertImportFileName:
+ * 确认后写 PreferKey.bookImportFileName。六种内容导入的对话框已统一走
+ * DeepLinkImportTarget + ImportItemsDialog 一条链 (勾选六型经 LegadoDeepLinkHandler
+ * 分发, 规则订阅走 RuleOverlayDialogs), 不再有独立的通用导入 Overlay。
  */
-
-// 通用导入 Overlay: 6 个 Import 对话框共用 (key="*Import:<DeepLinkImportType.name>", payload=IntentData key)
-// 由 LegadoApp DialogOverlayContent 按类型分发; 调用方 (app 端 FileAssociationImport / 其他端深链) 用
-// AppOverlay.Dialog(key = "*Import:" + type.name, payload = IntentData.put(sourceText)) 弹窗。
-@Composable
-internal fun ImportSourceOverlayContent(
-    overlay: AppOverlay.Dialog,
-    navigator: AppNavigator,
-    type: DeepLinkImportType,
-) {
-    // 侧信道取 source 文本 (对照 SourceLoginContext.put/take 模式)
-    val sourceText = remember(overlay.payload) { IntentData.get<String>(overlay.payload) }
-    if (sourceText.isNullOrEmpty()) {
-        LaunchedEffect(Unit) { navigator.dismissOverlay(overlay.key) }
-        return
-    }
-
-    val scope = rememberCoroutineScope()
-    val target = remember(overlay.key) { DeepLinkImportTarget.of(type, scope) }
-    if (target == null) {
-        // ADD_TO_BOOKSHELF / READ_CONFIG / READ_BOOK / UNKNOWN 不走导入对话框, 无 Overlay 分支
-        LaunchedEffect(Unit) { navigator.dismissOverlay(overlay.key) }
-        return
-    }
-    LaunchedEffect(target) { target.startImport(sourceText) }
-    ImportTargetDialog(
-        target = target,
-        onDismiss = { navigator.dismissOverlay(overlay.key) },
-    )
-}
 
 // 按文件名导入 js 编辑框 (key="import_file_name", 对照 app 端 alertImportFileName):
 // 鸿蒙无命令式文本输入宿主, 经共享 Overlay 弹 [TextInputDialog]; 确认写 PreferKey.bookImportFileName

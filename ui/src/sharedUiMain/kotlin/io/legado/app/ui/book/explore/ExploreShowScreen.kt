@@ -47,6 +47,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.model.webBook.PluginFilterSession
 import io.legado.app.ui.bookshelf.BookshelfBadge
+import io.legado.app.ui.bookshelf.CoverSlotRatio
 import io.legado.app.ui.bookshelf.KindLabels
 import io.legado.app.ui.bookshelf.ShelfExploreListItem
 import io.legado.app.ui.bookshelf.ShelfGridItem
@@ -104,7 +105,7 @@ import org.jetbrains.compose.resources.stringResource
  *
  * L3 不可下沉项 (保留 app 端, 通过 slot 注入):
  *   - 封面渲染 (原 app 端 ShelfCover)
- *     → coverSlot: @Composable (book, inBookshelf, isVideoStyle, modifier) -> Unit
+ *     → coverSlot: @Composable (book, inBookshelf, coverRatio, modifier) -> Unit
  *     (现各端统一默认 SharedBookCover)
  *   - AndroidView { LinearLayout + setUpExploreOptions(viewModel.exploreOptions) }
  *     → optionsRowSlot: @Composable () -> Unit (内部读 state.optionsVersion + 调 actions.onExploreOptionChanged)
@@ -260,7 +261,7 @@ interface ExploreShowUiActions {
  * @param videoItemSlot 视频卡 (L3: ItemExploreVideoBinding ViewBinding)
  *   - 调用方传入 (book, inBookshelf, onClick, onLongClick)
  * @param coverSlot 封面 (默认 SharedBookCover)
- *   - 调用方传入 (book, inBookshelf, isVideoStyle, modifier) 已含尺寸约束
+ *   - 调用方传入 (book, inBookshelf, coverRatio, modifier) 已含尺寸约束
  */
 @Composable
 fun ExploreShowScreen(
@@ -276,7 +277,7 @@ fun ExploreShowScreen(
     coverSlot: @Composable (
         book: SearchBook,
         inBookshelf: Boolean,
-        isVideoStyle: Boolean,
+        coverRatio: CoverSlotRatio,
         modifier: Modifier,
     ) -> Unit,
 ) {
@@ -372,7 +373,7 @@ private fun ResultArea(
     coverSlot: @Composable (
         book: SearchBook,
         inBookshelf: Boolean,
-        isVideoStyle: Boolean,
+        coverRatio: CoverSlotRatio,
         modifier: Modifier,
     ) -> Unit,
     modifier: Modifier,
@@ -478,16 +479,25 @@ private fun ResultArea(
                             { actions.onBookClick(book, true, binding.pageToken) },
                         )
 
-                        spanCount == 1 -> ShelfExploreListItem(
-                            book = book,
-                            isVideoStyle = cols == 0 && isVideo,
-                            inBookshelf = actions.isInBookshelf(book),
-                            onClick = { actions.onBookClick(book, false, binding.pageToken) },
-                            onLongClick = { actions.onBookClick(book, true, binding.pageToken) },
-                            coverSlot = { modifier ->
-                                coverSlot(book, actions.isInBookshelf(book), cols == 0 && isVideo, modifier)
-                            },
-                        )
+                        spanCount == 1 -> {
+                            val isVideoStyle = cols == 0 && isVideo
+                            ShelfExploreListItem(
+                                book = book,
+                                isVideoStyle = isVideoStyle,
+                                inBookshelf = actions.isInBookshelf(book),
+                                onClick = { actions.onBookClick(book, false, binding.pageToken) },
+                                onLongClick = { actions.onBookClick(book, true, binding.pageToken) },
+                                coverSlot = { modifier ->
+                                    coverSlot(
+                                        book,
+                                        actions.isInBookshelf(book),
+                                        // 列表条目恒固定比例 (对照原版 bindListCard isVideoStyle ? VIDEO : NOVEL)
+                                        if (isVideoStyle) CoverSlotRatio.VIDEO else CoverSlotRatio.NOVEL,
+                                        modifier,
+                                    )
+                                },
+                            )
+                        }
 
                         else -> {
                             val displayBook = remember(book, actions.isInBookshelf(book)) {
@@ -500,8 +510,8 @@ private fun ResultArea(
                                 onClick = { actions.onBookClick(book, false, binding.pageToken) },
                                 onLongClick = { actions.onBookClick(book, true, binding.pageToken) },
                                 inBookshelf = actions.isInBookshelf(book),
-                                coverSlot = { b, modifier, isVideoCover, _ ->
-                                    coverSlot(book, actions.isInBookshelf(book), isVideoCover, modifier)
+                                coverSlot = { b, modifier, coverRatio, _ ->
+                                    coverSlot(book, actions.isInBookshelf(book), coverRatio, modifier)
                                 },
                             )
                         }

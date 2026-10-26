@@ -1,7 +1,7 @@
 package io.legado.app.ui.file
 
 import android.net.Uri
-import androidx.appcompat.app.AppCompatActivity
+import io.legado.app.base.BaseComposeActivity
 import io.legado.app.lib.dialogs.SelectItem
 
 class HandleFileContract {
@@ -32,23 +32,21 @@ class HandleFileContract {
 }
 
 /**
- * 注册一个文件/目录选择入口。[key] 必须跨界面重建稳定 (同一注册点重建前后传同一 key),
- * 系统选择器的待回传结果由注册表按 key 重投, 重建后只要在 Activity 构造期重新注册,
- * 重建前拉起的系统选择器结果就不会丢。
+ * 注册一个文件/目录选择入口: 返回的入口只发起请求, 每次启动都是一个独立请求
+ * (参数/弹窗/回调归属该次), 取消经 [HandleFileLauncher.cancel]。
+ *
+ * 会话由宿主在 onCreate 内 (attach 后、STARTED 前) 随宿主建立, 系统选择器通道随之登记,
+ * 注册不再创建会话, 可在任意时机调用。
  */
-fun AppCompatActivity.registerHandleFile(
-    key: String,
+fun BaseComposeActivity.registerHandleFile(
     callback: (HandleFileContract.Result) -> Unit,
 ): HandleFileLauncher {
-    // 立即 bind (非惰性): 界面重建后调用方在构造期重新注册, 借此驱动会话重挂/弹窗恢复
-    val session = HandleFileSession.of(this).also { it.bind(this, key, callback) }
-    return HandleFileLauncher(this, session, key)
+    return HandleFileLauncher(handleFileSession, callback)
 }
 
 class HandleFileLauncher(
-    private val activity: AppCompatActivity,
     private val session: HandleFileSession,
-    private val key: String,
+    private val callback: (HandleFileContract.Result) -> Unit,
 ) {
 
     fun launch(input: (HandleFileContract.HandleFileParam.() -> Unit)? = null) {
@@ -57,6 +55,11 @@ class HandleFileLauncher(
         if (param.mode == HandleFileContract.IMAGE && param.allowExtensions.isEmpty()) {
             param.allowExtensions = arrayOf("jpg", "png", "bmp", "webp")
         }
-        session.begin(activity, key, param)
+        session.begin(this, param, callback)
+    }
+
+    /** 取消该入口发起的未完成请求: 关弹窗、弃回调; 在途系统调用的通道占用保持到真实回传。 */
+    fun cancel() {
+        session.cancel(this)
     }
 }

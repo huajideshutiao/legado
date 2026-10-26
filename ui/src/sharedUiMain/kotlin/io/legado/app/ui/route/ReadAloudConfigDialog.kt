@@ -14,7 +14,6 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.DefaultDataShared
-import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
@@ -24,13 +23,13 @@ import io.legado.app.ui.book.read.config.ReadAloudConfigScreen
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
 import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.root.AppNavigatorProviders
-import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.pushExportDispatch
+import io.legado.app.ui.association.DeepLinkImportRequest
 import io.legado.app.ui.association.DeepLinkImportType
+import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.widget.dialog.OnlineImportUrlDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
@@ -118,10 +117,7 @@ private fun ReadAloudConfigContent(
 
     // 统一 TTS 源导入入口: 文本/URL 交共享勾选导入对话框 (深链导入同一条链)
     fun showTtsImport(sourceText: String) {
-        val payload = IntentData.put(sourceText)
-        AppNavigatorProviders.get().showOverlay(
-            AppOverlay.Dialog(key = "*Import:" + DeepLinkImportType.HTTP_TTS.name, payload = payload)
-        )
+        LegadoDeepLinkHandler.enqueue(DeepLinkImportRequest(DeepLinkImportType.HTTP_TTS, sourceText))
     }
 
     val systemTtsStr = stringResource(Res.string.system_tts)

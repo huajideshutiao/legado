@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.ui.bookshelf.BookshelfBadge
+import io.legado.app.ui.bookshelf.CoverSlotRatio
 import io.legado.app.ui.bookshelf.ShelfVideoItem
 import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.compose.component.horizontalMouseWheel
@@ -104,7 +105,7 @@ fun SectionCoverRow(
     onBookLongClick: (SearchBook, String?) -> Unit,
     isVideoStyle: Boolean,
     blockId: String,
-    coverSlot: (@Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit)? = null,
+    coverSlot: (@Composable (SearchBook, Modifier, CoverSlotRatio) -> Unit)? = null,
     inBookshelf: ((SearchBook) -> Boolean)? = null,
 ) {
     val scrollState = rememberScrollState()
@@ -129,9 +130,9 @@ fun SectionCoverRow(
                         onLongClick = { onBookLongClick(book, binding.pageToken) },
                         modifier = Modifier.width(220.dp),
                         inBookshelf = inBookshelf?.invoke(book),
-                        coverSlot = { b, m, isVideoCover, tick ->
-                            coverSlot?.invoke(book, m, isVideoCover)
-                                ?: LocalBookCoverSlot.current(b, m, isVideoCover, tick)
+                        coverSlot = { b, m, coverRatio, tick ->
+                            coverSlot?.invoke(book, m, coverRatio)
+                                ?: LocalBookCoverSlot.current(b, m, coverRatio, tick)
                         },
                     )
                 }
@@ -163,7 +164,7 @@ fun SectionCoverRow(
                                     Modifier
                                         .width(120.dp)
                                         .height(160.dp),
-                                    false,
+                                    CoverSlotRatio.NOVEL,
                                 )
                             } else {
                                 LocalBookCoverSlot.current(
@@ -171,7 +172,7 @@ fun SectionCoverRow(
                                     Modifier
                                         .width(120.dp)
                                         .height(160.dp),
-                                    false,
+                                    CoverSlotRatio.NOVEL,
                                     0,
                                 )
                             }

@@ -95,11 +95,11 @@ import io.legado.app.ui.book.read.refreshReaderImage
 import io.legado.app.ui.book.source.SourceUiEventBridgeHost
 import io.legado.app.ui.book.video.AndroidVideoPlayPlatformProvider
 import io.legado.app.ui.book.video.VideoPlayPlatformProviders
-import io.legado.app.ui.association.FileAssociationFlows
 import io.legado.app.ui.browser.AndroidWebView
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.HandleFileLauncher
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.reader.ReaderDictWord
 import io.legado.app.ui.reader.ReaderImageActionMenu
@@ -160,29 +160,17 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
      *  ChangeCoverDialog 触发 [coverChangeTo] 时消费。 */
     var pendingCoverChangeCallback: ((String) -> Unit)? = null
 
-    /** SAF 选书籍目录回调暂存: 由 [AndroidPlatformCapabilities.pickBookTreeUri] 写入,
-     *  [bookTreeUriSelect] 回调时消费。 */
-    var pendingBookTreeUriCallback: ((String?) -> Unit)? = null
-
-    /** 图片保存目录选择 (对照原版 selectImageDir.launch: SAF 选目录 → 写 ACache imagePathKey)。 */
-    private val selectImageDir = registerHandleFile("main.selectImageDir") { result ->
-        val uri = result.uri
-        if (uri == null) {
-            pendingSaveImageSrc = null
-            return@registerHandleFile
-        }
+    /** 图片保存目录选择 (对照原版 selectImageDir.launch: SAF 选目录 → 写 ACache imagePathKey)。
+     * 待保存图片的来源随请求参数携带 (对照原版 value 契约), 取消只结束当次请求。 */
+    private lateinit var selectImageDir: HandleFileLauncher
+    private fun onSelectImageDir(result: HandleFileContract.Result) {
+        val uri = result.uri ?: return
         ACache.get().put(AppConst.imagePathKey, uri.toString())
         // 图片保存目录也可被本地书引用, 登记用途供书籍文件访问校验
         AndroidDirAuthorizations.remember(uri.toString(), DirUsage.ImageSave)
-        // 有待保存图片 (menu_save 先选目录后保存) 则继续保存
-        pendingSaveImageSrc?.let { src ->
-            pendingSaveImageSrc = null
-            saveImage(src, uri)
-        }
+        // 目录选定后继续待保存的图片 (来源由发起时的 value 携带)
+        result.value?.let { saveImage(it, uri) }
     }
-
-    /** 图片保存待处理 src (选择目录完成后继续执行保存)。 */
-    private var pendingSaveImageSrc: String? = null
 
     // 阅读页屏幕常亮管理 (对照原版 ReadBookEventHandler.upScreenTimeOut/screenOffTimerStart)
     private val keepScreenOnHandler by lazy { Handler(Looper.getMainLooper()) }
@@ -208,7 +196,8 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     private lateinit var services: AndroidPlatformServices
 
     /** 导入书籍: SAF 选根目录 (对照 ImportBookActivity.selectFolder: 写 pref 后重建 rootDoc 并读目录)。 */
-    private val importSelectFolder = registerHandleFile("main.importSelectFolder") { result ->
+    private lateinit var importSelectFolder: HandleFileLauncher
+    private fun onImportSelectFolder(result: HandleFileContract.Result) {
         if (result.uri != null) {
             AppConfig.importBookPath = result.uri.toString()
             // 导入根目录下的文件按本地书读入, 登记为书籍用途
@@ -220,19 +209,6 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
 
     /** 暴露给 [AndroidPlatformCapabilities] 启动 SAF 选目录。 */
     fun launchImportFolderPicker() = importSelectFolder.launch()
-
-    /** 其它设置: SAF 选书籍目录 (对照 OtherConfigHost.localBookTreeSelect, DIR_SYS)。 */
-    private val bookTreeUriSelect = registerHandleFile("main.bookTreeUriSelect") { result ->
-        result.uri?.let { AndroidDirAuthorizations.remember(it.toString(), DirUsage.BookTree) }
-        pendingBookTreeUriCallback?.invoke(result.uri?.toString())
-        pendingBookTreeUriCallback = null
-    }
-
-    /** 暴露给 [AndroidPlatformCapabilities] 启动 SAF 选书籍目录。 */
-    fun launchBookTreeUriPicker() = bookTreeUriSelect.launch {
-        title = androidAppString("select_book_folder")
-        mode = HandleFileContract.DIR_SYS
-    }
 
     /** 启动 ExportBookService 批量导出 (对照 BookshelfManageActivity.startExport)。 */
     internal fun startExportBooks(path: String, books: List<Book>) {
@@ -280,9 +256,10 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         initializePlatform()
-        // 界面重建: 存活的文件关联导入流程重挂到新实例继续 (流程状态在 ViewModelStore)
-        FileAssociationFlows.of(this).reattach(this)
         super.onCreate(savedInstanceState)
+        // 注册点保持 onCreate 内 (会话由宿主基类在 onCreate 建立, 任意时机注册均安全)
+        selectImageDir = registerHandleFile(::onSelectImageDir)
+        importSelectFolder = registerHandleFile(::onImportSelectFolder)
     }
 
     // FilePickerService 桥接: launcher 须在 Activity STARTED 前注册, 交给 AndroidFilePickerService 阻塞等待回调
@@ -322,9 +299,10 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
                 save = {
                     val path = ACache.get().getAsString(AppConst.imagePathKey)
                     if (path.isNullOrEmpty()) {
-                        pendingSaveImageSrc = src
+                        // 待保存来源随请求参数携带 (对照原版 selectImageDir.launch { value = src })
                         selectImageDir.launch {
                             mode = HandleFileContract.DIR_SYS
+                            value = src
                         }
                     } else {
                         saveImage(src, path.toUri())
@@ -639,8 +617,10 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
             }
             PlatformCapabilityProviders.get().onBackUnconsumed()
         }
-        // 冷启动经 DeepLink/文件关联 intent-filter 命中: 解析启动 Intent
-        handleExternalIntent(intent)
+        // 仅冷启动解析启动 Intent: 界面重建不重投已接纳的请求 (导航栈由 AppNavigatorSaver 恢复)
+        if (savedInstanceState == null) {
+            handleExternalIntent(intent)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

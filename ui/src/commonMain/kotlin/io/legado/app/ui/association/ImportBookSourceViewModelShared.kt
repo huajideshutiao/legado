@@ -12,6 +12,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.http.decompressed
 import io.legado.app.help.http.newCallResponseBody
@@ -29,6 +30,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -114,67 +116,91 @@ class ImportBookSourceViewModelShared(
     val updateSourceStatus = arrayListOf<Boolean>()
 
     /**
-     * 导入选中的书源, 对应 app 端 `importSelect(finally)`。
+     * 导入选中的书源, 写入成功返回, 失败抛异常 (确认协议的唯一写入入口, 区分成功/错误)。
      *
      * # 实现细节保持
      *
      * - 取 [groupName] trim, 读 AppConfigProviders 的 importKeepName/Group/Enable 三个开关;
      * - 遍历 [checked], 选中的项走 keepName/Group/Enable/customOrder 还原逻辑
-     *   (与 app 端原 `checkSources[index]?.let { ... }` 完全一致);
+     *   (与原版 `checkSources[index]?.let { ... }` 完全一致);
      * - 若 [groupName] 非空: isAddGroup=true 时追加到原分组 (linkedSetOf 去重),
-     *   isAddGroup=false 时覆盖 (与 app 端原逻辑完全一致, 不"偷懒"分离分支);
+     *   isAddGroup=false 时覆盖 (与原版原逻辑完全一致, 不"偷懒"分离分支);
      * - `appDb.bookSourceDao.insert(*selectSource.toTypedArray())` 批量写入;
-     * - `Coroutine.async { SourceHelp.adjustSortNumber() }` 异步调整排序
-     *   (内层 Coroutine.async 用 DEFAULT scope, 与 app 端原写法一致);
+     * - 默认全局排序调整 ([SourceHelp.adjustSortNumber]) 并入本操作等待完成, 不再另起
+     *   脱离请求的任务 (原版为异步发起后不等);
      * - `ContentProcessorProviders.get().upReplaceRules()` 刷新替换规则缓存
-     *   (替代 app 端 `ContentProcessor.upReplaceRules()`);
-     * - `onFinally` 回调 [finally] (与 app 端 `onFinally { finally.invoke() }` 等价)。
+     *   (替代原版 `ContentProcessor.upReplaceRules()`)。
      *
-     * 业务在 IO 跑, 回调在 mainDispatcher 跑 (与 BaseViewModel.execute 默认值一致)。
-     *
-     * @param finally 导入完成回调 (无论成功/失败均触发, 与 app 端 onFinally 一致)
+     * 业务在 IO 上执行。
+     */
+    suspend fun importSelectAwait(checked: List<Boolean>) = withContext(IoDispatcher) {
+        val group = groupName?.trim()
+        val keepName = AppConfigProviders.get().importKeepName
+        val keepGroup = AppConfigProviders.get().importKeepGroup
+        val keepEnable = AppConfigProviders.get().importKeepEnable
+        val selectSource = arrayListOf<BookSource>()
+        checked.forEachIndexed { index, b ->
+            if (b) {
+                val source = allSources[index]
+                checkSources[index]?.let {
+                    if (keepName) source.bookSourceName = it.bookSourceName
+                    if (keepGroup) source.bookSourceGroup = it.bookSourceGroup
+                    if (keepEnable) {
+                        source.enabled = it.enabled
+                        source.enabledExplore = it.enabledExplore
+                    }
+                    source.customOrder = it.customOrder
+                }
+                if (!group.isNullOrEmpty()) {
+                    source.bookSourceGroup = if (isAddGroup) {
+                        val groups = linkedSetOf<String>()
+                        source.bookSourceGroup?.splitNotBlank(AppPattern.splitGroupRegex)?.let {
+                            groups.addAll(it)
+                        }
+                        groups.add(group)
+                        groups.joinToString(",")
+                    } else {
+                        group
+                    }
+                }
+                selectSource.add(source)
+            }
+        }
+        appDb.bookSourceDao.insert(*selectSource.toTypedArray())
+        // 批量导入会 REPLACE 已有书源行: 失效封面链路的源短时缓存
+        SourceHelp.evictAll()
+        SourceHelp.adjustSortNumber()
+        ContentProcessorProviders.get().upReplaceRules()
+    }
+
+    /**
+     * 回调式导入入口 (与原版 `importSelect(finally)` 同形状): 成功/失败都回调 [finally],
+     * 失败仅落日志, 结果由 [importSelectAwait] 的返回/异常区分。
+     */
+    /**
+     * 确认导入 (对话框协议): 写入运行在 VM 自身作用域, 对话框关闭不中断写入;
+     * 成功回调 [onSuccess], 失败回调 [onError] (用户可见文案), 取消不入本协议。
+     */
+    fun importSelect(checked: List<Boolean>, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        Coroutine.async(scope = scope) {
+            importSelectAwait(checked)
+        }.onSuccess {
+            onSuccess()
+        }.onError {
+            AppLog.put("导入书源失败\n${it.message}", it)
+            onError(it.message ?: it.toString())
+        }
+    }
+
+    /**
+     * 回调式导入入口 (与原版 `importSelect(finally)` 同形状, 规则订阅自动更新钩子用):
+     * 成功/失败都回调 [finally], 失败仅落日志, 结果由 [importSelectAwait] 的返回/异常区分。
      */
     fun importSelect(checked: List<Boolean>, finally: () -> Unit) {
         Coroutine.async(scope = scope) {
-            val group = groupName?.trim()
-            val keepName = AppConfigProviders.get().importKeepName
-            val keepGroup = AppConfigProviders.get().importKeepGroup
-            val keepEnable = AppConfigProviders.get().importKeepEnable
-            val selectSource = arrayListOf<BookSource>()
-            checked.forEachIndexed { index, b ->
-                if (b) {
-                    val source = allSources[index]
-                    checkSources[index]?.let {
-                        if (keepName) source.bookSourceName = it.bookSourceName
-                        if (keepGroup) source.bookSourceGroup = it.bookSourceGroup
-                        if (keepEnable) {
-                            source.enabled = it.enabled
-                            source.enabledExplore = it.enabledExplore
-                        }
-                        source.customOrder = it.customOrder
-                    }
-                    if (!group.isNullOrEmpty()) {
-                        source.bookSourceGroup = if (isAddGroup) {
-                            val groups = linkedSetOf<String>()
-                            source.bookSourceGroup?.splitNotBlank(AppPattern.splitGroupRegex)?.let {
-                                groups.addAll(it)
-                            }
-                            groups.add(group)
-                            groups.joinToString(",")
-                        } else {
-                            group
-                        }
-                    }
-                    selectSource.add(source)
-                }
-            }
-            appDb.bookSourceDao.insert(*selectSource.toTypedArray())
-            // 批量导入会 REPLACE 已有书源行: 失效封面链路的源短时缓存
-            SourceHelp.evictAll()
-            Coroutine.async {
-                SourceHelp.adjustSortNumber()
-            }
-            ContentProcessorProviders.get().upReplaceRules()
+            importSelectAwait(checked)
+        }.onError {
+            AppLog.put("导入书源失败\n${it.message}", it)
         }.onFinally {
             finally.invoke()
         }

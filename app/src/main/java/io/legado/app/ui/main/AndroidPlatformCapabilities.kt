@@ -74,7 +74,7 @@ import io.legado.app.model.fileBook.importFromArchive
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.WebService
 import io.legado.app.service.defaultTtsEngineConfig
-import io.legado.app.ui.association.FileAssociationFlows
+import io.legado.app.ui.association.AssociationActivity
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.import.ImportBookDirHost
 import io.legado.app.ui.book.import.ImportDirRef
@@ -97,6 +97,8 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.config.MODE_EDIT_CONFIG
 import io.legado.app.ui.config.MODE_EDIT_PREFS
 import io.legado.app.ui.config.MODE_NEW_CONFIG
+import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
@@ -599,9 +601,14 @@ class AndroidPlatformCapabilities(
     }
 
     override fun openImportFile(filePath: String) {
-        // 多次导入可并存 (对照原版每次 add 新事务), 流程存进主界面 ViewModelStore
-        // 跨界面重建存活, 各自完成后自移除
-        FileAssociationFlows.of(activity).start(activity, filePath.toUri(), isShellHost = false)
+        // 文件导入交现有透明壳隔离寿命: 普通透明宿主进出 (isShellHost=false, 打开书籍普通页面跳转)
+        activity.startActivity(
+            Intent(activity, AssociationActivity::class.java).apply {
+                action = Intent.ACTION_VIEW
+                data = filePath.toUri()
+                putExtra(AssociationActivity.EXTRA_IS_SHELL_HOST, false)
+            }
+        )
     }
 
     // 对照 ImportBookActivity.onScanFolder / scanFolder
@@ -1540,10 +1547,15 @@ class AndroidPlatformCapabilities(
         LocalConfig.password = password
     }
 
-    // 对照 OtherConfigHost.localBookTreeSelect.launch DIR_SYS, 回调由 MainActivity 桥接
+    // 对照 OtherConfigHost.localBookTreeSelect.launch DIR_SYS: 每次发起绑定当次回调 ——
+    // 请求独立归属 (取消只结束当次, 结果只回当次发起方), 不再用共享单槽存回调
     override fun pickBookTreeUri(onSelected: (String?) -> Unit) {
-        activity.pendingBookTreeUriCallback = onSelected
-        activity.launchBookTreeUriPicker()
+        activity.registerHandleFile { result ->
+            onSelected(result.uri?.toString())
+        }.launch {
+            title = androidAppString("select_book_folder")
+            mode = HandleFileContract.DIR_SYS
+        }
     }
 
     // 对照 app 端 BaseReadBookActivity 的 FileDoc.fromUri(uri, true).find(book.originName):

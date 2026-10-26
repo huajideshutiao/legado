@@ -98,7 +98,7 @@ fun saveImageToAlbum(extension: String, bytes: ByteArray): Boolean {
         SaveImageToAlbumPayload(extension = extension, data = Base64.encode(bytes))
     )
     val resultJson = OhosNativeBridge.invokeFilePickerSync("saveImageToAlbum", payload)
-        ?: error("鸿蒙相册保存桥调用失败: invokeFilePickerSync 超时或 tsfn 调用异常")
+        ?: error("鸿蒙相册保存桥调用失败: 桥未就绪或 tsfn 调用异常")
     val resp = runCatching { KS_JSON.decodeFromString(FilePickerResponse.serializer(), resultJson) }.getOrNull()
         ?: error("鸿蒙相册保存响应解析失败: $resultJson")
     return resp.ok

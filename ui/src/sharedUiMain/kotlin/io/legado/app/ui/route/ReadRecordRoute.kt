@@ -19,6 +19,7 @@ import io.legado.app.ui.about.ReadRecordUiActions
 import io.legado.app.ui.about.ReadRecordUiEvent
 import io.legado.app.ui.about.SharedMonthHeatMap
 import io.legado.app.ui.bookshelf.CoverNameAuthorOverlay
+import io.legado.app.ui.bookshelf.CoverSlotRatio
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
@@ -211,7 +212,7 @@ fun ReadRecordRoute(
         // 走默认封面链, 空封面/加载失败同样落默认封面)
         coverSlot = { item, book, modifier ->
             if (book != null) {
-                bookCoverSlot(book, modifier, false, 0)
+                bookCoverSlot(book, modifier, CoverSlotRatio.NOVEL, 0)
             } else {
                 // ReadRecordShow 无作者字段, 默认封面不画作者
                 ReadRecordDefaultCover(item.bookName, null, modifier)

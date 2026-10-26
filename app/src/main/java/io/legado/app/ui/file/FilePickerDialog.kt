@@ -2,6 +2,7 @@ package io.legado.app.ui.file
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Environment
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -23,8 +24,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.appcompat.app.AppCompatActivity
-import io.legado.app.App
+import androidx.lifecycle.lifecycleScope
 import io.legado.app.base.ComposeDialog
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.ui.book.import.ImportFileRow
 import io.legado.app.ui.book.import.local.ImportBook
@@ -37,6 +39,7 @@ import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.file.HandleFileContract.Companion.FILE
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.toastOnUi
 import java.io.File
@@ -47,8 +50,6 @@ class FilePickerDialog private constructor(
     private val mode: Int,
     private val title: String?,
     initPath: String?,
-    isShowHideDir: Boolean,
-    allowExtensions: Array<String>?,
 ) : ComposeDialog(activity) {
 
     companion object {
@@ -60,34 +61,29 @@ class FilePickerDialog private constructor(
             isShowHideDir: Boolean = false,
             allowExtensions: Array<String>? = null,
             callback: CallBack,
-        ) {
-            FilePickerDialog(activity, callback, mode, title, initPath, isShowHideDir, allowExtensions)
-                .show()
+        ): FilePickerDialog {
+            return FilePickerDialog(activity, callback, mode, title, initPath).also { it.show() }
         }
     }
 
-    private val viewModel = FilePickerViewModel(App.instance)
+    private var rootDoc: File? = Environment.getExternalStorageDirectory()
+    private val subDocs = mutableListOf<File>()
+    private val lastDir: File? get() = subDocs.lastOrNull() ?: rootDoc
+    private val isSelectDir get() = mode == HandleFileContract.DIR
+
     private var items by mutableStateOf<List<ImportBook>>(emptyList())
     private var selected by mutableStateOf<Set<ImportBook>>(emptySet())
     private var path by mutableStateOf("")
     private var emptyVisible by mutableStateOf(false)
 
+    /** 建目录弹窗: 本弹窗关闭 (请求收口/宿主销毁经弹窗关闭链生效) 时一并关闭。 */
+    private var createFolderDialog: ComposeDialog? = null
+
     init {
-        viewModel.filesLiveData.observe(this) { files ->
-            emptyVisible = files.isEmpty()
-            items = files.map { file ->
-                val isUpDir = file == viewModel.lastDir && file != viewModel.rootDoc
-                ImportBook(FileDoc.fromFile(file), isUpDir = isUpDir, isFileManageMode = true)
-            }
-            upPath()
-        }
-        viewModel.initData(
-            mode = mode,
-            initPath = initPath,
-            isShowHideDir = isShowHideDir,
-            allowExtensions = allowExtensions,
-        )
+        initPath?.let { rootDoc = File(it) }
         setComposeContent { Content() }
+        setOnDismissListener { createFolderDialog?.dismiss() }
+        upFiles(rootDoc)
     }
 
     @Composable
@@ -95,7 +91,7 @@ class FilePickerDialog private constructor(
         val colors = AppTheme.colors
         Column {
             DialogTitleBar(
-                title = title ?: if (viewModel.isSelectDir) rememberString("folder_chooser") else rememberString("file_chooser"),
+                title = title ?: if (isSelectDir) rememberString("folder_chooser") else rememberString("file_chooser"),
                 actions = {
                     IconButton(onClick = { showCreateFolderAlert() }) {
                         Icon(
@@ -179,22 +175,22 @@ class FilePickerDialog private constructor(
     }
 
     private fun goBack() {
-        if (viewModel.subDocs.isNotEmpty()) {
-            viewModel.subDocs.removeAt(viewModel.subDocs.lastIndex)
-            viewModel.upFiles(viewModel.lastDir)
+        if (subDocs.isNotEmpty()) {
+            subDocs.removeAt(subDocs.lastIndex)
+            upFiles(lastDir)
         }
     }
 
     private fun nextDoc(fileDoc: FileDoc) {
         fileDoc.asFile()?.let {
-            viewModel.subDocs.add(it)
-            viewModel.upFiles(it)
+            subDocs.add(it)
+            upFiles(it)
         }
     }
 
     private fun onConfirm() {
-        if (viewModel.isSelectDir) {
-            viewModel.lastDir?.let {
+        if (isSelectDir) {
+            lastDir?.let {
                 setResultData(it.path)
                 dismiss()
             }
@@ -210,24 +206,67 @@ class FilePickerDialog private constructor(
     }
 
     private fun showCreateFolderAlert() {
-        context.alert(androidAppString("create_folder")) {
+        createFolderDialog = context.alert(androidAppString("create_folder")) {
             val getText = editTextView(hint = "文件夹名", autoFocus = true)
             okButton {
                 val text = getText()
                 if (text.isBlank()) {
                     context.toastOnUi("文件夹名不能为空")
                 } else {
-                    viewModel.createFolder(text.trim())
+                    createFolder(text.trim())
                 }
             }
             cancelButton()
         }
     }
 
+    private fun upFiles(parentFile: File?) {
+        Coroutine.async(scope = lifecycleScope) {
+            if (parentFile == null) return@async emptyList()
+            if (parentFile == rootDoc) {
+                parentFile.listFiles()?.sortedWith(
+                    compareBy({ it.isFile }, { it.name })
+                )
+            } else {
+                val list = arrayListOf(parentFile)
+                parentFile.listFiles()?.sortedWith(
+                    compareBy({ it.isFile }, { it.name })
+                )?.let {
+                    list.addAll(it)
+                }
+                list
+            }
+        }.onSuccess { files ->
+            emptyVisible = files.isNullOrEmpty()
+            items = files.orEmpty().map { file ->
+                val isUpDir = file == lastDir && file != rootDoc
+                ImportBook(FileDoc.fromFile(file), isUpDir = isUpDir, isFileManageMode = true)
+            }
+            upPath()
+        }.onError {
+            context.toastOnUi(it.localizedMessage)
+        }
+    }
+
+    private fun createFolder(name: String) {
+        Coroutine.async(scope = lifecycleScope) {
+            val dir = lastDir ?: throw NoStackTraceException("父文件夹不存在")
+            val folder = File(dir, name)
+            if (!folder.canonicalPath.contains(dir.canonicalPath)) {
+                throw NoStackTraceException("非法文件名")
+            }
+            folder.mkdir()
+        }.onSuccess {
+            upFiles(lastDir)
+        }.onError {
+            context.toastOnUi(it.localizedMessage)
+        }
+    }
+
     private fun upPath() {
-        viewModel.rootDoc?.let { rootDoc ->
+        rootDoc?.let { rootDoc ->
             var path = rootDoc.name + File.separator
-            for (doc in viewModel.subDocs) {
+            for (doc in subDocs) {
                 path = path + doc.name + File.separator
             }
             this.path = path

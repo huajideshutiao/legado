@@ -22,6 +22,7 @@ import androidx.compose.ui.layout.ContentScale
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.image.ImageBitmapLoader
+import io.legado.app.ui.bookshelf.CoverSlotRatio
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
@@ -73,7 +74,7 @@ fun BookInfoCover(
 ) {
     if (book == null) return
     val coverSlot = LocalBookCoverSlot.current
-    coverSlot(book, modifier, book.isVideo, coverTick)
+    coverSlot(book, modifier, if (book.isVideo) CoverSlotRatio.AUTO else CoverSlotRatio.NOVEL, coverTick)
 }
 
 /**

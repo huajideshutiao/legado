@@ -14,7 +14,6 @@ import io.legado.app.utils.startActivity
 @Suppress("MemberVisibilityCanBePrivate")
 internal class Request : OnRequestPermissionsResultCallback {
 
-    internal val requestTime: Long = System.currentTimeMillis()
     private var requestCode: Int = TYPE_REQUEST_PERMISSION
     private var permissions: ArrayList<String> = ArrayList()
     private var grantedCallback: OnPermissionsGrantedCallback? = null
@@ -89,9 +88,11 @@ internal class Request : OnRequestPermissionsResultCallback {
         }
     }
 
+    /** 弃全部消费侧回调 (granted/denied/error); 回传占用由 RequestManager 维持到真实返回。 */
     fun clear() {
         grantedCallback = null
         deniedCallback = null
+        errorCallback = null
     }
 
     fun getDeniedPermissions(permissions: Array<String>): Array<String>? {

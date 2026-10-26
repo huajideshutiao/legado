@@ -1,6 +1,7 @@
 package io.legado.app.ui.association
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,17 +24,17 @@ import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.ui.widget.dialog.awaitWaitDialogDismissed
 import io.legado.app.utils.startActivity
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /**
- * legado:// / yuedu:// deep link 透明壳 Activity (对照 master AssociationActivity):
+ * legado:// / yuedu:// deep link + 文件关联透明壳 Activity (对照 master AssociationActivity):
  *
  * - **透明浮层**: AppTheme.Transparent + excludeFromRecents + singleTask, 点击深链时本壳
- *   浮在其他应用之上, 只显示导入对话框/转圈, 主界面页面 (书架/发现等) 零渲染。
- * - **勾选六型 / READ_CONFIG / UNKNOWN**: onActivityCreated/onNewIntent →
- *   [LegadoDeepLinkHandler.handle] → [DeepLinkImportHost] 弹导入对话框, 完成/取消
- *   (pending 置空) 后 finish 回到原应用。
+ *   浮在其他应用之上, 只显示导入对话框/转圈, 主界面页面 (书架/发现等) 零渲染;
+ *   主界面内部导入也落本壳 (普通透明宿主进出, isShellHost=false, 打开书籍普通页面跳转)。
+ * - **寿命**: 只看自己的在途工作 —— 文件导入执行器、展示中的导入请求 (确认/取消/失败才
+ *   完成交互)、抓书导航; 全部收口才 finish, 不以全局 pending 是否为空决定。已交给共享
+ *   导入宿主的请求由其推进, 壳在期间保持在前台。
  * - **ADD_TO_BOOKSHELF / READ_BOOK** (需要导航): 壳内显示共享 [WaitDialog] 抓书
  *   (书架直读先查书架, 无则抓详情; 添加书架直接抓详情 + addType(notShelf)),
  *   **不落库**, 把内存书装进 [AppRoute] (BookRef.Stored 持引用, 不拷贝不序列化) 后
@@ -56,8 +57,14 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
     /** 本壳注册的 capabilities 实例, onDestroy 身份校验用。 */
     private var registeredCapabilities: PlatformCapabilities? = null
 
-    /** 存活的文件关联导入流程宿主 (跨界面重建存活, 壳内可能先后/并行有多条, 各自完成后自移除)。 */
-    private val associationFlows by lazy { FileAssociationFlows.of(this) }
+    /** 在途文件导入执行器数 (每条文件关联请求一个)。 */
+    private var activeFlows = 0
+
+    /** 本壳移交、尚未结算的请求载荷 (类型+源): 含仍在全局队列未接纳的。 */
+    private val openHandOffPayloads = mutableSetOf<Pair<DeepLinkImportType, String>>()
+
+    /** 本窗口已接纳、尚未结算的请求载荷 (接纳顺序; 与 onSettled 结算一一配对)。 */
+    private val adoptedPayloads = ArrayDeque<Pair<DeepLinkImportType, String>>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // 冷启动: 壳是首个 Activity, PlatformCapabilities 未注册 (AppDialog.get() 会 error);
@@ -105,8 +112,13 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
 
     companion object {
 
-        /** 文件关联 scheme (对照原版挂在透明壳上的两条 VIEW filter 的 data scheme)。 */
-        private val fileAssociationSchemes = setOf("content", "file", "app")
+        /** 主界面内部导入的标记 (外部 VIEW intent 不带, 默认按独立壳处置)。 */
+        const val EXTRA_IS_SHELL_HOST = "assoc.isShellHost"
+
+        /** 文件关联 scheme (对照原版挂在透明壳上的两条 VIEW filter 的 data scheme; 原版的
+         *  `app` scheme 无 MIME 时匹配不了任何 filter, 从无功能性行为, 已清理)。 */
+        private val fileAssociationSchemes = setOf("content", "file")
+
         /** 壳销毁后仍未注册时的静态兜底: 不捕获任何 Activity, 按当前前台 Activity 惰性操作 */
         private val idleCapabilities = object : PlatformCapabilities {
             override fun exitApplication() {
@@ -145,18 +157,20 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
     override fun Content() {
         val nav = pendingBookNav
         if (nav == null) {
-            // 纯导入 (勾选六型/readConfig/unknown): 只挂共享导入宿主与壳内弹窗宿主,
-            // 不渲染主界面页面
-            DeepLinkImportHost()
-            // 收壳: 先等到有导入请求, 再等它被消费 (对话框关闭) → 结束透明壳回到原应用。
-            // 不能直接 "pending 为空即 finish": 文件关联走嗅探/权限申请, 期间 pending 恒空;
-            // 深链路径 handleIntent 已在组合前置好 pending, 第一步立即通过, 语义不变。
-            // 文件关联里不产生导入请求的分支 (书籍导入/权限拒绝/不支持格式) 由
-            // FileAssociationImport 自己 finish, 本 effect 挂着无副作用。
+            // 纯导入 (勾选六型/readConfig/unknown/文件关联 JSON): 只挂共享导入宿主与壳内弹窗宿主,
+            // 不渲染主界面页面; 请求结算 (确认/取消/失败) 经 onSettled 回报壳收尾
+            DeepLinkImportHost(onSettled = ::onRequestSettled)
+            // 接纳观察: pending 非空 → 空的迁移即本窗口接纳了一条请求 (接纳即离开全局容器),
+            // 按接纳顺序入队, 与 onSettled 逐一配对 —— 外部先投的请求由本窗口接纳展示, 同样陪到结算
             LaunchedEffect(Unit) {
-                LegadoDeepLinkHandler.pending.first { it != null }
-                LegadoDeepLinkHandler.pending.first { it == null }
-                finish()
+                var shown: Pair<DeepLinkImportType, String>? = null
+                LegadoDeepLinkHandler.pending.collect { request ->
+                    val previous = shown
+                    shown = request?.let { it.type to it.src }
+                    if (previous != null && previous != shown) {
+                        adoptedPayloads.addLast(previous)
+                    }
+                }
             }
             return
         }
@@ -185,10 +199,10 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         super.onActivityCreated(savedInstanceState)
-        // 界面重建: 流程实例已在 ViewModelStore 存活, 重挂新实例继续 (对照原版
-        // savedInstanceState 非空直接 return 的守卫, 不再按 intent 重建流程)
         if (savedInstanceState != null) {
-            associationFlows.reattach(this)
+            // 界面重建: 在途工作随旧实例消亡 (协程/对话框/选择请求不复活), 直接收壳不承接业务;
+            // 已移交共享导入宿主的请求仍在全局队列, 由回到前台的宿主继续
+            finish()
             return
         }
         handleIntent(intent)
@@ -197,28 +211,42 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (isFinishing) return
         handleIntent(intent)
     }
 
-    private fun handleIntent(intent: Intent?) {
+    /** 全部在途工作 (文件流程/移交的请求/本窗口已接纳未结算的请求) 收口后结束透明壳;
+     * 导航在途时由导航路径自己收壳。 */
+    private fun maybeFinish() {
+        if (pendingBookNav != null) return
+        if (activeFlows > 0 || openHandOffPayloads.isNotEmpty() || adoptedPayloads.isNotEmpty()) return
+        finish()
+    }
+
+    /** 本窗口接纳的请求结算 (确认/取消/失败): 按接纳顺序配对移出, 扣减移交集合。 */
+    private fun onRequestSettled() {
+        adoptedPayloads.removeFirstOrNull()?.let { openHandOffPayloads.remove(it) }
+        maybeFinish()
+    }
+
+    private fun handleIntent(intent: Intent) {
         // 视频直投排在文件关联(书籍)分流之前: manifest 的视频 VIEW filter 就挂在本壳上, 不抢下来
         // 会被 FileAssociationImport 当书嗅探并弹"不支持该格式"。判据与 MainActivity 共用
         // [videoDirectTarget] (shared VideoDirect 一份); asRoot = 书架不进栈, back 即退调用方。
-        intent?.videoDirectTarget()?.let { target ->
+        intent.videoDirectTarget()?.let { target ->
             LaunchRequestBus.dispatch(LaunchRequest.OpenRoute(AppRoute.VideoPlay(target), asRoot = true))
             startActivity<MainActivity>()
             finish()
             return
         }
-        val uri = intent?.data ?: run {
+        val uri = intent.data ?: run {
             finish()
             return
         }
-        // 文件关联 (content/file/app): 对照原版把三条 VIEW filter 全挂透明壳, 壳内直接跑
-        // FileAssociationImport(isShellHost = true) —— 嗅探 json/书籍由它承担, 导入对话框
-        // 走 shared pending 链 (壳内 DeepLinkImportHost 渲染), 打开书籍经 route extra 转发主界面
+        // 文件关联 (content/file/app): 壳内直接跑一次性执行器; isShellHost 按当次 intent 生效
+        // (外部 VIEW 默认 true, 主界面内部导入带 false), 并发请求互不混淆
         if (uri.scheme in fileAssociationSchemes) {
-            associationFlows.start(this, uri, isShellHost = true)
+            startFileImport(uri, intent.getBooleanExtra(EXTRA_IS_SHELL_HOST, true))
             return
         }
         val request = LegadoDeepLink.parse(uri.toString())
@@ -234,7 +262,28 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
             pendingBookNav = request.type to request.src
             return
         }
-        LegadoDeepLinkHandler.handle(uri.toString())
+        LegadoDeepLinkHandler.enqueue(request)
+        openHandOffPayloads.add(request.type to request.src)
+    }
+
+    private fun startFileImport(uri: Uri, isShellHost: Boolean) {
+        activeFlows++
+        FileAssociationImport(
+            activity = this,
+            uri = uri,
+            isShellHost = isShellHost,
+            onDone = {
+                activeFlows--
+                maybeFinish()
+            },
+            onHandOff = { request ->
+                // 同载荷请求只认一条 (共享入队对在途/排队/进行中同载荷去重): 载荷集合天然
+                // 合并多次移交, 结算一次即全部视为完成
+                if (openHandOffPayloads.add(request.type to request.src)) {
+                    LegadoDeepLinkHandler.enqueue(request)
+                }
+            },
+        ).start()
     }
 
     /**

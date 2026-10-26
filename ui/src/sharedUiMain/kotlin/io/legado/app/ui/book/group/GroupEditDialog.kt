@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.bookshelf.CoverSlotRatio
 import io.legado.app.ui.bookshelf.LocalGroupCoverSlot
 import io.legado.app.ui.bookshelf.SharedGroupCover
 import io.legado.app.ui.compose.component.AlertButton
@@ -214,7 +215,7 @@ fun GroupEditDialog(
                     groupCoverSlot(
                         remember(cover) { editingGroup.copy(cover = cover) },
                         Modifier.fillMaxSize(),
-                        false,
+                        CoverSlotRatio.NOVEL,
                         0,
                     )
                 }

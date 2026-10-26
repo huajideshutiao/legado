@@ -66,13 +66,16 @@ import kotlinx.atomicfu.locks.synchronized
 import kotlinx.cinterop.useContents
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okio.use
@@ -113,6 +116,17 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
             "请到「设置 → 隐私与安全性 → 分析与改进 → 分析数据」中，" +
             "找到以应用名开头、时间与崩溃时刻一致的文件。"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * 待分发的文件关联任务: 能力面只投递, 消费在主窗口组合内 (MainViewController) ——
+     * 分发任务随窗口存亡, 不再挂平台单例 scope; 窗口组合完成前的冷启动直投先排队。
+     */
+    internal val pendingAssociationFiles = MutableStateFlow<List<suspend () -> Unit>>(emptyList())
+
+    /** 投递一个文件关联分发任务 (窗口组合前排队, 组合后按序消费)。 */
+    internal fun offerAssociationFile(job: suspend () -> Unit) {
+        pendingAssociationFiles.update { it + job }
+    }
 
     /** 导出队列与"正在导出"标记的读写锁 (与队列读写同锁判断, 避免"收工瞬间入队"的书没人导)。 */
     private val exportLock = SynchronizedObject()
@@ -342,9 +356,63 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
             }
     }
 
-    // 完整分发链 (压缩包/JSON 一键导入/书籍文件) 见 FileAssociationDispatch, 四端共用
+    // 完整分发链 (压缩包/JSON 一键导入/书籍文件/未知文件确认) 见 FileAssociationDispatch, 四端共用。
+    // 外部打开的文件在沙盒外: 授权已由投递口 ingestIosSecurityScopedFile 以 bookmark 登记进授权表,
+    // 分发全程按既有租约机制持有授权 (JSON 读取/解压/书籍复制完成即配对释放, 不挂进程寿命);
+    // 任务投主窗口队列随窗口存亡, 不挂平台单例 scope
     override fun openImportFile(filePath: String) {
-        scope.launch { FileAssociationDispatch.dispatch(filePath) }
+        offerAssociationFile {
+            withContext(Dispatchers.IO) {
+                val lease = try {
+                    IosSecurityScopedStorage.acquireLease(filePath, DirUsage.BookTree)
+                } catch (e: Exception) {
+                    AppLog.put("文件关联导入授权失败: $filePath\n${e.message}", e)
+                    Toasters.get().toast(e.message ?: "没有访问权限")
+                    return@withContext
+                }
+                try {
+                    FileAssociationDispatch.dispatch(filePath) { confirmUnknownFileImport(it) }
+                } finally {
+                    lease.close()
+                }
+            }
+        }
+    }
+
+    /**
+     * 未知文件导入确认 (UIAlertController, 与 presentAlert 同一顶层宿主取法):
+     * 确认返回 true 按书籍文件尝试导入, 取消/无法弹窗返回 false。
+     */
+    private suspend fun confirmUnknownFileImport(fileName: String): Boolean {
+        val done = CompletableDeferred<Boolean>()
+        dispatch_async(dispatch_get_main_queue()) {
+            val vc = topMostViewController()
+            if (vc == null) {
+                done.complete(false)
+                return@dispatch_async
+            }
+            val alert = UIAlertController.alertControllerWithTitle(
+                title = syncGetString("draw"),
+                message = "无法识别的文件: $fileName\n是否按书籍文件尝试导入？",
+                preferredStyle = UIAlertControllerStyleAlert,
+            )
+            alert.addAction(
+                UIAlertAction.actionWithTitle(
+                    title = syncGetString("ok"),
+                    style = UIAlertActionStyleDefault,
+                    handler = { _ -> done.complete(true) },
+                )
+            )
+            alert.addAction(
+                UIAlertAction.actionWithTitle(
+                    title = syncGetString("cancel"),
+                    style = UIAlertActionStyleCancel,
+                    handler = { _ -> done.complete(false) },
+                )
+            )
+            vc.presentViewController(alert, animated = true, completion = null)
+        }
+        return done.await()
     }
 
     // ===== 导入本地书 (状态与扫描见 NativeImportBook, 与鸿蒙共用) =====
@@ -443,7 +511,9 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 
     override fun updateImportBookSort(sort: Int) = NativeImportBook.updateSort(sort)
 
-    override fun openImportedBookReader(item: ImportFileItem) = NativeImportBook.openReader(item)
+    override fun openImportedBookReader(item: ImportFileItem) {
+        NativeImportBook.openReader(item, ::offerAssociationFile) { confirmUnknownFileImport(it) }
+    }
 
     override fun navigateImportDir(item: ImportFileItem) = NativeImportBook.enterDir(item)
 
@@ -640,41 +710,54 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     // native 端无"压缩包内选章阅读"UI, 与 NativeImportBook.openReader 同口径走
     // FileAssociationDispatch 的直接导入链 (平台能力上限, 不假装与 app 端等价)
     override fun startReadRemoteArchive(fileName: String, onNeedDownload: () -> Unit) {
-        scope.launch {
+        offerAssociationFile {
             // 与 NativeFileBookAccessor 的有效书籍保存目录同源 (用户在"书籍保存位置"选定);
-            // 选定目录在沙盒外, 存在性检查同样要包既有授权租约
-            val dir = effectiveBookSaveDir()
-            if (dir != null) {
-                val path = "$dir/$fileName"
-                val exists = runCatching {
-                    withLocalDirAccess(path) { File(path).exists() }
-                }.getOrDefault(false)
-                if (exists) {
-                    FileAssociationDispatch.dispatch(path)
-                    return@launch
+            // 选定目录在沙盒外, 存在性检查同样要包既有授权租约, 分发全程持租约
+            withContext(Dispatchers.IO) {
+                val dir = effectiveBookSaveDir()
+                if (dir != null) {
+                    val path = "$dir/$fileName"
+                    val exists = runCatching {
+                        withLocalDirAccess(path) { File(path).exists() }
+                    }.getOrDefault(false)
+                    if (exists) {
+                        val lease = try {
+                            IosSecurityScopedStorage.acquireLease(path, DirUsage.BookTree)
+                        } catch (e: Exception) {
+                            AppLog.put("压缩包阅读授权失败: $path\n${e.message}", e)
+                            Toasters.get().toast(e.message ?: "没有访问权限")
+                            return@withContext
+                        }
+                        try {
+                            FileAssociationDispatch.dispatch(path) { confirmUnknownFileImport(it) }
+                        } finally {
+                            lease.close()
+                        }
+                        return@withContext
+                    }
                 }
-            }
-            withContext(Dispatchers.Main) {
-                val alert = UIAlertController.alertControllerWithTitle(
-                    title = syncGetString("draw"),
-                    message = syncGetString("archive_not_found"),
-                    preferredStyle = UIAlertControllerStyleAlert,
-                )
-                alert.addAction(
-                    UIAlertAction.actionWithTitle(
-                        title = syncGetString("ok"),
-                        style = UIAlertActionStyleDefault,
-                        handler = { _ -> onNeedDownload() },
+                withContext(Dispatchers.Main) {
+                    val alert = UIAlertController.alertControllerWithTitle(
+                        title = syncGetString("draw"),
+                        message = syncGetString("archive_not_found"),
+                        preferredStyle = UIAlertControllerStyleAlert,
                     )
-                )
-                alert.addAction(
-                    UIAlertAction.actionWithTitle(
-                        title = syncGetString("cancel"),
-                        style = UIAlertActionStyleCancel,
-                        handler = { _ -> },
+                    alert.addAction(
+                        UIAlertAction.actionWithTitle(
+                            title = syncGetString("ok"),
+                            style = UIAlertActionStyleDefault,
+                            handler = { _ -> onNeedDownload() },
+                        )
                     )
-                )
-                presentAlert(alert)
+                    alert.addAction(
+                        UIAlertAction.actionWithTitle(
+                            title = syncGetString("cancel"),
+                            style = UIAlertActionStyleCancel,
+                            handler = { _ -> },
+                        )
+                    )
+                    presentAlert(alert)
+                }
             }
         }
     }

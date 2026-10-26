@@ -82,6 +82,7 @@ import io.legado.app.ui.bookshelf.BookshelfActionsCallbacks
 import io.legado.app.ui.bookshelf.BookshelfAddViewModelShared
 import io.legado.app.ui.bookshelf.BookshelfScreen
 import io.legado.app.ui.bookshelf.BookshelfViewModel
+import io.legado.app.ui.bookshelf.CoverSlotRatio
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.bookshelf.ShelfScrollState
 import io.legado.app.ui.bookshelf.ShelfVideoItem
@@ -949,13 +950,13 @@ private fun HomeRankItem(
         Box(Modifier.height(70.dp).padding(start = if (showRank) DesignTokens.spacingDefault else 0.dp)) {
             // 本条目绑定的作用域限定在本封面上 (与点击回调拿到的同一个 token)
             if (coverBinding == null) {
-                LocalBookCoverSlot.current(book.toCoverBook(), Modifier.fillMaxHeight(), false, 0)
+                LocalBookCoverSlot.current(book.toCoverBook(), Modifier.fillMaxHeight(), CoverSlotRatio.NOVEL, 0)
             } else {
                 CompositionLocalProvider(LocalSharedCoverBinding provides coverBinding) {
                     LocalBookCoverSlot.current(
                         book.toCoverBook(),
                         Modifier.fillMaxHeight(),
-                        false,
+                        CoverSlotRatio.NOVEL,
                         0,
                     )
                 }
@@ -1032,8 +1033,8 @@ private fun HomeInfiniteGridCard(
                 onClick = stableOnBookClick,
                 onLongClick = stableOnBookLongClick,
                 modifier = Modifier.fillMaxWidth(),
-                coverSlot = { b, m, isVideoCover, tick ->
-                    LocalBookCoverSlot.current(b, m, isVideoCover, tick)
+                coverSlot = { b, m, coverRatio, tick ->
+                    LocalBookCoverSlot.current(b, m, coverRatio, tick)
                 },
             )
         } else {
@@ -1054,7 +1055,7 @@ private fun HomeInfiniteGridCard(
                     Modifier
                         .fillMaxWidth()
                         .padding(DesignTokens.spacingMd),
-                    false,
+                    CoverSlotRatio.NOVEL,
                     0,
                 )
                 Text(

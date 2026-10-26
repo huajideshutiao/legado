@@ -1,6 +1,7 @@
 package io.legado.app.ui.association
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,8 +38,8 @@ private val schemeOnlyTypes = setOf(
  * - READ_CONFIG: 一步导入完成;
  * - UNKNOWN: **先走书籍识别** (零网络按各源 bookUrlPattern 认领这条地址) —— 被认领就直接带
  *   着这个源进抓书链 (不再重算认领), 不被认领才下载嗅探内容类型 —— zip 当排版配置一步完成,
- *   JSON 识别出具体类型后转生新请求 (对照 app 端 determineType 的分流, 转生后 pending 不再是 [req],
- *   本函数不再负责消费)。
+ *   JSON 识别出具体类型后转生新请求 (对照原版 determineType 的分流; 升级按 [req] 的 id 走
+ *   [LegadoDeepLinkHandler.handleResolved], 本请求归本窗口, 升级产物是容器里的新请求)。
  *
  * @param beforeNavigate 两型导航前的等待钩子 (收起加载框并等它离开界面), 由宿主传入。
  */
@@ -85,7 +86,8 @@ private suspend fun runSchemeImport(
 
                         is SchemeImportOps.DetermineResult.Json ->
                             LegadoDeepLinkHandler.handleResolved(
-                                DeepLinkImportRequest(result.type, result.json)
+                                DeepLinkImportRequest(result.type, result.json),
+                                originalId = req.id,
                             )
                     }
                 }
@@ -99,24 +101,53 @@ private suspend fun runSchemeImport(
 
 /**
  * legado:// deep link 导入宿主 (Android/iOS/鸿蒙/desktop 共用, 挂载点见各端 UI 顶层;
- * 语义源头是 app 端 AssociationActivity + FileAssociationImport.handleOnLineImport)。
+ * 语义源头是原版 AssociationActivity + FileAssociationFragment 的 path 分发)。
  *
- * 链路: [LegadoDeepLinkHandler.pending] 非 null → 按类型分流:
+ * 链路: 窗口空闲且 [LegadoDeepLinkHandler.pending] 非 null → [LegadoDeepLinkHandler.adopt]
+ * 接纳该请求 (移出全局容器, 唯一归属本窗口) → 按类型分流:
  * - 直通四型 → [runSchemeImport] (加载中显示共享 [WaitDialog], 结果 toast);
  * - 勾选六型 → [DeepLinkImportTarget.of] 建 VM → [ImportTargetDialog] 下载解析勾选入库
- *   (与各 Screen 的手动网络导入同链) → 取消/完成均 [LegadoDeepLinkHandler.consume]。
+ *   (与各 Screen 的手动网络导入同链) → 完成/取消均 [LegadoDeepLinkHandler.consume] 本请求。
+ *
+ * 接纳后的正文、target、VM、工作与关闭回调都是本窗口局部状态 (按请求 id 归属);
+ * 宿主销毁只结算自己接纳的请求, 不清其他窗口的请求, 也不清未投递的冷启动请求。
+ * 每个窗口同一时刻只处理一条请求, 完成后空闲再接纳下一条。
  *
  * 冷启动投递先于 UI 组合也不丢: pending 是 StateFlow, 组合起来后立即收到当前值。
  *
  * 导入完成 toast 放在本层而非 [ImportTargetDialog]: 完成回调紧跟 onDismiss→consume,
- * pending 归 null 后内层已退出组合, 计数文案取不到 (rememberString 是 @Composable)。
+ * 请求归 null 后内层已退出组合, 计数文案取不到 (rememberString 是 @Composable)。
+ *
+ * @param onSettled 本窗口接纳的请求结算 (完成/取消/失败) 后回调, 供承载宿主的壳
+ *   (如 Android 透明壳) 在导入对话框关闭后收尾自身。
  */
 @Composable
-fun DeepLinkImportHost() {
+fun DeepLinkImportHost(onSettled: () -> Unit = {}) {
     var importedCount by remember { mutableStateOf<Int?>(null) }
-    val request by LegadoDeepLinkHandler.pending.collectAsState()
-    request?.let { req ->
-        DeepLinkImportContent(req, onImported = { importedCount = it })
+    var active by remember { mutableStateOf<DeepLinkImportRequest?>(null) }
+    val pendingRequest by LegadoDeepLinkHandler.pending.collectAsState()
+    // 空闲时接纳首投请求: 接纳成功后请求离开全局容器, 归本窗口私有;
+    // 并发窗口抢同一条时只有一个窗口拿到 true, 其余保持空闲
+    LaunchedEffect(pendingRequest, active) {
+        val req = pendingRequest ?: return@LaunchedEffect
+        if (active == null && LegadoDeepLinkHandler.adopt(req.id)) active = req
+    }
+    // 宿主销毁只结算自己接纳的请求: 其他窗口的请求与未投递的冷启动请求不动
+    DisposableEffect(Unit) {
+        onDispose {
+            active?.let { LegadoDeepLinkHandler.consume(it.id) }
+        }
+    }
+    active?.let { req ->
+        DeepLinkImportContent(
+            req = req,
+            onImported = { importedCount = it },
+            onDone = {
+                LegadoDeepLinkHandler.consume(req.id)
+                if (active == req) active = null
+                onSettled()
+            },
+        )
     }
     importedCount?.let { count ->
         val importCompleteText = stringResource(Res.string.import_complete, count)
@@ -128,12 +159,14 @@ fun DeepLinkImportHost() {
 }
 
 /**
- * 单条 deep link 请求的导入流程 (VM 生命周期与请求同寿, 请求变化时整块重建)。
+ * 单条已接纳请求的导入流程 (正文/target/VM/工作/关闭回调都挂在 [req] 上,
+ * 请求变化时整块重建; 流程结束必须且只经 [onDone] 结算本请求)。
  */
 @Composable
 private fun DeepLinkImportContent(
     req: DeepLinkImportRequest,
     onImported: (selectCount: Int) -> Unit,
+    onDone: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
 
@@ -155,31 +188,32 @@ private fun DeepLinkImportContent(
             }
             // 不导航的两型 (readConfig / unknown) 在上一步里没动过框, 这里统一收掉
             awaitWaitDialogDismissed { waitVisible = false }
-            // JSON 嗅探分支会把 pending 换成新请求, 此时不能再 consume (否则刚升级的请求被清掉)
-            if (LegadoDeepLinkHandler.pending.value == req) {
-                LegadoDeepLinkHandler.consume()
-            }
+            // UNKNOWN 升级产物作为新请求进了容器, 结算的只是本请求 (id 归属,
+            // 升级出的新请求在空闲后被重新接纳弹窗)
+            onDone()
         }
         return
     }
 
     // 勾选导入六型: 统一走 DeepLinkImportTarget + ImportTargetDialog
-    // (与规则订阅 / 通用导入 Overlay 同一条链; loading/错误文案由 ImportTargetDialog 内部处理)
+    // (与规则订阅同一条链; loading/错误文案由 ImportTargetDialog 内部处理)
     val target = remember(req) { DeepLinkImportTarget.of(req.type, scope) }
     if (target == null) {
+        // 当前枚举面内六型均有 target (四型已在上方拦截), 此分支只为未知的后续新增类型兜住;
+        // 不给用户一个点不动的空对话框
         val notSupportedText =
             stringResource(Res.string.deep_link_type_not_supported, req.type.name)
         LaunchedEffect(req) {
             Toasters.get().toast(notSupportedText)
             AppLog.put("legado:// 导入类型暂未支持: type=" + req.type + " src=" + req.src)
-            LegadoDeepLinkHandler.consume()
+            onDone()
         }
         return
     }
     LaunchedEffect(target) { target.startImport(req.src) }
     ImportTargetDialog(
         target = target,
-        onDismiss = { LegadoDeepLinkHandler.consume() },
+        onDismiss = onDone,
         onImported = onImported,
     )
 }

@@ -366,18 +366,18 @@ fun ExploreShowRoute(
                 onClick = onClick,
                 onLongClick = onLongClick,
                 inBookshelf = inBookshelf,
-                coverSlot = { b, modifier, isVideoCover, coverReloadTick ->
-                    LocalBookCoverSlot.current(b, modifier, isVideoCover, coverReloadTick)
+                coverSlot = { b, modifier, coverRatio, coverReloadTick ->
+                    LocalBookCoverSlot.current(b, modifier, coverRatio, coverReloadTick)
                 },
             )
         },
         // 封面: 复用 LocalBookCoverSlot (默认 SharedBookCover, 各端统一)
-        coverSlot = { book, inBookshelf, isVideoStyle, modifier ->
+        coverSlot = { book, inBookshelf, coverRatio, modifier ->
             // toCoverBook 结果缓存一次, 避免每次重组新建 Book (对照 SearchScreen coverSlot 写法)
             LocalBookCoverSlot.current(
                 remember(book, inBookshelf) { book.toCoverBook(inBookshelf) },
                 modifier,
-                isVideoStyle,
+                coverRatio,
                 0,
             )
         },

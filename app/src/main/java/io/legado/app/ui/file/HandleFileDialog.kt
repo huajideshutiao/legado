@@ -25,29 +25,36 @@ import io.legado.app.utils.toastOnUi
 import java.io.File
 
 /**
- * 选择方式弹窗: 由 [HandleFileSession] 创建并持有, 系统选择器的结果登记与会话参数都在
- * 会话里跨界面重建存活, 本弹窗本身随宿主 Activity 存亡 (重建后会话重开弹窗)。
+ * 选择方式弹窗: 由所属请求 ([HandleFileSession.Request]) 创建并持有,
+ * 随请求收口与宿主销毁关闭; 弹窗内发起的手工输入子弹窗与权限请求同随请求收口。
  */
-class HandleFileDialog(
-    activity: AppCompatActivity,
-    private val session: HandleFileSession,
-    param: HandleFileContract.HandleFileParam,
+internal class HandleFileDialog(
+    private val activity: AppCompatActivity,
+    private val request: HandleFileSession.Request,
 ) : ComposeDialog(activity, applyFilletBackground = false),
     FilePickerDialog.CallBack {
 
-    private val mode = param.mode
-    private val title = param.title
-    private val allowExtensions = param.allowExtensions
+    private val mode = request.param.mode
+    private val title = request.param.title
+    private val allowExtensions = request.param.allowExtensions
 
     private val selectList: ArrayList<SelectItem<Int>> =
-        buildSelectList().apply { param.otherActions?.let { addAll(it) } }
+        buildSelectList().apply { request.param.otherActions?.let { addAll(it) } }
+
+    /** 本弹窗发起的权限请求: 弹窗关闭 (请求收口/宿主销毁) 时撤销。 */
+    private var permissions: PermissionsCompat? = null
 
     init {
+        request.own(this)
         setComposeContent { Content() }
         setOnCancelListener {
-            if (!session.isAwaitingSysResult()) {
-                session.deliver(null)
+            if (!request.awaitingSys) {
+                request.deliver(null)
             }
+        }
+        setOnDismissListener {
+            permissions?.cancel()
+            permissions = null
         }
     }
 
@@ -61,7 +68,7 @@ class HandleFileDialog(
         // 对齐旧 AlertDialog setItems(items, null)：点击不自动关闭，等结果回传后 dismiss
         AppAlertDialogContent(
             onDismissRequest = {
-                if (session.isAwaitingSysResult()) dismiss() else session.deliver(null)
+                if (request.awaitingSys) dismiss() else request.deliver(null)
             },
             title = title,
         ) {
@@ -73,7 +80,7 @@ class HandleFileDialog(
 
     // FilePickerDialog.CallBack: 应用内选择器结果接入现有结果链
     override fun onResult(data: Intent) {
-        session.deliver(data.data)
+        request.deliver(data.data)
     }
 
     private fun buildSelectList(): ArrayList<SelectItem<Int>> = when (mode) {
@@ -87,9 +94,8 @@ class HandleFileDialog(
     private fun handleAction(item: SelectItem<Int>) {
         when (item.value) {
             HandleFileContract.DIR -> {
-                runCatching { session.launchSysTree() }.onFailure {
-                    session.sysPickerUnavailable()
-                    AppLog.put(androidAppString("open_sys_dir_picker_error"), it, true)
+                request.launchSysTree { e ->
+                    AppLog.put(androidAppString("open_sys_dir_picker_error"), e, true)
                     checkPermissions {
                         showAppPicker(HandleFileContract.DIR)
                     }
@@ -97,18 +103,16 @@ class HandleFileDialog(
             }
 
             HandleFileContract.FILE -> {
-                runCatching { session.launchSysDoc(typesOfExtensions(allowExtensions)) }
-                    .onFailure {
-                        session.sysPickerUnavailable()
-                        AppLog.put(androidAppString("open_sys_dir_picker_error"), it, true)
-                        checkPermissions {
-                            showAppPicker(HandleFileContract.FILE)
-                        }
+                request.launchSysDoc(typesOfExtensions(allowExtensions)) { e ->
+                    AppLog.put(androidAppString("open_sys_dir_picker_error"), e, true)
+                    checkPermissions {
+                        showAppPicker(HandleFileContract.FILE)
                     }
+                }
             }
 
             HandleFileContract.IMAGE -> {
-                session.launchSysImage()
+                request.launchSysImage()
             }
 
             10 -> checkPermissions {
@@ -123,18 +127,19 @@ class HandleFileDialog(
             else -> {
                 val path = item.title
                 val uri = if (path.isContentScheme()) path.toUri() else Uri.fromFile(File(path))
-                session.deliver(uri)
+                request.deliver(uri)
             }
         }
     }
 
     private fun showAppPicker(mode: Int) {
-        val activity = session.hostActivity ?: return
-        FilePickerDialog.show(
-            activity,
-            mode = mode,
-            allowExtensions = if (mode == HandleFileContract.FILE) allowExtensions else null,
-            callback = this,
+        request.own(
+            FilePickerDialog.show(
+                activity,
+                mode = mode,
+                allowExtensions = if (mode == HandleFileContract.FILE) allowExtensions else null,
+                callback = this,
+            )
         )
     }
 
@@ -164,23 +169,25 @@ class HandleFileDialog(
     ).apply { addAll(getFileActions()) }
 
     private fun showInputDirectoryDialog() {
-        context.alert(androidAppString("manual_input")) {
-            val getText = editTextView(hint = androidAppString("enter_directory_path"))
-            okButton {
-                val inputPath = getText()
-                if (inputPath.isBlank()) {
-                    context.toastOnUi(androidAppString("empty_directory_input"))
-                    return@okButton
+        request.own(
+            context.alert(androidAppString("manual_input")) {
+                val getText = editTextView(hint = androidAppString("enter_directory_path"))
+                okButton {
+                    val inputPath = getText()
+                    if (inputPath.isBlank()) {
+                        context.toastOnUi(androidAppString("empty_directory_input"))
+                        return@okButton
+                    }
+                    val file = File(inputPath)
+                    if (file.exists() && file.isDirectory && isExternalStorage(file) && file.checkWrite()) {
+                        request.deliver(Uri.fromFile(file))
+                    } else context.toastOnUi(androidAppString("invalid_directory"))
                 }
-                val file = File(inputPath)
-                if (file.exists() && file.isDirectory && isExternalStorage(file) && file.checkWrite()) {
-                    session.deliver(Uri.fromFile(file))
-                } else context.toastOnUi(androidAppString("invalid_directory"))
+                cancelButton {
+                    request.deliver(null)
+                }
             }
-            cancelButton {
-                session.deliver(null)
-            }
-        }
+        )
     }
 
     private fun isExternalStorage(path: File): Boolean {
@@ -202,19 +209,19 @@ class HandleFileDialog(
         return false
     }
 
-    private fun checkPermissions(success: (() -> Unit)?) {
-        PermissionsCompat.Builder().addPermissions(*Permissions.Group.STORAGE)
+    private fun checkPermissions(success: () -> Unit) {
+        permissions = PermissionsCompat.Builder().addPermissions(*Permissions.Group.STORAGE)
             .rationale(androidAppString("tip_perm_request_storage"))
-            .onGranted { success?.invoke() }.onDenied {
-            session.deliver(null)
-        }.onError {
-            session.deliver(null)
-        }.request()
+            .onGranted { success() }.onDenied {
+                request.deliver(null)
+            }.onError {
+                request.deliver(null)
+            }.request()
     }
 
-    private fun typesOfExtensions(allowExtensions: Array<String>?): Array<String> {
+    private fun typesOfExtensions(allowExtensions: Array<String>): Array<String> {
         val types = hashSetOf<String>()
-        if (allowExtensions.isNullOrEmpty()) types.add("*/*")
+        if (allowExtensions.isEmpty()) types.add("*/*")
         else allowExtensions.forEach {
             when (it) {
                 "*" -> types.add("*/*")

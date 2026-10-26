@@ -1,153 +1,222 @@
 package io.legado.app.ui.file
 
+import android.app.Dialog
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.lifecycleScope
+import io.legado.app.constant.AppLog
 import io.legado.app.utils.SelectImageContract
 import io.legado.app.utils.isContentScheme
-import io.legado.app.utils.launch
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 
 /**
- * 选择方式弹窗 ([HandleFileDialog]) 的跨重建宿主, 对照原版该弹窗为 DialogFragment 时由
- * FragmentManager 自动恢复的语义:
- * - 会话参数 (模式/标题/扩展名/回调 key) 存进本 ViewModel, 随宿主 Activity 的
- *   ViewModelStore 跨界面重建存活, 重建后由任一 [registerHandleFile] 触发 [reattach] 重开弹窗
- * - 三个系统选择器的结果登记用稳定 key 挂在宿主的 activityResultRegistry 上:
- *   ComponentActivity 的注册表把待回传结果存进实例状态, 重建后按 key 重投, 重建前已拉起的
- *   系统选择器照常把结果送回 (重建后须在 STARTED 前用同一 key 重登记, 由各调用方在
- *   Activity 构造期重新 [registerHandleFile] 保证)
- * - 结果按会话记录的 key 找回对应调用方回调, 弹窗随结果关闭
+ * 一个宿主 Activity 内的文件选择会话: 承载「选择方式弹窗」([HandleFileDialog]) 与三个系统
+ * 选择器通道, 由宿主 Activity 的字段持有, 随宿主存亡。
  *
- * 每个宿主 Activity 同一时刻只有一个进行中的选择会话 (弹窗本身模态, 不存在并行)。
+ * 每次 [launch][HandleFileLauncher.launch] 是一个独立请求: 参数、弹窗与结果回调都归属该次请求,
+ * 并发请求的结果互不串。同一系统通道一次只有一个在途系统调用, 新请求排队等旧调用真实回传
+ * (Mutex 在宿主主线程上锁定/启动/释放)。不做跨界面重建恢复: 宿主重建即全部作废。
  */
-class HandleFileSession : ViewModel() {
+class HandleFileSession(private val activity: AppCompatActivity) {
 
-    /** 当前进行中的会话: 调用方稳定 key + 弹窗参数; null = 无进行中的选择。 */
-    private var pending: Pair<String, HandleFileContract.HandleFileParam>? = null
+    /** 所属宿主: 会话随宿主存亡, 构造后不再更换。 */
+    val hostActivity: AppCompatActivity get() = activity
 
-    /** 当前弹窗实例: 随宿主 Activity 存亡, 不跨重建, 重建后由 [reattach] 重建。 */
-    private var dialog: HandleFileDialog? = null
+    /** 本宿主进行中的文件请求: 每次 launch 一个, 收口即移除。 */
+    private val requests = mutableSetOf<Request>()
 
-    /** 调用方回调表 (稳定 key → 回调), 每次重新注册时刷新。 */
-    private val callbacks = mutableMapOf<String, (HandleFileContract.Result) -> Unit>()
+    // 同通道一次只有一个在途系统调用: inFlight 与 Mutex 成对, 真实回传才释放
+    private val treeMutex = Mutex()
+    private val docMutex = Mutex()
+    private val imageMutex = Mutex()
+    private var treeInFlight: Request? = null
+    private var docInFlight: Request? = null
+    private var imageInFlight: Request? = null
 
-    /** 结果登记所在的活动实例; 换新实例 (界面重建) 时按稳定 key 在新注册表重登记。 */
-    var hostActivity: AppCompatActivity? = null
-        private set
+    // 必须走带 lifecycleOwner 的重载: ON_START 才补投待回传结果, ON_DESTROY 自动注销,
+    // 注册时刻因此不必依赖 Activity Result 的实例状态还原进度
+    private val selectDocTree: ActivityResultLauncher<Uri?> =
+        activity.activityResultRegistry.register(
+            SYS_TREE_KEY, activity, ActivityResultContracts.OpenDocumentTree()
+        ) { uri ->
+            val request = treeInFlight
+            treeInFlight = null
+            treeMutex.unlock()
+            // 请求已取消/宿主已销毁: 按取消处置, 不落常驻权限、不回调
+            if (request != null && request.isActive) {
+                if (uri != null && uri.isContentScheme()) {
+                    val modeFlags =
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    activity.contentResolver.takePersistableUriPermission(uri, modeFlags)
+                }
+                request.deliver(uri)
+            }
+        }
 
-    private var awaitingSysResult = false
+    private val selectDoc: ActivityResultLauncher<Array<String>> =
+        activity.activityResultRegistry.register(
+            SYS_DOC_KEY, activity, ActivityResultContracts.OpenDocument()
+        ) { uri ->
+            val request = docInFlight
+            docInFlight = null
+            docMutex.unlock()
+            if (request != null && request.isActive) {
+                if (uri != null && uri.isContentScheme()) {
+                    val modeFlags =
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    activity.contentResolver.takePersistableUriPermission(uri, modeFlags)
+                }
+                request.deliver(uri)
+            }
+        }
 
-    private var selectDocTree: ActivityResultLauncher<Uri?>? = null
-    private var selectDoc: ActivityResultLauncher<Array<String>>? = null
-    private var selectImage: ActivityResultLauncher<Int?>? = null
+    private val selectImage: ActivityResultLauncher<Int?> =
+        activity.activityResultRegistry.register(
+            SYS_IMAGE_KEY, activity, SelectImageContract()
+        ) { result ->
+            val request = imageInFlight
+            imageInFlight = null
+            imageMutex.unlock()
+            if (request != null && request.isActive) {
+                request.deliver(result.uri)
+            }
+        }
 
-    /** 调用方注册: 记录稳定 key 与回调, 并顺带驱动会话重挂 (重建后首个注册即恢复弹窗)。 */
-    fun bind(activity: AppCompatActivity, key: String, callback: (HandleFileContract.Result) -> Unit) {
-        callbacks[key] = callback
-        reattach(activity)
+    init {
+        // 宿主销毁: 取消全部等待 (等待协程挂在宿主 lifecycleScope, ON_DESTROY 自行取消),
+        // 关闭本宿主创建的全部文件请求弹窗; 正常后台/系统选择器覆盖期间不关
+        activity.lifecycle.addObserver(LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_DESTROY) {
+                requests.toList().forEach { it.finish() }
+            }
+        })
     }
 
-    /** 重挂到 (可能是重建后的) 宿主: 系统选择器登记按稳定 key 落到当前注册表, 有进行中会话则重开弹窗。 */
-    fun reattach(activity: AppCompatActivity) {
-        if (hostActivity !== activity) {
-            hostActivity = activity
-            dialog = null
-            // 恢复弹窗须等宿主 STARTED: 重建后的首次注册发生在 Activity 构造期,
-            // 窗口 token 未就绪, 直接 show 会失败
-            activity.lifecycle.addObserver(object : DefaultLifecycleObserver {
-                override fun onStart(owner: LifecycleOwner) {
-                    if (pending != null && dialog == null) {
-                        showDialog(activity)
-                    }
+    /** 开始一次请求: 建请求并弹出选择方式弹窗。 */
+    fun begin(
+        launcher: HandleFileLauncher,
+        param: HandleFileContract.HandleFileParam,
+        callback: (HandleFileContract.Result) -> Unit,
+    ) {
+        val request = Request(launcher, param, callback)
+        requests.add(request)
+        HandleFileDialog(activity, request).show()
+    }
+
+    /** 取消该入口发起的未完成请求: 关弹窗、弃回调; 在途系统调用的通道占用保持到真实回传。 */
+    fun cancel(launcher: HandleFileLauncher) {
+        requests.filter { it.launcher === launcher }.forEach { it.finish() }
+    }
+
+    internal inner class Request internal constructor(
+        internal val launcher: HandleFileLauncher,
+        internal val param: HandleFileContract.HandleFileParam,
+        private val callback: (HandleFileContract.Result) -> Unit,
+    ) {
+
+        /** 本请求创建的全部弹窗 (选择方式/应用内选择器/手工输入/建目录), 收口时一并关闭。 */
+        internal val dialogs = mutableListOf<Dialog>()
+
+        /** 系统选择器在途 (已实际 launch, 未真实回传)。 */
+        internal var awaitingSys = false
+
+        /** 已收口 (交付/取消/宿主销毁), 之后的系统回传按取消处置。 */
+        internal var finished = false
+        internal val isActive: Boolean get() = !finished
+
+        /** 弹窗归属登记: 收口/宿主销毁时随请求关闭。 */
+        internal fun own(dialog: Dialog) {
+            dialogs.add(dialog)
+        }
+
+        /** 收口: 清状态、关弹窗、解除引用, 之后回调不再发生。 */
+        internal fun finish() {
+            if (finished) return
+            finished = true
+            awaitingSys = false
+            dialogs.forEach { it.dismiss() }
+            dialogs.clear()
+            requests.remove(this)
+        }
+
+        /** 收口并把结果交给本请求回调 (回调允许合法发起下一次请求)。 */
+        internal fun deliver(uri: Uri?) {
+            finish()
+            callback(HandleFileContract.Result(uri, param.requestCode, param.value))
+        }
+
+        internal fun launchSysTree(onLaunchFailure: (Throwable) -> Unit) {
+            activity.lifecycleScope.launch {
+                treeMutex.lock()
+                // 排队期间请求可能已收口: 取消不启动系统调用, 锁让给下一个
+                if (!this@Request.isActive) {
+                    treeMutex.unlock()
+                    return@launch
                 }
-            })
-            val registry = activity.activityResultRegistry
-            selectDocTree = registry.register(SYS_TREE_KEY, ActivityResultContracts.OpenDocumentTree()) { uri ->
-                awaitingSysResult = false
-                uri?.let {
-                    if (it.isContentScheme()) {
-                        val modeFlags =
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                        activity.contentResolver.takePersistableUriPermission(it, modeFlags)
-                    }
+                treeInFlight = this@Request
+                awaitingSys = true
+                try {
+                    selectDocTree.launch(null)
+                } catch (e: Throwable) {
+                    treeInFlight = null
+                    awaitingSys = false
+                    treeMutex.unlock()
+                    onLaunchFailure(e)
                 }
-                deliver(uri)
             }
-            selectDoc = registry.register(SYS_DOC_KEY, ActivityResultContracts.OpenDocument()) { uri ->
-                awaitingSysResult = false
-                uri?.let {
-                    if (it.isContentScheme()) {
-                        val modeFlags =
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                        activity.contentResolver.takePersistableUriPermission(it, modeFlags)
-                    }
+        }
+
+        internal fun launchSysDoc(types: Array<String>, onLaunchFailure: (Throwable) -> Unit) {
+            activity.lifecycleScope.launch {
+                docMutex.lock()
+                if (!this@Request.isActive) {
+                    docMutex.unlock()
+                    return@launch
                 }
-                deliver(uri)
+                docInFlight = this@Request
+                awaitingSys = true
+                try {
+                    selectDoc.launch(types)
+                } catch (e: Throwable) {
+                    docInFlight = null
+                    awaitingSys = false
+                    docMutex.unlock()
+                    onLaunchFailure(e)
+                }
             }
-            selectImage = registry.register(SYS_IMAGE_KEY, SelectImageContract()) {
-                awaitingSysResult = false
-                it.uri?.let { uri -> deliver(uri) } ?: deliver(null)
+        }
+
+        internal fun launchSysImage() {
+            activity.lifecycleScope.launch {
+                imageMutex.lock()
+                if (!this@Request.isActive) {
+                    imageMutex.unlock()
+                    return@launch
+                }
+                imageInFlight = this@Request
+                awaitingSys = true
+                try {
+                    selectImage.launch(null)
+                } catch (e: Throwable) {
+                    imageInFlight = null
+                    awaitingSys = false
+                    imageMutex.unlock()
+                    AppLog.put("打开系统图片选择器出错", e, true)
+                    deliver(null)
+                }
             }
         }
     }
 
-    /** 开始一次选择: 记录会话并弹出选择方式弹窗。 */
-    fun begin(activity: AppCompatActivity, key: String, param: HandleFileContract.HandleFileParam) {
-        pending = key to param
-        dialog?.dismiss()
-        dialog = null
-        showDialog(activity)
-    }
-
-    private fun showDialog(activity: AppCompatActivity) {
-        val entry = pending ?: return
-        dialog = HandleFileDialog(activity, this, entry.second).also { it.show() }
-    }
-
-    fun launchSysTree() {
-        awaitingSysResult = true
-        selectDocTree?.launch()
-    }
-
-    fun launchSysDoc(types: Array<String>) {
-        awaitingSysResult = true
-        selectDoc?.launch(types)
-    }
-
-    fun launchSysImage() {
-        awaitingSysResult = true
-        selectImage?.launch()
-    }
-
-    fun sysPickerUnavailable() {
-        awaitingSysResult = false
-    }
-
-    fun isAwaitingSysResult(): Boolean = awaitingSysResult
-
-    /** 会话收口: 关弹窗、清会话, 把结果交给发起会话的调用方回调。 */
-    fun deliver(uri: Uri?) {
-        val entry = pending ?: return
-        pending = null
-        dialog?.dismiss()
-        dialog = null
-        callbacks[entry.first]?.invoke(
-            HandleFileContract.Result(uri, entry.second.requestCode, entry.second.value)
-        )
-    }
-
-    companion object {
-        private const val SYS_TREE_KEY = "handleFile.sys.tree"
-        private const val SYS_DOC_KEY = "handleFile.sys.doc"
-        private const val SYS_IMAGE_KEY = "handleFile.sys.image"
-
-        fun of(activity: AppCompatActivity): HandleFileSession =
-            ViewModelProvider(activity)[HandleFileSession::class.java]
+    private companion object {
+        const val SYS_TREE_KEY = "handleFile.sys.tree"
+        const val SYS_DOC_KEY = "handleFile.sys.doc"
+        const val SYS_IMAGE_KEY = "handleFile.sys.image"
     }
 }

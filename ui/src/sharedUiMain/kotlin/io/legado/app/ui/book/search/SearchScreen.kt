@@ -72,6 +72,7 @@ import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridS
 import io.legado.app.ui.main.home.SectionTitleRow
 import io.legado.app.ui.book.manga.extension.PluginSearchFilterRow
 import io.legado.app.ui.book.read.ReadMenuFab
+import io.legado.app.ui.bookshelf.CoverSlotRatio
 import io.legado.app.ui.bookshelf.KindLabels
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.root.LocalSharedCoverBinding
@@ -201,7 +202,7 @@ object NoOpSearchNavCallbacks : SearchNavCallbacks {
  * @param navCallbacks 路由回调, 默认 [NoOpSearchNavCallbacks]
  * @param coverSlot 搜索结果封面注入 (list/grid 两档条目共用)。null 时取
  *   [LocalBookCoverSlot] (默认 SharedBookCover, 各端统一), 与书架/发现同源。
- *   isVideoCover 供各端选封面比例 (对照 CoverRatio: false=NOVEL, true=VIDEO)
+ *   coverRatio 供各端选封面比例 (对照 CoverSlotRatio)
  * @param shelfCoverSlot 输入帮助区书架命中项封面注入, 契约同 [coverSlot] (条目类型为 Book)
  */
 @Composable
@@ -209,8 +210,8 @@ fun SearchScreen(
     viewModel: SearchViewModel,
     navCallbacks: SearchNavCallbacks = NoOpSearchNavCallbacks,
     modifier: Modifier = Modifier,
-    coverSlot: (@Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit)? = null,
-    shelfCoverSlot: (@Composable (Book, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit)? = null,
+    coverSlot: (@Composable (SearchBook, Modifier, CoverSlotRatio) -> Unit)? = null,
+    shelfCoverSlot: (@Composable (Book, Modifier, CoverSlotRatio, Int) -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
 
@@ -219,16 +220,16 @@ fun SearchScreen(
     val resolvedShelfCoverSlot = shelfCoverSlot ?: bookCoverSlot
     // 默认 lambda 只建一次: 每次重组换实例, 会让结果列表所有可见条目一起重组
     // (参照书架 BookshelfScreen.kt 的 bookCoverSlot 透传注释)
-    val resolvedCoverSlot: @Composable (SearchBook, Modifier, Boolean) -> Unit =
+    val resolvedCoverSlot: @Composable (SearchBook, Modifier, CoverSlotRatio) -> Unit =
         remember(coverSlot, bookCoverSlot, viewModel) {
-            coverSlot ?: { book, coverModifier, isVideoCover ->
+            coverSlot ?: { book, coverModifier, coverRatio ->
                 // SearchBook → Book 适配 LocalBookCoverSlot 签名 (同 ExploreShowRoute);
                 // 渲染时就按书架态打 notShelf 标记, 非书架书的封面才不会落进持久缓存区
                 val inShelf = viewModel.isInBookShelf(book)
                 bookCoverSlot(
                     remember(book, inShelf) { book.toCoverBook(inShelf) },
                     coverModifier,
-                    isVideoCover,
+                    coverRatio,
                     0,
                 )
             }
@@ -532,7 +533,7 @@ private fun ColumnScope.InputHelp(
     styleIsVideo: Boolean,
     styleCols: Int,
     bookshelfVersion: Int,
-    shelfCoverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit,
+    shelfCoverSlot: @Composable (Book, Modifier, CoverSlotRatio, Int) -> Unit,
     shelfGridState: LazyGridState,
     historyScrollState: ScrollState,
     onHistoryClick: (String) -> Unit,
@@ -540,13 +541,13 @@ private fun ColumnScope.InputHelp(
     val colors = AppTheme.colors
     val navPad = rememberNavigationBarPaddingValues()
     // 3 参 → 4 参适配 (补 coverReloadTick, 本区恒 0); remember 保实例稳定, 条目才能跳过重组
-    val tickedShelfCoverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, Int) -> Unit =
+    val tickedShelfCoverSlot: @Composable (Book, Modifier, CoverSlotRatio, Int) -> Unit =
         remember(shelfCoverSlot) {
-            { book, modifier, isVideoCover, tick ->
+            { book, modifier, coverRatio, tick ->
                 shelfCoverSlot(
                     book,
                     modifier,
-                    isVideoCover,
+                    coverRatio,
                     tick
                 )
             }
@@ -689,7 +690,7 @@ private fun ColumnScope.ResultArea(
     styleCols: Int,
     bookshelfVersion: Int,
     pluginFiltersVersion: Int,
-    coverSlot: @Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit,
+    coverSlot: @Composable (SearchBook, Modifier, CoverSlotRatio) -> Unit,
 ) {
     @Suppress("UNUSED_EXPRESSION") bookshelfVersion // 书架增删时重组刷新绿点
     if (isSourceGroupLayout) {
@@ -752,9 +753,9 @@ private fun ColumnScope.ResultArea(
                 val binding = rememberSharedCoverSourceBinding(book.bookUrl, "search-result")
                 CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
                     val displayBook = remember(book) { book.toBook() }
-                    val cover: @Composable (Book, Modifier, Boolean, Int) -> Unit =
-                        { _, modifier, isVideoCover, _ ->
-                            coverSlot(book, modifier, isVideoCover)
+                    val cover: @Composable (Book, Modifier, CoverSlotRatio, Int) -> Unit =
+                        { _, modifier, coverRatio, _ ->
+                            coverSlot(book, modifier, coverRatio)
                         }
                     ShelfVideoItem(
                         book = displayBook,
@@ -790,9 +791,9 @@ private fun ColumnScope.ResultArea(
                         // 视频网格卡 (cols>=1 且视频, 对照 ExploreShow 视频卡分支)
                         styleIsVideo && styleCols >= 1 -> {
                             val displayBook = remember(book) { book.toBook() }
-                            val cover: @Composable (Book, Modifier, Boolean, Int) -> Unit =
-                                { _, modifier, isVideoCover, _ ->
-                                    coverSlot(book, modifier, isVideoCover)
+                            val cover: @Composable (Book, Modifier, CoverSlotRatio, Int) -> Unit =
+                                { _, modifier, coverRatio, _ ->
+                                    coverSlot(book, modifier, coverRatio)
                                 }
                             ShelfVideoItem(
                                 book = displayBook,
@@ -825,16 +826,19 @@ private fun ColumnScope.ResultArea(
                                 onLongClick = {
                                     navCallbacks.onBookClick(book, true, binding.pageToken)
                                 },
-                                coverSlot = { modifier -> coverSlot(book, modifier, isVideoStyle) },
+                                coverSlot = { modifier ->
+                                    // 列表条目恒固定比例 (对照原版 bindListCard isVideoStyle ? VIDEO : NOVEL)
+                                    coverSlot(book, modifier, if (isVideoStyle) CoverSlotRatio.VIDEO else CoverSlotRatio.NOVEL, modifier)
+                                },
                             )
                         }
 
                         // 多列网格卡 (cols>=2 非视频)
                         else -> {
                             val displayBook = remember(book) { book.toBook() }
-                            val cover: @Composable (Book, Modifier, Boolean, Int) -> Unit =
-                                { _, modifier, isVideoCover, _ ->
-                                    coverSlot(book, modifier, isVideoCover)
+                            val cover: @Composable (Book, Modifier, CoverSlotRatio, Int) -> Unit =
+                                { _, modifier, coverRatio, _ ->
+                                    coverSlot(book, modifier, coverRatio)
                                 }
                             ShelfGridItem(
                                 book = displayBook,
@@ -873,7 +877,7 @@ private fun ColumnScope.SourceGroupResultArea(
     styleIsVideo: Boolean,
     pluginFiltersVersion: Int,
     bookshelfVersion: Int,
-    coverSlot: @Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit,
+    coverSlot: @Composable (SearchBook, Modifier, CoverSlotRatio) -> Unit,
 ) {
     @Suppress("UNUSED_EXPRESSION") bookshelfVersion // 书架增删时重组刷新书架标记
     val state = rememberLazyListState()
@@ -911,7 +915,7 @@ private fun SourceSection(
     group: SourceSearchGroup,
     styleIsVideo: Boolean,
     pluginFiltersVersion: Int,
-    coverSlot: @Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit,
+    coverSlot: @Composable (SearchBook, Modifier, CoverSlotRatio) -> Unit,
 ) {
     // 区块留白对照主页展示项 (SectionHolder.root: top default=8 / bottom xs=4)
     Column(

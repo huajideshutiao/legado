@@ -15,6 +15,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.DirUsage
 import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.media.AvPlayerBufferingObserver
 import io.legado.app.help.media.AvPlayerItemStatusObserver
@@ -24,8 +25,11 @@ import io.legado.app.ui.IosStatusBarHiddenNotification
 import io.legado.app.ui.appSupportedOrientationMask
 import io.legado.app.ui.landscapeMask
 import io.legado.app.ui.requestSceneOrientation
+import io.legado.app.utils.IosSecurityScopeLease
+import io.legado.app.utils.IosSecurityScopedStorage
 import io.legado.app.utils.canonicalizeUri
 import io.legado.app.utils.hasPlayableScheme
+import io.legado.app.ui.toLocalFilePath
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
@@ -340,6 +344,9 @@ class IosVideoPlayerController(
     /** 本次装载真正生效的请求头 (伪头已剔除), 与 [loadedUrl] 同作装载守卫 */
     private var loadedHeaders: Map<String, String> = emptyMap()
 
+    /** 沙盒外本地视频的授权租约 (装载期间持有, 卸载/换源/释放即配对关闭); null = 当前源非沙盒外文件 */
+    private var fileScopeLease: IosSecurityScopeLease? = null
+
     /** KVO 上报的缓冲态 (item.status 加载中 / timeControlStatus 等待起播), 事件驱动无轮询 */
     private var kvoBuffering = false
 
@@ -393,6 +400,18 @@ class IosVideoPlayerController(
         // 先卸上一件媒体 (保留 AVPlayer 本体: 渲染面绑的是实例引用, 换源不换实例可避开
         // 「新 player 已建但 avpvc 仍指旧实例」的黑屏窗口; 真的换实例只有首装与 release 两条路)
         unloadMedia()
+        // 沙盒外本地视频: 投递口已把 bookmark 登记进授权表, 装载期间持既有租约,
+        // 卸载/换源/释放即配对关闭; 授权失效直接报错 (重试拿到的还是同一条失效授权)
+        fileScopeLease = if (url.startsWith("file://", true)) {
+            try {
+                IosSecurityScopedStorage.acquireLease(url.toLocalFilePath(), DirUsage.BookTree)
+            } catch (e: SecurityException) {
+                rejectUnsupportedAddress("没有访问该视频文件的授权")
+                return
+            }
+        } else {
+            null
+        }
         val nsUrl = NSURL.URLWithString(url.canonicalizeUri()) ?: run {
             handlePlayError("视频地址不可用")
             return
@@ -720,6 +739,8 @@ class IosVideoPlayerController(
         player?.pause()
         player?.replaceCurrentItemWithPlayerItem(null)
         item = null
+        fileScopeLease?.close()
+        fileScopeLease = null
     }
 
     private companion object {

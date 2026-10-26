@@ -15,6 +15,7 @@ import io.legado.app.ui.book.info.edit.BookInfoEditScreenModel
 import io.legado.app.ui.book.info.edit.BookInfoEditUiActions
 import io.legado.app.ui.book.info.edit.BookInfoEditUiEvent
 import io.legado.app.ui.book.info.edit.BookInfoEditViewModelShared
+import io.legado.app.ui.bookshelf.CoverSlotRatio
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
@@ -138,7 +139,7 @@ fun BookInfoEditRoute(
         actions = actions,
         coverSlot = { book, modifier ->
             // coverTick 递增 (选图/刷新) 时驱动封面组件重载 (SharedBookCover tick)
-            book?.let { bookCoverSlot(it, modifier, false, state.coverTick) }
+            book?.let { bookCoverSlot(it, modifier, CoverSlotRatio.NOVEL, state.coverTick) }
         },
     )
 }

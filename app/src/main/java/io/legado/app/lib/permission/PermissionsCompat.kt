@@ -10,6 +10,11 @@ class PermissionsCompat private constructor() {
         RequestManager.pushRequest(request)
     }
 
+    /** 撤销本条权限请求: 未启动的排队项移除, 已进入权限页面的保持回传占用至真实返回但弃回调。 */
+    fun cancel() {
+        RequestManager.cancelRequest(request)
+    }
+
     class Builder {
         private val request: Request = Request()
 

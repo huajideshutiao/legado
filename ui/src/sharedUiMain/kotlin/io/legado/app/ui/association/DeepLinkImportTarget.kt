@@ -12,8 +12,7 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * legado:// deep link 导入目标: 按 [DeepLinkImportType] 归一化各 Import*ViewModelShared 的差异,
- * 供 iOS/鸿蒙/desktop 的 deep link 宿主与规则订阅 (RuleSubRoute) / 通用导入 Overlay
- * (ImportSourceOverlayContent) 用同一段代码分发。
+ * 供各端 deep link 宿主与规则订阅 (RuleSubRoute) 用同一段代码分发。
  *
  * 抹平三处差异:
  * - 入口方法名: 书源/目录规则/字典/语音/主题是 `importSource(text)`, 替换规则是 `import(text)`;
@@ -110,8 +109,8 @@ class DeepLinkImportTarget private constructor(
 }
 
 /**
- * 勾选导入对话框统一渲染 (deep link 宿主 / 规则订阅 RuleSubRoute / 通用导入 Overlay
- * ImportSourceOverlayContent 共用; 原三处各自 collect success/error 的重复实现收敛于此)。
+ * 勾选导入对话框统一渲染 (deep link 宿主 / 规则订阅 RuleSubRoute 共用;
+ * 原两处各自 collect success/error 的重复实现收敛于此)。
  *
  * - 解析进行中 (success/error 均未到达) → 对话框内 loading;
  * - 解析失败 → 对话框内显示 VM 投递的原串 (含 `ImportError:` 前缀, 对照原版 tv_msg 直接赋值);

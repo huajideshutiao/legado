@@ -100,9 +100,9 @@ import org.jetbrains.compose.resources.stringResource
  *   - `ThemeConfig.curBgImagePath` → `LocalThemeStoreProvider.current.bgImagePath`
  *   - `ColorUtils.isColorLight` → 用 `Color.luminance()` (WCAG 相对亮度, 与原版
  *     androidx ColorUtils.calculateLuminance 同公式, AppTheme 同款写法)
- *   - `AndroidView + CoverImageView` (原 ShelfCover) → 用 `coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit`
+ *   - `AndroidView + CoverImageView` (原 ShelfCover) → 用 `coverSlot: @Composable (Book, Modifier, CoverSlotRatio, Int) -> Unit`
  *     参数注入, 各端统一默认 [SharedBookCover] (View 版封面组件已移除);
- *     isVideoCover 由条目按 tier 决定 (对照原 adapter coverRatio 赋值), coverReloadTick
+ *     coverRatio 由条目按 tier 决定 (对照原 adapter coverRatio 赋值), coverReloadTick
  *     为配置变更重载信号 (封面组件按 tick 判重/重载)
  * - **状态提升**: `BookshelfActions` 改为接受 [BookshelfActionsCallbacks] 而非 BaseBookshelfState;
  *   `ShelfBooksContent` 去掉 `Lifecycle` 参数 (shared 不依赖 androidx.lifecycle,
@@ -136,7 +136,7 @@ enum class ShelfCoverSlot { LIST, GRID, VIDEO }
  * 不一致时, 封面的 `aspectRatio` 会静默放弃比例按宽度测量, 封面撑满整行。
  *
  * @param coverHeightDp 列表档封面高度 (网格/视频档高度由宽度算出, 此值不用)
- * @param cover 封面渲染回调, 收到与 [slot] 配套的尺寸 modifier 与比例标志
+ * @param cover 封面渲染回调, 收到与 [slot] 配套的尺寸 modifier 与比例档位
  */
 @Composable
 internal fun ShelfCoverBox(
@@ -144,7 +144,7 @@ internal fun ShelfCoverBox(
     coverHeightDp: Int = 0,
     listIsVideo: Boolean = false,
     contentAlignment: Alignment = Alignment.TopStart,
-    cover: @Composable (Modifier, isVideoCover: Boolean) -> Unit,
+    cover: @Composable (Modifier, coverRatio: CoverSlotRatio) -> Unit,
 ) {
     val boxModifier: Modifier = when (slot) {
         // 列表档: 高度由 bookshelfCoverHeight 决定, 宽度按封面比例反算
@@ -158,14 +158,16 @@ internal fun ShelfCoverBox(
         ShelfCoverSlot.LIST -> Modifier.fillMaxHeight()
         ShelfCoverSlot.GRID, ShelfCoverSlot.VIDEO -> Modifier.fillMaxWidth()
     }
-    // 比例标志对照原 bindExploreCard / bindGridCard / bindVideoCard 与各 GroupViewHolder:
-    // 列表档书籍随 listIsVideo (分组列表档恒 NOVEL, 对照原版 GroupViewHolder 不设 coverRatio), 网格档恒 NOVEL, 视频档恒 VIDEO
-    val isVideoCover = when (slot) {
-        ShelfCoverSlot.LIST -> listIsVideo
-        ShelfCoverSlot.GRID -> false
-        ShelfCoverSlot.VIDEO -> true
+    // 比例档位对照原 bindExploreCard / bindGridCard / bindVideoCard 与各 GroupViewHolder:
+    // 列表档书籍随 listIsVideo 固定 (分组列表档恒 NOVEL, 对照原版 GroupViewHolder 不设 coverRatio),
+    // 网格档恒 NOVEL, 视频档按真实宽高自适应。列表档行高钉死、宽度按比例反算, 横竖封面混排
+    // 会让同行条目的封面宽度参差, 故恒固定比例不自适应
+    val coverRatio = when (slot) {
+        ShelfCoverSlot.LIST -> if (listIsVideo) CoverSlotRatio.VIDEO else CoverSlotRatio.NOVEL
+        ShelfCoverSlot.GRID -> CoverSlotRatio.NOVEL
+        ShelfCoverSlot.VIDEO -> CoverSlotRatio.AUTO
     }
-    Box(boxModifier, contentAlignment = contentAlignment) { cover(coverModifier, isVideoCover) }
+    Box(boxModifier, contentAlignment = contentAlignment) { cover(coverModifier, coverRatio) }
 }
 
 data class ShelfLayoutSpec(
@@ -304,12 +306,12 @@ fun ShelfBooksContent(
     onBookLongClick: (Book, String?) -> Unit,
     showLastUpdateTime: Boolean,
     showKindIntro: Boolean,
-    // isVideoCover: 是否用 VIDEO(16:9) 封面比例。对照原版 ShelfCover ratio 选取:
-    // Book list 按 isVideoStyle; Group list 恒 NOVEL(原 GroupViewHolder 不设 coverRatio);
-    // Grid 恒 NOVEL; Video 恒 VIDEO。
+    // coverRatio: 封面比例档位 (CoverSlotRatio)。对照原版 ShelfCover ratio 选取:
+    // Book list 按 isVideoStyle 固定; Group list 恒 NOVEL(原 GroupViewHolder 不设 coverRatio);
+    // Grid 恒 NOVEL; Video 按真实宽高自适应。
     // 第 4 参 coverReloadTick: 配置变更时重载封面 (宿主端封面组件按 tick 判重/重载)
-    bookCoverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit,
-    groupCoverSlot: @Composable (BookGroup, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit,
+    bookCoverSlot: @Composable (Book, Modifier, CoverSlotRatio, Int) -> Unit,
+    groupCoverSlot: @Composable (BookGroup, Modifier, CoverSlotRatio, Int) -> Unit,
     modifier: Modifier = Modifier,
     onGroupClick: ((BookGroup) -> Unit)? = null,
     onGroupLongClick: ((BookGroup) -> Unit)? = null,
@@ -681,7 +683,7 @@ fun ShelfRowIcon(painterKey: String) {
  * 按高度+比例反算宽度, 对照原 XML iv_cover height=120dp + wrap_content width)
  *
  * 封面比例: 对照原 [ItemBookshelfListBinding.bindExploreCard] 的 `ivCover.coverRatio =
- * if (isVideoStyle) VIDEO else NOVEL`, 此处把 [isVideoStyle] 作为 isVideoCover 透传给 [coverSlot].
+ * if (isVideoStyle) VIDEO else NOVEL`, 此处按 [isVideoStyle] 映射档位透传给 [coverSlot].
  */
 @Composable
 fun ShelfListItem(
@@ -700,7 +702,7 @@ fun ShelfListItem(
     forceShowIntro: Boolean = false,
     forceShowUpdateTime: Boolean = false,
     hideUnread: Boolean = false,
-    coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit,
+    coverSlot: @Composable (Book, Modifier, CoverSlotRatio, Int) -> Unit,
     // 更新时间 Text 注入: 父项不感知 timeTick 心跳
     lastUpdateTextSlot: @Composable () -> Unit,
 ) {
@@ -715,8 +717,8 @@ fun ShelfListItem(
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(DesignTokens.spacingDefault),
     ) {
-        ShelfCoverBox(ShelfCoverSlot.LIST, coverHeightDp = coverHeight, listIsVideo = isVideoStyle) { m, isVideoCover ->
-            coverSlot(book, m, isVideoCover, coverReloadTick)
+        ShelfCoverBox(ShelfCoverSlot.LIST, coverHeightDp = coverHeight, listIsVideo = isVideoStyle) { m, coverRatio ->
+            coverSlot(book, m, coverRatio, coverReloadTick)
         }
         Column(
             Modifier
@@ -855,7 +857,7 @@ fun ShelfGridItem(
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
     inBookshelf: Boolean? = null,
-    coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit,
+    coverSlot: @Composable (Book, Modifier, CoverSlotRatio, Int) -> Unit,
 ) {
     val colors = AppTheme.colors
     val appConfig = remember { AppConfigProviders.get() }
@@ -864,8 +866,8 @@ fun ShelfGridItem(
         Column(Modifier.fillMaxWidth()) {
             // 封面 Box: 宽度填满 (减 12dp 左右内边距), 对照原 XML iv_cover match_parent + 12dp margin
             // 无 cover URL 时仍渲染封面 Box (走占位), 对齐原 View 版无 path 也显示默认封面
-            ShelfCoverBox(ShelfCoverSlot.GRID, contentAlignment = Alignment.TopCenter) { m, isVideoCover ->
-                coverSlot(book, m, isVideoCover, coverReloadTick)
+            ShelfCoverBox(ShelfCoverSlot.GRID, contentAlignment = Alignment.TopCenter) { m, coverRatio ->
+                coverSlot(book, m, coverRatio, coverReloadTick)
             }
             Text(
                 text = book.name,
@@ -936,7 +938,7 @@ fun ShelfVideoItem(
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
     inBookshelf: Boolean? = null,
-    coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit,
+    coverSlot: @Composable (Book, Modifier, CoverSlotRatio, Int) -> Unit,
 ) {
     val colors = AppTheme.colors
     val hasCover = !book.getDisplayCover().isNullOrBlank()
@@ -949,8 +951,8 @@ fun ShelfVideoItem(
         if (hasCover) {
             Box {
                 // 有封面时按视频槽渲染，由底层封面组件按实际宽高自适应 16:9 / 3:4
-                ShelfCoverBox(ShelfCoverSlot.VIDEO) { m, isVideoCover ->
-                    coverSlot(book, m, isVideoCover, coverReloadTick)
+                ShelfCoverBox(ShelfCoverSlot.VIDEO) { m, coverRatio ->
+                    coverSlot(book, m, coverRatio, coverReloadTick)
                 }
                 // 书架标记对照原 XML: 固定 30dp, 贴封面左上角 (无 margin)
                 if (inBookshelf == true) {
@@ -1009,7 +1011,7 @@ fun GroupListItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
-    coverSlot: @Composable (BookGroup, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit,
+    coverSlot: @Composable (BookGroup, Modifier, CoverSlotRatio, Int) -> Unit,
 ) {
     val colors = AppTheme.colors
     val coverHeight = remember(coverReloadTick, isVideoStyle) { shelfCoverHeightDp(isVideoStyle) }
@@ -1021,8 +1023,8 @@ fun GroupListItem(
             .padding(DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ShelfCoverBox(ShelfCoverSlot.LIST, coverHeightDp = coverHeight) { m, isVideoCover ->
-            coverSlot(group, m, isVideoCover, coverReloadTick)
+        ShelfCoverBox(ShelfCoverSlot.LIST, coverHeightDp = coverHeight) { m, coverRatio ->
+            coverSlot(group, m, coverRatio, coverReloadTick)
         }
         Text(
             text = group.groupName,
@@ -1042,7 +1044,7 @@ fun GroupGridItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
-    coverSlot: @Composable (BookGroup, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit,
+    coverSlot: @Composable (BookGroup, Modifier, CoverSlotRatio, Int) -> Unit,
 ) {
     val colors = AppTheme.colors
     Column(
@@ -1051,8 +1053,8 @@ fun GroupGridItem(
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
-        ShelfCoverBox(ShelfCoverSlot.GRID) { m, isVideoCover ->
-            coverSlot(group, m, isVideoCover, coverReloadTick)
+        ShelfCoverBox(ShelfCoverSlot.GRID) { m, coverRatio ->
+            coverSlot(group, m, coverRatio, coverReloadTick)
         }
         Text(
             text = group.groupName,
@@ -1073,7 +1075,7 @@ fun GroupVideoItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
-    coverSlot: @Composable (BookGroup, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit,
+    coverSlot: @Composable (BookGroup, Modifier, CoverSlotRatio, Int) -> Unit,
 ) {
     val colors = AppTheme.colors
     Column(
@@ -1083,8 +1085,8 @@ fun GroupVideoItem(
             .padding(DesignTokens.spacingDefault),
     ) {
         // 无 cover URL 时仍渲染封面 Box (走占位), 对齐 app 端无 path 也显示默认封面
-        ShelfCoverBox(ShelfCoverSlot.VIDEO) { m, isVideoCover ->
-            coverSlot(group, m, isVideoCover, coverReloadTick)
+        ShelfCoverBox(ShelfCoverSlot.VIDEO) { m, coverRatio ->
+            coverSlot(group, m, coverRatio, coverReloadTick)
         }
         Text(
             text = group.groupName,

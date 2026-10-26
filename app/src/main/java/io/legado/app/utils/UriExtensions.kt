@@ -1,20 +1,15 @@
 package io.legado.app.utils
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
-import androidx.appcompat.app.AppCompatActivity
 import androidx.documentfile.provider.DocumentFile
 import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.i18n.androidAppString
-import io.legado.app.lib.permission.Permissions
-import io.legado.app.lib.permission.PermissionsCompat
 import okhttp3.MediaType
 import okhttp3.RequestBody
 import okio.BufferedSink
@@ -54,47 +49,6 @@ fun Uri.displayName(context: Context): String? =
     } else {
         lastPathSegment
     }
-
-/**
- * 读取URI
- */
-@SuppressLint("Recycle") // openInputStream 由下方 .use 关闭, lint 追踪不到回调内传递的流
-fun AppCompatActivity.readUri(
-    uri: Uri?,
-    success: (fileDoc: FileDoc, inputStream: InputStream) -> Unit
-) {
-    uri ?: return
-    try {
-        if (uri.isContentScheme()) {
-            val doc = DocumentFile.fromSingleUri(this, uri)
-            doc ?: throw NoStackTraceException("未获取到文件")
-            val fileDoc = FileDoc.fromDocumentFile(doc)
-            contentResolver.openInputStream(uri)!!.use { inputStream ->
-                success.invoke(fileDoc, inputStream)
-            }
-        } else {
-            PermissionsCompat.Builder()
-                .addPermissions(*Permissions.Group.STORAGE)
-                .rationale(androidAppString("get_storage_per"))
-                .onGranted {
-                    RealPathUtil.getPath(this, uri)?.let { path ->
-                        val file = File(path)
-                        val fileDoc = FileDoc.fromFile(file)
-                        FileInputStream(file).use { inputStream ->
-                            success.invoke(fileDoc, inputStream)
-                        }
-                    }
-                }
-                .request()
-        }
-    } catch (e: Exception) {
-        e.printOnDebug()
-        AppLog.put("读取Uri出错\n$uri\n$e", e, true)
-        if (e is SecurityException) {
-            throw e
-        }
-    }
-}
 
 @Throws(Exception::class)
 fun Uri.readBytes(context: Context): ByteArray {

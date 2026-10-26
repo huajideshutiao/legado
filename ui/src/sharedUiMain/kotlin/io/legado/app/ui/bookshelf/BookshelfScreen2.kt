@@ -55,7 +55,7 @@ internal fun BookshelfScreen2(
     actions: @Composable RowScope.() -> Unit,
     modifier: Modifier = Modifier,
     tier: BookshelfTier? = null,
-    coverSlot: (@Composable (Book, Modifier, Boolean, Int) -> Unit)? = null,
+    coverSlot: (@Composable (Book, Modifier, CoverSlotRatio, Int) -> Unit)? = null,
     scrollState: ShelfScrollState = remember { ShelfScrollState() },
     gotoTopTick: Int = 0,
     configTick: Int = 0,
@@ -68,9 +68,9 @@ internal fun BookshelfScreen2(
     val bookCoverSlot = coverSlot ?: LocalBookCoverSlot.current
     // LocalGroupCoverSlot 组合期读取值随宿主重组变化, 稳定化引用避免条目层全量重组合
     val currentGroupCoverSlot = rememberUpdatedState(LocalGroupCoverSlot.current)
-    val groupCoverSlot: @Composable (BookGroup, Modifier, Boolean, Int) -> Unit = remember {
-        { group, m, isVideoCover, tick ->
-            currentGroupCoverSlot.value(group, m, isVideoCover, tick)
+    val groupCoverSlot: @Composable (BookGroup, Modifier, CoverSlotRatio, Int) -> Unit = remember {
+        { group, m, coverRatio, tick ->
+            currentGroupCoverSlot.value(group, m, coverRatio, tick)
         }
     }
     val layoutSpec = rememberBookshelfLayoutSpec(tier)
@@ -190,7 +190,7 @@ internal fun BookshelfScreen2(
 fun SharedGroupCover(
     group: BookGroup,
     modifier: Modifier = Modifier,
-    isVideoCover: Boolean = false,
+    coverRatio: CoverSlotRatio = CoverSlotRatio.NOVEL,
     reloadTick: Int = 0,
 ) {
     SharedCoverContent(
@@ -208,7 +208,7 @@ fun SharedGroupCover(
             author = null,
         ),
         modifier = modifier,
-        isVideoCover = isVideoCover,
+        coverRatio = coverRatio,
         reloadTick = reloadTick,
         nameAuthorOverlay = false,
     )
@@ -221,8 +221,8 @@ fun SharedGroupCover(
  * (默认 [SharedGroupCover], 各端统一)。
  */
 val LocalGroupCoverSlot =
-    staticCompositionLocalOf<@Composable (BookGroup, Modifier, Boolean, Int) -> Unit> {
-        @Composable { group, modifier, isVideoCover, tick ->
-            SharedGroupCover(group, modifier, isVideoCover, tick)
+    staticCompositionLocalOf<@Composable (BookGroup, Modifier, CoverSlotRatio, Int) -> Unit> {
+        @Composable { group, modifier, coverRatio, tick ->
+            SharedGroupCover(group, modifier, coverRatio, tick)
         }
     }

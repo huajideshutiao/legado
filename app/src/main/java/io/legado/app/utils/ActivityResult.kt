@@ -5,27 +5,39 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityOptionsCompat
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 fun <I, O> AppCompatActivity.registerForActivityResult(contract: ActivityResultContract<I, O>): ActivityResultLauncherAwait<I, O> {
-    // 队列: 并发 launch 各自入队 (FIFO), 结果到达时取队首 resume;
-    // 单个 lateinit continuation 会被并发 launch 覆盖 → 前一个协程永久挂起
-    val continuations = ArrayDeque<CancellableContinuation<O>>()
+    // 同一 launcher 串行: 新调用排队等旧调用真实回传; 排队时取消不启动系统调用,
+    // 已启动后取消不提前解锁 (占用至真实回传), 旧结果只结束旧等待
+    val mutex = Mutex()
+    var waiter: CancellableContinuation<O>? = null
     val launcher = registerForActivityResult(contract) { result ->
-        // 取出时机: 每次结果回调到达时取队首 (与 launch 顺序一一对应);
-        // 结果先于 launch 到达 (进程重建重投) 时队列为空, 丢弃不崩
-        val continuation = continuations.removeFirstOrNull()
+        val continuation = waiter
+        waiter = null
+        // 真实回传才释放通道; 无占用时到达的结果 (登记期重投) 无人可交付, 只丢弃
+        if (mutex.isLocked) {
+            mutex.unlock()
+        }
         if (continuation != null && continuation.isActive) {
             continuation.resume(result)
         }
     }
     return object : ActivityResultLauncherAwait<I, O>() {
         override suspend fun launch(input: I, options: ActivityOptionsCompat?): O {
+            mutex.lock()
             return suspendCancellableCoroutine { continuation ->
-                // 取消时移出队列, 避免死协程占据队首吞掉后续结果
-                continuation.invokeOnCancellation { continuations.remove(continuation) }
-                continuations.addLast(continuation)
-                launcher.launch(input, options)
+                waiter = continuation
+                try {
+                    launcher.launch(input, options)
+                } catch (e: Throwable) {
+                    // launch 失败: 通道从未占用成功, 现场释放, 等待按原异常结束
+                    waiter = null
+                    mutex.unlock()
+                    continuation.resumeWithException(e)
+                }
             }
         }
 

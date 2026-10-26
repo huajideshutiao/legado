@@ -7,7 +7,7 @@ import kotlinx.serialization.json.JsonObject
 /**
  * JSON 导入类型 (KMP 共享)。
  *
- * 对应 app 端 `BaseAssociationViewModel.importJson` 中按 key 判断的导入分支,
+ * 对应原版 app 端 `BaseAssociationViewModel.importJson` 中按 key 判断的导入分支,
  * 每个枚举值映射一种导入源类型。原 app 端用字符串字面量 ("bookSource" / "rssSource" / ...)
  * 推送给 LiveData, 下沉后改为枚举, 由 app 端再映射回字符串做平台专属操作。
  */
@@ -37,7 +37,7 @@ enum class JsonType {
 /**
  * 从 JSON 文本检测导入类型 (KMP 共享)。
  *
- * 原 app 端 `BaseAssociationViewModel.importJson` 中的纯数据解析逻辑下沉:
+ * 原版 app 端 `BaseAssociationViewModel.importJson` 中的纯数据解析逻辑下沉:
  * 解析 JSON → 取首个数组元素或对象 → 按 key 判断类型。零 Android 依赖
  * (不含 Uri / LiveData / context), app 端调用本函数后再做平台专属的
  * Uri 读取与 LiveData 推送。

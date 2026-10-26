@@ -21,7 +21,7 @@ import io.legado.app.ui.root.toRouteRef
 /**
  * legado:// deep link 里三个此前"不支持"的类型的落地实现 (KMP commonMain, 各端共享)。
  *
- * 对照 app 端 `FileAssociationImport.handleOnLineImport` 与 `FileAssociationViewModel`:
+ * 对照原版 `FileAssociationFragment` 的 scheme 分发与 `FileAssociationViewModel`:
  * - `/addToBookshelf` → [AddToBookshelfShared] (原 `AddToBookshelfHelper.add`)
  * - `/readConfig` → [importReadConfig] (原 `getBytes` + `importReadConfig`)
  * - 其余未识别 path → [determineType] (原 `determineType`: 下载内容按 Content-Type 嗅探,

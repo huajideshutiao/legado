@@ -1,18 +1,16 @@
 package io.legado.app.ui.association
 
-import android.annotation.SuppressLint
 import android.net.Uri
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import io.legado.app.App
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.DirUsage
+import io.legado.app.data.entities.Book
 import io.legado.app.exception.InvalidBooksDirException
-import io.legado.app.help.IntentData
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.copyToFileAtomically
 import io.legado.app.help.file.AndroidDirAuthorizations
@@ -21,301 +19,252 @@ import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.file.HandleFileLauncher
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.main.MainActivity
-import io.legado.app.ui.root.AppNavigatorProviders
-import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.LaunchRequest
 import io.legado.app.ui.root.LaunchRequestBus
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.utils.FileUtils
+import io.legado.app.utils.FileDoc
 import io.legado.app.utils.canRead
 import io.legado.app.utils.checkWrite
 import io.legado.app.utils.getFile
 import io.legado.app.utils.isContentScheme
-import io.legado.app.utils.readUri
+import io.legado.app.utils.openInputStream
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.coroutines.resume
 
 /**
- * 文件关联导入流程的跨重建宿主: 流程实例存进宿主 Activity 的 ViewModelStore, 界面重建
- * (旋转/夜间切换) 后由宿主重挂新 Activity 实例继续 (对照原版 FileAssociationFragment 由
- * FragmentManager 保留实例并自动恢复的语义); 流程各自完成后自移除。
- */
-class FileAssociationFlows : ViewModel() {
-
-    private val flows = mutableListOf<FileAssociationImport>()
-
-    fun start(activity: BaseComposeActivity, uri: Uri, isShellHost: Boolean) {
-        val flow = FileAssociationImport(uri, isShellHost) { flows.remove(it) }
-        flows.add(flow)
-        flow.attach(activity)
-    }
-
-    /** 界面重建后重挂: 存活流程重新登记选择器回调与观察者 (已结束的流程就地移除)。 */
-    fun reattach(activity: BaseComposeActivity) {
-        flows.toList().forEach { it.attach(activity) }
-    }
-
-    companion object {
-        fun of(activity: AppCompatActivity): FileAssociationFlows =
-            ViewModelProvider(activity)[FileAssociationFlows::class.java]
-    }
-}
-
-/**
- * 文件关联导入的一次性流程执行器 (无自有界面, 界面只由它弹出的对话框/转圈组成)。
- * 流程状态 (uri/嗅探 ViewModel/进行中的写入) 存进宿主的 ViewModelStore 跨界面重建存活,
- * 由 [FileAssociationFlows] 持有; [attach] 挂接当前 Activity 实例。
- * isShellHost 由创建方决定: 为 true 时完成动作会 finish 宿主 Activity (独立透明壳场景),
- * 默认 false 只结束自身流程, 不动宿主 (挂在主界面上的默认行为)。
+ * 文件关联导入的一次性执行器: 由透明壳 ([AssociationActivity]) 按当次请求创建并直接持有,
+ * 无自有界面 (界面只由它弹出的对话框组成), 全部工作挂在壳的生命周期子任务上 ——
+ * 壳销毁 (含界面重建收壳) 工作随之取消, 不跨重建续跑。
+ *
+ * isShellHost 由创建方按当次请求决定: true = 外部 VIEW 命中的独立壳 (打开书籍 asRoot 直达
+ * 并唤起主界面), false = 主界面内部导入的普通透明宿主 (普通页面跳转, 不唤起主界面)。
+ *
+ * 流程收口一律经 [onDone] 回报壳: 打开书籍/移交导入请求/确认或取消/失败都只结束读取阶段,
+ * 移交给共享导入宿主的请求由壳继续跟踪, 与壳寿命解耦。
  */
 class FileAssociationImport(
+    private val activity: BaseComposeActivity,
     val uri: Uri,
-    private val isShellHost: Boolean = false,
-    private val onDone: (FileAssociationImport) -> Unit = {},
+    private val isShellHost: Boolean,
+    private val onDone: () -> Unit,
+    private val onHandOff: (DeepLinkImportRequest) -> Unit,
 ) {
-    private val isShell get() = isShellHost
+    private val viewModel = FileAssociationViewModel()
 
-    /** 选择器登记的稳定 key: 跨界面重建不变, 重建后重挂时用同一 key 重登记接回待回传结果。 */
-    private val handleKey = "fileAssociation_${nextId++}"
+    /** 独立壳场景是否已唤起过主界面 (多本批次只唤一次)。 */
+    private var mainLaunched = false
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    internal val viewModel = FileAssociationViewModel(App.instance)
+    /** 在途的存储权限请求实例 (撤销入口随流程持有)。 */
+    private var storagePermission: PermissionsCompat? = null
 
-    /** 当前挂接的宿主实例与选择器 (结果回调捕获宿主, 重建后须重挂新实例); 界面重建后由 [attach] 换新。 */
-    private var activity: BaseComposeActivity? = null
-    private var treeSelect: HandleFileLauncher? = null
-
-    private var started = false
-    private var finished = false
-
-    /** 挂接 (可能是重建后的) 宿主: 重登记书籍目录选择器、重挂 ViewModel 观察者, 首次挂接触发嗅探。 */
-    fun attach(activity: BaseComposeActivity) {
-        if (finished) {
-            onDone(this)
-            return
-        }
-        detachObservers()
-        this.activity = activity
-        treeSelect = activity.registerHandleFile(handleKey) { result ->
-            if (finished) return@registerHandleFile
-            result.uri?.let { treeUri ->
-                AppConfig.defaultBookTreeUri = treeUri.toString()
-                // 书籍保存位置下的文件按本地书读写, 登记为书籍用途
-                AndroidDirAuthorizations.remember(treeUri.toString(), DirUsage.BookTree)
-                importBook(treeUri, uri)
+    fun start() {
+        activity.lifecycleScope.launch {
+            try {
+                run()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 异常单出口: 文案在抛出点带全上下文; 取消 (宿主销毁/请求撤销) 不在此列
+                AppLog.put(e.message ?: "导入失败", e)
+                activity.toastOnUi(e.message ?: "导入失败")
+            } finally {
+                cleanup()
             }
-        }
-        observe(activity)
-        if (!started) {
-            started = true
-            handleUri(uri)
         }
     }
 
-    /** 观察者挂宿主生命周期: 宿主销毁 (含界面重建) 自动摘除, 重建后 [attach] 重挂;
-     * 流程结束后 [finished] 拦截迟到回调, 不再弹提示/收尾/重复派发。 */
-    private fun observe(activity: BaseComposeActivity) {
-        viewModel.importBookLiveData.observe(activity) { if (!finished) importBook(it) }
-        viewModel.successLive.observe(activity) { if (!finished) handleSuccess(it) }
-        viewModel.errorLive.observe(activity) {
-            if (!finished) {
-                activity.toastOnUi(it)
-                finish()
+    /** 流程收口: 撤销在途的权限请求与选择请求 (无则空操作), 回报壳扣减在途流程。 */
+    private fun cleanup() {
+        storagePermission?.cancel()
+        storagePermission = null
+        onDone()
+    }
+
+    private suspend fun run() {
+        if (uri.isContentScheme() && uri.canRead()) {
+            processBatch(viewModel.dispatchIntent(uri))
+            return
+        }
+        if (uri.scheme == "legado" || uri.scheme == "yuedu") {
+            // 深链统一走共享解析链; 解析不了 (缺 src 等) 原版直接结束流程
+            LegadoDeepLink.parse(uri.toString())?.let(onHandOff)
+            return
+        }
+        // content 不可读 / file / app 等其余: 存储权限先行 (对照原版 handleUri 同一顺序)
+        if (!awaitStoragePermission()) {
+            activity.toastOnUi("请求存储权限失败。")
+            return
+        }
+        processBatch(viewModel.dispatchIntent(uri))
+    }
+
+    /** 逐项处理批次: 全部条目完成/取消后流程才收口; 单条失败按异常单出口结束整个流程。 */
+    private suspend fun processBatch(items: List<DispatchOutcome>) {
+        if (items.isEmpty()) {
+            activity.toastOnUi("压缩包内没有可导入的书籍文件")
+            return
+        }
+        for (item in items) {
+            when (item) {
+                is DispatchOutcome.Json -> {
+                    val type = item.type
+                        ?: throw NoStackTraceException("格式不对")
+                    onHandOff(DeepLinkImportRequest(type, item.source))
+                }
+
+                is DispatchOutcome.Book -> importBookItem(item.uri)
+                is DispatchOutcome.Unsupported ->
+                    if (awaitUnsupportedConfirm(item.name)) importBookItem(item.uri)
             }
         }
-        viewModel.openBookLiveData.observe(activity) {
-            if (!finished) {
-                // 同进程直投路由引用: 类型分发由 Book.toReadRoute() 承担 (audio/video/manga/rss/reader),
-                // 壳内 asRoot (书架不进栈, 对照 master 直开), 宿主内是普通 push
-                LaunchRequestBus.dispatch(LaunchRequest.OpenRoute(it.toReadRoute(), asRoot = isShell))
-                // 壳内: Intent 只负责把主界面唤到前台 (不带载荷); 宿主内本就在前台
-                if (isShell) activity.startActivity<MainActivity>()
-                finish()
-            }
+    }
+
+    private suspend fun importBookItem(bookUri: Uri) {
+        val treeUriStr = AppConfig.defaultBookTreeUri
+        if (bookUri.isContentScheme() && treeUriStr.isNullOrEmpty()) {
+            val picked = awaitTreeSelection(bookUri) ?: return
+            copyToTreeAndImport(picked.first, picked.second)
+        } else {
+            copyToTreeAndImport(treeUriStr?.toUri(), bookUri)
         }
-        viewModel.notSupportedLiveData.observe(activity) { data ->
-            if (!finished) {
-                activity.alert(
-                    title = androidAppString("draw"),
-                    message = androidAppString("file_not_supported", data.second)
-                ) {
-                    yesButton {
-                        importBook(data.first)
-                    }
-                    noButton {
-                        finish()
-                    }
-                    onCancelled {
-                        finish()
+    }
+
+    private suspend fun copyToTreeAndImport(treeUri: Uri?, bookUri: Uri) {
+        try {
+            val book = withContext(Dispatchers.IO) { copyAndImport(treeUri, bookUri) }
+            openBook(book)
+        } catch (e: InvalidBooksDirException) {
+            // 目录不可用 (未设置/被删/授权失效): 绑定当前书籍重选, 选定后重试本次条目
+            val picked = awaitTreeSelection(bookUri) ?: return
+            copyToTreeAndImport(picked.first, picked.second)
+        }
+    }
+
+    /**
+     * 复制进书籍保存位置后导入落库 (须在 IO 上调用): 读取/复制全部走 Application context
+     * 的同步流原语; SAF 目录保持 DocumentFile 直写。偏好与用途登记在目录可写性成立后才落。
+     */
+    private fun copyAndImport(treeUri: Uri?, bookUri: Uri): Book {
+        val fileDoc = FileDoc.fromUri(bookUri, false)
+        if (treeUri == null) {
+            return viewModel.importBook(bookUri)
+        }
+        if (treeUri.isContentScheme()) {
+            val treeDoc = DocumentFile.fromTreeUri(App.instance, treeUri)
+                ?: throw InvalidBooksDirException("请重新设置书籍保存位置")
+            if (!treeDoc.checkWrite()) {
+                throw InvalidBooksDirException("请重新设置书籍保存位置")
+            }
+            AppConfig.defaultBookTreeUri = treeUri.toString()
+            AndroidDirAuthorizations.remember(treeUri.toString(), DirUsage.BookTree)
+            val name = fileDoc.name
+            var doc = treeDoc.findFile(name)
+            if (doc == null || fileDoc.lastModified > doc.lastModified()) {
+                if (doc == null) {
+                    doc = treeDoc.createFile(FileUtils.getMimeType(name), name)
+                        ?: throw InvalidBooksDirException("请重新设置书籍保存位置")
+                }
+                App.instance.contentResolver.openOutputStream(doc.uri)!!.use { output ->
+                    fileDoc.openInputStream().getOrThrow().use { input ->
+                        input.copyTo(output)
                     }
                 }
             }
+            return viewModel.importBook(doc.uri)
+        }
+        val treeFile = File(treeUri.path ?: treeUri.toString())
+        if (!treeFile.checkWrite()) {
+            throw InvalidBooksDirException("请重新设置书籍保存位置")
+        }
+        AppConfig.defaultBookTreeUri = treeUri.toString()
+        AndroidDirAuthorizations.remember(treeUri.toString(), DirUsage.BookTree)
+        val name = fileDoc.name
+        val file = treeFile.getFile(name)
+        if (!file.exists() || fileDoc.lastModified > file.lastModified()) {
+            // 同名重存的是书籍保存目录里的书文件, 阅读页可能正在整读它:
+            // 写同目录唯一临时件再原子改名, 读方只会拿到完整内容
+            fileDoc.openInputStream().getOrThrow().use { input ->
+                copyToFileAtomically(file.path, input)
+            }
+        }
+        return viewModel.importBook(Uri.fromFile(file))
+    }
+
+    private fun openBook(book: Book) {
+        // 同进程直投路由引用: 类型分发由 Book.toReadRoute() 承担 (audio/video/manga/rss/reader);
+        // 独立壳 asRoot (书架不进栈, 对照 master 直开) 并唤起主界面, 宿主内普通页面跳转
+        LaunchRequestBus.dispatch(LaunchRequest.OpenRoute(book.toReadRoute(), asRoot = isShellHost))
+        if (isShellHost && !mainLaunched) {
+            mainLaunched = true
+            activity.startActivity<MainActivity>()
         }
     }
 
-    private fun detachObservers() {
-        activity?.let { a ->
-            viewModel.importBookLiveData.removeObservers(a)
-            viewModel.successLive.removeObservers(a)
-            viewModel.errorLive.removeObservers(a)
-            viewModel.openBookLiveData.removeObservers(a)
-            viewModel.notSupportedLiveData.removeObservers(a)
-        }
-    }
-
-    private fun handleUri(uri: Uri) {
-        val activity = activity ?: return
-        if (uri.isContentScheme() && uri.canRead()) {
-            viewModel.dispatchIntent(uri)
-        } else if (uri.scheme == "legado" || uri.scheme == "yuedu") {
-            // 深链统一走 shared 解析链 (LegadoDeepLinkHandler → DeepLinkImportHost),
-            // 与 MainActivity.handleExternalIntent / 共享 WebViewRoute.interceptUrl 同一条链。
-            LegadoDeepLinkHandler.handle(uri.toString())
-            finish()
-        } else {
-            PermissionsCompat.Builder()
+    private suspend fun awaitStoragePermission(): Boolean =
+        suspendCancellableCoroutine { cont ->
+            val compat = PermissionsCompat.Builder()
                 .addPermissions(*Permissions.Group.STORAGE)
                 .rationale(androidAppString("tip_perm_request_storage"))
                 .onGranted {
-                    viewModel.dispatchIntent(uri)
+                    if (cont.isActive) cont.resume(true)
                 }
                 .onDenied {
-                    activity.toastOnUi("请求存储权限失败。")
-                    finish()
+                    if (cont.isActive) cont.resume(false)
                 }
                 .request()
+            storagePermission = compat
+            cont.invokeOnCancellation { compat.cancel() }
         }
-    }
 
     /**
-     * 文件 JSON 导入成功。深链在线导入已统一走 shared [LegadoDeepLinkHandler],
-     * 此处仅剩 importJson 的文件导入分支; 载荷是已读出的 JSON 全文, 导入对话框
-     * 经 DeepLinkImportTarget 直接喂给 Import*ViewModelShared 解析。
+     * 选书籍保存位置: 每次发起是一个独立选择请求, 回调只属于当次; 待导入书籍地址随请求
+     * 参数 ([HandleFileContract.HandleFileParam.value]) 携带, 回调据此处理该书籍。
+     * 取消 (返回 null) 即本次条目作罢, 不写偏好。
      */
-    private fun handleSuccess(it: Pair<DeepLinkImportType, String>) {
-        showImportDialog(it.first, it.second)
-    }
-
-    /**
-     * 导入对话框改走 shared Overlay 分发 (对照 ImportOverlayDialogs 的 IntentData 侧信道模式):
-     * source 文本经 IntentData 存侧信道, overlay payload 只放 key。
-     */
-    private fun showImportDialog(type: DeepLinkImportType, source: String) {
-        if (isShell) {
-            // 独立透明壳: 壳内无主导航器 (showOverlay 会 error), 改走 shared pending 链,
-            // 由壳的 DeepLinkImportHost 弹同一个导入对话框; handleResolved 的 src 与
-            // overlay 路径传的是同一字符串、同一 Import*ViewModelShared 入口, 行为等价
-            LegadoDeepLinkHandler.handleResolved(DeepLinkImportRequest(type, source))
-            finish()
-            return
-        }
-        AppNavigatorProviders.get().showOverlay(
-            AppOverlay.Dialog(
-                key = "*Import:${type.name}",
-                payload = IntentData.put(source),
-            )
-        )
-        finish()
-    }
-
-    /** 流程收口: 停协程、摘观察者、从宿主列表自移除; 壳场景额外结束宿主 Activity。 */
-    private fun finish() {
-        if (finished) return
-        finished = true
-        scope.cancel()
-        detachObservers()
-        val activity = activity
-        this.activity = null
-        onDone(this)
-        if (isShell) {
-            activity?.finish()
-        }
-    }
-
-    private fun importBook(uri: Uri) {
-        val treeUriStr = AppConfig.defaultBookTreeUri
-        if (uri.isContentScheme() && treeUriStr.isNullOrEmpty()) {
-            treeSelect?.launch {
+    private suspend fun awaitTreeSelection(bookUri: Uri): Pair<Uri, Uri>? =
+        suspendCancellableCoroutine { cont ->
+            val launcher = activity.registerHandleFile { result ->
+                val treeUri = result.uri
+                val current = result.value?.toUri()
+                if (treeUri != null && current != null) {
+                    cont.resume(treeUri to current)
+                } else {
+                    cont.resume(null)
+                }
+            }
+            cont.invokeOnCancellation { launcher.cancel() }
+            launcher.launch {
                 title = androidAppString("select_book_folder")
                 mode = HandleFileContract.DIR_SYS
+                value = bookUri.toString()
             }
-        } else {
-            importBook(treeUriStr?.toUri(), uri)
         }
-    }
 
-    @SuppressLint("Recycle") // openOutputStream 由下方 .use 关闭, lint 追踪不到回调内传递的流
-    private fun importBook(treeUri: Uri?, uri: Uri) {
-        val activity = activity ?: return
-        scope.launch {
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    if (treeUri == null) {
-                        viewModel.importBook(uri)
-                    } else if (treeUri.isContentScheme()) {
-                        val treeDoc = DocumentFile.fromTreeUri(activity, treeUri)
-                        if (treeDoc?.checkWrite() != true) {
-                            throw InvalidBooksDirException("请重新设置书籍保存位置")
-                        }
-                        activity.readUri(uri) { fileDoc, inputStream ->
-                            val name = fileDoc.name
-                            var doc = treeDoc.findFile(name)
-                            if (doc == null || fileDoc.lastModified > doc.lastModified()) {
-                                if (doc == null) {
-                                    doc = treeDoc.createFile(FileUtils.getMimeType(name), name)
-                                        ?: throw InvalidBooksDirException("请重新设置书籍保存位置")
-                                }
-                                activity.contentResolver.openOutputStream(doc.uri)!!
-                                    .use { oStream ->
-                                        inputStream.copyTo(oStream)
-                                    }
-                            }
-                            viewModel.importBook(doc.uri)
-                        }
-                    } else {
-                        val treeFile = File(treeUri.path ?: treeUri.toString())
-                        if (!treeFile.checkWrite()) {
-                            throw InvalidBooksDirException("请重新设置书籍保存位置")
-                        }
-                        activity.readUri(uri) { fileDoc, inputStream ->
-                            val name = fileDoc.name
-                            val file = treeFile.getFile(name)
-                            if (!file.exists() || fileDoc.lastModified > file.lastModified()) {
-                                // 同名重存的是书籍保存目录里的书文件, 阅读页可能正在整读它:
-                                // 写同目录唯一临时件再原子改名, 读方只会拿到完整内容
-                                copyToFileAtomically(file.path, inputStream)
-                            }
-                            viewModel.importBook(Uri.fromFile(file))
-                        }
-                    }
+    private suspend fun awaitUnsupportedConfirm(name: String): Boolean =
+        suspendCancellableCoroutine { cont ->
+            activity.alert(
+                title = androidAppString("draw"),
+                message = androidAppString("file_not_supported", name)
+            ) {
+                yesButton {
+                    if (cont.isActive) cont.resume(true)
                 }
-            }.onFailure {
-                if (it is InvalidBooksDirException) {
-                    treeSelect?.launch {
-                        title = androidAppString("select_book_folder")
-                        mode = HandleFileContract.DIR_SYS
-                    }
-                } else {
-                    val msg = "导入书籍失败\n${it.localizedMessage}"
-                    AppLog.put(msg, it)
-                    activity.toastOnUi(msg)
-                    finish()
+                noButton {
+                    if (cont.isActive) cont.resume(false)
+                }
+                onCancelled {
+                    if (cont.isActive) cont.resume(false)
                 }
             }
         }
-    }
-
-    companion object {
-        private var nextId = 0
-    }
 }
