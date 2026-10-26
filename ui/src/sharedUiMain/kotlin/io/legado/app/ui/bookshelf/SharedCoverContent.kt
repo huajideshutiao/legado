@@ -56,6 +56,7 @@ import kotlinx.coroutines.flow.map
  * @param isVideoCover 是否 16:9 (true) / 3:4 (false), 对照 `BookCover.CoverRatio`
  * @param reloadTick 封面重载信号 (configTick): 变化时重启加载, 不变不额外触发
  * @param nameAuthorOverlay 默认封面上的竖排书名/作者叠字 (分组封面无书名, 不叠)
+ * @param adaptiveRatio 是否根据封面真实宽高在 16:9 与 3:4 间自适应 (横向 16:9, 纵向 3:4)
  */
 @Composable
 internal fun SharedCoverContent(
@@ -64,6 +65,7 @@ internal fun SharedCoverContent(
     isVideoCover: Boolean,
     reloadTick: Int,
     nameAuthorOverlay: Boolean,
+    adaptiveRatio: Boolean = false,
 ) {
     val loader = remember { BookImageLoaders.getOrNull() }
     // useDefaultCover 时跳过网络加载, 直接走默认封面链 (对照原 View 版封面组件 load 行为);
@@ -82,13 +84,23 @@ internal fun SharedCoverContent(
     var coverState by remember(source.coverUrl, source.cacheKey) {
         mutableStateOf(cachedCover?.let { CoverBitmap(it, false) } ?: NoCoverBitmap)
     }
+    // 自适应比例: 开启时根据位图横竖特征动态决策 (width > height 为视频 16:9, 反之为小说 3:4);
+    // 缓存命中时首帧直接决议真实比例, 避免闪烁; 未命中时以初始 isVideoCover 占位并在位图就绪时当帧切换
+    var resolvedIsVideoCover by remember(source.coverUrl, source.cacheKey, isVideoCover, adaptiveRatio) {
+        val initialIsVideo = if (adaptiveRatio && cachedCover != null) {
+            cachedCover.width > cachedCover.height
+        } else {
+            isVideoCover
+        }
+        mutableStateOf(initialIsVideo)
+    }
     // 尺寸只用于首次按显示大小降采样；后续窗口 resize 不应重新发起封面请求。
     // 否则每跨过一个量化尺寸档都会再次进入图片 Interceptor，重复执行书源 JS header 规则。
     val displaySize = remember { MutableStateFlow(IntSize.Zero) }
-    LaunchedEffect(source.coverUrl, source.cacheKey, loader, useDefaultCover, isVideoCover, reloadTick) {
+    LaunchedEffect(source.coverUrl, source.cacheKey, loader, useDefaultCover, isVideoCover, reloadTick, adaptiveRatio) {
         if (loader == null) return@LaunchedEffect
         val decodeSize = firstValidCoverDecodeSize(displaySize)
-        val ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL
+        val ratio = if (resolvedIsVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL
 
         // 默认封面链要读 prefs + 解 JSON (解析已按 raw 串记忆化), 挪到协程内真用得上时再算。
         // 解码结果进 [DecodedBitmapCache] 跨条目共享: 旧实现每条封面都完整跑一遍图片管线解
@@ -142,11 +154,14 @@ internal fun SharedCoverContent(
                     // 动图更是永不进内存缓存。这张小表是书架↔详情↔列表间复用已解位图的唯一通道
                     DecodedBitmapCache.recordCover(coverUrl, bmp)
                 }
+                if (adaptiveRatio) {
+                    resolvedIsVideoCover = bmp.width > bmp.height
+                }
                 coverState = CoverBitmap(bmp, false)
             }
         }
     }
-    val outerModifier = modifier.coverSizeModifier(isVideoCover)
+    val outerModifier = modifier.coverSizeModifier(resolvedIsVideoCover)
         .clip(DesignTokens.shapeSm)
         .onSizeChanged { displaySize.value = it }
     val bmp = coverState.bitmap

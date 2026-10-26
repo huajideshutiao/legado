@@ -21,6 +21,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
+import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
@@ -45,18 +48,21 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
+import io.legado.app.ui.compose.component.FastScrollLazyVerticalStaggeredGrid
 import io.legado.app.ui.compose.component.listItemFocus
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.PullToRefreshDefaults
 import io.legado.app.ui.compose.component.pullToRefresh
 import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
+import io.legado.app.ui.compose.component.rememberResponsiveStaggeredGridColumns
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.root.LocalSharedCoverBinding
 import io.legado.app.ui.root.rememberSharedCoverSourceBinding
@@ -71,6 +77,7 @@ import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.bookshelf_empty
 import legado.ui.generated.resources.ic_bookmark
 import legado.ui.generated.resources.ic_search
+import legado.ui.generated.resources.intro_show_null
 import legado.ui.generated.resources.search
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
@@ -175,21 +182,25 @@ class ShelfScrollState(
     listOffset: Int = 0,
     gridIndex: Int = 0,
     gridOffset: Int = 0,
+    staggeredIndex: Int = 0,
+    staggeredOffset: Int = 0,
 ) {
     /** LIST 档也走 LazyVerticalGrid (响应式多列列表), 故两档都是网格状态; 分开存以保留各档位置 */
     val list = LazyGridState(listIndex, listOffset)
     val grid = LazyGridState(gridIndex, gridOffset)
+    val staggered = LazyStaggeredGridState(staggeredIndex, staggeredOffset)
 
     companion object {
-        /** rememberSaveable 用: [listIndex, listOffset, gridIndex, gridOffset] */
+        /** rememberSaveable 用: [listIndex, listOffset, gridIndex, gridOffset, staggeredIndex, staggeredOffset] */
         val Saver = listSaver<ShelfScrollState, Int>(
             save = {
                 listOf(
                     it.list.firstVisibleItemIndex, it.list.firstVisibleItemScrollOffset,
                     it.grid.firstVisibleItemIndex, it.grid.firstVisibleItemScrollOffset,
+                    it.staggered.firstVisibleItemIndex, it.staggered.firstVisibleItemScrollOffset,
                 )
             },
-            restore = { ShelfScrollState(it[0], it[1], it[2], it[3]) },
+            restore = { ShelfScrollState(it[0], it[1], it[2], it[3], it.getOrElse(4) { 0 }, it.getOrElse(5) { 0 }) },
         )
     }
 }
@@ -435,36 +446,73 @@ fun ShelfBooksContent(
                 }
             }
 
-            ShelfTier.VIDEO -> FastScrollLazyVerticalGrid(
-                columns = shelfGridCells(spec),
-                state = scroll.grid,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = DesignTokens.spacingDefault),
-            ) {
-                items(items, key = ::shelfItemKey, contentType = ::shelfItemType) { item ->
-                    val itemModifier = if (eInk) Modifier else Modifier.animateItem()
-                    when (item) {
-                        // 外层 Box 同 LIST 分支: 让 animateItem 留在 Box 上
-                        is Book -> Box(modifier = itemModifier) {
-                            // 共享配对身份按条目下发 (同上)
-                            val binding = rememberSharedCoverSourceBinding(item.bookUrl, pairBlockId)
-                            CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
-                                ShelfVideoItem(
+            ShelfTier.VIDEO -> {
+                val isStaggered = spec.cols >= 2
+                if (isStaggered) {
+                    FastScrollLazyVerticalStaggeredGrid(
+                        columns = rememberResponsiveStaggeredGridColumns(spec.cols),
+                        state = scroll.staggered,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = DesignTokens.spacingDefault),
+                    ) {
+                        items(items, key = ::shelfItemKey, contentType = ::shelfItemType) { item ->
+                            val itemModifier = if (eInk) Modifier else Modifier.animateItem()
+                            when (item) {
+                                is Book -> Box(modifier = itemModifier) {
+                                    val binding = rememberSharedCoverSourceBinding(item.bookUrl, pairBlockId)
+                                    CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
+                                        ShelfVideoItem(
+                                            item, coverReloadTick,
+                                            onClick = { onBookClick(item, binding.pageToken) },
+                                            onLongClick = { onBookLongClick(item, binding.pageToken) },
+                                            coverSlot = bookCoverSlot,
+                                        )
+                                    }
+                                }
+
+                                is BookGroup -> GroupVideoItem(
                                     item, coverReloadTick,
-                                    onClick = { onBookClick(item, binding.pageToken) },
-                                    onLongClick = { onBookLongClick(item, binding.pageToken) },
-                                    coverSlot = bookCoverSlot,
+                                    onClick = { onGroupClick?.invoke(item) },
+                                    onLongClick = { onGroupLongClick?.invoke(item) },
+                                    modifier = itemModifier,
+                                    coverSlot = groupCoverSlot,
                                 )
                             }
                         }
+                    }
+                } else {
+                    FastScrollLazyVerticalGrid(
+                        columns = shelfGridCells(spec),
+                        state = scroll.grid,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = DesignTokens.spacingDefault),
+                    ) {
+                        items(items, key = ::shelfItemKey, contentType = ::shelfItemType) { item ->
+                            val itemModifier = if (eInk) Modifier else Modifier.animateItem()
+                            when (item) {
+                                // 外层 Box 同 LIST 分支: 让 animateItem 留在 Box 上
+                                is Book -> Box(modifier = itemModifier) {
+                                    // 共享配对身份按条目下发 (同上)
+                                    val binding = rememberSharedCoverSourceBinding(item.bookUrl, pairBlockId)
+                                    CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
+                                        ShelfVideoItem(
+                                            item, coverReloadTick,
+                                            onClick = { onBookClick(item, binding.pageToken) },
+                                            onLongClick = { onBookLongClick(item, binding.pageToken) },
+                                            coverSlot = bookCoverSlot,
+                                        )
+                                    }
+                                }
 
-                        is BookGroup -> GroupVideoItem(
-                            item, coverReloadTick,
-                            onClick = { onGroupClick?.invoke(item) },
-                            onLongClick = { onGroupLongClick?.invoke(item) },
-                            modifier = itemModifier,
-                            coverSlot = groupCoverSlot,
-                        )
+                                is BookGroup -> GroupVideoItem(
+                                    item, coverReloadTick,
+                                    onClick = { onGroupClick?.invoke(item) },
+                                    onLongClick = { onGroupLongClick?.invoke(item) },
+                                    modifier = itemModifier,
+                                    coverSlot = groupCoverSlot,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -869,6 +917,17 @@ fun ShelfGridItem(
  *   showBookshelfBadge=false); 非书架界面 (探索展示/搜索结果) 传该书真实书架态, 对照原版
  *   bindVideoCard 的 showBookshelfBadge && isInBookshelf。
  */
+private val ShelfInBookshelfDotColor = Color(0xFF43A047)
+
+/**
+ * 视频卡片 (对照 item_explore_video.xml / bindVideoCard):
+ * 上封面 (16:9 / 3:4 自适应) + 下两行标题 + 标签 + 作者。
+ *
+ * 对齐原版 bindVideoCard:
+ * - 无封面 URL 时隐藏封面 (ivCover.gone), 连占位图都不显示
+ * - 有封面 URL 时渲染视频封面槽 (支持按真实图片宽高在 16:9 与 3:4 间自适应)
+ * - 书架标记: 有封面时贴左上角徽标; 无封面时在书名左侧显示书架绿点
+ */
 @Composable
 fun ShelfVideoItem(
     book: Book,
@@ -880,31 +939,47 @@ fun ShelfVideoItem(
     coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit,
 ) {
     val colors = AppTheme.colors
+    val hasCover = !book.getDisplayCover().isNullOrBlank()
     Column(
         modifier
             .listItemFocus()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(DesignTokens.spacingDefault),
     ) {
-        Box {
-            // 无 cover URL 时仍渲染封面 Box (走占位), 对齐原 View 版无 path 也显示默认封面
-            ShelfCoverBox(ShelfCoverSlot.VIDEO) { m, isVideoCover ->
-                coverSlot(book, m, isVideoCover, coverReloadTick)
-            }
-            // 书架标记对照原 XML: 固定 30dp, 贴封面左上角 (无 margin)
-            if (inBookshelf == true) {
-                BookshelfBadge(Modifier.align(Alignment.TopStart).size(30.dp))
+        if (hasCover) {
+            Box {
+                // 有封面时按视频槽渲染，由底层封面组件按实际宽高自适应 16:9 / 3:4
+                ShelfCoverBox(ShelfCoverSlot.VIDEO) { m, isVideoCover ->
+                    coverSlot(book, m, isVideoCover, coverReloadTick)
+                }
+                // 书架标记对照原 XML: 固定 30dp, 贴封面左上角 (无 margin)
+                if (inBookshelf == true) {
+                    BookshelfBadge(Modifier.align(Alignment.TopStart).size(30.dp))
+                }
             }
         }
-        Text(
-            text = book.name,
-            color = colors.primaryText,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = DesignTokens.spacingDefault),
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(top = if (hasCover) DesignTokens.spacingDefault else 0.dp),
+        ) {
+            if (!hasCover && inBookshelf == true) {
+                Box(
+                    Modifier
+                        .padding(end = DesignTokens.spacingXs)
+                        .size(8.dp)
+                        .background(ShelfInBookshelfDotColor, CircleShape),
+                )
+            }
+            Text(
+                text = book.name,
+                color = colors.primaryText,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+        }
         // 正则切分 + 净化 / 作者拆分, 别每次重组重算
         val kinds = remember(book.kind, book.wordCount) { book.getKindList() }
         if (kinds.isNotEmpty()) {
@@ -1022,3 +1097,105 @@ fun GroupVideoItem(
         )
     }
 }
+
+/**
+ * 发现页与搜索结果共用的图文列表条目 (List tier, 对照 item_bookshelf_list / ExploreShowAdapter.bind):
+ * 左封面 (带视频收窄与无图自适应) + 右书名 (带书架绿点与可选多源角标) + 作者 + 分类 + 最新章节 + 简介。
+ */
+@Composable
+fun ShelfExploreListItem(
+    book: BaseBook,
+    isVideoStyle: Boolean,
+    inBookshelf: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    originCount: Int = 0,
+    showShelfDot: Boolean = true,
+    intro: String? = null,
+    coverSlot: @Composable (Modifier) -> Unit,
+) {
+    val colors = AppTheme.colors
+    val hasCover = !book.coverUrl.isNullOrBlank()
+    val showCover = !isVideoStyle || hasCover
+    Row(
+        modifier
+            .listItemFocus()
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(DesignTokens.spacingDefault),
+    ) {
+        val coverHeight = remember(isVideoStyle) { shelfCoverHeightDp(isVideoStyle) }
+        if (showCover) {
+            Box(Modifier.height(coverHeight.dp)) {
+                coverSlot(Modifier.fillMaxHeight())
+            }
+        }
+        Column(
+            Modifier
+                .weight(1f)
+                .padding(start = if (showCover) DesignTokens.spacingDefault else 0.dp)
+                .heightIn(min = if (showCover) coverHeight.dp else 0.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (showShelfDot && inBookshelf) {
+                    Box(
+                        Modifier
+                            .size(8.dp)
+                            .background(ShelfInBookshelfDotColor, CircleShape),
+                    )
+                }
+                Text(
+                    text = book.name,
+                    color = colors.primaryText,
+                    fontSize = 16.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = DesignTokens.spacingXs),
+                )
+                if (originCount > 0) {
+                    UnreadBadge(originCount, highlight = false)
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ShelfRowIcon("ic_author")
+                Text(
+                    text = remember(book.author) { book.getRealAuthor() },
+                    color = colors.secondaryText,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            val kinds = remember(book.kind, book.wordCount) { book.getKindList() }
+            if (kinds.isNotEmpty()) KindLabels(kinds)
+            if (!book.latestChapterTitle.isNullOrEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ShelfRowIcon("ic_book_last")
+                    Text(
+                        text = book.latestChapterTitle.toString(),
+                        color = colors.secondaryText,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            val introText = remember(intro, book.intro) {
+                (intro ?: book.intro)?.trim()?.takeIf { it.isNotEmpty() }
+            } ?: stringResource(Res.string.intro_show_null)
+            Text(
+                text = introText,
+                color = colors.secondaryText,
+                fontSize = 13.sp,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 2.dp),
+            )
+        }
+    }
+}
+

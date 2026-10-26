@@ -1,6 +1,7 @@
 package io.legado.app.ui.compose.component
 
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.Density
@@ -81,3 +82,37 @@ fun rememberResponsiveColumns(
 ): GridCells = remember(baseColumns, referenceWidth) {
     ResponsiveGridCells(baseColumns, referenceWidth)
 }
+
+/** 瀑布流版本的响应式分列, 算法同 [ResponsiveGridCells] */
+class ResponsiveStaggeredGridCells(
+    private val baseColumns: Int,
+    private val referenceWidth: Dp = DesignTokens.responsiveColumnsReferenceWidth,
+) : StaggeredGridCells {
+
+    override fun Density.calculateCrossAxisCellSizes(
+        availableSize: Int,
+        spacing: Int,
+    ): IntArray {
+        val columns = effectiveColumns(baseColumns, availableSize.toDp(), referenceWidth)
+            .coerceAtLeast(1)
+        val sizeWithoutSpacing = availableSize - spacing * (columns - 1)
+        val slotSize = sizeWithoutSpacing / columns
+        val remainingPixels = sizeWithoutSpacing % columns
+        return IntArray(columns) { slotSize + if (it < remainingPixels) 1 else 0 }
+    }
+
+    override fun hashCode(): Int = baseColumns * 31 + referenceWidth.hashCode()
+
+    override fun equals(other: Any?): Boolean = other is ResponsiveStaggeredGridCells &&
+        other.baseColumns == baseColumns && other.referenceWidth == referenceWidth
+}
+
+/** [ResponsiveStaggeredGridCells] 的记忆化入口, 直接传给 LazyVerticalStaggeredGrid 的 columns */
+@Composable
+fun rememberResponsiveStaggeredGridColumns(
+    baseColumns: Int,
+    referenceWidth: Dp = DesignTokens.responsiveColumnsReferenceWidth,
+): StaggeredGridCells = remember(baseColumns, referenceWidth) {
+    ResponsiveStaggeredGridCells(baseColumns, referenceWidth)
+}
+

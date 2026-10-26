@@ -34,6 +34,11 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScope
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -164,6 +169,39 @@ fun FastScrollLazyVerticalGrid(
     }
 }
 
+/**
+ * 带快速滚动条的 LazyVerticalStaggeredGrid (瀑布流)。
+ *
+ * @param wrapContentHeight 语义同 [FastScrollLazyColumn]: true 时网格高度自适应内容,
+ * false (默认) 时撑满。
+ */
+@Composable
+fun FastScrollLazyVerticalStaggeredGrid(
+    columns: StaggeredGridCells,
+    modifier: Modifier = Modifier,
+    state: LazyStaggeredGridState = rememberLazyStaggeredGridState(),
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    verticalItemSpacing: Dp = 0.dp,
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
+    userScrollEnabled: Boolean = true,
+    wrapContentHeight: Boolean = false,
+    content: LazyStaggeredGridScope.() -> Unit,
+) {
+    Box(modifier) {
+        LazyVerticalStaggeredGrid(
+            columns = columns,
+            state = state,
+            modifier = if (wrapContentHeight) Modifier.fillMaxWidth() else Modifier.fillMaxSize(),
+            contentPadding = contentPadding,
+            verticalItemSpacing = verticalItemSpacing,
+            horizontalArrangement = horizontalArrangement,
+            userScrollEnabled = userScrollEnabled,
+            content = content,
+        )
+        LazyStaggeredGridFastScrollbar(state)
+    }
+}
+
 @Composable
 private fun BoxScope.LazyListFastScrollbar(state: LazyListState) {
     val metrics by remember(state) {
@@ -275,6 +313,60 @@ private fun BoxScope.LazyGridFastScrollbar(state: LazyGridState) {
                 val viewportSize = latest.viewportEndOffset - latest.viewportStartOffset
                 val maxOffset = (totalRows * averageRowHeight - viewportSize)
                     .coerceAtLeast(0f)
+                state.scrollBy(fraction * maxOffset - currentOffset)
+            }
+        },
+    )
+}
+
+@Composable
+private fun BoxScope.LazyStaggeredGridFastScrollbar(state: LazyStaggeredGridState) {
+    val metrics by remember(state) {
+        derivedStateOf {
+            val layout = state.layoutInfo
+            val visible = layout.visibleItemsInfo
+            val itemCount = layout.totalItemsCount
+            val visibleCount = visible.size
+            val first = visible.firstOrNull()
+            val averageItemHeight = if (visible.isEmpty()) {
+                0f
+            } else {
+                visible.map { it.size.height }.average().toFloat()
+            }
+            val laneCount = (visible.maxOfOrNull { it.lane }?.plus(1) ?: 1).coerceAtLeast(1)
+            val estimatedTotalRows = (itemCount + laneCount - 1) / laneCount
+            val firstRow = (first?.index ?: 0) / laneCount
+            val currentScrollOffsetPx = firstRow * averageItemHeight - (first?.offset?.y ?: 0)
+            val viewportSizePx = (layout.viewportEndOffset - layout.viewportStartOffset).coerceAtLeast(0)
+            val maxScrollOffsetPx = (estimatedTotalRows * averageItemHeight - viewportSizePx).coerceAtLeast(0f)
+            FastScrollMetrics(
+                itemCount = itemCount,
+                visibleItemCount = visibleCount,
+                needsScroll = state.canScrollBackward || state.canScrollForward,
+                positionFraction = when {
+                    !state.canScrollBackward -> 0f
+                    !state.canScrollForward -> 1f
+                    maxScrollOffsetPx <= 0f -> 0f
+                    else -> (currentScrollOffsetPx / maxScrollOffsetPx).coerceIn(0f, 1f)
+                },
+            )
+        }
+    }
+    FastScrollbar(
+        metrics = metrics,
+        isScrollInProgress = state.isScrollInProgress,
+        isDragged = state.interactionSource.collectIsDraggedAsState().value,
+        scrollToFraction = { fraction ->
+            val latest = state.layoutInfo
+            val visible = latest.visibleItemsInfo
+            if (visible.isNotEmpty()) {
+                val averageItemHeight = visible.map { it.size.height }.average().toFloat()
+                val laneCount = (visible.maxOfOrNull { it.lane }?.plus(1) ?: 1).coerceAtLeast(1)
+                val estimatedTotalRows = (latest.totalItemsCount + laneCount - 1) / laneCount
+                val firstRow = visible.first().index / laneCount
+                val currentOffset = firstRow * averageItemHeight - visible.first().offset.y
+                val viewportSize = latest.viewportEndOffset - latest.viewportStartOffset
+                val maxOffset = (estimatedTotalRows * averageItemHeight - viewportSize).coerceAtLeast(0f)
                 state.scrollBy(fraction * maxOffset - currentOffset)
             }
         },

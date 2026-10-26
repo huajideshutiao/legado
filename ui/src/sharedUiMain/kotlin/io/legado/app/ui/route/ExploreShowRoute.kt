@@ -25,8 +25,6 @@ import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.bookshelf.ShelfVideoItem
 import io.legado.app.ui.bookshelf.toCoverBook
-import io.legado.app.ui.compose.component.AlertButton
-import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.ExploreOptionsRow
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.explore.ExploreShowViewModelShared
@@ -38,6 +36,7 @@ import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.ui.widget.dialog.TextDialog
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import legado.ui.generated.resources.Res
@@ -46,7 +45,6 @@ import legado.ui.generated.resources.empty
 import legado.ui.generated.resources.error
 import legado.ui.generated.resources.error_load_msg
 import legado.ui.generated.resources.explore_cols
-import legado.ui.generated.resources.retry
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -88,7 +86,6 @@ fun ExploreShowRoute(
     val bottomLineText = stringResource(Res.string.bottom_line)
     val errorLoadText = stringResource(Res.string.error_load_msg, "点击查看详情")
     val errorTitle = stringResource(Res.string.error)
-    val retryText = stringResource(Res.string.retry)
 
     // 标题初始化 (对照原 Activity intent exploreName / discovery; ByUrl 变体 extra 可为空;
     // SourceSearchShow 用源名)
@@ -245,7 +242,7 @@ fun ExploreShowRoute(
                 )
             }
 
-            // 对照 Activity.onFooterClickImpl: errorMsg 非空弹详情+重试, 否则触发加载
+            // 对照 Activity.onFooterClickImpl: errorMsg 非空弹详情与复制, 否则触发加载
             override fun onFooterClick() {
                 if (screenModel.errorMsg.isNotBlank()) {
                     showErrorDialog = true
@@ -341,19 +338,12 @@ fun ExploreShowRoute(
         )
     }
 
-    // 错误详情对话框 (对照 Activity.onFooterClickImpl 的 alert)
+    // 错误详情对话框 (支持查看详情与一键复制, 替代原版仅重试的简易弹窗)
     if (showErrorDialog) {
-        AppAlertDialog(
-            onDismissRequest = { showErrorDialog = false },
+        TextDialog(
             title = errorTitle,
-            message = screenModel.errorMsg,
-            neutralButton = AlertButton(retryText) {
-                showErrorDialog = false
-                if (!screenModel.state.value.footerLoading) {
-                    screenModel.dispatch(ExploreShowUiEvent.LoadMore)
-                    vm.explore()
-                }
-            },
+            content = screenModel.errorMsg,
+            onDismiss = { showErrorDialog = false },
         )
     }
 

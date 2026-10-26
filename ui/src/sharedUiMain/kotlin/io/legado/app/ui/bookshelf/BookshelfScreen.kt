@@ -399,6 +399,14 @@ internal fun rememberBookshelfLayoutSpec(tier: BookshelfTier?): ShelfLayoutSpec 
 internal suspend fun ShelfScrollState.gotoTop(tier: ShelfTier, eInk: Boolean) {
     if (tier == ShelfTier.LIST) {
         if (eInk) list.scrollToItem(0) else list.animateScrollToItem(0)
+    } else if (tier == ShelfTier.VIDEO) {
+        if (eInk) {
+            grid.scrollToItem(0)
+            staggered.scrollToItem(0)
+        } else {
+            grid.animateScrollToItem(0)
+            staggered.animateScrollToItem(0)
+        }
     } else {
         if (eInk) grid.scrollToItem(0) else grid.animateScrollToItem(0)
     }
@@ -615,6 +623,7 @@ internal fun DefaultBookshelfActions(
  * @param modifier 外部尺寸约束 (调用方给宽/高/内边距等); 本组件只追加比例与圆角
  * @param isVideoCover 是否视频封面 (true: 16:9, false: 3:4; 对照 CoverRatio.VIDEO/NOVEL)
  * @param reloadTick 封面重载信号 (configTick): 变化时重启加载, 不变不额外触发
+ * @param adaptiveRatio 是否根据封面真实宽高在 16:9 与 3:4 间自适应 (视频封面默认开启)
  *
  * ohos 未注册 BookImageLoader, 恒走内置图 + overlay (与替换前占位语义一致)。
  */
@@ -624,6 +633,7 @@ fun SharedBookCover(
     modifier: Modifier = Modifier,
     isVideoCover: Boolean = false,
     reloadTick: Int = 0,
+    adaptiveRatio: Boolean = isVideoCover,
 ) {
     val cover = book.getDisplayCover()
     SharedCoverContent(
@@ -645,6 +655,7 @@ fun SharedBookCover(
         isVideoCover = isVideoCover,
         reloadTick = reloadTick,
         nameAuthorOverlay = true,
+        adaptiveRatio = adaptiveRatio,
     )
 }
 
