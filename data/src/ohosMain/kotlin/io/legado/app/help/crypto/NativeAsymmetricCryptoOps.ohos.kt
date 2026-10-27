@@ -48,21 +48,29 @@ actual object NativeAsymmetricCryptoOps {
         val der = RsaDerKeys.stripPemToDer(
             publicKey ?: throw IllegalArgumentException("AsymmetricCrypto.encrypt: publicKey not set")
         )
-        if (spec is AsymCipherSpec.Sm2) {
-            return invokeAsyCrypto("encrypt", spec, usePublicKey, null, Base64.encode(der), data, chunk = 0, keyBytes = 0)
-        }
-        val pkcs1 = RsaDerKeys.toPkcs1Public(der)
-        val k = RsaDerKeys.modulusSize(pkcs1, isPrivate = false)
-        val chunk = chunkSize(spec, k)
-        require(chunk > 0) { "RSA key too small (k=$k) for padding overhead" }
-        if (spec.padding == AsymCipherSpec.RsaPadding.NO_PADDING) {
-            require(data.size == k) {
-                "RSA/ECB/NoPadding requires input of exactly key size $k bytes (got ${data.size})"
+        return when (spec) {
+            is AsymCipherSpec.Sm2 -> invokeAsyCrypto(
+                "encrypt", spec, usePublicKey, null, Base64.encode(der), data, chunk = 0, keyBytes = 0
+            )
+
+            is AsymCipherSpec.Rsa -> {
+                val pkcs1 = RsaDerKeys.toPkcs1Public(der)
+                val k = RsaDerKeys.modulusSize(pkcs1, isPrivate = false)
+                val chunk = chunkSize(spec, k)
+                require(chunk > 0) { "RSA key too small (k=$k) for padding overhead" }
+                if (spec.padding == AsymCipherSpec.RsaPadding.NO_PADDING) {
+                    require(data.size == k) {
+                        "RSA/ECB/NoPadding requires input of exactly key size $k bytes (got ${data.size})"
+                    }
+                }
+                // 空输入仍产出一个完整块 (对齐 JCA RSA Cipher: doFinal(空) 输出 k 字节填充块)
+                val src = if (data.isEmpty()) byteArrayOf(0) else data
+                invokeAsyCrypto(
+                    "encrypt", spec, usePublicKey, null,
+                    Base64.encode(RsaDerKeys.toSpkiPublic(der)), src, chunk, k
+                )
             }
         }
-        // 空输入仍产出一个完整块 (对齐 JCA RSA Cipher: doFinal(空) 输出 k 字节填充块)
-        val src = if (data.isEmpty()) byteArrayOf(0) else data
-        return invokeAsyCrypto("encrypt", spec, usePublicKey, null, Base64.encode(RsaDerKeys.toSpkiPublic(der)), src, chunk, k)
     }
 
     actual fun decrypt(
@@ -81,17 +89,23 @@ actual object NativeAsymmetricCryptoOps {
         val der = RsaDerKeys.stripPemToDer(
             privateKey ?: throw IllegalArgumentException("AsymmetricCrypto.decrypt: privateKey not set")
         )
-        if (spec is AsymCipherSpec.Sm2) {
-            return invokeAsyCrypto("decrypt", spec, usePublicKey, Base64.encode(der), null, data, chunk = 0, keyBytes = 0)
+        return when (spec) {
+            is AsymCipherSpec.Sm2 -> invokeAsyCrypto(
+                "decrypt", spec, usePublicKey, Base64.encode(der), null, data, chunk = 0, keyBytes = 0
+            )
+
+            is AsymCipherSpec.Rsa -> {
+                val pkcs1 = RsaDerKeys.toPkcs1Private(der)
+                val k = RsaDerKeys.modulusSize(pkcs1, isPrivate = true)
+                require(data.isNotEmpty() && data.size % k == 0) {
+                    "ciphertext length ${data.size} not a positive multiple of key size $k"
+                }
+                invokeAsyCrypto(
+                    "decrypt", spec, usePublicKey,
+                    Base64.encode(RsaDerKeys.toPkcs8Private(der)), null, data, k, k
+                )
+            }
         }
-        val pkcs1 = RsaDerKeys.toPkcs1Private(der)
-        val k = RsaDerKeys.modulusSize(pkcs1, isPrivate = true)
-        require(data.isNotEmpty() && data.size % k == 0) {
-            "ciphertext length ${data.size} not a positive multiple of key size $k"
-        }
-        return invokeAsyCrypto(
-            "decrypt", spec, usePublicKey, Base64.encode(RsaDerKeys.toPkcs8Private(der)), null, data, k, k
-        )
     }
 
     /** hutool 分块语义: 加密 k-11 (OAEP k-2h-2), 解密 k (调用方按方向传入)。 */

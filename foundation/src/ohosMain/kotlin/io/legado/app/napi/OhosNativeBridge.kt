@@ -1293,6 +1293,8 @@ object OhosNativeBridge {
         synchronized(lock) { dialogPendingRequests.remove(requestId) }
         return result
     }
+
+    /**
      * ArkTS SysDialogBridgeHandler 弹出系统对话框拿到用户选择后, 经 legado.platformEvent 回送结果
      * JSON, 唤醒 [invokeDialogSync] 中阻塞的 CompletableDeferred。
      *

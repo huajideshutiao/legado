@@ -14,7 +14,6 @@ import io.legado.app.help.book.BookHelp.getCacheFile
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.writeBytesAtomically
 import io.legado.app.help.writeTextAtomically
-import io.legado.app.ui.book.read.page.provider.ChapterContentParserShared
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SvgUtils
@@ -269,38 +268,6 @@ object BookHelp {
                 bookChapter.getFileName()
             )
         }
-    }
-
-    /**
-     * 检测图片是否下载
-     */
-    fun hasImageContent(book: Book, bookChapter: BookChapter): Boolean {
-        if (!hasContent(book, bookChapter)) {
-            return false
-        }
-        var ret = true
-        val op = BitmapFactory.Options()
-        op.inJustDecodeBounds = true
-        getContent(book, bookChapter)?.let {
-            val imgList = ChapterContentParserShared.extractImages(it)
-            for (i in imgList) {
-                val src = i.src
-                val image = getImage(book, src)
-                if (!image.exists()) {
-                    ret = false
-                    continue
-                }
-                BitmapFactory.decodeFile(image.absolutePath, op)
-                if (op.outWidth < 1 && op.outHeight < 1) {
-                    if (SvgUtils.getSize(image.absolutePath) != null) {
-                        continue
-                    }
-                    ret = false
-                    image.delete()
-                }
-            }
-        }
-        return ret
     }
 
     internal fun checkImage(bytes: ByteArray): Boolean {

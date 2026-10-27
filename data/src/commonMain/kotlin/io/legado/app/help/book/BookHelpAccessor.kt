@@ -94,15 +94,6 @@ interface BookHelpAccessor {
     }
 
     /**
-     * 检测图片是否已完整下载 (对应 BookHelp.hasImageContent)。
-     *
-     * Android 端 WebBookProvidersImpl 按章节校验图片完整性 (正文全部图片解码成功);
-     * 桌面/iOS/鸿蒙端按整本 images 缓存目录是否有内容判定 (图片未按章组织, 见
-     * [io.legado.app.help.book.BookImageStorage.hasImageContent]); 默认 false。
-     */
-    fun hasImageContent(book: Book, bookChapter: BookChapter): Boolean = false
-
-    /**
      * 读取章节缓存或解析本地书原文件 (对应 BookHelp.getContent)。
      *
      * 默认委托 [BookHelpShared.getContent]，让阅读、朗读和导出使用同一读取链路。

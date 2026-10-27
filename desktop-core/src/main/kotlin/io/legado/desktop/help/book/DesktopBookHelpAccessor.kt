@@ -1,5 +1,6 @@
 package io.legado.desktop.help.book
 
+import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
@@ -9,6 +10,7 @@ import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.OLD_COVERS_REF_SEGMENT
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.postEvent
 
 /**
  * 桌面端 [BookHelpAccessor] 实现: 委托 [BookStorageProviders.get].saveText 落盘章节正文,
@@ -44,8 +46,12 @@ class DesktopBookHelpAccessor : BookHelpAccessor {
         bookChapter: BookChapter,
         content: String
     ) {
-        // 与 app 端一致: saveContent 只落盘文本 (图片由 CacheBookShared 走 saveImages)
+        // 与 app 端一致: saveContent 只落盘文本 (图片由 CacheBookShared 走 saveImages);
+        // 落盘成功后发保存事件, 否则阅读页翻过的章节在目录里仍显示未缓存 (须重开目录才刷新)
         BookStorageProviders.get().saveText(book, bookChapter, content)
+        if (BookStorageProviders.get().hasContent(book, bookChapter)) {
+            postEvent(EventBus.SAVE_CONTENT, Pair(book, bookChapter))
+        }
     }
 
     /**
@@ -77,11 +83,6 @@ class DesktopBookHelpAccessor : BookHelpAccessor {
     ) {
         BookImageDownloadShared.saveImage(bookSource, book, src, chapter)
     }
-
-    /** 图片是否已缓存 (供 CacheBookShared.hasImageContent 分支短路重复下载)。 */
-    override fun hasImageContent(book: Book, bookChapter: BookChapter): Boolean = runCatching {
-        BookImageStorageProviders.get().hasImageContent(book)
-    }.getOrDefault(false)
 
     /**
      * 本地书提取封面相对引用 (对应 app 端 `FileBook.getCoverPath(bookUrl)`)。

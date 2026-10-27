@@ -86,7 +86,8 @@ object BookImageDownloadShared {
     /**
      * 下载并缓存单张图片 (对照 app 端 `BookHelp.saveImage`)。
      *
-     * - 存在性双检 (进入 Mutex 前后各一次), 同 src 并发只下载一次
+     * - 存在性短路 (recheckCached=false 时锁外短路, 锁内二次确认); 读侧已判定缓存不可用时
+     *   传入 recheckCached=true, 锁内校验并在解不出图时丢弃重下
      * - 插件源图片 (内部协议形态) 委托扩展自身 client (拦截器在官方通道内生效)
      * - 下载后执行书源解密脚本, 校验失败仍落盘 (避免每次进正文反复重新下载失效图)
      * - 失败只记日志不抛出 (与 app 端一致); [chapter] 仅用于日志
@@ -114,16 +115,29 @@ object BookImageDownloadShared {
         chapter: BookChapter? = null
     ): ByteArray? {
         cachedImageBytes(book, chapter, src)?.let { return it }
-        return downloadImage(bookSource, book, src, chapter)
+        return downloadImage(bookSource, book, src, chapter, recheckCached = true)
             ?: cachedImageBytes(book, chapter, src)
     }
 
-    /** 读图片缓存文件字节; 文件不存在 / 读不出 / 空文件返回 null。 */
-    private fun cachedImageBytes(book: Book, chapter: BookChapter?, src: String): ByteArray? =
-        BookImageStorageProviders.get()
-            .getImagePath(book, chapter.forStorage(book), src)
+    /**
+     * 读图片缓存文件字节; 文件不存在 / 读不出 / 空文件 / 解不出图返回 null。
+     *
+     * 解不出图的文件只在这里判为未命中, 实际删除与重下由 [downloadImage] 在按图锁内完成:
+     * 读侧无锁删除可能删掉并发下载刚写好的文件。
+     */
+    private suspend fun cachedImageBytes(
+        book: Book,
+        chapter: BookChapter?,
+        src: String
+    ): ByteArray? = withContext(IoDispatcher) {
+        val storage = BookImageStorageProviders.get()
+        val ch = chapter.forStorage(book)
+        val bytes = storage.getImagePath(book, ch, src)
             ?.let { FileUtilsCommon.readBytes(it) }
             ?.takeIf { it.isNotEmpty() }
+            ?: return@withContext null
+        bytes.takeIf { storage.checkImageBytes(it) }
+    }
 
     /**
      * 取"保存图片"要落盘的字节 (对照 app 端 `BaseReadViewModel.saveImage` 的读取段):
@@ -163,11 +177,13 @@ object BookImageDownloadShared {
         bookSource: BookSource?,
         book: Book,
         src: String,
-        chapter: BookChapter?
+        chapter: BookChapter?,
+        recheckCached: Boolean = false
     ): ByteArray? {
         val storage = BookImageStorageProviders.get()
         val ch = chapter.forStorage(book)
-        if (storage.isImageExist(book, ch, src)) {
+        // recheckCached=false (批量补图): 存在即短路, 不读文件不校验
+        if (!recheckCached && storage.isImageExist(book, ch, src)) {
             return null
         }
         val mutex = synchronized(downloadImagesLock) {
@@ -176,7 +192,18 @@ object BookImageDownloadShared {
         mutex.lock()
         try {
             if (storage.isImageExist(book, ch, src)) {
-                return null
+                if (!recheckCached) {
+                    return null
+                }
+                // 读侧已判定缓存不可用: 能解出图 (并发下载已修好) 就短路, 否则丢弃重下。
+                // 删除必须与写盘同锁, 否则可能删掉并发下载刚写好的文件
+                val cached = storage.getImagePath(book, ch, src)
+                    ?.let { FileUtilsCommon.readBytes(it) }
+                    ?.takeIf { it.isNotEmpty() }
+                if (cached != null && storage.checkImageBytes(cached)) {
+                    return null
+                }
+                storage.deleteImage(book, ch, src)
             }
             // 插件源图片: 内部协议形态 → 委托扩展自身 client (拦截器还原), 与
             // MangaImageBytesLoader 插件分支同构; 失败抛异常走下方统一 catch

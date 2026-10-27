@@ -9,7 +9,7 @@ import kotlin.concurrent.Volatile
  * 书籍图片缓存 I/O 跨平台抽象。
  *
  * 安卓端 [io.legado.app.help.book.BookHelp] 的 saveImage / getImage /
- * isImageExist / hasImageContent 等方法重 Android 依赖 (BitmapFactory 校验 /
+ * isImageExist 等方法重 Android 依赖 (BitmapFactory 校验 /
  * ImageUtils.decode / AnalyzeUrl.getByteArrayAwait), 留 app 端。本接口仅暴露
  * 图片缓存的落盘、寻址与存在性原语 (不含下载编排: 下载统一走 ui 模块的
  * [io.legado.app.help.book.BookImageDownloadShared], 由其调本接口写字节),
@@ -52,12 +52,12 @@ interface BookImageStorage {
     fun isImageExist(book: Book, chapter: BookChapter, url: String): Boolean
 
     /**
-     * 检测该书是否有图片缓存目录 (用于漫画类书籍判断)。
+     * 删除单张图片缓存。
      *
-     * 对应 Android 端 [io.legado.app.help.book.BookHelp.hasImageContent] 的
-     * "目录是否存在" 部分 (不校验图片有效性)。
+     * 供读取侧发现缓存文件解不出图时丢弃该文件, 使下一次取图重新下载。
+     * 删除失败 (文件已不存在 / 无权限) 不抛出, 调用方按未命中处理。
      */
-    fun hasImageContent(book: Book): Boolean
+    fun deleteImage(book: Book, chapter: BookChapter, url: String)
 
     /**
      * 清空指定书的图片缓存 (整本书 images 目录)。

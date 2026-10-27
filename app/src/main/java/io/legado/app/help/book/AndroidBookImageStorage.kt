@@ -50,17 +50,9 @@ object AndroidBookImageStorage : BookImageStorage {
     override fun isImageExist(book: Book, chapter: BookChapter, url: String): Boolean =
         BookHelp.isImageExist(book, url)
 
-    /**
-     * 检测该书是否有图片缓存目录 (用于漫画类书籍判断)。
-     *
-     * 接口语义是"目录是否存在" (不校验图片有效性), 通过 [BookHelp.getImage] 的
-     * parentFile 定位 images 子目录, 检查存在且非空。
-     * 与 [BookHelp.hasImageContent]`(book, chapter)` (按章节校验图片完整性) 不同,
-     * 此处仅判断整本书的 images 目录是否有内容。
-     */
-    override fun hasImageContent(book: Book): Boolean {
-        val imageDir = imagesDir(book)
-        return imageDir.exists() && (imageDir.listFiles()?.isNotEmpty() == true)
+    /** 删除单张图片缓存, 委托 [BookHelp.getImage] 定位后删除文件。 */
+    override fun deleteImage(book: Book, chapter: BookChapter, url: String) {
+        BookHelp.getImage(book, url).delete()
     }
 
     /** 清空指定书的图片缓存 (整本书 images 目录)。 */

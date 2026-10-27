@@ -362,12 +362,6 @@ object WebBookProvidersImpl :
         BookHelp.saveImages(bookSource, book, bookChapter, content, concurrency)
     }
 
-    // CacheBookShared 下沉新增: 图片完整性检测 (委托 BookHelp.hasImageContent, 按章节校验图片完整性)
-    override fun hasImageContent(
-        book: io.legado.app.data.entities.Book,
-        bookChapter: io.legado.app.data.entities.BookChapter
-    ): Boolean = BookHelp.hasImageContent(book, bookChapter)
-
     // ImageProvider 下沉新增: 图片缓存文件路径 (委托 BookHelp.getImage)
     override fun getImage(
         book: io.legado.app.data.entities.Book,

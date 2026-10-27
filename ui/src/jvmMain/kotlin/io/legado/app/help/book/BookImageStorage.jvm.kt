@@ -59,12 +59,8 @@ class JvmBookImageStorage(
         return isCachedImageUsable(resolveImageFile(book, url).toString())
     }
 
-    override fun hasImageContent(book: Book): Boolean {
-        val imageDir = cacheRoot.resolve(book.getFolderName()).resolve(IMAGE_FOLDER_NAME)
-        if (!Files.isDirectory(imageDir)) return false
-        // findAny 短路: 只要存在任一文件即返回 true (与 Android BookHelp.hasImageContent 的
-        // "目录存在 + 至少一张图片" 语义对齐, 不做图片有效性校验)
-        return Files.list(imageDir).use { it.findAny().isPresent }
+    override fun deleteImage(book: Book, chapter: BookChapter, url: String) {
+        Files.deleteIfExists(resolveImageFile(book, url))
     }
 
     override fun clearCache(book: Book) {

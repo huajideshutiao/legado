@@ -25,7 +25,7 @@ import io.legado.app.utils.getUrlSuffix
  * # 行为对齐 jvmMain JvmBookImageStorage / 原 iOS IosBookImageStorage / 原 ohos OhosBookImageStorage
  * - [saveImage]/[writeImageBytes]: 字节头 magic number 校验 + 原子落盘 (同目录临时件 + 改名就位)
  * - [getImagePath]/[isImageExist]: [File.exists] + 共享判据 [isCachedImageUsable] (存在且非空)
- * - [hasImageContent]: 目录存在 + 至少一个文件 (短路语义)
+ * - [deleteImage]: [File.delete] (读取侧发现缓存解不出图时丢弃)
  * - [clearCache]: [File.deleteRecursively]
  *
  * # 与原 iOS 端差异 (统一为 kotlin.io.File 后)
@@ -60,12 +60,9 @@ class NativeBookImageStorage(
         return isCachedImageUsable(resolveImageFile(book, url))
     }
 
-    override fun hasImageContent(book: Book): Boolean {
-        val imageDir = File("$cacheRootPath/${book.getFolderName()}/$IMAGE_FOLDER_NAME")
-        if (!imageDir.exists()) return false
-        // 短路: 只要存在任一文件即返回 true (与 Android BookHelp.hasImageContent / iOS 行为对齐)
-        val files = imageDir.listFiles() ?: return false
-        return files.isNotEmpty()
+    override fun deleteImage(book: Book, chapter: BookChapter, url: String) {
+        val path = resolveImageFile(book, url)
+        runCatching { File(path).delete() }
     }
 
     override fun clearCache(book: Book) {

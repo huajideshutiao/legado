@@ -23,7 +23,7 @@ import io.legado.app.utils.postEvent
  * - [saveImages] / [saveImage]: 委托共享编排 [BookImageDownloadShared] (存在性短路 + 同图去重 +
  *   插件源图片分流 + 解密脚本 + 校验失败仍落盘); 落盘走 [BookImageStorageProviders] 的
  *   images 缓存目录 (与阅读页取图的 getImagePath 同源, 下载后阅读页即可命中缓存)
- * - [hasImageContent]: 委托 [BookImageStorageProviders], 供缓存调度跳过已有整本图片缓存的书
+ * - 图片缓存有效性由读取侧处理: 解不出图的缓存文件当场删除并重新下载
  * - [getImage] / [isImageExist]: 用接口默认实现 (native 图片管线走
  *   [io.legado.app.help.image.ReaderImageResolver], 不经 ImageProvider, 不会调用这两个方法)
  *
@@ -78,11 +78,6 @@ class NativeBookHelpAccessor : BookHelpAccessor {
     ) {
         BookImageDownloadShared.saveImage(bookSource, book, src, chapter)
     }
-
-    /** 图片是否已有缓存 (供缓存调度短路整本图片已缓存的书)。 */
-    override fun hasImageContent(book: Book, bookChapter: BookChapter): Boolean = runCatching {
-        BookImageStorageProviders.get().hasImageContent(book)
-    }.getOrDefault(false)
 
     /**
      * 封面文件路径: `{AppFilesDirs.filesDir}/covers/{md5_16(bookUrl)}.jpg`。

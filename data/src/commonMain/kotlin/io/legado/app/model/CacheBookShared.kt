@@ -156,18 +156,38 @@ object CacheBookShared {
      * 目录保障失败时 [CacheBookModelShared.ensureToc] 已自行把该书的下载任务移出, 调用方
      * 只需放弃本次入队。
      *
+     * 失败原因对用户可见: 入队失败是用户主动点缓存后能遇到的真实结果 (书源被删、书不在
+     * 书架、范围填反), 静默返回会让入口看起来毫无反应。本方法是四端缓存入口的唯一上报点,
+     * 提示走 [AppLog] 的 toast 通道, 各端启动器不再重复处理返回值。
+     *
      * @param start 起始章节 index (含)
      * @param end 结束章节 index (含); <0 表示下载到最后一章
-     * @return false = 这本书已取不到 (不在书架/已删/无书源) 或目录保障失败
+     * @return false = 这本书已取不到 (不在书架/已删/无书源)、目录保障失败或范围无效
      */
     suspend fun enqueueDownload(bookUrl: String, start: Int, end: Int): Boolean {
-        val cacheBook = getOrCreate(bookUrl) ?: return false
+        val cacheBook = getOrCreate(bookUrl)
+        if (cacheBook == null) {
+            // 区分两种取不到的原因: 书不在库与书源被删的处置不同 (前者去书架添加, 后者去换源)
+            val book = AppDbProviders.get().bookDao.getBook(bookUrl)
+            val msg = if (book == null) {
+                "无法开始缓存: 书籍不在书架"
+            } else {
+                "无法开始缓存《${book.name}》: 书源已删除或失效"
+            }
+            AppLog.put(msg, toast = true)
+            return false
+        }
         if (!cacheBook.ensureToc()) return false
         val book = cacheBook.book
         val actualEnd = if (end < 0) {
             book.lastChapterIndex
         } else {
             min(end, book.lastChapterIndex)
+        }
+        if (start > actualEnd) {
+            val msg = "缓存范围无效: 起始章节 ${start + 1} 晚于结束章节 ${actualEnd + 1}"
+            AppLog.put(msg, toast = true)
+            return false
         }
         if (cacheBook.chapterList == null) {
             // 整本缓存不经过阅读页, 下一章地址要用的内存目录快照在这里从库兜底;
@@ -566,8 +586,7 @@ object CacheBookShared {
          * 流程:
          * 1. 锁内取 waitDownloadSet 第一条并直接预占进 onDownloadSet, 保证任意时刻 index
          *    至少在一个集合中 (等价原版单 @Synchronized 块语义, isRun/isStop/onFinally 不会误判)
-         * 2. 锁外查 DB chapter (suspend 不能进锁); 查不到/被 stop/isVolume/hasImageContent
-         *    则加锁回滚预占
+         * 2. 锁外查 DB chapter (suspend 不能进锁); 查不到/被 stop/isVolume 则加锁回滚预占
          * 3. 已缓存 (BookStorage.hasContent): 重新加载内容并 saveImages 刷新图片缓存
          *    (四端均走 [BookHelpProviders] 的同一份编排)
          * 4. 未缓存: getContentAwait + saveImages, 成功后通过
@@ -622,11 +641,6 @@ object CacheBookShared {
                     return
                 }
                 val bookHelp = BookHelpProviders.get()
-                if (bookHelp.hasImageContent(book, chapter)) {
-                    onDownloadSet.remove(chapterIndex)
-                    batchDownloadSet.remove(chapterIndex)
-                    return
-                }
                 if (BookStorageProviders.get().hasContent(book, chapter)) {
                     Coroutine.async(
                         scope,
