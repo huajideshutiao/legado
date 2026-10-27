@@ -828,7 +828,7 @@ private fun ColumnScope.ResultArea(
                                 },
                                 coverSlot = { modifier ->
                                     // 列表条目恒固定比例 (对照原版 bindListCard isVideoStyle ? VIDEO : NOVEL)
-                                    coverSlot(book, modifier, if (isVideoStyle) CoverSlotRatio.VIDEO else CoverSlotRatio.NOVEL, modifier)
+                                    coverSlot(book, modifier, if (isVideoStyle) CoverSlotRatio.VIDEO else CoverSlotRatio.NOVEL)
                                 },
                             )
                         }

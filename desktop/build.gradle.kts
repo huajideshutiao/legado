@@ -241,7 +241,11 @@ dependencies {
     // 视频/本地音频时按需下载 (见 desktop/media/DesktopMediaRuntime)。它同时服务视频与音频
     // (同一套 mpv natives), 所以文案与门禁都是"媒体播放组件"而不是"视频组件"。
     // 开发期 :desktop:run 仍挂上它 (mediaRuntimeOnly + 下方 run 任务 classpath), 本地跑代码不必每次先下一遍。
-    mediaRuntimeOnly(mpvRuntime)
+    // 非传递: mpvRuntime 的元数据会把 mediamp-mpv-desktop 及其声明的整套旧版 CMP (1.10.1 时代)
+    // 拉进来, 而它经独立 configuration 解析不与主树冲突合并 —— run 的 classpath 就出现两代
+    // Compose 并存, 同名类靠 jar 顺序遮蔽、其余靠子树补齐, 事件/拖放等运行时点炸链接错误。
+    // 该配置只需 native jar 本体, API 层由主树 mediamp 依赖提供。
+    mediaRuntimeOnly(mpvRuntime) { isTransitive = false }
     // jna 保留: WindowsFileDialogs (jna-platform) / DesktopAppConfigAccessor / DesktopBattery /
     // DesktopWebViewEngines 直调 Win32; 视频侧 JNA 绑定已随自研渲染器删除。
     implementation(libs.jna)
