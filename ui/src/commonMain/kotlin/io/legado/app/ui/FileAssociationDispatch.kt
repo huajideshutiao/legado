@@ -19,6 +19,7 @@ import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.video.VideoDirect
 import io.legado.app.utils.isJson
 import okio.FileSystem
+import okio.Path
 import okio.Path.Companion.toPath
 
 /**
@@ -213,7 +214,9 @@ fun readImportPayload(text: String): String =
 /**
  * 将文件路径或 file:// URL 转为本地绝对路径。
  * - 支持标准 RFC 8089 file: URI (file:///..., file://localhost/..., file:/...)
- * - 支持 Windows UNC 网络路径 (file://server/share/...)
+ * - file://server/share/... 还原为网络主机路径: 目录分隔符为反斜杠的平台 (Windows) 输出
+ *   原生 UNC 形态 —— okio 的 UNC 判定只认反斜杠双前缀, 正斜杠双前缀被折叠成当前盘符
+ *   根路径后即指向不存在的位置; 其余平台维持 `//server/share/...` 原样
  * - 补全 URL percent-decoding (如 %20、中文等 UTF-8 编码路径)
  * - Windows 盘符前导斜杠剥离 (如 /C:/... → C:/...)
  */
@@ -233,6 +236,8 @@ fun String.toLocalFilePath(): String {
                 val rest = rawAfterScheme.substring(slashIdx)
                 if (authority.isEmpty() || authority.equals("localhost", ignoreCase = true)) {
                     rest
+                } else if (Path.DIRECTORY_SEPARATOR == "\\") {
+                    "\\\\$authority${rest.replace('/', '\\')}"
                 } else {
                     "//$authority$rest"
                 }
