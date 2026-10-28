@@ -1,5 +1,6 @@
 package io.legado.app.help.http
 
+import io.legado.app.utils.PercentCodec
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okio.IOException
 import kotlin.coroutines.resume
@@ -80,6 +81,16 @@ fun KmpRequestBuilder.get(url: String, encodedQuery: String?) {
 }
 
 private val formContentType = "application/x-www-form-urlencoded".toKmpMediaType()
+
+/**
+ * URL 参数编码器 (RFC3986 unreserved + query 段保留字符)。
+ *
+ * 从原 AnalyzeUrlCore companion object 的 private val queryEncoder 下沉;
+ * 归入 http 层: 消费方为 [encodeUrlParams] 的各端 actual 与 native 请求构建器,
+ * 依赖方向 analyzeRule → help.http, 不反向。
+ */
+internal val urlQueryEncoder: PercentCodec =
+    PercentCodec.UNRESERVED.orNew(PercentCodec.of("!$%&()*+,/:;=?@[\\]^`{|}"))
 
 fun KmpRequestBuilder.postForm(encodedForm: String) {
     post(encodedForm.toKmpRequestBody(formContentType))

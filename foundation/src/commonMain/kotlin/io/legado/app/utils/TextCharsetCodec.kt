@@ -5,10 +5,8 @@ package io.legado.app.utils
  *
  * 供 [io.legado.app.model.fileBook.TextFileCore] 等需要非 UTF-8 解码的下沉逻辑使用:
  * - jvmAndAndroidMain actual: 包装 java.nio.charset.Charset (Charset.forName 直通, 行为不变);
- * - nativeMain actual: 内置 UTF-8/UTF-16 系/UTF-32 系/ISO-8859-1/US-ASCII;
- *   GBK 系/Big5 经 platformDecodeCjk/platformEncodeCjk 分端下沉
- *   (iOS: NSString GB18030/Big5; 鸿蒙: @ohos.util TextDecoder/TextEncoder napi 桥,
- *   桥未就绪保持"暂不支持请转码"报错)。
+ * - nativeMain actual: 委托 com.fleeksoft.charset (OpenJDK sun.nio.cs 移植), iOS/鸿蒙共用,
+ *   编解码均 REPLACE 与 JVM 字节级一致 (平台原生转换器与 JVM 映射不保证一致, 不下沉平台)。
  */
 interface TextCharsetCodec {
 
@@ -20,6 +18,23 @@ interface TextCharsetCodec {
 
     /** 编码字符串为字节 (对齐 JVM REPLACE 模式)。 */
     fun encode(str: String): ByteArray
+
+    /**
+     * 新建有状态编码器 (一次编码操作私有, 不共享不缓存): [TextCharsetEncoder.encode] 每次
+     * 接收完整文本片段, 内部状态跨片段保留 (如 UTF-16 的 BOM 按首输入写入); 片段末尾孤立
+     * high surrogate 立即按 replacement 输出, 不与后续片段拼接成代理对。
+     */
+    fun newEncoder(): TextCharsetEncoder
+}
+
+/**
+ * 有状态字符编码器: 同一次编码操作的连续片段逐个编码, 各片段字节可直接顺序拼接,
+ * BOM 与替换语义由底层真实编码器决定, 与整串一次性编码一致。
+ */
+fun interface TextCharsetEncoder {
+
+    /** 编码一个完整文本片段, 返回该片段字节 (跨片段状态保留在编码器实例内)。 */
+    fun encode(input: String): ByteArray
 }
 
 /** 按名获取编解码器; 平台不支持该字符集时抛异常 (与 JVM Charset.forName 未知名抛异常语义对齐)。 */

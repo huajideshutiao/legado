@@ -1,5 +1,6 @@
 package io.legado.app.model.analyzeRule
 
+import io.legado.app.help.http.urlQueryEncoder
 import io.legado.app.utils.EncoderUtils
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.encode

@@ -12,6 +12,7 @@ import io.legado.app.help.DefaultDataShared
 import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.coroutine.runBlockingInScope
 import io.legado.app.utils.EncodingDetect
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.RuleRegexes
@@ -62,7 +63,18 @@ internal class TextFileCore(var book: Book) {
     //使用正则划分目录，每个章节的最大允许长度
     private val maxLengthWithToc = 102400
 
-    private var charset: TextCharsetCodec = textCharsetCodec(book.charset ?: "UTF-8")
+    private var charset: TextCharsetCodec = txtCharsetCodec(book.charset)
+
+    /**
+     * TXT 分章场景的字符集获取: 门面"不支持"异常统一补 TXT 转码指引
+     * (门面消息本身不含使用场景, TXT/网络/导出共用同一门面)。
+     */
+    private fun txtCharsetCodec(name: String?): TextCharsetCodec =
+        try {
+            textCharsetCodec(name ?: "UTF-8")
+        } catch (e: NoStackTraceException) {
+            throw NoStackTraceException("${e.message}, 请先将文件转码为 UTF-8 或更换支持的编码")
+        }
 
     private var txtBuffer: ByteArray? = null
     private var bufferStart = -1L
@@ -84,7 +96,7 @@ internal class TextFileCore(var book: Book) {
                         if (length == buffer.size) completeTxtEncodingSample(sample) else sample
                     )
                 }
-                charset = textCharsetCodec(book.charset ?: "UTF-8")
+                charset = txtCharsetCodec(book.charset)
                 if (book.tocUrl.isBlank() || modified) {
                     val blockContent = charset.decode(buffer, 0, length)
                     book.tocUrl = getTocRule(blockContent) ?: ""

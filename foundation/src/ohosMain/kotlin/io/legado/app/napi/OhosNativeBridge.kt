@@ -1854,87 +1854,6 @@ object OhosNativeBridge {
      */
     fun isNetworkBridgeReady(): Boolean = synchronized(lock) { networkTsfn != null }
 
-    // ===== TextCodec 同步桥 (tsfn + callback, 同 Crypto/Pasteboard 模式) =====
-    // TXT 解析的 GB18030/Big5 编解码走 ArkTS @ohos.util.TextDecoder/TextEncoder
-    // (支持 gbk/gb18030/big5), 无 NDK C 接口, 需 tsfn 桥接。
-    //
-    // 调用链 (以 decode 为例):
-    // KMP platformDecodeCjk (TextCharsetCodec.ohos.kt)
-    //   → invokeTextCodecSync("decode", {charset, data(Base64)})
-    //   → 生成 requestId, 存入 textCodecPendingRequests (CompletableDeferred)
-    //   → textCodecTsfn(requestJson)  (fire-and-forget, dispatch 到 ArkTS 主线程)
-    //   → runBlocking { deferred.await() }  (阻塞等待结果)
-    //   → [ArkTS 主线程] TextCodecBridgeHandler.handleTextCodecRequest
-    //   → new util.TextDecoder(charset).decodeToString(bytes) / new util.TextEncoder(charset).encodeInto(text)
-    //   → legado.textCodecCallback(requestId, resultJson)  (napi → @CName legado_text_codec_callback)
-    //   → onTextCodecResult(requestId, resultJson) → deferred.complete(resultJson)
-
-    /** textCodec threadsafe_function 引用 (Kotlin → ArkTS 发送编解码请求)。 */
-    @Volatile
-    private var textCodecTsfn: OhosTsfnCallback? = null
-
-    /** 待响应的 textCodec 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
-    private val textCodecPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
-
-    /** textCodec 请求自增 ID (原子性由 [lock] 保护)。 */
-    private var textCodecRequestCounter = 0L
-
-    /** 注入 textCodec tsfn (由 legado_napi.cpp RegisterTextCodecCallback 调用)。 */
-    fun registerTextCodecFn(tsfn: OhosTsfnCallback) {
-        synchronized(lock) {
-            textCodecTsfn = tsfn
-        }
-    }
-
-    /**
-     * textCodec 操作结果回调 (由 ArkTS 侧调 @CName legado_text_codec_callback 触发)。
-     *
-     * @param requestId 对应 [invokeTextCodecSync] 生成的请求 ID
-     * @param resultJson ArkTS 返回的结果 JSON (含 ok/text 或 ok/data 或 ok/error 字段)
-     */
-    fun onTextCodecResult(requestId: Long, resultJson: String) {
-        val deferred = synchronized(lock) { textCodecPendingRequests.remove(requestId) }
-        deferred?.complete(resultJson)
-    }
-
-    /**
-     * 同步调用文本编解码 (阻塞等待 ArkTS 返回结果)。
-     *
-     * @param action 操作类型: "decode" (字节→字符串) / "encode" (字符串→字节)
-     * @param payloadJson 操作参数 JSON (decode: `{charset, data(Base64)}`, encode: `{charset, text}`)
-     * @param timeoutMs 超时毫秒 (默认 15s: TXT 分章单块最大 512KB, Base64+跨线程往返留裕量)
-     * @return ArkTS 返回的结果 JSON; tsfn 未注册或超时返回 null (调用方按"平台不支持"降级)
-     */
-    fun invokeTextCodecSync(action: String, payloadJson: String, timeoutMs: Long = 15000L): String? {
-        val requestId = synchronized(lock) { ++textCodecRequestCounter }
-        val deferred = CompletableDeferred<String>()
-        synchronized(lock) { textCodecPendingRequests[requestId] = deferred }
-
-        val requestJson = KS_JSON.encodeToString(
-            TextCodecBridgeRequest(requestId = requestId, action = action, payload = payloadJson)
-        )
-        val tsfn = synchronized(lock) { textCodecTsfn }
-        if (tsfn == null) {
-            synchronized(lock) { textCodecPendingRequests.remove(requestId) }
-            return null
-        }
-        runCatching { tsfn(requestJson) }.onFailure {
-            synchronized(lock) { textCodecPendingRequests.remove(requestId) }
-            return null
-        }
-
-        // 阻塞等待 ArkTS 回调 (业务线程阻塞, ArkTS 主线程回调 complete, 不同线程无死锁)
-        val result = runBlocking { withTimeoutOrNull(timeoutMs) { deferred.await() } }
-        synchronized(lock) { textCodecPendingRequests.remove(requestId) }
-        return result
-    }
-
-    /**
-     * 检查 textCodec 桥是否已就绪 (tsfn 已注入)。
-     * TextCharsetCodec.ohos.kt 据此判断走真实 TextDecoder/TextEncoder 还是保持"暂不支持请转码"。
-     */
-    fun isTextCodecBridgeReady(): Boolean = synchronized(lock) { textCodecTsfn != null }
-
     // ===== Battery 同步桥 (tsfn + callback, 同 Image/Crypto 模式) =====
     // 阅读页电池电量走 ArkTS @ohos.batteryInfo (无 NDK C 接口), 经 tsfn 同步请求/响应获取。
     // 调用链: KMP getBatteryLevel → invokeBatterySync("getLevel") → tsfn → ArkTS @ohos.batteryInfo.batterySOC
@@ -2363,14 +2282,6 @@ object OhosNativeBridge {
     /** network 桥请求 payload (Kotlin → ArkTS, 同 ImageBridgeRequest 结构, action=query)。 */
     @Serializable
     private data class NetworkBridgeRequest(
-        val requestId: Long,
-        val action: String,
-        val payload: String,
-    )
-
-    /** textCodec 桥请求 payload (Kotlin → ArkTS, 同 ImageBridgeRequest 结构, action=decode/encode)。 */
-    @Serializable
-    private data class TextCodecBridgeRequest(
         val requestId: Long,
         val action: String,
         val payload: String,

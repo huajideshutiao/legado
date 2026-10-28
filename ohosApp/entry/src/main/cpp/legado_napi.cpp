@@ -226,10 +226,6 @@ static legado_int64_cstr_void_fn g_pasteboard_callback = nullptr;
 static legado_register_dispatch_fn g_register_network_fn = nullptr;
 static legado_int64_cstr_void_fn g_network_callback = nullptr;
 
-// dlsym 加载的函数指针 - TextCodec tsfn 注入 + ArkTS → Kotlin 回调 (同 Pasteboard 模式, decode/encode)
-static legado_register_dispatch_fn g_register_text_codec_fn = nullptr;
-static legado_int64_cstr_void_fn g_text_codec_callback = nullptr;
-
 // dlsym 加载的函数指针 - Battery tsfn 注入 + ArkTS → Kotlin 回调 (同 Crypto 模式, getLevel)
 static legado_register_dispatch_fn g_register_battery_fn = nullptr;
 static legado_int64_cstr_void_fn g_battery_callback = nullptr;
@@ -286,7 +282,6 @@ static napi_threadsafe_function g_http_tsfn = nullptr;
 static napi_threadsafe_function g_open_url_tsfn = nullptr;
 static napi_threadsafe_function g_file_picker_tsfn = nullptr;
 static napi_threadsafe_function g_pasteboard_tsfn = nullptr;
-static napi_threadsafe_function g_text_codec_tsfn = nullptr;
 static napi_threadsafe_function g_webview_tsfn = nullptr;
 static napi_threadsafe_function g_web_controller_tsfn = nullptr;
 static napi_threadsafe_function g_window_tsfn = nullptr;
@@ -508,10 +503,6 @@ static bool load_legado_shared() {
     g_register_network_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_network_fn");
     g_network_callback = (legado_int64_cstr_void_fn)dlsym(g_legado_so, "legado_network_callback");
 
-    // 解析 @CName 导出符号 - TextCodec tsfn 注入 + ArkTS → Kotlin 回调 (同 Pasteboard 模式)
-    g_register_text_codec_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_text_codec_fn");
-    g_text_codec_callback = (legado_int64_cstr_void_fn)dlsym(g_legado_so, "legado_text_codec_callback");
-
     // 解析 @CName 导出符号 - Battery tsfn 注入 + ArkTS → Kotlin 回调 (同 Crypto 模式)
     g_register_battery_fn = (legado_register_dispatch_fn) dlsym(g_legado_so, "legado_register_battery_fn");
     g_battery_callback = (legado_int64_cstr_void_fn) dlsym(g_legado_so, "legado_battery_callback");
@@ -551,7 +542,7 @@ static bool load_legado_shared() {
     // 解析 @CName 导出符号 - 统一平台事件 (HTTP 下载进度 + 应用生命周期, ArkTS → Kotlin)
     g_platform_event = (legado_cstr_void_fn) dlsym(g_legado_so, "legado_platform_event");
 
-    OH_LOG_INFO(LOG_APP, "liblegado_shared.so loaded, symbols resolved (KP5: + bookshelfList/searchBook/loadChapter/chapterList/importBookSource; KP7+: + registerFileDir/registerCacheDir/registerToastFn/registerNotificationFn; KP8+: + registerImageFn/registerMediaFn/imageCallback/mediaEvent/registerTtsFn/ttsEvent/registerCryptoFn/cryptoCallback/registerHttpFn/httpCallback/registerOpenUrlFn/registerFilePickerFn/filePickerCallback/registerPasteboardFn/pasteboardCallback/registerTextCodecFn/textCodecCallback)");
+    OH_LOG_INFO(LOG_APP, "liblegado_shared.so loaded, symbols resolved (KP5: + bookshelfList/searchBook/loadChapter/chapterList/importBookSource; KP7+: + registerFileDir/registerCacheDir/registerToastFn/registerNotificationFn; KP8+: + registerImageFn/registerMediaFn/imageCallback/mediaEvent/registerTtsFn/ttsEvent/registerCryptoFn/cryptoCallback/registerHttpFn/httpCallback/registerOpenUrlFn/registerFilePickerFn/filePickerCallback/registerPasteboardFn/pasteboardCallback)");
     return true;
 }
 
@@ -1112,8 +1103,8 @@ static void WindowCallJs(napi_env env, napi_value js_cb, void *context, void *da
 }
 
 // ============ Register*Callback 通用宏 ============
-// 20 个注册函数 (Window/Toast/Notification/Markdown/Image/Media/Tts/Crypto/Http/WebView/WebController/OpenUrl/
-// FilePicker/Pasteboard/Network/TextCodec/Battery/Share/Keyboard/Permission) 结构完全同构:
+// 19 个注册函数 (Window/Toast/Notification/Markdown/Image/Media/Tts/Crypto/Http/WebView/WebController/OpenUrl/
+// FilePicker/Pasteboard/Network/Battery/Share/Keyboard/Permission) 结构完全同构:
 // 校验 argc → 释放旧 tsfn (并结束旧通道上等待中的请求) → napi_create_threadsafe_function
 // 包装 ArkTS callback (XxxCallJs) → 存入 g_xxx_tsfn → 经 g_register_xxx_fn 把 dispatch
 // 函数指针注入 Kotlin OhosNativeBridge。
@@ -2222,75 +2213,6 @@ static napi_value NetworkCallback(napi_env env, napi_callback_info info) {
     return ret;
 }
 
-// ============ TextCodec tsfn 接线 (同 Pasteboard 模式: tsfn 发请求 + @CName 回调返回结果) ============
-// - KMP 通过 OhosNativeBridge.invokeTextCodecSync 发 decode/encode 请求
-// - 请求经 C++ ohos_text_codec_dispatch → napi_call_threadsafe_function → ArkTS 主线程回调
-// - ArkTS TextCodecBridgeHandler 调 @ohos.util.TextDecoder/TextEncoder 完成 GB18030/Big5 等字符集编解码
-// - 完成后通过 textCodecCallback(requestId, resultJson) (napi → @CName) 回送结果给 Kotlin
-
-// C++ dispatch 入口: 由 Kotlin lambda (注入到 OhosNativeBridge.textCodecTsfn) 调用
-extern "C" void ohos_text_codec_dispatch(const char* json) {
-    if (g_text_codec_tsfn == nullptr || json == nullptr) return;
-    size_t len = strlen(json) + 1;
-    char* json_dup = (char*)malloc(len);
-    if (json_dup == nullptr) return;
-    memcpy(json_dup, json, len);
-    napi_status status = napi_call_threadsafe_function(g_text_codec_tsfn, json_dup, napi_tsfn_nonblocking);
-    if (status != napi_ok) {
-        free(json_dup);
-    }
-}
-
-// tsfn call-js 回调: 在 ArkTS 主线程执行, 把 data (JSON 串) 包成 napi string 后调用 ArkTS 回调
-static void TextCodecCallJs(napi_env env, napi_value js_cb, void* /*context*/, void* data) {
-    if (data == nullptr) return;
-    char* json = static_cast<char*>(data);
-    if (js_cb == nullptr || env == nullptr) {
-        // tsfn 已 abort: 回调不再投递, 只释放队列里的数据
-        free(json);
-        return;
-    }
-    napi_value json_arg;
-    napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_value undef;
-    napi_get_undefined(env, &undef);
-    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
-    free(json);
-}
-
-// napi 包装: registerTextCodecCallback(callback: (json: string) => void): void
-// ArkTS 注册 textCodec 回调; C++ 创建 tsfn, 通过 legado_register_text_codec_fn 注入 ohos_text_codec_dispatch 到 Kotlin
-REGISTER_TSFN_CALLBACK(TextCodec, TextCodecCallJs, g_text_codec_tsfn, g_register_text_codec_fn, ohos_text_codec_dispatch,
-    kNoChannelNotify,
-    "registerTextCodecCallback: legado_register_text_codec_fn not resolved (KMP invokeTextCodecSync 将降级)")
-
-// napi 包装: textCodecCallback(requestId: number, result: string): void
-// ArkTS → Kotlin textCodec 操作结果回调 (decode/encode 完成后调用)
-static napi_value TextCodecCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 2;
-    napi_value args[2] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-
-    // args[0]: requestId (number, int64)
-    int64_t request_id = 0;
-    napi_get_value_int64(env, args[0], &request_id);
-
-    // args[1]: resultJson (string)
-    size_t str_len = 0;
-    napi_get_value_string_utf8(env, args[1], nullptr, 0, &str_len);
-    char* buf = new char[str_len + 1];
-    napi_get_value_string_utf8(env, args[1], buf, str_len + 1, &str_len);
-
-    if (load_legado_shared() && g_text_codec_callback != nullptr) {
-        g_text_codec_callback(request_id, buf);
-    }
-    delete[] buf;
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
-
 // ============ Battery tsfn 接线 (同 Crypto 模式: tsfn 发请求 + @CName 回调返回结果) ============
 // 阅读页电池电量: KMP getBatteryLevel → invokeBatterySync → tsfn dispatch 到 ArkTS →
 // BatteryBridgeHandler 调 @ohos.batteryInfo.batterySOC → batteryCallback 回送结果。
@@ -2651,9 +2573,6 @@ androidx_compose_ui_arkui_init(env, exports
         // Network tsfn 回调注册 + ArkTS → Kotlin 回调 (同 Pasteboard 模式, query)
         {"registerNetworkCallback", nullptr, RegisterNetworkCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"networkCallback", nullptr, NetworkCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
-        // TextCodec tsfn 回调注册 + ArkTS → Kotlin 回调 (同 Pasteboard 模式, decode/encode)
-        {"registerTextCodecCallback", nullptr, RegisterTextCodecCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"textCodecCallback", nullptr, TextCodecCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
             // WebView tsfn 回调注册 + ArkTS → Kotlin 回调 (后台 WebView 抓取, 同 Http/Image 模式)
             {"registerWebViewCallback", nullptr, RegisterWebViewCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
             {"webViewCallback", nullptr, WebViewCallback, nullptr, nullptr, nullptr, napi_default, nullptr},

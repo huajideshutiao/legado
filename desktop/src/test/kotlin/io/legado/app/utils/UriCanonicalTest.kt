@@ -52,6 +52,17 @@ class UriCanonicalTest {
         assertEquals("https://a.com/%e4%bd%a0", "https://a.com/%e4%bd%a0".canonicalizeUri())
     }
 
+    /**
+     * 搜索请求实况: 关键词已由 URL 参数编码器写成 `%XX` 后随 query 交给合法化,
+     * 每一段必须原样放行。回归点: 不跳过整段三元组时 `%E7` 会被再追加成 `%E7E7`,
+     * 关键词变成乱码字节 → 站点返回空结果页 (iOS/鸿蒙全源搜索无结果)。
+     */
+    @Test
+    fun `已编码的搜索关键词不被二次追加`() {
+        val url = "https://a.com/search?q=%E7%88%B1%E6%83%85&page=1"
+        assertEquals(url, url.canonicalizeUri())
+    }
+
     @Test
     fun `路径段内非法字符与空格被转义`() {
         assertEquals(

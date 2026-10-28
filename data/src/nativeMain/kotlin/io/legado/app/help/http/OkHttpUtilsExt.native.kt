@@ -27,8 +27,8 @@ import io.legado.app.utils.systemCurrentTimeMillis
  *   调用方在 iOS/鸿蒙端不依赖此功能 (DecompressPlatform.native.kt 是 stub, decompressBody 返回 null)
  * - postMultipart: jvm 端用 okhttp3.MultipartBody.Builder, nativeMain 端手动拼字节 (功能等价)
  * - charset 解析: jvm 端用 `Charset.forName(name)` 支持任意 JVM charset, nativeMain 端走
- *   commonMain [textCharsetCodec] 门面 (UTF-8/UTF-16 系/UTF-32 系/ISO-8859-1/US-ASCII + GBK/Big5 分端下沉),
- *   其余 charset 降级为 UTF-8
+ *   commonMain [textCharsetCodec] 门面 (委托 JDK 移植实现: UTF-8/UTF-16 系/UTF-32 系/
+ *   ISO-8859-1/US-ASCII/GBK/GB2312/GB18030/Big5), 未知名抛异常、按 null 降级 UTF-8
  */
 actual suspend fun KmpHttpClient.newCallStrResponse(
     retry: Int,
@@ -190,8 +190,8 @@ actual fun KmpMediaType.charsetName(): String? {
  * 按 charset 名解码字节 (委托 commonMain [textCharsetCodec] 门面)。
  *
  * Kotlin/Native 无 `Charset.forName(name)` (JVM-only); textCharsetCodec 覆盖
- * UTF-8/UTF-16 系/UTF-32 系/ISO-8859-1/US-ASCII, GBK/Big5 走分端平台实现。
- * 不支持的 charset 返回 null (调用方降级 UTF-8)。
+ * UTF-8/UTF-16 系/UTF-32 系/ISO-8859-1/US-ASCII/GBK/GB2312/GB18030/Big5 (均委托 JDK 移植实现)。
+ * 不支持的 charset 抛异常, 经 runCatching 返回 null (调用方降级 UTF-8)。
  */
 private fun decodeOrNull(bytes: ByteArray, charsetName: String): String? =
     runCatching { textCharsetCodec(charsetName).decode(bytes) }.getOrNull()

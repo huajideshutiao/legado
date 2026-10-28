@@ -42,7 +42,6 @@ import io.legado.app.model.webBook.replaceExploreOptionsInUrl
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MimeBase64Decoder
 import io.legado.app.utils.NetworkUtils
-import io.legado.app.utils.PercentCodec
 import io.legado.app.utils.byteStreamAsInput
 import io.legado.app.utils.decodeAnyMapOrNull
 import io.legado.app.utils.decodeWithFallbackOrNull
@@ -642,27 +641,21 @@ open class AnalyzeUrlCore(
 }
 
 /**
- * URL 参数编码器 (RFC3986 unreserved + query 段保留字符)。
- *
- * 从原 AnalyzeUrlCore companion object 的 private val queryEncoder 下沉为 top-level internal val,
- * 供 [encodeUrlParams] actual 实现 (jvmAndAndroidMain) 使用。commonMain 不直接使用。
- */
-internal val urlQueryEncoder: PercentCodec =
-    PercentCodec.UNRESERVED.orNew(PercentCodec.of("!$%&()*+,/:;=?@[\\]^`{|}"))
-
-/**
- * URL 参数编码 (Charset 相关逻辑下沉 jvmAndAndroidMain)。
+ * URL 参数编码 (Charset 相关逻辑下沉各端 actual)。
  *
  * commonMain 无 kotlin.text.Charset expect class (Kotlin 2.3 stdlib), 原 encodeParams/encodeOne
  * 依赖 `Charsets.UTF_8` / `charset(name)` / `URLEncoder.encode(value, charset)`, 均 JVM-only。
- * 故把整个 encodeParams + encodeOne 下沉为 top-level expect fun, actual 在 jvmAndAndroidMain
- * 直接调用 java.net.URLEncoder.encode + java.nio.charset.Charset。
+ * 故把整个 encodeParams + encodeOne 下沉为 top-level expect fun:
+ * - jvmAndAndroidMain actual 直接调用 java.net.URLEncoder.encode + java.nio.charset.Charset;
+ * - nativeMain actual 经 [io.legado.app.utils.textCharsetCodec] 门面按名取编码器
+ *   (UTF-16 系/Latin1/ASCII 进程内; GBK 系/Big5 走平台转换, 未知名抛异常, 与 JVM
+ *   Charset.forName 语义一致), 不静默退化 UTF-8。
  *
  * 行为与原 private fun encodeParams 完全一致:
  * - charset 空 → UTF-8 编码
  * - charset == "escape" → EncoderUtils.escape (不 URL 编码)
  * - 其他 → 用指定 charset URL 编码
- * - isQuery=true 且非 escape: 整段用 urlQueryEncoder 编码 (若已 encoded 则原样返回)
+ * - isQuery=true 且非 escape: 整段用 [io.legado.app.help.http.urlQueryEncoder] 编码 (若已 encoded 则原样返回)
  * - isQuery=false: 按 '&' 分段, 每段按 '=' 分 key/value, 分别 encodeOne
  */
 internal expect fun encodeUrlParams(params: String, charset: String?, isQuery: Boolean): String

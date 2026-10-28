@@ -1072,39 +1072,6 @@ object LegadoNativeExports {
         OhosNativeBridge.onNetworkResult(requestId, result.toKString())
     }
 
-    // ===== TextCodec tsfn 注入 + ArkTS → Kotlin 结果回调 (同 Crypto/Pasteboard 模式) =====
-
-    /**
-     * 注入 textCodec dispatch 函数指针 (由 legado_napi.cpp RegisterTextCodecCallback 调用)。
-     *
-     * 注入到 [OhosNativeBridge.textCodecTsfn], 使 KMP [OhosNativeBridge.invokeTextCodecSync]
-     * 能跨线程 dispatch GB18030/Big5 编解码请求到 ArkTS (TXT 分章解析用)。
-     * ArkTS TextCodecBridgeHandler (@ohos.util TextDecoder/TextEncoder) 处理完成后
-     * 通过 [textCodecCallback] (@CName legado_text_codec_callback) 回送结果。
-     *
-     * @param dispatch C++ tsfn dispatch 入口 (`ohos_text_codec_dispatch`), 类型 `void(*)(const char*)`
-     */
-    @CName("legado_register_text_codec_fn")
-    fun registerTextCodecFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
-        OhosNativeBridge.registerTextCodecFn { json ->
-            memScoped {
-                dispatch(json.cstr.getPointer(this))
-            }
-        }
-    }
-
-    /**
-     * ArkTS → Kotlin textCodec 操作结果回调 (由 legado_napi.cpp TextCodecCallback 调用)。
-     *
-     * @param requestId 请求 ID (与 invokeTextCodecSync 生成的 requestId 对应)
-     * @param result 结果 JSON: decode 成功 `{ ok: true, text: "..." }`,
-     *   encode 成功 `{ ok: true, data: "<base64>" }`, 失败 `{ ok: false, error: "..." }`
-     */
-    @CName("legado_text_codec_callback")
-    fun textCodecCallback(requestId: Long, result: CPointer<ByteVar>) {
-        OhosNativeBridge.onTextCodecResult(requestId, result.toKString())
-    }
-
     // ===== Window / Battery tsfn 注入 (此前 OhosNativeBridge 已备桥, 缺 C ABI 入口) =====
 
     /**

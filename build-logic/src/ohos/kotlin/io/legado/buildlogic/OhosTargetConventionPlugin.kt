@@ -52,6 +52,13 @@ class OhosTargetConventionPlugin : Plugin<Project> {
                         // :modules:reorderable-ohos); 其余三端仍解析上游官方变体。
                         substitute(module("sh.calvin.reorderable:reorderable"))
                             .using(project(":modules:reorderable-ohos"))
+                        // native 端字符集编解码 (charset/io-core 无 ohosArm64 变体): 替换为
+                        // :modules:ksoup-ohos 已重编的同一份源码, 避免重复类; 其余三端仍解析
+                        // 官方变体。ksoup-ohos 自身不依赖这两个坐标, 无自替换问题。
+                        substitute(module("com.fleeksoft.charset:charset"))
+                            .using(project(":modules:ksoup-ohos"))
+                        substitute(module("com.fleeksoft.io:io-core"))
+                            .using(project(":modules:ksoup-ohos"))
                         substitute(module("org.jetbrains.compose.runtime:runtime"))
                             .using(module("org.jetbrains.compose.runtime:runtime:$cmpOhosVersion"))
                     }

@@ -24,6 +24,10 @@ fun String.canonicalizeUri(): String {
     val input = stripSurroundingControls()
     if (input.isEmpty()) return input
 
+    // 字节化统一经字符集门面 (每次调用一个 UTF-8 codec, 每段一次 newEncoder): 孤立代理项
+    // 按 JVM REPLACE 输出单字节 '?', 不经 encodeToByteArray (K/N 替换为 U+FFFD)
+    val codec = textCharsetCodec("UTF-8")
+
     var remaining = input
     val hashPos = remaining.indexOf('#')
     val fragment = if (hashPos >= 0) remaining.substring(hashPos + 1).also {
@@ -49,12 +53,12 @@ fun String.canonicalizeUri(): String {
         val slash = remaining.indexOf('/', authorityStart)
         path = if (slash < 0) "" else remaining.substring(slash)
         out.append("//").append(canonicalizeAuthority(remaining.substring(authorityStart,
-            if (slash < 0) remaining.length else slash)))
+            if (slash < 0) remaining.length else slash), codec))
     }
 
-    out.append(uriPathCodec.encodeKeepEscapes(path, ::toUriBytes))
-    if (query != null) out.append('?').append(uriQueryCodec.encodeKeepEscapes(query, ::toUriBytes))
-    if (fragment != null) out.append('#').append(uriQueryCodec.encodeKeepEscapes(fragment, ::toUriBytes))
+    out.append(uriPathCodec.encodeKeepEscapes(path, codec))
+    if (query != null) out.append('?').append(uriQueryCodec.encodeKeepEscapes(query, codec))
+    if (fragment != null) out.append('#').append(uriQueryCodec.encodeKeepEscapes(fragment, codec))
     return out.toString()
 }
 
@@ -123,7 +127,7 @@ private fun schemeDelimiterIndex(url: String): Int {
  * `authority = [userinfo "@"] host [":" port]` (RFC 3986 §3.2)。
  * userinfo 不含 `@`，取最后一个 `@` 为界；userinfo 内第一个 `:` 分隔 user 与 password。
  */
-private fun canonicalizeAuthority(authority: String): String {
+private fun canonicalizeAuthority(authority: String, codec: TextCharsetCodec): String {
     val out = StringBuilder(authority.length)
     val atPos = authority.lastIndexOf('@')
     val hostSection = if (atPos < 0) authority else authority.substring(atPos + 1)
@@ -131,15 +135,15 @@ private fun canonicalizeAuthority(authority: String): String {
         val userinfo = authority.substring(0, atPos)
         val colon = userinfo.indexOf(':')
         if (colon < 0) {
-            out.append(uriUserinfoCodec.encodeKeepEscapes(userinfo, ::toUriBytes))
+            out.append(uriUserinfoCodec.encodeKeepEscapes(userinfo, codec))
         } else {
-            out.append(uriUserinfoCodec.encodeKeepEscapes(userinfo.substring(0, colon), ::toUriBytes))
+            out.append(uriUserinfoCodec.encodeKeepEscapes(userinfo.substring(0, colon), codec))
                 .append(':')
-                .append(uriPasswordCodec.encodeKeepEscapes(userinfo.substring(colon + 1), ::toUriBytes))
+                .append(uriPasswordCodec.encodeKeepEscapes(userinfo.substring(colon + 1), codec))
         }
         out.append('@')
     }
-    out.append(canonicalizeHostAndPort(hostSection))
+    out.append(canonicalizeHostAndPort(hostSection, codec))
     return out.toString()
 }
 
@@ -149,13 +153,13 @@ private fun canonicalizeAuthority(authority: String): String {
  * 其余按 reg-name 逐字符校验；不成对的 `[` 属 reg-name 非法字符，转义。
  * `:` 后非纯数字时该 `:` 不可能是端口分隔符，按 reg-name 字符转义。
  */
-private fun canonicalizeHostAndPort(hostAndPort: String): String {
+private fun canonicalizeHostAndPort(hostAndPort: String, codec: TextCharsetCodec): String {
     if (hostAndPort.startsWith("[")) {
         val close = hostAndPort.indexOf(']')
         if (close >= 0) {
             val out = StringBuilder(hostAndPort.length + 6)
             out.append('[')
-                .append(uriIpLiteralCodec.encodeKeepEscapes(hostAndPort.substring(1, close), ::toUriBytes))
+                .append(uriIpLiteralCodec.encodeKeepEscapes(hostAndPort.substring(1, close), codec))
                 .append(']')
             val tail = hostAndPort.substring(close + 1)
             if (tail.isEmpty()) return out.toString()
@@ -165,17 +169,17 @@ private fun canonicalizeHostAndPort(hostAndPort: String): String {
                 return out.toString()
             }
             // 闭合括号后还有非法残尾: 整段按 reg-name 编码 ([ ] : 都不是 reg-name 合法字符)
-            return uriHostCodec.encodeKeepEscapes(hostAndPort, ::toUriBytes)
+            return uriHostCodec.encodeKeepEscapes(hostAndPort, codec)
         }
     }
     val colon = hostAndPort.lastIndexOf(':')
     if (colon >= 0) {
         val port = hostAndPort.substring(colon + 1)
         if (port.isEmpty() || port.all { it in '0'..'9' }) {
-            return uriHostCodec.encodeKeepEscapes(hostAndPort.substring(0, colon), ::toUriBytes) + ":" + port
+            return uriHostCodec.encodeKeepEscapes(hostAndPort.substring(0, colon), codec) + ":" + port
         }
     }
-    return uriHostCodec.encodeKeepEscapes(hostAndPort, ::toUriBytes)
+    return uriHostCodec.encodeKeepEscapes(hostAndPort, codec)
 }
 
 /** WHATWG URL Standard：解析前移除首尾 C0 控制符与空格（`<= 0x20`）。 */
@@ -186,8 +190,6 @@ private fun String.stripSurroundingControls(): String {
     while (end > start && this[end - 1].code <= 0x20) end--
     return if (start == 0 && end == length) this else substring(start, end)
 }
-
-private fun toUriBytes(s: String): ByteArray = s.encodeToByteArray()
 
 /** `unreserved` + `sub-delims`：userinfo / reg-name（RFC 3986 §3.2.1、§3.2.2）。 */
 private val uriUserinfoCodec: PercentCodec =

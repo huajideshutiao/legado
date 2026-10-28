@@ -18,7 +18,7 @@ import kotlinx.coroutines.runBlocking
  * - 用 [Base64] (kotlin.io.encoding 标准库, KMP 可用) 实现 Basic 认证
  * - 与 jvmAndAndroidMain 完全一致: okhttp3.Credentials.basic(username, password, ISO_8859_1)
  *   ↔ 本端 [textCharsetCodec]("ISO-8859-1").encode("$username:$password") 后 Base64
- *   (Latin1Codec 与 JVM REPLACE 模式一致: 不可映射字符替换为 '?')
+ *   (ISO-8859-1 编码与 JVM REPLACE 模式一致: 不可映射字符替换为 '?')
  * - `Authorization(serverID)` 走 AppDbProviders (commonMain 已可用, iOS/鸿蒙端数据库驱动由宿主注册)
  *
  * 注: nativeMain 不依赖任何平台专属 API (iOS Foundation / 鸿蒙 napi), 纯 KMP 标准库实现。
@@ -33,7 +33,8 @@ actual class Authorization actual constructor(
         private set
 
     // Basic 认证头: "Basic <base64(ISO_8859_1(username:password))>", 与 jvm 端 ISO_8859_1 字节一致
-    // (Kotlin/Native 无 Charset 类型, 复用 TextCharsetCodec 的 Latin1Codec: 逐字符取低 8 位, 超范围替换 '?')
+    // (Kotlin/Native 无 Charset 类型, 经 TextCharsetCodec 的 ISO-8859-1 编码: 逐字符取低 8 位,
+    // 不可映射字符按 JVM REPLACE 替换为 '?')
     actual var data: String = "Basic " + Base64.encode(
         textCharsetCodec("ISO-8859-1").encode("$username:$password")
     )

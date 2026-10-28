@@ -84,3 +84,10 @@ if (enableOhosTarget) {
     include(":modules:epub4kmp-ohos")
     include(":modules:reorderable-ohos")
 }
+
+// native 端字符集编解码承载模块: iOS/鸿蒙任一目标启用即参与构建 (foundation 仅 nativeMain 依赖)
+val enableIosTarget = providers.gradleProperty("enableIosTarget").orNull?.toBoolean()
+    ?: System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
+if (enableIosTarget || enableOhosTarget) {
+    include(":modules:charset-native")
+}

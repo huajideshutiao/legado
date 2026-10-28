@@ -6,8 +6,8 @@ import io.legado.app.constant.AppPattern
  * StringExtensions 纯区：analyzeRule/webBook 消费的零平台依赖字符串判定与扩展。
  *
  * 安卓区（Uri/Editable/icu 等）仍留 app 侧同包 StringExtensions.kt，按包合并;
- * encodeURI 走 commonMain 端 PercentCodec.encode(str, toBytes) + String.toByteArray()
- * (默认 UTF_8, kotlin.text 标准 API, commonMain 可用), 不再依赖 jvmAndAndroidMain 半区。
+ * encodeURI 走 commonMain 端 PercentCodec.QUERY.encode + textCharsetCodec("UTF-8")
+ * 门面字节化。
  */
 
 fun String?.isDataUrl() =
@@ -174,10 +174,8 @@ fun CharSequence.toStringArray(): Array<String> {
 }
 
 /**
- * URI 编码: 走 [PercentCodec.QUERY] (RFC3986 query), 字节化用 [String.encodeToByteArray]
- * (默认 UTF_8, kotlin.text 标准 API, commonMain 可用)。
- *
- * 与原 jvmAndAndroidMain 端 `PercentCodec.QUERY.encode(this, Charsets.UTF_8)` 行为一致
- * (后者 actual 内部亦委托 `it.toByteArray(charset)`, charset = UTF_8 时与默认参数等价)。
+ * URI 编码: [PercentCodec.QUERY] (RFC3986 query) safe 表, 字节化经 [textCharsetCodec]
+ * 门面 (UTF-8): 孤立代理项按 JVM REPLACE 输出单字节 '?'; 平台 [String.encodeToByteArray]
+ * 的替换字节与之不一致 (K/N 为 U+FFFD), 不得用于 URL 字节化。
  */
-fun String.encodeURI(): String = PercentCodec.QUERY.encode(this) { it.encodeToByteArray() }
+fun String.encodeURI(): String = PercentCodec.QUERY.encode(this, textCharsetCodec("UTF-8"))

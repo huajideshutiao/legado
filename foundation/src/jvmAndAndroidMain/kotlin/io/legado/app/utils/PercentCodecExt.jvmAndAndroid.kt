@@ -3,16 +3,16 @@ package io.legado.app.utils
 import java.nio.charset.Charset
 
 /**
- * PercentCodec 的 JVM 专属扩展: 接收 [Charset] 的 encode 重载。
+ * PercentCodec 的 JVM/Android 专属扩展: 接收 [Charset] 的 encode 重载。
  *
- * commonMain 端 [PercentCodec.encode] 用 `toBytes: (String) -> ByteArray` lambda 注入字节化,
- * 不暴露 Charset 类型 (Kotlin 2.3 stdlib common 无 kotlin.text.Charset expect class)。
- * 本扩展函数委托给 commonMain 端 encode, 供 app 端测试
- * (HutoolReplacementCompatTest, 用 `Charsets.UTF_8` / `charset("GBK")` 等) 调用,
- * 行为与原 jvmAndAndroidMain 端 PercentCodec.encode(str, charset) 完全一致。
+ * commonMain 不暴露 Charset 类型, 本重载经 foundation 的 [textCharsetCodec] (Charset 工厂)
+ * 接入 JDK CharsetEncoder, 走 commonMain 的 [PercentCodec.encode] (TextCharsetCodec 重载):
+ * 整个 encode 调用共用一个编码器, 状态跨整个调用持续 —— 对齐 archive hutool 5.8.22
+ * PercentCodec.encode(String, Charset)「循环外一个 OutputStreamWriter」的一手语义
+ * (UTF-16 BOM 全调用仅一次)。
  *
- * 注: 原 jvmAndAndroidMain 端 StringExtensionsJvm.shared.kt 的 `String.encodeURI()`
- * 已下沉 commonMain (用 `it.toByteArray()` 默认 UTF_8), 不再走本重载。
+ * 供 app 端测试 (HutoolReplacementCompatTest, 用 `Charsets.UTF_8` / `charset("GBK")` 等)、
+ * AnalyzeUrlCoreExt 等 query 整段路径调用方使用。
  */
 fun PercentCodec.encode(str: CharSequence, charset: Charset): String =
-    encode(str) { it.toByteArray(charset) }
+    encode(str, textCharsetCodec(charset))

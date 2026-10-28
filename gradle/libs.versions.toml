@@ -92,6 +92,9 @@ coil3 = "3.4.0"
 
 # ===== HTML / XML / SVG 解析 =====
 ksoup = "0.2.6"
+# native 端字符集编解码 (modules/charset-native; 与 ksoup 0.2.6 的依赖链同版本)
+fleeksoft-charset = "0.0.8"
+fleeksoft-io = "0.0.8"
 kxml2 = "2.3.0"
 jsvg = "2.1.0"
 androidsvg = "1.4"
@@ -241,6 +244,8 @@ coil3-network-ktor3 = { module = "io.coil-kt.coil3:coil-network-ktor3", version.
 
 # ===== HTML / XML / SVG 解析 =====
 ksoup = { module = "com.fleeksoft.ksoup:ksoup", version.ref = "ksoup" }
+fleeksoft-charset = { module = "com.fleeksoft.charset:charset", version.ref = "fleeksoft-charset" }
+fleeksoft-io-core = { module = "com.fleeksoft.io:io-core", version.ref = "fleeksoft-io" }
 kxml2 = { module = "net.sf.kxml:kxml2", version.ref = "kxml2" }
 jsvg = { module = "com.github.weisj:jsvg", version.ref = "jsvg" }
 androidsvg = { module = "com.caverock:androidsvg-aar", version.ref = "androidsvg" }

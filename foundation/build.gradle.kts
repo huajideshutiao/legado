@@ -80,6 +80,11 @@ kotlin {
         val nativeMain = if (enableIosTarget || enableOhosTarget) {
             maybeCreate("nativeMain").apply {
                 dependsOn(commonMain.get())
+                dependencies {
+                    // native 端字符集编解码走 JDK 移植实现 (modules/charset-native, iOS 官方
+                    // klib / 鸿蒙经 ksoup-ohos 重编); Android/JVM 用 JDK 自身, 不引入本模块
+                    implementation(project(":modules:charset-native"))
+                }
             }
         } else null
 

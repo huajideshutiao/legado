@@ -4,6 +4,8 @@ package io.legado.app.help.http
 
 import io.legado.app.constant.AppConst
 import io.legado.app.help.UserAgentProviders
+import io.legado.app.help.http.NativeUrlEntryEncoding.NativeFormEntry
+import io.legado.app.help.http.NativeUrlEntryEncoding.NativeQueryEntry
 import io.legado.app.utils.canonicalizeUri
 import io.legado.app.utils.Closeable
 import io.legado.app.utils.InputStream
@@ -706,29 +708,43 @@ actual interface KmpCallback {
 
 // region FormBody / HttpUrl / MediaType / RequestBody / Headers / Protocol
 actual class KmpFormBodyBuilder actual constructor() {
-    private val entries: MutableList<Pair<String, String>> = mutableListOf()
+    // OkHttp FormBody: add/addEncoded 入口即完成 canonicalize (FORM_ENCODE_SET, 标志决定 %/+ 语义),
+    // build 只拼接 —— 与 OkHttp names/values 列表存放已编码条目同构
+    private val entries: MutableList<NativeFormEntry> = mutableListOf()
 
     actual fun add(name: String, value: String): KmpFormBodyBuilder {
-        entries.add(name to value)
+        // OkHttp add: 未编码入参 (`+`→%2B, 空格→`+`, FORM_ENCODE_SET 编码)
+        entries.add(
+            NativeFormEntry(
+                NativeUrlEntryEncoding.encodeFormComponent(name),
+                NativeUrlEntryEncoding.encodeFormComponent(value),
+            )
+        )
         return this
     }
 
     actual fun addEncoded(name: String, value: String): KmpFormBodyBuilder {
-        // OkHttp addEncoded 期望已 URL 编码的入参, 这里直接保存 (与 jvmAndAndroidMain 行为一致)
-        entries.add(name to value)
+        // OkHttp addEncoded: `%` 原样保留 (strict=false 不校验三元组), `+` 保持,
+        // 其余 FORM_ENCODE_SET 字符仍重编码; 与 jvmAndAndroidMain (真实 OkHttp) 行为一致
+        entries.add(
+            NativeFormEntry(
+                NativeUrlEntryEncoding.encodeFormEncodedComponent(name),
+                NativeUrlEntryEncoding.encodeFormEncodedComponent(value),
+            )
+        )
         return this
     }
 
     /**
      * 构造 form-urlencoded body (内部用)。
      *
-     * 与 OkHttp FormBody 一致: key=value 用 & 分隔, key/value 均 URL 编码 (form 编码)。
+     * 与 OkHttp FormBody 一致: key=value 用 & 分隔, 条目均为入口已编码形态, 直接拼接。
      */
     internal fun buildFormBody(): KmpRequestBody {
         val sb = StringBuilder()
-        entries.forEachIndexed { idx, (k, v) ->
+        entries.forEachIndexed { idx, entry ->
             if (idx > 0) sb.append('&')
-            sb.append(urlEncodeForm(k)).append('=').append(urlEncodeForm(v))
+            sb.append(entry.encodedName).append('=').append(entry.encodedValue)
         }
         return NativeKmpRequestBody(
             sb.toString().encodeToByteArray(),
@@ -767,48 +783,74 @@ actual class KmpHttpUrl {
 
 actual class KmpHttpUrlBuilder {
     private val baseUrl: String
-    private var encodedQueryStr: String? = null
-    private val queryParams: MutableList<Pair<String, String>> = mutableListOf()
+    private var encodedFragment: String? = null
+
+    /**
+     * OkHttp encodedQueryNamesAndValues 等价: null = 无 query (encodedQuery(null) 清除)。
+     * 条目均为**入口已编码**形态 (OkHttp add/parse 时 canonicalize, build/toString 只拼接),
+     * 值内原始 `=` 等按入口 encodeSet 语义原样保留。
+     */
+    private var queryEntries: MutableList<NativeQueryEntry>? = null
 
     constructor(urlStr: String = "http://localhost/") {
-        baseUrl = urlStr.substringBefore('?')
-        urlStr.substringAfter('?', "").ifNotEmpty { s ->
-            s.split('&').forEach { pair ->
-                val k = pair.substringBefore('=')
-                val v = pair.substringAfter('=', "")
-                queryParams.add(k to v)
-            }
+        // OkHttp 解析顺序: query 结束于 '#', fragment 在 query 之后独立保存
+        val hashPos = urlStr.indexOf('#')
+        val beforeFragment = if (hashPos >= 0) urlStr.substring(0, hashPos) else urlStr
+        if (hashPos >= 0) encodedFragment = urlStr.substring(hashPos + 1)
+        baseUrl = beforeFragment.substringBefore('?')
+        if ('?' in beforeFragment) {
+            // OkHttp parse: 整段 query 按 QUERY_ENCODE_SET 合法化 (alreadyEncoded=true, 保留 %/`+`,
+            // 值内 `=` 不动) 后拆名值; build 直接回拼, parse→toString 往返不变
+            appendParsedQuery(beforeFragment.substringAfter('?'))
         }
     }
 
     actual fun encodedQuery(encodedQuery: String?): KmpHttpUrlBuilder {
-        encodedQueryStr = encodedQuery
+        // OkHttp 语义: null 清除整段 query (build 不再拼 '?'); 非 null 整段替换, 后续 add 继续追加
+        queryEntries = null
+        if (encodedQuery != null) appendParsedQuery(encodedQuery)
         return this
     }
 
     actual fun addQueryParameter(name: String, value: String?): KmpHttpUrlBuilder {
-        queryParams.add(name to (value ?: ""))
+        // OkHttp addQueryParameter: 未编码入参 (QUERY_COMPONENT_ENCODE_SET, `%`→%25, `+`→%2B, 空格→%20)
+        if (queryEntries == null) queryEntries = mutableListOf()
+        queryEntries!!.add(
+            NativeQueryEntry(
+                NativeUrlEntryEncoding.encodeQueryComponent(name),
+                value?.let { NativeUrlEntryEncoding.encodeQueryComponent(it) },
+            )
+        )
         return this
     }
 
     actual fun addEncodedQueryParameter(encodedName: String, encodedValue: String?): KmpHttpUrlBuilder {
-        // 入参已 URL 编码, 这里直接保存 (与 OkHttp addEncodedQueryParameter 行为一致)
-        queryParams.add(encodedName to (encodedValue ?: ""))
+        // OkHttp addEncodedQueryParameter: 已编码入参 (QUERY_COMPONENT_REENCODE_SET,
+        // `%`/`+` 原样保留, 仅 ` "'<>#&=` 重编码), strict=false 不校验三元组
+        if (queryEntries == null) queryEntries = mutableListOf()
+        queryEntries!!.add(
+            NativeQueryEntry(
+                NativeUrlEntryEncoding.encodeQueryEncodedComponent(encodedName),
+                encodedValue?.let { NativeUrlEntryEncoding.encodeQueryEncodedComponent(it) },
+            )
+        )
         return this
     }
 
     actual fun build(): KmpHttpUrl {
         val sb = StringBuilder(baseUrl)
-        if (encodedQueryStr != null) {
-            sb.append('?').append(encodedQueryStr)
-        } else if (queryParams.isNotEmpty()) {
-            sb.append('?')
-            queryParams.forEachIndexed { idx, (k, v) ->
-                if (idx > 0) sb.append('&')
-                sb.append(urlEncodeQuery(k)).append('=').append(urlEncodeQuery(v))
-            }
+        queryEntries?.let { entries ->
+            // OkHttp Builder.toString: 列表非 null 即拼 '?', 条目为入口已编码形态, 直接拼接
+            sb.append('?').append(NativeUrlEntryEncoding.joinQuery(entries))
         }
+        encodedFragment?.let { sb.append('#').append(it) }
         return KmpHttpUrl(sb.toString())
+    }
+
+    private fun appendParsedQuery(query: String) {
+        val entries = queryEntries ?: mutableListOf<NativeQueryEntry>().also { queryEntries = it }
+        NativeUrlEntryEncoding.splitQuery(NativeUrlEntryEncoding.encodeQuerySegment(query))
+            .mapTo(entries) { (n, v) -> NativeQueryEntry(n, v) }
     }
 }
 
@@ -971,50 +1013,6 @@ private fun decompressResponseBody(bytes: ByteArray, contentEncoding: String?): 
 
         else -> bytes
     }
-}
-
-/**
- * form-urlencoded 编码 (与 OkHttp FormBody 编码行为对齐)。
- *
- * 规则: 字母数字不编码; 空格 '+'; 其他字符 %XX (UTF-8)。
- */
-private fun urlEncodeForm(s: String): String {
-    val sb = StringBuilder(s.length)
-    for (b in s.encodeToByteArray()) {
-        val u = b.toInt() and 0xFF
-        when {
-            u in 'a'.code..'z'.code || u in 'A'.code..'Z'.code || u in '0'.code..'9'.code -> sb.append(u.toChar())
-            u == ' '.code -> sb.append('+')
-            u == '-'.code || u == '_'.code || u == '.'.code || u == '*'.code -> sb.append(u.toChar())
-            else -> sb.append('%').append(u.toString(16).uppercase().padStart(2, '0'))
-        }
-    }
-    return sb.toString()
-}
-
-/**
- * query 参数编码 (与 OkHttp HttpUrl.Builder.addQueryParameter 行为对齐)。
- *
- * 规则: 字母数字 + 部分 reserved 字符不编码; 空格 %20 (form 编码用 '+', query 编码用 %20)。
- */
-private fun urlEncodeQuery(s: String): String {
-    val sb = StringBuilder(s.length)
-    for (b in s.encodeToByteArray()) {
-        val u = b.toInt() and 0xFF
-        when {
-            u in 'a'.code..'z'.code || u in 'A'.code..'Z'.code || u in '0'.code..'9'.code -> sb.append(u.toChar())
-            u == '-'.code || u == '_'.code || u == '.'.code || u == '~'.code -> sb.append(u.toChar())
-            else -> sb.append('%').append(u.toString(16).uppercase().padStart(2, '0'))
-        }
-    }
-    return sb.toString()
-}
-
-/**
- * String.ifNotEmpty 扩展 (Kotlin stdlib 没有这个, 自己定义)。
- */
-private inline fun String.ifNotEmpty(block: (String) -> Unit) {
-    if (isNotEmpty()) block(this)
 }
 
 /** 默认超时 (对齐 Android HttpHelper: connect/read/write/call 均 15s) */

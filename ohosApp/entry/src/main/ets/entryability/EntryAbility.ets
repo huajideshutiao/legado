@@ -37,7 +37,6 @@ import { handleHttpRequest } from '../bridge/HttpBridgeHandler';
 import { initFilePickerBridge, handleFilePickerRequest, drainFilePickerRequests, invalidateFilePickerSource } from '../bridge/FilePickerBridgeHandler';
 import { initPasteboardBridge, handlePasteboardRequest } from '../bridge/PasteboardBridgeHandler';
 import { handleNetworkRequest } from '../bridge/NetworkBridgeHandler';
-import { handleTextCodecRequest } from '../bridge/TextCodecBridgeHandler';
 // 后台 WebView 桥接处理器 (隐藏 Web 组件 + runJavaScript 取源码, 书源 webView 规则)
 import { handleWebViewRequest, handleForegroundWebRequest } from '../bridge/WebViewBridgeHandler';
 // Markdown 查看器桥接处理器 (composeResources 直读内联的 Web 页面 + marked/hljs 渲染, KMP MarkdownContent)
@@ -757,19 +756,6 @@ export default class EntryAbility extends UIAbility {
         });
       });
     }, '[Legado] network tsfn callback registered via napi', '[Legado] registerNetworkCallback failed: ');
-
-    // TextCodec tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 Pasteboard 模式)
-    // KMP OhosNativeBridge.invokeTextCodecSync 发 decode/encode 请求 (TXT 分章 GB18030/Big5 等编解码),
-    // ArkTS 侧 TextCodecBridgeHandler 调 @ohos.util.TextDecoder/TextEncoder 完成真实转换,
-    // 完成后调 legado.textCodecCallback(requestId, resultJson) 回送结果
-    // 唤醒 KMP 侧 CompletableDeferred。未注册时 KMP 侧降级。
-    registerSafely((): void => {
-      legado.registerTextCodecCallback((json: string): void => {
-        handleTextCodecRequest(json, (requestId: number, resultJson: string): void => {
-          legado.textCodecCallback(requestId, resultJson);
-        });
-      });
-    }, '[Legado] textCodec tsfn callback registered via napi', '[Legado] registerTextCodecCallback failed: ');
 
     // KP8+: 注册 Image/Media tsfn 回调 (KMP → ArkTS 跨线程 dispatch)。
     // Image: KMP OhosNativeBridge.invokeImageSync 发图片操作请求 (decode/encode/size/crop/split/stitch),
