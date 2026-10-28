@@ -1,11 +1,11 @@
 package io.legado.app.ui.association
 
-import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.constant.AppLog
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.storage.RuleSubAutoUpdateHook
 import io.legado.app.help.storage.RuleSubAutoUpdateHooks
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.coroutineScope
 
 /**
  * [RuleSubAutoUpdateHook] 的 :ui 实现: 复用与手动打开订阅**同一条**导入链。
@@ -18,28 +18,26 @@ import kotlinx.coroutines.SupervisorJob
  * 载荷由 [io.legado.app.help.storage.RuleSubAutoUpdate] 下载后原样传入 (地址已按
  * `#requestWithoutUA` 口径处理), 故这里只做解析与入库。
  */
-class UiRuleSubAutoUpdateHook(
-    private val scope: CoroutineScope,
-) : RuleSubAutoUpdateHook {
+class UiRuleSubAutoUpdateHook : RuleSubAutoUpdateHook {
 
-    /** 不传作用域时自建 (注册期无现成作用域可用, 同各端 XxxCheckSource 的做法)。 */
-    constructor() : this(CoroutineScope(SupervisorJob() + IoDispatcher))
-
-    override suspend fun importByType(type: Int, text: String): Int {
-        val vm = createImportVm(type) ?: throw IllegalArgumentException("未知订阅类型: $type")
+    override suspend fun importByType(type: Int, text: String): Int = coroutineScope {
+        val vm = createImportVm(type, this) ?: throw IllegalArgumentException("未知订阅类型: $type")
         // 解析失败的原因由 VM 的 errorState 出口记录, 这里只需让调用方知道本轮失败
         vm.parseAwait(text)
         val checked = vm.defaultChecked
-        if (checked.none { it }) return 0
-        // 等写库完成再返回, 否则调用方会在入库还在跑时就结束本轮
-        val done = CompletableDeferred<Unit>()
-        vm.importSelect(checked) { done.complete(Unit) }
-        done.await()
-        return checked.count { it }
+        if (checked.none { it }) return@coroutineScope 0
+        // 统一结果模型: 已写入只计成功, 缓存失败记录; 未写入原样抛给调用方
+        when (val result = runImportSubmit { vm.importSelectAwait(checked) }) {
+            is ImportSubmitResult.Failed -> throw NoStackTraceException(result.message)
+            is ImportSubmitResult.Committed -> result.cacheWarning?.let {
+                AppLog.put("订阅导入已写入但刷新缓存失败\n$it", null)
+            }
+        }
+        checked.count { it }
     }
 
     /** 订阅类型 → 对应的导入链 (与手动打开订阅同一映射)。 */
-    private fun createImportVm(type: Int): RuleSubImportVm? = when (type) {
+    private fun createImportVm(type: Int, scope: CoroutineScope): RuleSubImportVm? = when (type) {
         0, 1 -> BookSourceImportVm(ImportBookSourceViewModelShared(scope))
         2 -> ReplaceRuleImportVm(ImportReplaceRuleViewModelShared(scope))
         3 -> TxtTocRuleImportVm(ImportTxtTocRuleViewModelShared(scope))
@@ -58,7 +56,8 @@ private interface RuleSubImportVm {
     /** 与列表里"新增/更新/已有"标记同源的默认勾选。 */
     val defaultChecked: List<Boolean>
 
-    fun importSelect(checked: List<Boolean>, finally: () -> Unit)
+    /** 写入勾选项; 失败抛异常, 由调用方传播。 */
+    suspend fun importSelectAwait(checked: List<Boolean>)
 }
 
 /** 书源链 (含旧订阅源转换与 `{"sourceUrls":[...]}` 多地址载荷)。 */
@@ -70,8 +69,9 @@ private class BookSourceImportVm(
 
     override val defaultChecked: List<Boolean> get() = vm.defaultChecked
 
-    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
-        vm.importSelect(checked, finally)
+    override suspend fun importSelectAwait(checked: List<Boolean>) {
+        vm.importSelectAwait(checked)
+    }
 }
 
 /** 替换规则链 (含 `ReplaceAnalyzer` 的旧字段映射与 `isValid()` 过滤)。 */
@@ -83,8 +83,9 @@ private class ReplaceRuleImportVm(
 
     override val defaultChecked: List<Boolean> get() = vm.defaultChecked
 
-    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
-        vm.importSelect(checked, finally)
+    override suspend fun importSelectAwait(checked: List<Boolean>) {
+        vm.importSelectAwait(checked)
+    }
 }
 
 /** TXT 目录规则链。 */
@@ -96,8 +97,9 @@ private class TxtTocRuleImportVm(
 
     override val defaultChecked: List<Boolean> get() = vm.defaultChecked
 
-    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
-        vm.importSelect(checked, finally)
+    override suspend fun importSelectAwait(checked: List<Boolean>) {
+        vm.importSelectAwait(checked)
+    }
 }
 
 /** 字典规则链。 */
@@ -109,8 +111,9 @@ private class DictRuleImportVm(
 
     override val defaultChecked: List<Boolean> get() = vm.defaultChecked
 
-    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
-        vm.importSelect(checked, finally)
+    override suspend fun importSelectAwait(checked: List<Boolean>) {
+        vm.importSelectAwait(checked)
+    }
 }
 
 /** 语音源链。 */
@@ -122,8 +125,9 @@ private class HttpTtsImportVm(
 
     override val defaultChecked: List<Boolean> get() = vm.defaultChecked
 
-    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
-        vm.importSelect(checked, finally)
+    override suspend fun importSelectAwait(checked: List<Boolean>) {
+        vm.importSelectAwait(checked)
+    }
 }
 
 /** 注册本实现 (各端宿主启动早期调用一次, 须早于任何自动更新触发)。 */

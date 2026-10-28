@@ -12,6 +12,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
@@ -85,7 +86,7 @@ class PermissionDenialRequestTest {
 
 /** 可控选目器: 打开时登记回调并发信号, 测试手动决定结果。 */
 private class FakePickerCapabilities : PlatformCapabilities {
-    val callbacks = mutableListOf<(String?) -> Unit>()
+    val callbacks = mutableListOf<(String?, Throwable?) -> Unit>()
     val opened = Channel<Unit>(Channel.UNLIMITED)
 
     override fun exitApplication() {}
@@ -94,7 +95,7 @@ private class FakePickerCapabilities : PlatformCapabilities {
 
     override fun shareText(text: String) {}
 
-    override fun pickBookTreeUri(onSelected: (String?) -> Unit) {
+    override fun pickBookTreeUri(parent: Job?, onSelected: (String?, Throwable?) -> Unit) {
         callbacks += onSelected
         opened.trySend(Unit)
     }
@@ -157,7 +158,7 @@ class PermissionDenialLoopTest {
         val waiter2 = async { vm.awaitPermissionDenialResolution(id) }
         yield(); yield()
         assertEquals("重订阅接回同一选择器, 不再开第二个", 1, fake.callbacks.size)
-        fake.callbacks[0]("dir://picked")
+        fake.callbacks[0]("dir://picked", null)
         assertEquals("dir://picked", waiter2.await()?.dirUri)
         assertEquals(book, vm.acceptPermissionDenial(id))
         assertNull(vm.permissionDenialState.value)
@@ -181,13 +182,13 @@ class PermissionDenialLoopTest {
         yield(); yield()
         assertEquals("在途选择器未收尾, 新请求排队", 1, fake.callbacks.size)
 
-        fake.callbacks[0](null)
+        fake.callbacks[0](null, null)
         assertEquals("用户取消的第一个选择器不产出", null, waiter1.await()?.dirUri)
         assertEquals("已被取代的旧请求不得消费", null, vm.acceptPermissionDenial(id1))
 
         fake.opened.receive()
         assertEquals("新请求在旧选择器收尾后拉起自己的", 2, fake.callbacks.size)
-        fake.callbacks[1]("dir://picked")
+        fake.callbacks[1]("dir://picked", null)
         assertEquals("dir://picked", waiter2.await()?.dirUri)
         assertEquals(book, vm.acceptPermissionDenial(id2))
         vmScope.cancel()

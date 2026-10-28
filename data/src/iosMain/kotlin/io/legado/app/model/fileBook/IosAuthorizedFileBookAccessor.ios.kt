@@ -1,17 +1,29 @@
 package io.legado.app.model.fileBook
 
+import io.legado.app.constant.AppLog
+import io.legado.app.constant.BookType
 import io.legado.app.constant.DirUsage
 import io.legado.app.data.entities.BaseSource
+import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.storage.BackupFileOps
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.book.requireBookSaveDir
 import io.legado.app.lib.webdav.WebDav
+import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.utils.File
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.IosSecurityScopeLease
 import io.legado.app.utils.IosSecurityScopedStorage
+import io.legado.app.utils.atomicWriteTempPath
+import kotlinx.coroutines.currentCoroutineContext
+import okio.FileSystem
+import okio.Path.Companion.toPath
+import platform.Foundation.NSFileCoordinatorWritingForDeleting
+import platform.Foundation.NSFileCoordinatorWritingForReplacing
+import platform.Foundation.NSFileManager
 
 /**
  * iOS [FileBookAccessor] 授权装饰器: 本地书的文件访问包一层 security-scoped 授权租约,
@@ -36,6 +48,10 @@ import io.legado.app.utils.IosSecurityScopedStorage
  * - [deleteBook]: 源文件在外部目录的删原文件, 整个动作期间持租约 (书架删原文件走这里);
  *   源文件本就不存在视为删除已达成 (见该方法注释)。
  *
+ * 读取一律在 NSFileCoordinator 协调块内、用块内给出的地址 (系统可能在块内给替代位置):
+ * 打开书文件/取属性/导入复制/解包都这样。写入目标是尚不存在的新文件, 协调器会对新建目标报错,
+ * 落盘只取 security-scoped 租约 (见 `saveBookFile` 系列)。
+ *
  * 远程书导入 / 合并在线信息 / 远端下载的编排在 [FileBookRemoteImportShared] (四端共用),
  * 它每次都经 [FileBookProviders.get] 取实现落盘, 故写盘点全部回到本装饰器的租约入口。
  *
@@ -53,8 +69,8 @@ class IosAuthorizedFileBookAccessor(
             val lease = IosSecurityScopedStorage.acquireLease(path, DirUsage.BookTree)
             try {
                 LeaseHoldingInputStream(
-                    IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) {
-                        delegate.getBookInputStream(book)
+                    IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) { scopedPath ->
+                        delegate.openLocalFile(scopedPath)
                     },
                     lease,
                 )
@@ -72,8 +88,8 @@ class IosAuthorizedFileBookAccessor(
     override fun getLastModified(book: Book): Result<Long> {
         val path = localPath(book) ?: return delegate.getLastModified(book)
         return runCatching {
-            IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) {
-                delegate.getLastModified(book).getOrThrow()
+            IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) { scopedPath ->
+                File(scopedPath).lastModified()
             }
         }
     }
@@ -87,11 +103,14 @@ class IosAuthorizedFileBookAccessor(
     override fun importLocalFile(uriStr: String): Book {
         // 源文件 (可能在别的授权目录) 与解出书籍的落地目录 ("书籍保存位置") 都要持租约;
         // 落地目录只有压缩包分支会写 (由 delegate 内部调 saveBookFile), 未设置保存位置时
-        // 本条不写盘, 故只在其已设置时纳入租约 (写入方报未设置)
-        return withAccesses(
-            listOfNotNull(delegate.resolveLocalFile(uriStr).path, effectiveBookSaveDir())
-        ) {
-            delegate.importLocalFile(uriStr)
+        // 本条不写盘, 只在其已设置时纳入租约 (写入方报未设置)。
+        // delegate 收到的是协调器给出的源文件地址。
+        return withSaveDirLease {
+            IosSecurityScopedStorage.withAccess(
+                delegate.resolveLocalFile(uriStr).path, DirUsage.BookTree,
+            ) { scopedPath ->
+                delegate.importLocalFile(scopedPath)
+            }
         }
     }
 
@@ -100,12 +119,33 @@ class IosAuthorizedFileBookAccessor(
         saveFileName: String?,
         filter: ((String) -> Boolean)?
     ): List<Book> {
-        // 源压缩包 (可能在别的授权目录) 与解出书籍的落地目录 ("书籍保存位置") 都要持租约
-        return withAccesses(
-            listOfNotNull(delegate.resolveLocalFile(archiveFileUri).path, effectiveBookSaveDir())
-        ) {
-            delegate.importFromArchive(archiveFileUri, saveFileName, filter)
+        // 源压缩包 (可能在别的授权目录) 与解出书籍的落地目录 ("书籍保存位置") 都要持租约;
+        // 解包读的是协调器给出的压缩包地址
+        return withSaveDirLease {
+            IosSecurityScopedStorage.withAccess(
+                delegate.resolveLocalFile(archiveFileUri).path, DirUsage.BookTree,
+            ) { scopedPath ->
+                delegate.importFromArchive(scopedPath, saveFileName, filter)
+            }
         }
+    }
+
+    override fun importLocalFile(uriStr: String, parent: kotlinx.coroutines.Job?): Book =
+        withSaveDirLease(parent) {
+            IosSecurityScopedStorage.withAccessCaller(
+                delegate.resolveLocalFile(uriStr).path, DirUsage.BookTree, caller = parent,
+            ) { scopedPath -> delegate.importLocalFile(scopedPath, parent) }
+        }
+
+    override fun importFromArchive(
+        archiveFileUri: String,
+        saveFileName: String?,
+        parent: kotlinx.coroutines.Job?,
+        filter: ((String) -> Boolean)?,
+    ): List<Book> = withSaveDirLease(parent) {
+        IosSecurityScopedStorage.withAccessCaller(
+            delegate.resolveLocalFile(archiveFileUri).path, DirUsage.BookTree, caller = parent,
+        ) { scopedPath -> delegate.importFromArchive(scopedPath, saveFileName, parent, filter) }
     }
 
     /**
@@ -126,8 +166,14 @@ class IosAuthorizedFileBookAccessor(
             delegate.deleteBook(book, deleteOriginal = false)
             return
         }
-        leaseAround(path, write = true) {
-            delegate.deleteBook(book, deleteOriginal)
+        IosSecurityScopedStorage.withAccess(
+            path, DirUsage.BookTree, write = true,
+            writeOptions = NSFileCoordinatorWritingForDeleting,
+        ) { scopedPath ->
+            // 删除也用协调器给出的实际地址: 源文件可能已被协调到替代位置
+            FileBookOperationPath.withPath(scopedPath) {
+                delegate.deleteBook(book, deleteOriginal)
+            }
         }
     }
 
@@ -152,9 +198,9 @@ class IosAuthorizedFileBookAccessor(
      * 保存新书到"有效书籍保存位置" (用户在"书籍保存位置"选定):
      * 写入前取一次 security-scoped 租约, 写完即释放。
      *
-     * 直接持租约 ([IosSecurityScopedStorage.acquireLease]) 而不走
-     * [IosSecurityScopedStorage.withAccess] 的 NSFileCoordinator: 新建文件时协调器会对尚不存在的
-     * 目标路径报错, 而这里需要的只是授权本身; 沙盒内路径 (导入副本) 无需 scope, 租约为空操作。
+     * 存在性判定在授权租约内用真实 metadata; 写入按“已存在→协调目标文件 forReplacing,
+     * 新建→协调父目录一般写入”选择对象与选项, 写入与返回引用都用协调后的实际地址。
+     * 沙盒内路径 (导入副本) 无需 scope, 租约为空操作。
      *
      * 覆写所有能直接或间接触发写入的入口 ([importLocalFile] / [importFromArchive] /
      * `saveBookFile` 两个重载 / [saveBookFileFromWebDav]):
@@ -165,12 +211,12 @@ class IosAuthorizedFileBookAccessor(
      * [FileBookAccessor] 的 default 实现 (抛 UnsupportedOperationException), 不产生无授权的写入点。
      */
     override fun saveBookFile(inputStream: InputStream, fileName: String): String {
-        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir(), DirUsage.BookTree)
-        return try {
-            delegate.saveBookFile(inputStream, fileName)
+        val bytes = try {
+            inputStream.readFully()
         } finally {
-            lease.close()
+            inputStream.close()
         }
+        return "file://" + writeSaveFile(fileName, bytes)
     }
 
     override suspend fun saveBookFile(
@@ -178,18 +224,97 @@ class IosAuthorizedFileBookAccessor(
         fileName: String,
         source: BaseSource?
     ): String {
-        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir(), DirUsage.BookTree)
-        return try {
-            delegate.saveBookFile(str, fileName, source)
-        } finally {
-            lease.close()
+        // 合法 WebDav 入口: 复用流式保存链, 不能被 AnalyzeUrlCore 吞掉
+        if (str.startsWith(BookType.webDavTag)) {
+            return saveBookFileFromWebDav(
+                WebDav.fromPath(str.substring(BookType.webDavTag.length)), fileName
+            )
         }
+        // 网络准备在协调之外完成, 拿到整份字节后才进入协调写入
+        val bytes = AnalyzeUrlCore(
+            str, source = source, callTimeout = 0,
+            coroutineContext = currentCoroutineContext(),
+        ).getByteArrayAwait()
+        return "file://" + writeSaveFile(fileName, bytes)
     }
 
     override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
-        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir(), DirUsage.BookTree)
+        val dir = requireBookSaveDir()
+        val target = "$dir/$fileName"
+        val tempPath = atomicWriteTempPath(target)
+        // 下载/最终协调落位/清理都归本次准备件所有权; 下载成功后切 dispatcher 被取消也不能漏清
         return try {
-            delegate.saveBookFileFromWebDav(webDav, fileName)
+            // 下载持授权租约但不持协调 (不跨协调等网络), 完成后才协调落位
+            val lease = IosSecurityScopedStorage.acquireLease(dir, DirUsage.BookTree)
+            try {
+                webDav.downloadTo(tempPath, true)
+            } finally {
+                lease.close()
+            }
+            val landed = if (saveTargetExists(dir, fileName)) {
+                IosSecurityScopedStorage.withAccess(
+                    target, DirUsage.BookTree, write = true,
+                    writeOptions = NSFileCoordinatorWritingForReplacing,
+                ) { coordinated ->
+                    BackupFileOps.copyFile(tempPath, coordinated)
+                    coordinated
+                }
+            } else {
+                IosSecurityScopedStorage.withAccess(dir, DirUsage.BookTree, write = true) { coordinatedDir ->
+                    val path = "$coordinatedDir/$fileName"
+                    BackupFileOps.copyFile(tempPath, path)
+                    path
+                }
+            }
+            "file://$landed"
+        } finally {
+            // 临时件在授权目录内: 清理也持同一目录租约, 且不吞删除失败
+            val cleanupLease = IosSecurityScopedStorage.acquireLease(dir, DirUsage.BookTree)
+            try {
+                if (!File(tempPath).delete()) {
+                    AppLog.put("临时件清理失败: $tempPath")
+                }
+            } finally {
+                cleanupLease.close()
+            }
+        }
+    }
+
+    /** 按“已存在替换/新建目录写”协调并落盘, 返回实际落点。 */
+    private fun writeSaveFile(fileName: String, bytes: ByteArray): String {
+        val dir = requireBookSaveDir()
+        return if (saveTargetExists(dir, fileName)) {
+            IosSecurityScopedStorage.withAccess(
+                "$dir/$fileName", DirUsage.BookTree, write = true,
+                writeOptions = NSFileCoordinatorWritingForReplacing,
+            ) { coordinated ->
+                if (!writeBytesAtomically(coordinated, bytes)) {
+                    throw NoStackTraceException("写入书籍文件失败: $coordinated")
+                }
+                coordinated
+            }
+        } else {
+            IosSecurityScopedStorage.withAccess(dir, DirUsage.BookTree, write = true) { coordinatedDir ->
+                val path = "$coordinatedDir/$fileName"
+                if (!writeBytesAtomically(path, bytes)) {
+                    throw NoStackTraceException("写入书籍文件失败: $path")
+                }
+                path
+            }
+        }
+    }
+
+    /** 在真实授权范围内判定目标是否存在 (容器外不可达不能当不存在)。 */
+    private fun saveTargetExists(dir: String, fileName: String): Boolean {
+        val lease = IosSecurityScopedStorage.acquireLease(dir, DirUsage.BookTree)
+        return try {
+            // 真实 metadata: null 才是确定不存在; 现存非普通文件按真实失败上报, 不当缺席
+            val metadata = FileSystem.SYSTEM.metadataOrNull("$dir/$fileName".toPath())
+                ?: return false
+            if (!metadata.isRegularFile) {
+                throw NoStackTraceException("目标已存在但不是普通文件: $dir/$fileName")
+            }
+            true
         } finally {
             lease.close()
         }
@@ -199,31 +324,29 @@ class IosAuthorizedFileBookAccessor(
         IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree, write) { block() }
 
     /**
-     * 依次在多个路径的 security scope 内执行 [block] (同一授权根重复取租约安全, 沙盒路径自动放行)。
-     * 用于一次操作同时读写多个授权目录 (如从授权目录的压缩包解出书, 落到"书籍保存位置")。
+     * 在"有效书籍保存位置"的授权内执行 [block] (未设置保存位置时不持租约: 写入方报未设置)。
      *
-     * 路径一律按 [DirUsage.BookTree] 取租约: 源文件既可能是导入页浏览到的文件 (导入根目录的
-     * 授权也按书籍文件用途录) 也可能是书籍保存位置里的压缩包, 两者同属该用途。
+     * 解出书籍的落地目录与源文件目录可能不同 (源文件在别的授权目录)。
      */
-    private fun <T> withAccesses(paths: List<String>, block: () -> T): T {
-        var action: () -> T = block
-        for (path in paths.asReversed()) {
-            val inner = action
-            action = { IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) { inner() } }
-        }
-        return action()
+    private fun <T> withSaveDirLease(
+        parent: kotlinx.coroutines.Job? = null,
+        block: () -> T,
+    ): T {
+        val dir = effectiveBookSaveDir() ?: return block()
+        return IosSecurityScopedStorage.withAccessCaller(
+            dir, DirUsage.BookTree, caller = parent,
+        ) { block() }
     }
 
     /**
      * 本地书文件路径 (非本地书返回 null, 走无授权路径)。
      *
-     * 取 [LocalBookLocators] 解析后的可用引用: 引用失效时按文件名在书籍保存位置/导入目录找回,
+     * 与 delegate 打开文件时用的是同一份解析结果 (引用失效时按文件名在书籍保存位置/导入目录找回),
      * 租约/授权挂在本次读取真正会打开的那个路径上。
      */
     private fun localPath(book: Book): String? {
         if (!book.bookUrl.startsWith("file:")) return null
-        return LocalBookLocators.get().getReadableFileRef(book)
-            ?: book.bookUrl.removePrefix("file://")
+        return delegate.localFilePathOf(book)
     }
 }
 
@@ -261,20 +384,22 @@ private class LeasedFileBook(
     private val path: String,
 ) : BaseFileBook {
 
-    override fun upBookInfo(book: Book) = withLease { delegate.upBookInfo(book) }
+    override fun upBookInfo(book: Book) = withLease(book) { delegate.upBookInfo(it) }
 
     override fun getChapterList(book: Book): ArrayList<BookChapter> =
-        withLease { delegate.getChapterList(book) }
+        withLease(book) { delegate.getChapterList(it) }
 
     override fun getContent(book: Book, chapter: BookChapter): String? =
-        withLease { delegate.getContent(book, chapter) }
+        withLease(book) { delegate.getContent(it, chapter) }
 
     override fun getImage(book: Book, href: String): InputStream? {
         // 返回的流由调用方消费: 租约随流 close 释放 (与 getBookInputStream 同契约)
         val lease = IosSecurityScopedStorage.acquireLease(path, DirUsage.BookTree)
         val stream = try {
-            IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) {
-                delegate.getImage(book, href)
+            IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) { scopedPath ->
+                FileBookOperationPath.withPath(scopedPath) {
+                    delegate.getImage(book, href)
+                }
             }
         } catch (e: Throwable) {
             lease.close()
@@ -288,9 +413,12 @@ private class LeasedFileBook(
 
     override fun clear() = delegate.clear()
 
-    private fun <T> withLease(block: () -> T): T =
-        IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) { block() }
+    private fun <T> withLease(book: Book, block: (Book) -> T): T =
+        IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) { scopedPath ->
+            FileBookOperationPath.withPath(scopedPath) { block(book) }
+        }
 }
+
 
 /**
  * iOS 宿主注册本地书访问器: [NativeFileBookAccessor] 外裹 security-scoped 授权装饰器,

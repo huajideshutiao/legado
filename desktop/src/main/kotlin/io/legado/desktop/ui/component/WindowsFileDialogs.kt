@@ -1,5 +1,6 @@
 package io.legado.desktop.ui.component
 
+import io.legado.app.constant.AppLog
 import com.sun.jna.Function
 import com.sun.jna.Memory
 import com.sun.jna.Native
@@ -19,6 +20,7 @@ import java.awt.Toolkit
 import java.awt.Window
 import java.io.File
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -34,6 +36,85 @@ import java.util.concurrent.atomic.AtomicReference
 internal object WindowsFileDialogs {
 
     val isSupported: Boolean = Platform.isWindows()
+
+    /** IFileDialog::Close 的 vtable 序号 (SetFilter=26 之前的 Close)。 */
+    private const val VT_CLOSE = 23
+
+    /** HRESULT_FROM_WIN32(ERROR_CANCELLED): Close(hr) 应传的取消结果。 */
+    private const val HRESULT_FROM_WIN32_ERROR_CANCELLED = 0x800704C7.toInt()
+
+    /** 一次请求自己的取消令牌: 通过 marshal 流在任意线程调 IFileDialog::Close。 */
+    internal class CancelToken(val iid: Guid.GUID) {
+        @Volatile
+        var cancelled = false
+
+        /** marshal 流: getAndSet(null) 原子占有, 避免 watcher 与 STA finally 双重释放。 */
+        val stream = AtomicReference<Pointer?>(null)
+
+        /** Show 即将进入消息泵 (marshal 完成后) 的同步点: 取消不再靠轮询。 */
+        val showStarted = CountDownLatch(1)
+
+        /** 取消只启动一次 closer 线程. */
+        val closerStarted = AtomicReference(false)
+
+        @Volatile
+        var closed = false
+    }
+
+    private fun ole32(name: String): Function =
+        Function.getFunction("ole32", name, Function.ALT_CONVENTION)
+
+    /** 请求取消: 置标记并启动一次性 closer; 它等 Show 进入消息泵后执行 Close。 */
+    fun closeActive(token: CancelToken) {
+        token.cancelled = true
+        if (token.closerStarted.compareAndSet(false, true)) {
+            Thread({
+                runCatching { token.showStarted.await() }
+                closeMarshaled(token)
+            }, "win-file-dialog-close").apply {
+                isDaemon = true
+                start()
+            }
+        }
+    }
+
+    /** 跨线程关闭: 从 marshal 流取回接口 (代理把 Close 编到 STA), 让 Show 返回。 */
+    private fun closeMarshaled(token: CancelToken) {
+        if (token.closed) return
+        // COM 初始化失败: 不消费流, 面板继续等真实 Show 终态
+        val initialized = Ole32.INSTANCE
+            .CoInitializeEx(Pointer.NULL, Ole32.COINIT_MULTITHREADED).toInt() >= 0
+        if (!initialized) {
+            AppLog.put("关闭文件对话框失败: COM 初始化失败")
+            return
+        }
+        var dialog: Pointer? = null
+        try {
+            val stream = token.stream.getAndSet(null) ?: return
+            val ppv = PointerByReference()
+            // 该调用取走接口并释放流 (COM 合同), 不能再 Release stream
+            val hr = ole32("CoGetInterfaceAndReleaseStream")
+                .invokeInt(arrayOf(stream, token.iid, ppv))
+            if (hr != 0) {
+                AppLog.put("关闭文件对话框失败: CoGetInterfaceAndReleaseStream hr=$hr")
+                return
+            }
+            dialog = ppv.value
+            if (dialog == null) {
+                AppLog.put("关闭文件对话框失败: 代理为空")
+                return
+            }
+            // IFileDialog::Close(HRESULT): 传 Show 的取消结果, 让 Show 返回该 HRESULT
+            val closeHr = vtbl(dialog, VT_CLOSE, HRESULT_FROM_WIN32_ERROR_CANCELLED)
+            token.closed = closeHr == 0
+            if (closeHr != 0) {
+                AppLog.put("关闭文件对话框失败: IFileDialog::Close hr=$closeHr")
+            }
+        } finally {
+            dialog?.let { vtbl(it, VT_RELEASE) }
+            Ole32.INSTANCE.CoUninitialize()
+        }
+    }
 
     // ---- COM 常量 (ShObjIdl_core.h) ----
     private const val CLSCTX_INPROC_SERVER = 1
@@ -114,26 +195,43 @@ internal object WindowsFileDialogs {
         defaultName: String? = null,
         initialDir: File? = null,
         owner: Window? = null,
+        cancelHandle: FileDialogs.DialogCancelHandle? = null,
     ): List<File> {
         if (!isSupported) return emptyList()
+        // 页面已取消: 不再弹出面板
+        if (cancelHandle?.cancelled == true) return emptyList()
         val ownerHwnd = owner?.let { runCatching { Native.getWindowPointer(it) }.getOrNull() }
         val result = AtomicReference<List<File>>(emptyList())
+        // STA 内的真实失败必须带回调用方, 不能在外层被 runCatching 折成 emptyList
+        val failure = AtomicReference<Throwable?>(null)
         val done = CountDownLatch(1)
         val loop = if (EventQueue.isDispatchThread()) {
             runCatching { Toolkit.getDefaultToolkit().systemEventQueue.createSecondaryLoop() }.getOrNull()
         } else {
             null
         }
+        val token = if (cancelHandle?.windowsToken != null) {
+            cancelHandle.windowsToken!!
+        } else {
+            CancelToken(if (save) IID_IFILE_SAVE_DIALOG else IID_IFILE_OPEN_DIALOG).also {
+                cancelHandle?.windowsToken = it
+            }
+        }
+        // 取消可能发生在 token 创建前: 登记后立即补一次
+        if (cancelHandle?.cancelled == true) closeActive(token)
         val thread = Thread({
             try {
-                result.set(
-                    runCatching {
+                try {
+                    result.set(
                         showOnStaThread(
                             title, save, pickFolders, multiSelect,
                             extensions, extensionDesc, defaultName, initialDir, ownerHwnd,
+                            token,
                         )
-                    }.getOrDefault(emptyList())
-                )
+                    )
+                } catch (t: Throwable) {
+                    failure.set(t)
+                }
             } finally {
                 // 异常/崩溃路径下 COM 可能没复原属主窗口的禁用态, 这里无条件兜底
                 restoreOwner(ownerHwnd)
@@ -147,8 +245,9 @@ internal object WindowsFileDialogs {
         thread.start()
         // enter() 阻塞本线程但持续分发 AWT 事件; 返回 false 表示循环没起来, 退回 latch 等待
         if (loop == null || !loop.enter()) {
-            runCatching { done.await() }
+            done.await()
         }
+        failure.get()?.let { throw it }
         return result.get()
     }
 
@@ -177,11 +276,15 @@ internal object WindowsFileDialogs {
         defaultName: String?,
         initialDir: File?,
         ownerHwnd: Pointer?,
+        token: CancelToken,
     ): List<File> {
         // 初始化失败时不能配对 CoUninitialize (会把别人的引用计数减没)
-        val initialized = Ole32.INSTANCE
-            .CoInitializeEx(Pointer.NULL, Ole32.COINIT_APARTMENTTHREADED).toInt() >= 0
-        if (!initialized) return emptyList()
+        val initHr = Ole32.INSTANCE
+            .CoInitializeEx(Pointer.NULL, Ole32.COINIT_APARTMENTTHREADED).toInt()
+        if (initHr < 0) {
+            token.showStarted.countDown()
+            throw java.io.IOException("文件对话框 COM 初始化失败: hr=$initHr")
+        }
         try {
             val ppv = PointerByReference()
             val hr = Ole32.INSTANCE.CoCreateInstance(
@@ -192,13 +295,38 @@ internal object WindowsFileDialogs {
                 ppv,
             )
             val dialog = ppv.value
-            if (hr.toInt() != S_OK || dialog == null) return emptyList()
+            if (hr.toInt() != S_OK || dialog == null) {
+                token.showStarted.countDown()
+                throw java.io.IOException("文件对话框对象创建失败: hr=${hr.toInt()}, dialog=$dialog")
+            }
+            // 把接口 marshal 成流: 取消线程经代理调 Close, COM 会编到本 STA (Show 的消息泵) 执行
+            val streamRef = PointerByReference()
+            val marshalHr = ole32("CoMarshalInterThreadInterfaceInStream")
+                .invokeInt(arrayOf(token.iid, dialog, streamRef))
+            if (marshalHr != 0) {
+                // setup 真实失败: 释放本次对象并释放等待中的 closer, 不冒充用户取消
+                token.showStarted.countDown()
+                vtbl(dialog, VT_RELEASE)
+                throw java.io.IOException(
+                    "文件对话框无法建立取消通道: CoMarshalInterThreadInterfaceInStream hr=$marshalHr"
+                )
+            }
+            token.stream.set(streamRef.value)
             try {
                 return configureAndShow(
                     dialog, title, save, pickFolders, multiSelect,
                     extensions, extensionDesc, defaultName, initialDir, ownerHwnd,
+                    token,
                 )
             } finally {
+                // Show 提前失败/已返回: 释放等待中的取消 closer, 避免永久挂起
+                token.showStarted.countDown()
+                // 未被 closeMarshaled 取走时: 先撤销 marshal 数据, 再释放流
+                val stream = token.stream.getAndSet(null)
+                if (stream != null) {
+                    ole32("CoReleaseMarshalData").invokeInt(arrayOf(stream))
+                    vtbl(stream, VT_RELEASE)
+                }
                 vtbl(dialog, VT_RELEASE)
             }
         } finally {
@@ -217,6 +345,7 @@ internal object WindowsFileDialogs {
         defaultName: String?,
         initialDir: File?,
         ownerHwnd: Pointer?,
+        token: CancelToken,
     ): List<File> {
         // native 内存需活到 Show() 返回, 统一挂在本 list 上防提前 GC
         val held = ArrayList<Memory>()
@@ -250,11 +379,15 @@ internal object WindowsFileDialogs {
             }
         }
 
+        // Show 即将进入消息泵: 已排队的取消 closer 从这里开始可以安全调 Close
+        token.showStarted.countDown()
         val shown = vtbl(dialog, VT_SHOW, ownerHwnd ?: Pointer.NULL)
         // 用户取消返回 HRESULT_FROM_WIN32(ERROR_CANCELLED), 非错误
         if (shown != S_OK) {
             held.clear()
-            return emptyList()
+            // Close() 用取消 HRESULT 让 Show 返回: 只有它才是用户取消
+            if (shown == HRESULT_FROM_WIN32_ERROR_CANCELLED) return emptyList()
+            throw java.io.IOException("文件对话框 Show 失败: hr=$shown")
         }
         val paths = if (multiSelect && !save && !pickFolders) readResults(dialog) else readResult(dialog)
         held.clear()
@@ -264,10 +397,11 @@ internal object WindowsFileDialogs {
     /** 单选: IFileDialog::GetResult → IShellItem */
     private fun readResult(dialog: Pointer): List<File> {
         val out = PointerByReference()
-        if (vtbl(dialog, VT_GET_RESULT, out) != S_OK) return emptyList()
-        val item = out.value ?: return emptyList()
+        val hr = vtbl(dialog, VT_GET_RESULT, out)
+        if (hr != S_OK) throw java.io.IOException("文件对话框读取结果失败: hr=$hr")
+        val item = out.value ?: throw java.io.IOException("文件对话框返回空结果")
         return try {
-            listOfNotNull(itemPath(item)?.let(::File))
+            listOf(File(itemPath(item)))
         } finally {
             vtbl(item, VT_RELEASE)
         }
@@ -276,17 +410,23 @@ internal object WindowsFileDialogs {
     /** 多选: IFileOpenDialog::GetResults → IShellItemArray */
     private fun readResults(dialog: Pointer): List<File> {
         val out = PointerByReference()
-        if (vtbl(dialog, VT_GET_RESULTS, out) != S_OK) return emptyList()
-        val array = out.value ?: return emptyList()
+        val hr = vtbl(dialog, VT_GET_RESULTS, out)
+        if (hr != S_OK) throw java.io.IOException("文件对话框读取多选结果失败: hr=$hr")
+        val array = out.value ?: throw java.io.IOException("文件对话框返回空多选结果")
         return try {
             val count = IntByReference()
-            if (vtbl(array, VT_ARRAY_GET_COUNT, count) != S_OK) return emptyList()
-            (0 until count.value).mapNotNull { index ->
+            val countHr = vtbl(array, VT_ARRAY_GET_COUNT, count)
+            if (countHr != S_OK) throw java.io.IOException("文件对话框读取结果数量失败: hr=$countHr")
+            (0 until count.value).map { index ->
                 val itemRef = PointerByReference()
-                if (vtbl(array, VT_ARRAY_GET_ITEM_AT, index, itemRef) != S_OK) return@mapNotNull null
-                val item = itemRef.value ?: return@mapNotNull null
+                val itemHr = vtbl(array, VT_ARRAY_GET_ITEM_AT, index, itemRef)
+                if (itemHr != S_OK) {
+                    throw java.io.IOException("文件对话框读取第 $index 项失败: hr=$itemHr")
+                }
+                val item = itemRef.value
+                    ?: throw java.io.IOException("文件对话框第 $index 项为空")
                 try {
-                    itemPath(item)?.let(::File)
+                    File(itemPath(item))
                 } finally {
                     vtbl(item, VT_RELEASE)
                 }
@@ -297,10 +437,11 @@ internal object WindowsFileDialogs {
     }
 
     /** IShellItem::GetDisplayName(SIGDN_FILESYSPATH); 返回串由 COM 分配, 需 CoTaskMemFree */
-    private fun itemPath(item: Pointer): String? {
+    private fun itemPath(item: Pointer): String {
         val out = PointerByReference()
-        if (vtbl(item, VT_ITEM_GET_DISPLAY_NAME, SIGDN_FILESYSPATH, out) != S_OK) return null
-        val raw = out.value ?: return null
+        val hr = vtbl(item, VT_ITEM_GET_DISPLAY_NAME, SIGDN_FILESYSPATH, out)
+        if (hr != S_OK) throw java.io.IOException("读取文件对话框结果路径失败: hr=$hr")
+        val raw = out.value ?: throw java.io.IOException("文件对话框结果路径为空")
         return try {
             raw.getWideString(0)
         } finally {

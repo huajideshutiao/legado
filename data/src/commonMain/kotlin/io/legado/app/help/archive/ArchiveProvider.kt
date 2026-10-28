@@ -34,6 +34,15 @@ interface ArchiveProvider {
     fun deCompress(archivePath: String): List<String>
 
     /**
+     * 解压到本次请求独占的目录 (文件关联导入链用): 同名压缩包并发/先后导入互不覆盖。
+     *
+     * [workKey] 由调用方保证唯一; 调用方在不再读取解压结果后清理该目录。
+     * 无隔离能力的端默认回落到 [deCompress].
+     */
+    fun deCompressIsolated(archivePath: String, workKey: String): List<String> =
+        deCompress(archivePath)
+
+    /**
      * 列举压缩包内条目名 (不含目录条目)。
      *
      * 对应 app 端 [io.legado.app.utils.ArchiveUtils.getArchiveFilesName]。

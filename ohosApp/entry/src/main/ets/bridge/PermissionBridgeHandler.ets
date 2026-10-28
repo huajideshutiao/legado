@@ -44,6 +44,9 @@ export type PermissionCallback = (requestId: number, resultJson: string) => void
 // UIAbilityContext (requestPermissionsFromUser 需要; 由 EntryAbility 注入)
 let abilityContext: common.UIAbilityContext | undefined;
 
+/** 本通道已受理、尚未回执的请求 id。 */
+const pendingPermissionIds: Set<number> = new Set<number>();
+
 interface PermissionPayload {
   permission: string;
 }
@@ -87,8 +90,9 @@ export async function ensurePermissionGranted(context: common.UIAbilityContext, 
     }
     return granted;
   } catch (e) {
+    // 12100009 等系统/窗口错误不是用户拒绝: 原 code/message 交现有 BridgeDispatch 失败链
     console.error('[PermissionBridge] ensurePermissionGranted failed: ' + JSON.stringify(e));
-    return false;
+    throw e;
   }
 }
 
@@ -99,7 +103,29 @@ export async function ensurePermissionGranted(context: common.UIAbilityContext, 
  * @param callback 回送结果的函数 (EntryAbility 注入 legado.permissionCallback)
  */
 export function handlePermissionRequest(requestJson: string, callback: PermissionCallback): void {
-  dispatchBridgeRequest(requestJson, 'PermissionBridge', handleAction, callback);
+  let requestId = -1;
+  try {
+    requestId = (JSON.parse(requestJson) as BridgeRequest).requestId;
+  } catch (e) {
+    // 解析失败由 dispatchBridgeRequest 统一记日志
+  }
+  if (requestId >= 0) {
+    pendingPermissionIds.add(requestId);
+  }
+  dispatchBridgeRequest(requestJson, 'PermissionBridge', handleAction,
+    (id: number, resultJson: string): void => {
+      pendingPermissionIds.delete(id);
+      callback(id, resultJson);
+    });
+}
+
+/** 本通道仍在等待回执的请求 id: 通道关闭时随 0 号回执发出, 只结束本通道的请求。 */
+export function pendingPermissionRequestIds(): number[] {
+  const ids: number[] = [];
+  pendingPermissionIds.forEach((id: number): void => {
+    ids.push(id);
+  });
+  return ids;
 }
 
 // 根据 action 分发到具体处理函数

@@ -13,6 +13,7 @@ import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -20,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.DictRule
@@ -27,6 +29,7 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppAutoCompleteField
@@ -42,6 +45,10 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.widget.dialog.CodeDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.toJson
@@ -76,14 +83,37 @@ enum class ImportItemState { NEW, UPDATE, EXISTING }
  * (allSources/allRules、checkSources/checkRules), 供 [ImportItemsDialog] 统一渲染。
  */
 interface ImportItemsVm {
+    /** 提交任务所属作用域 (VM/会话寿命): 关闭等待提示不撤销已开始的写入。 */
+    val scope: CoroutineScope
+
+    /** 提交态由 VM 持有: 对话框重建后同批不能再次提交; 提交瞬间冻结本次负载。 */
+    val submitState: StateFlow<ImportSubmitState>
+
+    fun recordSubmitResult(result: ImportSubmitResult)
+
+    fun beginSubmit(checked: List<Boolean>): Boolean
+
+    fun endSubmit()
+
+    /** 已提交但缓存维护失败/未完成时的缓存-only 重试: 不重写数据; null=成功, 否则新告警。 */
+    suspend fun repairCaches(): String?
+
+    /** 缓存维护协程被取消/未启动: 结束运行态, 转成可重试的未完成告警。 */
+    fun markCacheInterrupted() = Unit
+
+    /** 缓存-only 重试开始: 返回本次重试身份; null=未接纳, 调用方不得启动 IO。 */
+    fun markCacheRetrying(): Long? = null
+
+    /** 只结束指定身份的重试; null=成功, 非空=失败/未完成原因。 */
+    fun finishCacheRetry(attempt: Long, warning: String?): Boolean = false
+
     /** 解析时算出的默认勾选, 只作 UI 勾选状态的初值 (勾选是纯 UI 瞬态状态, VM 不持有)。 */
     val defaultChecked: List<Boolean>
     fun itemLabel(index: Int): String
     fun itemState(index: Int): ImportItemState
 
-    /** 确认导入: 写入成功回调 [onSuccess] (供回传完成数量), 失败回调 [onError] (错误文案);
-     *  写入运行在 VM 自身作用域, 对话框关闭不中断写入; 取消不调本方法不报结果。 */
-    fun importSelect(checked: List<Boolean>, onSuccess: () -> Unit, onError: (String) -> Unit)
+    /** 确认导入: 等待真实写入结果, 失败抛异常; 提交后的缓存告警归 [ImportSubmitResult]. */
+    suspend fun importSelectAwait(checked: List<Boolean>)
     fun itemJson(index: Int): String
 
     /** CodeDialog 保存回写, 默认不支持 (对照 app 端 ImportTxtTocRuleDialog 无 Callback)。 */
@@ -107,18 +137,35 @@ fun ImportItemsDialog(
     errorText: String? = null,
     // 容器 Surface 尺寸约束 (默认统一窗口尺寸, 调用方可覆盖)
     surfaceModifier: Modifier = Modifier.appDialogSize(),
-    titleActions: @Composable RowScope.(checked: MutableList<Boolean>) -> Unit = {},
+    titleActions: @Composable RowScope.(checked: MutableList<Boolean>, writing: Boolean) -> Unit = { _, _ -> },
+    checkedState: MutableList<Boolean>? = null,
+    onCheckedState: ((MutableList<Boolean>) -> Unit)? = null,
 ) {
     // 勾选是纯 UI 瞬态状态, 用 snapshot list 承载, 初值取 VM 解析时算出的默认勾选。
     // key 带默认勾选长度: deep link/桌面在对话框内解析, 条目是后到的
-    val checked = remember(vm, vm.defaultChecked.size) { vm.defaultChecked.toMutableStateList() }
+    val checked = remember(vm, vm.defaultChecked.size) {
+        checkedState?.takeIf { it.size == vm.defaultChecked.size }
+            ?: vm.defaultChecked.toMutableStateList().also { onCheckedState?.invoke(it) }
+    }
     var openIndex by remember { mutableStateOf<Int?>(null) }
     // 写入进行中: 与转圈框可见分开 —— 关闭转圈 (返回键收起提示) 不中断也不解锁确认,
     // 写入期间禁止重复确认
-    var writing by remember { mutableStateOf(false) }
+    var writing by remember { mutableStateOf(vm.submitState.value is ImportSubmitState.Writing) }
+    // 提交态归 VM: 重建/重组后仍能显示正在写、失败原因, 不会回到可编辑可提交
+    val vmSubmitState by vm.submitState.collectAsState()
+    // 提交跑在 VM/会话作用域: 收起等待提示或重组不取消已开始的写入
+    val scope = vm.scope
     var waitVisible by remember { mutableStateOf(false) }
     // 写入失败提示 (列表保留供重试/取消勾选; 与解析错误 errorText 分开, 后者替代整个列表)
     var writeError by remember { mutableStateOf<String?>(null) }
+    // 已提交: 只有缓存维护“真实结束且失败/未完成”才显示重试; 运行中不冒充失败
+    val committedState = vmSubmitState as? ImportSubmitState.Committed
+    val cacheRepair = committedState?.takeIf { !it.cacheRunning }?.warning
+    var cacheBusy by remember { mutableStateOf(false) }
+    LaunchedEffect(vmSubmitState) {
+        writing = vmSubmitState is ImportSubmitState.Writing
+        (vmSubmitState as? ImportSubmitState.Failed)?.let { writeError = it.message }
+    }
     val stateNew = stringResource(Res.string.import_state_new)
     val stateUpdate = stringResource(Res.string.import_state_update)
     val stateExisting = stringResource(Res.string.import_state_existing)
@@ -143,36 +190,95 @@ fun ImportItemsDialog(
                     }
                 },
                 itemChecked = { checked[it] },
-                onItemChecked = { index, isChecked -> checked[index] = isChecked },
-                onOpen = { openIndex = it },
+                onItemChecked = { index, isChecked -> if (!writing) checked[index] = isChecked },
+                onOpen = { if (!writing) openIndex = it },
                 onToggleAll = {
-                    val selectAll = checked.all { it }
-                    checked.indices.forEach { checked[it] = !selectAll }
+                    if (!writing) {
+                        val selectAll = checked.all { it }
+                        checked.indices.forEach { checked[it] = !selectAll }
+                    }
                 },
                 onCancel = onDismiss,
                 onOk = {
-                    val count = checked.count { it }
-                    writing = true
-                    waitVisible = true
-                    vm.importSelect(
-                        checked.toList(),
-                        onSuccess = {
+                    if (!writing && vm.beginSubmit(checked.toList())) {
+                        writing = true
+                        waitVisible = true
+                        // 提交瞬间的快照: 写入期间勾选变化不影响本次写入与回执数量
+                        val selection = checked.toList()
+                        val count = selection.count { it }
+                        val submitJob = scope.launch {
+                            when (val result = runImportSubmit { vm.importSelectAwait(selection) }) {
+                                is ImportSubmitResult.Committed -> {
+                                    vm.recordSubmitResult(result)
+                                    waitVisible = false
+                                    val warning = result.cacheWarning
+                                    if (warning != null) {
+                                        AppLog.put("导入已写入但刷新缓存失败\n$warning", null)
+                                        Toasters.get().toast(warning)
+                                    }
+                                    onImported(
+                                        (vm.submitState.value as? ImportSubmitState.Committed)?.count
+                                            ?: count
+                                    )
+                                    if (warning == null) onDismiss()
+                                }
+                                is ImportSubmitResult.Failed -> {
+                                    vm.recordSubmitResult(result)
+                                    waitVisible = false
+                                    writeError = result.message
+                                }
+                            }
+                        }
+                        // 唯一结算点: 正常完成/失败/取消/从未启动都在这里收口
+                        submitJob.invokeOnCompletion { cause ->
+                            vm.endSubmit()
                             writing = false
-                            waitVisible = false
-                            onImported(count)
-                            onDismiss()
-                        },
-                        onError = { message ->
-                            // 写入失败: 只报错误不宣布成功; 列表保留供重试
-                            writing = false
-                            waitVisible = false
-                            writeError = message
-                        },
-                    )
+                            if (cause is CancellationException) {
+                                // 数据已真实提交: 取消只结束显示; 若缓存维护尚未终结, 转成可重试的未完成态
+                                waitVisible = false
+                                vm.markCacheInterrupted()
+                            }
+                        }
+                    }
                 },
                 okEnabled = !loading && errorText == null && !writing,
                 noticeText = writeError,
-                titleActions = { titleActions(checked) },
+                titleActions = { titleActions(checked, writing) },
+            )
+        }
+        cacheRepair?.let { warning ->
+            AppAlertDialog(
+                title = "缓存刷新失败",
+                message = warning,
+                onDismissRequest = { onDismiss() },
+                okButton = AlertButton(
+                    text = "重试",
+                    enabled = !cacheBusy && committedState?.cacheRunning != true,
+                    dismissOnClick = false,
+                ) {
+                    val attempt = vm.markCacheRetrying()
+                    if (attempt != null) {
+                        cacheBusy = true
+                        val repairJob = scope.launch {
+                            try {
+                                val next = vm.repairCaches()
+                                vm.finishCacheRetry(attempt, next)
+                                if (next == null) {
+                                    Toasters.get().toast("缓存已刷新")
+                                    onDismiss()
+                                }
+                            } finally {
+                                cacheBusy = false
+                            }
+                        }
+                        repairJob.invokeOnCompletion { cause ->
+                            if (cause is CancellationException) {
+                                vm.finishCacheRetry(attempt, "缓存维护未完成（导入已提交），可重试缓存维护")
+                            }
+                        }
+                    }
+                },
+                cancelButton = AlertButton(text = "关闭"),
             )
         }
     }
@@ -204,6 +310,8 @@ fun ImportBookSourceItemsDialog(
     onImported: (selectCount: Int) -> Unit = {},
     loading: Boolean = false,
     errorText: String? = null,
+    checkedState: MutableList<Boolean>? = null,
+    onCheckedState: ((MutableList<Boolean>) -> Unit)? = null,
 ) {
     val adapter = remember(vm) { ImportBookSourceItemsVm(vm) }
     val config = AppConfigProviders.get()
@@ -221,7 +329,9 @@ fun ImportBookSourceItemsDialog(
         onImported = onImported,
         loading = loading,
         errorText = errorText,
-        titleActions = { checked ->
+        checkedState = checkedState,
+        onCheckedState = onCheckedState,
+        titleActions = { checked, writing ->
             var showMenu by remember { mutableStateOf(false) }
             // 自定义源分组: 常显文本按钮 + 分组回显 (对照原版 import_source.xml showAsAction="always")
             val group = groupName?.takeIf { it.isNotBlank() }
@@ -235,9 +345,9 @@ fun ImportBookSourceItemsDialog(
                 text = groupTitle,
                 color = AppTheme.colors.secondaryText,
                 modifier = Modifier.align(Alignment.CenterVertically),
-            ) { showGroupDialog = true }
+            ) { if (!writing) showGroupDialog = true }
             Box {
-                IconButton(onClick = { showMenu = true }) {
+                IconButton(onClick = { if (!writing) showMenu = true }) {
                     Icon(
                         painter = painterResource(Res.drawable.ic_more_vert),
                         contentDescription = null,
@@ -246,33 +356,43 @@ fun ImportBookSourceItemsDialog(
                 }
                 AppDropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                     DropdownMenuItem(onClick = {
-                        showMenu = false
-                        adapter.selectNew(checked)
+                        if (!writing) {
+                            showMenu = false
+                            adapter.selectNew(checked)
+                        }
                     }) { Text(stringResource(Res.string.select_new_source)) }
                     DropdownMenuItem(onClick = {
-                        showMenu = false
-                        adapter.selectUpdate(checked)
+                        if (!writing) {
+                            showMenu = false
+                            adapter.selectUpdate(checked)
+                        }
                     }) { Text(stringResource(Res.string.select_update_source)) }
                     ImportOptionMenuItem(
                         text = stringResource(Res.string.keep_original_name),
                         checked = keepName,
                     ) {
-                        keepName = !keepName
-                        config.importKeepName = keepName
+                        if (!writing) {
+                            keepName = !keepName
+                            config.importKeepName = keepName
+                        }
                     }
                     ImportOptionMenuItem(
                         text = stringResource(Res.string.keep_group),
                         checked = keepGroup,
                     ) {
-                        keepGroup = !keepGroup
-                        config.importKeepGroup = keepGroup
+                        if (!writing) {
+                            keepGroup = !keepGroup
+                            config.importKeepGroup = keepGroup
+                        }
                     }
                     ImportOptionMenuItem(
                         text = stringResource(Res.string.keep_enable),
                         checked = keepEnable,
                     ) {
-                        keepEnable = !keepEnable
-                        config.importKeepEnable = keepEnable
+                        if (!writing) {
+                            keepEnable = !keepEnable
+                            config.importKeepEnable = keepEnable
+                        }
                     }
                 }
             }
@@ -323,6 +443,8 @@ fun ImportReplaceRuleItemsDialog(
     onImported: (selectCount: Int) -> Unit = {},
     loading: Boolean = false,
     errorText: String? = null,
+    checkedState: MutableList<Boolean>? = null,
+    onCheckedState: ((MutableList<Boolean>) -> Unit)? = null,
 ) {
     val adapter = remember(vm) { ImportReplaceRuleItemsVm(vm) }
     var showGroupDialog by remember { mutableStateOf(false) }
@@ -336,7 +458,9 @@ fun ImportReplaceRuleItemsDialog(
         onImported = onImported,
         loading = loading,
         errorText = errorText,
-        titleActions = {
+        checkedState = checkedState,
+        onCheckedState = onCheckedState,
+        titleActions = { _, writing ->
             val group = groupName?.takeIf { it.isNotBlank() }
             val groupTitle = if (group == null) {
                 stringResource(Res.string.diy_source_group)
@@ -348,7 +472,7 @@ fun ImportReplaceRuleItemsDialog(
                 text = groupTitle,
                 color = AppTheme.colors.secondaryText,
                 modifier = Modifier.align(Alignment.CenterVertically),
-            ) { showGroupDialog = true }
+            ) { if (!writing) showGroupDialog = true }
         },
     )
     if (showGroupDialog) {
@@ -470,12 +594,27 @@ class ImportBookSourceItemsVm(
         }
     }
 
-    override fun importSelect(
-        checked: List<Boolean>,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit,
-    ) =
-        vm.importSelect(checked, onSuccess, onError)
+    override val scope get() = vm.scope
+
+    override val submitState get() = vm.submitState
+
+    override suspend fun repairCaches(): String? = vm.repairCaches()
+
+    override fun markCacheInterrupted() = vm.markCacheInterrupted()
+
+    override fun markCacheRetrying(): Long? = vm.markCacheRetrying()
+
+    override fun finishCacheRetry(attempt: Long, warning: String?): Boolean = vm.finishCacheRetry(attempt, warning)
+
+    override fun recordSubmitResult(result: ImportSubmitResult) = vm.recordSubmitResult(result)
+
+    override fun beginSubmit(checked: List<Boolean>): Boolean = vm.beginSubmit(checked)
+
+    override fun endSubmit() = vm.endSubmit()
+
+    override suspend fun importSelectAwait(checked: List<Boolean>) {
+        vm.importSelectAwait(checked)
+    }
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allSources[index])
 
@@ -508,12 +647,21 @@ class ImportReplaceRuleItemsVm(
         }
     }
 
-    override fun importSelect(
-        checked: List<Boolean>,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit,
-    ) =
-        vm.importSelect(checked, onSuccess, onError)
+    override val scope get() = vm.scope
+
+    override val submitState get() = vm.submitState
+
+    override suspend fun repairCaches(): String? = null
+
+    override fun recordSubmitResult(result: ImportSubmitResult) = vm.recordSubmitResult(result)
+
+    override fun beginSubmit(checked: List<Boolean>): Boolean = vm.beginSubmit(checked)
+
+    override fun endSubmit() = vm.endSubmit()
+
+    override suspend fun importSelectAwait(checked: List<Boolean>) {
+        vm.importSelectAwait(checked)
+    }
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allRules[index])
 
@@ -541,12 +689,21 @@ class ImportTxtTocRuleItemsVm(
         }
     }
 
-    override fun importSelect(
-        checked: List<Boolean>,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit,
-    ) =
-        vm.importSelect(checked, onSuccess, onError)
+    override val scope get() = vm.scope
+
+    override val submitState get() = vm.submitState
+
+    override suspend fun repairCaches(): String? = null
+
+    override fun recordSubmitResult(result: ImportSubmitResult) = vm.recordSubmitResult(result)
+
+    override fun beginSubmit(checked: List<Boolean>): Boolean = vm.beginSubmit(checked)
+
+    override fun endSubmit() = vm.endSubmit()
+
+    override suspend fun importSelectAwait(checked: List<Boolean>) {
+        vm.importSelectAwait(checked)
+    }
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allSources[index])
 }
@@ -570,12 +727,21 @@ class ImportDictRuleItemsVm(
         }
     }
 
-    override fun importSelect(
-        checked: List<Boolean>,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit,
-    ) =
-        vm.importSelect(checked, onSuccess, onError)
+    override val scope get() = vm.scope
+
+    override val submitState get() = vm.submitState
+
+    override suspend fun repairCaches(): String? = null
+
+    override fun recordSubmitResult(result: ImportSubmitResult) = vm.recordSubmitResult(result)
+
+    override fun beginSubmit(checked: List<Boolean>): Boolean = vm.beginSubmit(checked)
+
+    override fun endSubmit() = vm.endSubmit()
+
+    override suspend fun importSelectAwait(checked: List<Boolean>) {
+        vm.importSelectAwait(checked)
+    }
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allSources[index])
 
@@ -603,17 +769,27 @@ class ImportHttpTtsItemsVm(
         }
     }
 
-    override fun importSelect(
-        checked: List<Boolean>,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit,
-    ) =
-        vm.importSelect(checked, onSuccess, onError)
+    override val scope get() = vm.scope
+
+    override val submitState get() = vm.submitState
+
+    override suspend fun repairCaches(): String? = null
+
+    override fun recordSubmitResult(result: ImportSubmitResult) = vm.recordSubmitResult(result)
+
+    override fun beginSubmit(checked: List<Boolean>): Boolean = vm.beginSubmit(checked)
+
+    override fun endSubmit() = vm.endSubmit()
+
+    override suspend fun importSelectAwait(checked: List<Boolean>) {
+        vm.importSelectAwait(checked)
+    }
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allSources[index])
 
     override fun updateItemFromJson(index: Int, json: String): Boolean =
-        GSON.fromJsonObject<HttpTTS>(json).getOrNull()?.let {
+        // 回写与初次导入共用同一必需字段/文本提取校验, 不靠实体默认值生成空源
+        runCatching { vm.decodeSource(json) }.getOrNull()?.let {
             vm.allSources[index] = it
             true
         } ?: false
@@ -636,12 +812,21 @@ class ImportThemeItemsVm(
         }
     }
 
-    override fun importSelect(
-        checked: List<Boolean>,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit,
-    ) =
-        vm.importSelect(checked, onSuccess, onError)
+    override val scope get() = vm.scope
+
+    override val submitState get() = vm.submitState
+
+    override suspend fun repairCaches(): String? = null
+
+    override fun recordSubmitResult(result: ImportSubmitResult) = vm.recordSubmitResult(result)
+
+    override fun beginSubmit(checked: List<Boolean>): Boolean = vm.beginSubmit(checked)
+
+    override fun endSubmit() = vm.endSubmit()
+
+    override suspend fun importSelectAwait(checked: List<Boolean>) {
+        vm.importSelectAwait(checked)
+    }
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allSources[index])
 }
@@ -668,12 +853,21 @@ class ImportSourceFilterRuleItemsVm(
         }
     }
 
-    override fun importSelect(
-        checked: List<Boolean>,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit,
-    ) =
-        vm.importSelect(checked, onSuccess, onError)
+    override val scope get() = vm.scope
+
+    override val submitState get() = vm.submitState
+
+    override suspend fun repairCaches(): String? = null
+
+    override fun recordSubmitResult(result: ImportSubmitResult) = vm.recordSubmitResult(result)
+
+    override fun beginSubmit(checked: List<Boolean>): Boolean = vm.beginSubmit(checked)
+
+    override fun endSubmit() = vm.endSubmit()
+
+    override suspend fun importSelectAwait(checked: List<Boolean>) {
+        vm.importSelectAwait(checked)
+    }
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allRules[index])
 

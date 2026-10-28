@@ -52,6 +52,8 @@ export function installSystemEventSources(): void {
 
 /** 注册来电状态监听 (见 [installSystemEventSources] 的来电段说明)。 */
 function installCallStateObserver(): void {
+  // 来电状态是电话能力: 无该 syscap 的设备不注册, 避免不可用 API 告警与运行期异常
+  if (!canIUse('SystemCapability.Telephony.StateRegistry') || !canIUse('SystemCapability.Telephony.CallManager')) return;
   try {
     observer.on('callStateChange', (info: observer.CallStateInfo) => {
       let state: string;

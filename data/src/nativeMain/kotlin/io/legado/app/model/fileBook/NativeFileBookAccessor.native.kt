@@ -8,6 +8,8 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.storage.BackupFileOps
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.exception.SecurityException
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.LocalBookLocators
@@ -29,6 +31,7 @@ import io.legado.app.utils.atomicWriteTempPath
 import io.legado.app.utils.inputStream
 import io.legado.app.utils.toInputStream
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
 import okio.FileSystem
 import okio.IOException
@@ -85,22 +88,41 @@ class NativeFileBookAccessor : FileBookAccessor {
     override fun getBookInputStream(book: Book): InputStream {
         // 流式打开 (不整书读入内存); 调用方负责 close。
         // 打开失败抛 okio IOException 族 (ENOENT 为 FileNotFoundException, 其余含权限不足为普通 IOException)。
-        // 引用取当前可用的那个 (引用失效时按文件名在书籍保存位置/导入目录找回, 与桌面端 openLocalFile 同口径);
-        // 解析不到时按 bookUrl 原样打开, 由调用方按异常处理
-        val path = LocalBookLocators.get().getReadableFileRef(book)
-        return (if (path != null) File(path) else resolveLocalFile(book.bookUrl)).inputStream()
+        return openLocalFile(localFilePathOf(book))
     }
+
+    /**
+     * 本地书文件当前的读取路径: 引用取当前可用的那个 (引用失效时按文件名在书籍保存位置/导入目录找回,
+     * 与桌面端 openLocalFile 同口径), 解析不到时按 bookUrl 原样给出, 由打开方按异常处理。
+     *
+     * internal 供 iOS 授权装饰器在同一路径上取授权与协调 —— 装饰器不另写一套路径解析。
+     */
+    internal fun localFilePathOf(book: Book): String =
+        // 本次协调访问有旁路地址时优先 (书籍身份 bookUrl 不变)
+        FileBookOperationPath.current()
+            ?: LocalBookLocators.get().getReadableFileRef(book)
+            ?: resolveLocalFile(book.bookUrl).path
+
+    /** 按路径打开本地书文件流 (只做打开, 不另做定位)。 */
+    internal fun openLocalFile(path: String): InputStream = File(path).inputStream()
 
     override fun getLastModified(book: Book): Result<Long> {
         return runCatching {
-            resolveLocalFile(book.bookUrl).lastModified()
+            File(localFilePathOf(book)).lastModified()
         }
     }
 
     override fun importFromArchive(
         archiveFileUri: String,
         saveFileName: String?,
-        filter: ((String) -> Boolean)?
+        filter: ((String) -> Boolean)?,
+    ): List<Book> = importFromArchive(archiveFileUri, saveFileName, null, filter)
+
+    override fun importFromArchive(
+        archiveFileUri: String,
+        saveFileName: String?,
+        parent: kotlinx.coroutines.Job?,
+        filter: ((String) -> Boolean)?,
     ): List<Book> {
         // native 端无 libarchive, 仅支持 zip/cbz (RemoteZipCore); rar/7z 抛异常
         val archiveFile = resolveLocalFile(archiveFileUri)
@@ -117,11 +139,14 @@ class NativeFileBookAccessor : FileBookAccessor {
                 if (filter != null && !filter(entry.name)) continue
                 val entryName = saveFileName ?: entry.name.substringAfterLast('/')
                 if (!FileBook.isBookFile(entryName) && !AppPattern.archiveFileRegex.matches(entryName)) continue
+                parent?.ensureActive()
                 val savedUri = saveBookFile(zip.readDecompressed(meta).toInputStream(), entryName)
-                val imported = importLocalFile(savedUri).apply {
+                val imported = importLocalFile(savedUri, parent).apply {
                     origin = "${BookType.localTag}::${archiveFile.name}"
                     addType(BookType.archive)
-                    runBlocking { AppDbProviders.get().bookDao.update(this@apply) }
+                    runBlocking(parent ?: kotlin.coroutines.EmptyCoroutineContext) {
+                        AppDbProviders.get().bookDao.update(this@apply)
+                    }
                 }
                 books.add(imported)
             }
@@ -140,7 +165,10 @@ class NativeFileBookAccessor : FileBookAccessor {
      * 判型 / 构造 Book / 落库在 [FileBookLocalImportShared] (四端唯一一份), 此处只取平台文件信息
      * 与压缩包能力 ([archiveHasBookFile])。
      */
-    override fun importLocalFile(uriStr: String): Book = runBlocking {
+    override fun importLocalFile(uriStr: String): Book = importLocalFile(uriStr, null)
+
+    override fun importLocalFile(uriStr: String, parent: kotlinx.coroutines.Job?): Book =
+        runBlocking(parent ?: kotlin.coroutines.EmptyCoroutineContext) {
         val file = resolveLocalFile(uriStr)
         FileBookLocalImportShared.importLocalFile(
             accessor = this@NativeFileBookAccessor,
@@ -150,6 +178,7 @@ class NativeFileBookAccessor : FileBookAccessor {
             lastModified = file.lastModified(),
             storedRef = "file://" + file.absolutePath,
             archiveHasBookFile = ::archiveHasBookFile,
+            parent = parent,
         )
     }
 
@@ -191,7 +220,8 @@ class NativeFileBookAccessor : FileBookAccessor {
     private fun deleteSourceFile(book: Book) {
         val ref = book.bookUrl
         if (ref.isBlank()) throw IOException("未能删除源文件: 书籍文件引用为空")
-        val file = resolveLocalFile(ref)
+        // 与读取同一路径解析: 本次协调地址优先, 不回退到旧引用
+        val file = File(localFilePathOf(book))
         if (file.delete()) return
         if (file.exists()) throw IOException("未能删除源文件: ${file.absolutePath}")
     }
@@ -257,7 +287,15 @@ class NativeFileBookAccessor : FileBookAccessor {
         } finally {
             probe.delete()
         }
-        webDav.downloadTo(file.path, true)
+        val tempPath = atomicWriteTempPath(file.path)
+        val temp = File(tempPath)
+        try {
+            // 先下到同目录临时件, 完整后再原子替换正式名
+            webDav.downloadTo(tempPath, true)
+            BackupFileOps.copyFile(tempPath, file.path)
+        } finally {
+            runCatching { temp.delete() }
+        }
         return "file://" + file.absolutePath
     }
 
@@ -275,10 +313,17 @@ class NativeFileBookAccessor : FileBookAccessor {
         val file = File("$dir/$fileName")
         try {
             File(dir).mkdirs()
-            file.writeBytes(inputStream.readFully())
         } catch (e: Exception) {
+            // 只有目录不可建/不可写才是权限问题
             throw SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e").apply {
                 addSuppressed(e)
+            }
+        }
+        try {
+            val bytes = inputStream.readFully()
+            // 整份临时件就位后再替换正式名: 写途中失败保留旧完整内容
+            if (!writeBytesAtomically(file.path, bytes)) {
+                throw NoStackTraceException("写入书籍文件失败: ${file.path}")
             }
         } finally {
             inputStream.close()
@@ -317,23 +362,24 @@ class NativeFileBookAccessor : FileBookAccessor {
         if (start >= end) ByteArray(0) else bytes.copyOfRange(start, end)
     }
 
-    /** 读尽 [InputStream] 全部字节 (expect InputStream 无 readBytes, 手写累积)。 */
-    private fun InputStream.readFully(): ByteArray {
-        val chunks = mutableListOf<ByteArray>()
-        val buf = ByteArray(8192)
-        while (true) {
-            val n = read(buf, 0, buf.size)
-            if (n <= 0) break
-            chunks.add(buf.copyOf(n))
-        }
-        val out = ByteArray(chunks.sumOf { it.size })
-        var off = 0
-        for (c in chunks) {
-            c.copyInto(out, off)
-            off += c.size
-        }
-        return out
+}
+
+/** 读尽 [InputStream] 全部字节 (expect InputStream 无 readBytes, 手写累积)。 */
+internal fun InputStream.readFully(): ByteArray {
+    val chunks = mutableListOf<ByteArray>()
+    val buf = ByteArray(8192)
+    while (true) {
+        val n = read(buf, 0, buf.size)
+        if (n <= 0) break
+        chunks.add(buf.copyOf(n))
     }
+    val out = ByteArray(chunks.sumOf { it.size })
+    var off = 0
+    for (c in chunks) {
+        c.copyInto(out, off)
+        off += c.size
+    }
+    return out
 }
 
 /**

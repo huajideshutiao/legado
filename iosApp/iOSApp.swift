@@ -136,10 +136,14 @@ private enum ExternalUriIngress {
             return
         }
         if url.isFileURL {
-            // 沙盒内路径无需 scope, ingest 返回 nil 忽略即可 (见本枚举头部说明)
-            _ = IosSecurityScopedStorageKt.ingestIosSecurityScopedFile(url: url)
+            // 系统给的文件地址先交授权层: 容器外文件在此登记可延续的授权并配对释放 scope,
+            // 容器内文件无需授权。回传的是归一化后的 POSIX 路径, 下游按它取授权与读取;
+            // 授权建不起来时把投递的 URL 交下去, 由同一个下游入口按"没有访问权限"报给用户 (不静默丢弃)
+            // 交已导出的 iOS 窄门面 (授权登记 + 下游分发), 不直接调用未导出的 foundation 顶层函数
+            _ = IosPlatformServicesKt.handleIosIncomingFile(url: url)
+            return
         }
-        // file|content|app → LaunchRequest.ImportFile → shared 自动嗅探视频并改推播放页;
+        // content|app → LaunchRequest.ImportFile → shared 自动嗅探视频并改推播放页;
         // route: → NavigateTo; 其余 → DeepLink (见 IosPlatformServices.kt IosLaunchRequests.parse)
         _ = IosPlatformServicesKt.handleIosLaunchRequest(uri: uri)
     }

@@ -89,6 +89,10 @@ internal class NativeZipFileWrapper(private val filePath: String) : ZipFileWrapp
 class NativeZipFileWrapperFactory : ZipFileWrapperFactory {
 
     override fun create(book: Book): ZipFileWrapperFactory.CreateResult? = runCatching {
+        // 有本次协调旁路地址时一定是本地文件, 不按 bookUrl 误判远程
+        if (FileBookOperationPath.current() != null) {
+            return@runCatching createLocal(book)
+        }
         val url = book.bookUrl
         when {
             url.startsWith(BookType.webDavTag) || url.startsWith("http") -> createRemote(book)
@@ -127,7 +131,8 @@ class NativeZipFileWrapperFactory : ZipFileWrapperFactory {
 
     private fun createLocal(book: Book): ZipFileWrapperFactory.CreateResult? {
         // 本地路径取解析后的可用引用 (引用失效时按文件名在书籍保存位置/导入目录找回, 只定位不回写)
-        val path = LocalBookLocators.get().getReadableFileRef(book) ?: return null
+        val path = FileBookOperationPath.current()
+            ?: LocalBookLocators.get().getReadableFileRef(book) ?: return null
         val lower = path.lowercase()
         if (!lower.endsWith(".cbz") && !lower.endsWith(".zip")) return null
         val file = File(path)

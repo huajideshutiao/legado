@@ -1,5 +1,7 @@
 package io.legado.app.model.fileBook
 
+import kotlinx.coroutines.Job
+
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.lib.webdav.WebDav
@@ -65,8 +67,18 @@ interface FileBookAccessor {
         filter: ((String) -> Boolean)? = null
     ): List<Book>
 
+    fun importFromArchive(
+        archiveFileUri: String,
+        saveFileName: String?,
+        parent: Job?,
+        filter: ((String) -> Boolean)?,
+    ): List<Book> = importFromArchive(archiveFileUri, saveFileName, filter)
+
     /** 导入本地文件 (对应 `FileBook.importLocalFile`)。Uri 传 String 形式。 */
     fun importLocalFile(uriStr: String): Book
+
+    /** 带真实调用方 Job 的导入入口; 各端覆盖后把 parent 接到内部 runBlocking/批次。 */
+    fun importLocalFile(uriStr: String, parent: Job?): Book = importLocalFile(uriStr)
 
     /** 删除书籍 (对应 `FileBook.deleteBook`)。 */
     fun deleteBook(book: Book, deleteOriginal: Boolean)

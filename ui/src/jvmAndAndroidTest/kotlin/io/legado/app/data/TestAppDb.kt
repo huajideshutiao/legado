@@ -53,4 +53,9 @@ class TestDbAccessor(private val db: AppDatabase) : AppDbAccessor {
     override val searchKeywordDao get() = db.searchKeywordDao
     override val keyboardAssistsDao get() = db.keyboardAssistsDao
     override suspend fun <R> runInTransactionSuspending(block: suspend () -> R): R = block()
+
+    override suspend fun <R> runInTransactionSuspending(
+        onCommitted: () -> Unit,
+        block: suspend () -> R,
+    ): R = block().also { onCommitted() }
 }

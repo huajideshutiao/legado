@@ -44,10 +44,14 @@ object ThemeConfig {
     private const val EDGE_SAMPLE_WIDTH = 64
     private const val EDGE_SAMPLE_DP = 48f
 
-    // 存档库：仅存储用户自定义/导入的主题
-    val configList: ArrayList<Config> by lazy {
+    // 存档库：仅存储用户自定义/导入的主题; 对外只暴露锁内快照, 可变副本仅本对象持有
+    private val configListStore: ArrayList<Config> by lazy {
         ArrayList(getConfigsFromDisk())
     }
+
+    val configList: List<Config>
+        get() = ThemeConfigStore.withLock { configListStore.toList() }
+
 
     fun getTheme() = when {
         AppConfig.isEInkMode -> Theme.EInk
@@ -123,7 +127,7 @@ object ThemeConfig {
         }
 
     /**
-     * 前置到主题列表最前的两个虚拟条目，不写盘、不进 configList
+     * 前置到主题列表最前的两个虚拟条目，不写盘、不进 configListStore
      */
     fun getBuiltinConfigs(context: Context): List<Config> {
         val (dayAccent, dayBg, dayBbg) = readDefaultColors(context, false)
@@ -249,19 +253,47 @@ object ThemeConfig {
     }
 
     fun save() {
-        ThemeConfigStore.save(configList.map { it.toThemeConfigData() })
+        ThemeConfigStore.withLock {
+            ThemeConfigStore.saveOrThrowUnlocked(configListStore.map { it.toThemeConfigData() })
+        }
+    }
+
+    /**
+     * 整批校验并一次保存: 全部有效才合并并原子写入, 写入成功后更新内存列表;
+     * 任一配置无效或写入失败抛异常, 内存列表保持原状。
+     */
+    fun addConfigs(newConfigs: List<Config>) {
+        newConfigs.forEach {
+            require(validateConfig(it)) { "无效的主题配置" }
+        }
+        ThemeConfigStore.withLock {
+            val merged = ArrayList(configListStore)
+            newConfigs.forEach { newConfig ->
+                val index = merged.indexOfFirst { it.themeName == newConfig.themeName }
+                if (index >= 0) merged[index] = newConfig else merged.add(newConfig)
+            }
+            ThemeConfigStore.saveOrThrowUnlocked(merged.map { it.toThemeConfigData() })
+            configListStore.clear()
+            configListStore.addAll(merged)
+        }
     }
 
     fun delConfig(index: Int) {
-        if (index !in configList.indices) return
-        configList.removeAt(index)
-        save()
+        ThemeConfigStore.withLock {
+            if (index !in configListStore.indices) return@withLock
+            val merged = configListStore.toMutableList().apply { removeAt(index) }
+            ThemeConfigStore.saveOrThrowUnlocked(merged.map { it.toThemeConfigData() })
+            configListStore.clear()
+            configListStore.addAll(merged)
+        }
         applyTheme(App.instance)
     }
 
     fun upConfig() {
-        configList.clear()
-        configList.addAll(getConfigsFromDisk())
+        ThemeConfigStore.withLock {
+            configListStore.clear()
+            configListStore.addAll(ThemeConfigStore.loadUnlocked().map { it.toConfig() })
+        }
     }
 
     fun addConfig(json: String): Boolean {
@@ -279,15 +311,25 @@ object ThemeConfig {
         if (!validateConfig(newConfig)) {
             return
         }
-        configList.forEachIndexed { index, config ->
-            if (newConfig.themeName == config.themeName) {
-                configList[index] = newConfig
-                save()
-                return
-            }
+        ThemeConfigStore.withLock {
+            val merged = configListStore.toMutableList()
+            val index = merged.indexOfFirst { it.themeName == newConfig.themeName }
+            if (index >= 0) merged[index] = newConfig else merged.add(newConfig)
+            ThemeConfigStore.saveOrThrowUnlocked(merged.map { it.toThemeConfigData() })
+            configListStore.clear()
+            configListStore.addAll(merged)
         }
-        configList.add(newConfig)
-        save()
+    }
+
+    /** 按索引替换 + 完整保存 + 发布 (与 add/del 同一锁内合同) */
+    fun replaceConfig(index: Int, config: Config) {
+        ThemeConfigStore.withLock {
+            if (index !in configListStore.indices) return@withLock
+            val merged = configListStore.toMutableList().apply { set(index, config) }
+            ThemeConfigStore.saveOrThrowUnlocked(merged.map { it.toThemeConfigData() })
+            configListStore.clear()
+            configListStore.addAll(merged)
+        }
     }
 
     /** 保留 androidx toColorInt (支持颜色名), 不走 shared 的纯 hex 解析, 避免收窄已有主题的可用范围 */
@@ -304,7 +346,7 @@ object ThemeConfig {
     }
 
     private fun getConfigsFromDisk(): List<Config> =
-        ThemeConfigStore.load().map { it.toConfig() }
+        ThemeConfigStore.loadUnlocked().map { it.toConfig() }
 
     /** Config ↔ ThemeConfigData 字段一一对应, 仅用于走 shared 的读写实现 */
     private fun Config.toThemeConfigData() = ThemeConfigData(

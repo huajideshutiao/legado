@@ -1,5 +1,14 @@
 package io.legado.desktop.ui
 
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.Job
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.DirUsage
 import io.legado.app.constant.PreferKey
@@ -78,38 +87,77 @@ class DesktopPlatformServices(
 
 // Windows 走 COM IFileDialog 现代对话框, macOS/Linux 走 AWT (统一入口 FileDialogs)
 private class DesktopFilePickerService : FilePickerService {
-    override fun pickFile(filter: FileFilter): String? =
-        FileDialogs.pickOpenFile(extensions = filter.extensions)?.absolutePath
 
-    override fun pickFiles(filter: FileFilter): List<PickedFile> =
-        FileDialogs.pickOpenFiles(extensions = filter.extensions)
-            ?.map { PickedFile(it.absolutePath, it.name) }
-            ?: emptyList()
+    /**
+     * 面板显示期间盯住调用方 Job: 页面退出 (取消) 时关闭原生面板并结束等待,
+     * 不把已取消页面的结果再交回去。
+     */
+    private suspend fun <T> withDialogCancel(block: (FileDialogs.DialogCancelHandle) -> T): T {
+        val handle = FileDialogs.newCancelHandle()
+        var completed = false
+        val job = currentCoroutineContext()[Job]
+        // 子协程挂在调用方 Job 上: 调用方取消时它立即进入 finally, 只关本请求的 handle
+        val closer = job?.let { parent ->
+            CoroutineScope(parent + Dispatchers.IO).launch(start = CoroutineStart.UNDISPATCHED) {
+                try {
+                    awaitCancellation()
+                } finally {
+                    if (!completed) FileDialogs.close(handle)
+                }
+            }
+        }
+        return try {
+            block(handle)
+        } finally {
+            completed = true
+            closer?.cancel()
+        }
+    }
 
-    override fun saveText(suggestedName: String, text: String): SavedRef? {
-        val dest = pickSaveFile(suggestedName) ?: return null
+    override suspend fun pickFile(filter: FileFilter): String? =
+        withDialogCancel { handle ->
+            FileDialogs.pickOpenFile(extensions = filter.extensions, handle = handle)?.absolutePath
+        }
+
+    override suspend fun pickFiles(filter: FileFilter): List<PickedFile> =
+        withDialogCancel { handle ->
+            FileDialogs.pickOpenFiles(extensions = filter.extensions, handle = handle)
+                .map { PickedFile(it.absolutePath, it.name) }
+        }
+
+    override suspend fun saveText(suggestedName: String, text: String): SavedRef? {
+        val dest = withDialogCancel { handle -> pickSaveFile(suggestedName, handle) } ?: return null
+        currentCoroutineContext().ensureActive()
         // 整份就位: 覆盖写被打断会在用户目录留下半截文件
         check(writeBytesAtomically(dest, text.encodeToByteArray())) { "写入文件失败: $dest" }
         return SavedRef(dest)
     }
 
     /** 同上, 内容按整份复制到选定位置。 */
-    override fun saveFromFile(srcPath: String, suggestedName: String): SavedRef? {
-        val dest = pickSaveFile(suggestedName) ?: return null
+    override suspend fun saveFromFile(srcPath: String, suggestedName: String): SavedRef? {
+        val dest = withDialogCancel { handle -> pickSaveFile(suggestedName, handle) } ?: return null
+        currentCoroutineContext().ensureActive()
         BackupFileOps.copyFile(srcPath, dest)
         return SavedRef(dest)
     }
 
-    private fun pickSaveFile(suggestedName: String): String? =
+    private fun pickSaveFile(
+        suggestedName: String,
+        handle: FileDialogs.DialogCancelHandle? = null,
+    ): String? =
         FileDialogs.pickSaveFile(
             defaultName = suggestedName,
             initialDir = userExportDir()?.let(::File)?.takeIf { it.isDirectory },
+            handle = handle,
         )?.absolutePath
 
-    override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? {
+    override suspend fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? {
         // 保存对话框选位置 → 写文件 (对照 master PhotoDialog 的保存语义)
         // 用户取消选择位置返回 null, 调用方静默; 仅写文件失败返回 false
-        val dest = FileDialogs.pickSaveFile(defaultName = suggestedName) ?: return null
+        val dest = withDialogCancel { handle ->
+            FileDialogs.pickSaveFile(defaultName = suggestedName, handle = handle)
+        } ?: return null
+        currentCoroutineContext().ensureActive()
         // 落盘整份归位: 用户选了同名文件时覆盖写会先把旧图截断, 写到一半被打断就留下半张图
         return runCatching { writeBytesAtomically(dest.path, bytes) }.getOrDefault(false)
     }
@@ -125,10 +173,13 @@ private class DesktopFilePickerService : FilePickerService {
 
     // 桌面无沙盒: 选定目录是普通文件路径, 不产生系统授权, 用途无法强制 —— 本地书文件访问不做用途校验;
     // 安卓的树 URI 权限同样没有用途维度, 由应用侧按用途登记, 故该参数在那里被登记使用
-    override fun pickDirectory(usage: DirUsage): String? =
-        FileDialogs.pickDirectory(
-            initialDir = userExportDir()?.let(::File)?.takeIf { it.isDirectory },
-        )?.absolutePath
+    override suspend fun pickDirectory(usage: DirUsage): String? =
+        withDialogCancel { handle ->
+            FileDialogs.pickDirectory(
+                initialDir = userExportDir()?.let(::File)?.takeIf { it.isDirectory },
+                handle = handle,
+            )?.absolutePath
+        }
 
     // 选图导入: 原图复制进图集目录 (备份链路) + 按屏幕尺寸居中裁剪缩放烘焙产物写缓存
     // (使用链路, 烘焙核心与全端共用 bakeCoverImageFile, WEBP q80 不放大);

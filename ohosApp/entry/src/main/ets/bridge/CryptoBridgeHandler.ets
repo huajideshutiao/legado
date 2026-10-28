@@ -131,6 +131,13 @@ interface DigestPayload {
 }
 
 // hmac 请求 payload (Kotlin NativeHmacOps.hmac → action="hmac")
+/** 对称算法映射结果 (ArkTS 禁止用对象字面量作类型, 显式声明)。 */
+interface SymCipherSpec {
+  cipherSpec: string;
+  keyGenSpec: string;
+  mode: string;
+}
+
 interface HmacPayload {
   algorithm: string;                   // HmacMD5/HmacSHA256/HMAC-SHA512 等 (ArkTS 侧归一化)
   key: string;                         // base64 编码的 HMAC 密钥
@@ -380,7 +387,7 @@ async function handleSymEncryptDecrypt(payload: string, isEncrypt: boolean): Pro
 }
 
 /** 对称算法规格映射 (JCA token → cryptoFramework 字符串参数)。 */
-function mapSymSpec(algorithm: string, mode: string, keyByteLength: number): { cipherSpec: string, keyGenSpec: string, mode: string } {
+function mapSymSpec(algorithm: string, mode: string, keyByteLength: number): SymCipherSpec {
   let keyGenSpec: string;
   switch (algorithm.toUpperCase()) {
     case 'AES':
@@ -412,11 +419,12 @@ function mapSymSpec(algorithm: string, mode: string, keyByteLength: number): { c
   }
   // JCA "CFB" = CFB128; ohos AES/3DES/DES 的 "CFB" 即 CFB128, SM4 需显式 "CFB128"
   const ohosMode = algorithm.toUpperCase() === 'SM4' && mode.toUpperCase() === 'CFB' ? 'CFB128' : mode.toUpperCase();
-  return {
+  const spec: SymCipherSpec = {
     cipherSpec: `${keyGenSpec}|${ohosMode}|NoPadding`,
     keyGenSpec,
     mode: mode.toUpperCase()
   };
+  return spec;
 }
 
 /** 非 ECB 模式的 IvParamsSpec (iv 长度由算法决定: AES/SM4 16B, DES 系 8B, 由桥接调用方保证)。 */

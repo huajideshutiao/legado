@@ -21,6 +21,8 @@ import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.compose.platform.syncGetString
+import io.legado.app.ui.widget.dialog.WaitDialogHandle
+import kotlinx.coroutines.Job
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.encodeURI
 import io.legado.app.utils.isAbsUrl
@@ -226,16 +228,29 @@ interface PlatformCapabilities {
     /** 弹出文件名导入 js 编辑框 (对照 onAlertImportFileName / alertImportFileName) */
     fun alertImportFileName() = unsupported("按文件名导入")
 
-    /** 将选中条目上架 (对照 onAddSelectionToBookshelf / addSelectionToBookshelf), 完成后回调 onComplete */
-    fun addImportSelectionToBookshelf(items: List<ImportFileItem>, onComplete: () -> Unit = {}) {
+    /**
+     * 将选中条目上架 (对照 onAddSelectionToBookshelf / addSelectionToBookshelf), 完成后回调 onComplete。
+     * [scope] 是发起本次上架的页面请求作用域, 导入随它取消。
+     */
+    fun addImportSelectionToBookshelf(
+        items: List<ImportFileItem>,
+        onComplete: () -> Unit = {},
+        scope: CoroutineScope,
+    ) {
         unsupported("导入所选书籍")
     }
 
     /**
      * 直接导入用户在系统面板里选定的书文件 (多选, 不经列表勾选): 与 [addImportSelectionToBookshelf]
      * 同一条导入链, 完成后回调 onComplete。调用方已按扩展名筛过并提示过不支持的文件。
+     *
+     * [scope] 是发起本次导入的页面请求作用域, 导入与等待随它取消。
      */
-    fun importPickedBookFiles(files: List<PickedFile>, onComplete: () -> Unit = {}) {
+    fun importPickedBookFiles(
+        files: List<PickedFile>,
+        onComplete: () -> Unit = {},
+        scope: CoroutineScope,
+    ) {
         unsupported("导入所选书籍")
     }
 
@@ -245,8 +260,11 @@ interface PlatformCapabilities {
     /** 更新排序方式 (对照 upSort / viewModel.sort + AppConfig.localBookImportSort) */
     fun updateImportBookSort(sort: Int) = unsupported("切换导入排序")
 
-    /** 打开已上架书籍阅读页 (对照 startRead / startReadBook) */
-    fun openImportedBookReader(item: ImportFileItem) = unsupported("打开导入书籍")
+    /** 打开已上架书籍阅读页 (对照 startRead / startReadBook); [scope] 是发起本请求的页面作用域 */
+    fun openImportedBookReader(
+        item: ImportFileItem,
+        scope: CoroutineScope,
+    ) = unsupported("打开导入书籍")
 
     /** 进入子目录 (对照 onItemClick isDir 分支 / nextDoc) */
     fun navigateImportDir(item: ImportFileItem) = unsupported("进入导入目录")
@@ -302,9 +320,10 @@ interface PlatformCapabilities {
     fun toggleBookshelf(
         book: Book,
         inBookshelf: Boolean,
+        scope: CoroutineScope,
         onComplete: (Boolean?) -> Unit,
-        onWaitDialog: (Boolean) -> Unit = {},
-        onAction: (String) -> Unit = {},
+        onWaitDialog: (Boolean, WaitDialogHandle) -> Unit = { _, _ -> },
+        stages: ImportStageHost,
         chapters: List<BookChapter>? = null,
     ) {
         unsupported("书架操作")
@@ -333,7 +352,9 @@ interface PlatformCapabilities {
         deleteOriginal: Boolean,
         onComplete: (Boolean?) -> Unit,
     ) {
-        toggleBookshelf(book, inBookshelf = true, onComplete = onComplete)
+        // 四端实际都走 SharedPlatformCapabilities 的下架链; 无页面 scope 可造,
+        // 不为消编译错制造独立 Job —— 直落真实已有入口的缺口由实现方覆盖
+        unsupported("下架书目")
     }
 
     // webFile 下载导入相关 (对照 BookInfoViewModel.importWebFile 等方法)
@@ -341,8 +362,8 @@ interface PlatformCapabilities {
     fun importWebFile(
         book: Book,
         webFile: FileBook.WebFile,
-        onWaitDialog: (Boolean) -> Unit = {},
-        onAction: (String) -> Unit = {},
+        scope: CoroutineScope,
+        onWaitDialog: (Boolean, WaitDialogHandle) -> Unit = { _, _ -> },
         success: ((Book) -> Unit)? = null,
     ) = unsupported("导入 Web 文件")
 
@@ -350,13 +371,13 @@ interface PlatformCapabilities {
     fun downloadWebFile(
         book: Book,
         webFile: FileBook.WebFile,
-        onWaitDialog: (Boolean) -> Unit = {},
-        onAction: (String) -> Unit = {},
+        scope: CoroutineScope,
+        onWaitDialog: (Boolean, WaitDialogHandle) -> Unit = { _, _ -> },
         success: ((String) -> Unit)? = null,
     ) = unsupported("下载 Web 文件")
 
     /** 获取压缩包内文件名列表 (对照 BookInfoViewModel.getArchiveFilesName) */
-    fun getArchiveFilesName(archiveFilePath: String, onSuccess: (List<String>) -> Unit) =
+    fun getArchiveFilesName(archiveFilePath: String, scope: CoroutineScope, onSuccess: (List<String>) -> Unit) =
         unsupported("获取压缩包文件名")
 
     /** 从压缩包导入书籍 (对照 BookInfoViewModel.importBookFromArchive) */
@@ -364,7 +385,8 @@ interface PlatformCapabilities {
         archiveFilePath: String,
         archiveEntryName: String,
         book: Book,
-        onWaitDialog: (Boolean) -> Unit = {},
+        scope: CoroutineScope,
+        onWaitDialog: (Boolean, WaitDialogHandle) -> Unit = { _, _ -> },
         success: ((Book) -> Unit)? = null,
     ) = unsupported("从压缩包导入书籍")
 
@@ -374,11 +396,17 @@ interface PlatformCapabilities {
      */
     suspend fun refreshWebDavBook(book: Book) {}
 
-    /** webFile 下载导入后阅读 (对照 onReadClick isWebFile 分支) */
+    /**
+     * webFile 下载导入后阅读 (对照 onReadClick isWebFile 分支)。
+     *
+     * [stages] 是发起页面的阶段持有者: 候选/压缩包条目/不支持格式确认都由共享层挂起等真回执
+     * (不再由各端把框挂在宿主上), 平台实现只保留下载/取条目/导入/交系统打开四个叶子。
+     */
     fun handleWebFileRead(
         book: Book,
-        onWaitDialog: (Boolean) -> Unit = {},
-        onAction: (String) -> Unit = {},
+        scope: CoroutineScope,
+        onWaitDialog: (Boolean, WaitDialogHandle) -> Unit = { _, _ -> },
+        stages: ImportStageHost,
         onSuccess: ((Book) -> Unit)? = null,
     ) = unsupported("下载并阅读 Web 文件")
 
@@ -633,8 +661,11 @@ interface PlatformCapabilities {
      * 没找到就弹 archive_not_found 确认框, 用户确认后回调 [onNeedDownload] 下载并重试。
      * 依赖平台文件系统 (Android SAF FileDoc), 未实现端提示不支持。
      */
-    fun startReadRemoteArchive(fileName: String, onNeedDownload: () -> Unit) =
-        unsupported("阅读压缩包内的书")
+    fun startReadRemoteArchive(
+        fileName: String,
+        scope: CoroutineScope,
+        onNeedDownload: () -> Unit,
+    ) = unsupported("阅读压缩包内的书")
 
     // 阅读样式平台能力 (各端按需 override, 未实现端返回空列表)
     // 对照 app 端 FontSelectDialog.loadFontFiles: 字体目录 + 本地字体合并去重排序
@@ -787,7 +818,8 @@ interface PlatformCapabilities {
      * 回调不保证在界面线程: 安卓在界面线程回调, 桌面/iOS/鸿蒙在后台线程回调;
      * 调用方若要在回调里做界面动作需自行切主线程。
      */
-    fun pickBookTreeUri(onSelected: (String?) -> Unit) = unsupported("选择书籍目录")
+    fun pickBookTreeUri(parent: Job? = null, onSelected: (String?, Throwable?) -> Unit) =
+        unsupported("选择书籍目录")
 
     /**
      * 在指定目录里按文件名找回本地书, 返回新的 bookUrl (找不到返回 null)。
@@ -837,13 +869,12 @@ object PlatformCapabilityProviders {
  *
  * @return 选定的目录标识; null = 用户取消
  */
-private suspend fun awaitBookTreeUriSelection(): String? {
+private suspend fun awaitBookTreeUriSelection(parent: Job?): String? {
     val result = CompletableDeferred<String?>()
     withContext(mainDispatcher) {
-        runCatching {
-            PlatformCapabilityProviders.get().pickBookTreeUri { uri -> result.complete(uri) }
-        }.onFailure {
-            result.complete(null)
+        // 启动失败是系统错误不是用户取消: 原异常交回原等待 (不再折成 null/false)
+        PlatformCapabilityProviders.get().pickBookTreeUri(parent) { uri, err ->
+            if (err != null) result.completeExceptionally(err) else result.complete(uri)
         }
     }
     return result.await()
@@ -855,8 +886,8 @@ private suspend fun awaitBookTreeUriSelection(): String? {
  *
  * @return true = 保存位置已可用 (原本已设置, 或本次已选定); false = 用户取消
  */
-suspend fun ensureBookSaveDirSelected(): Boolean =
-    effectiveBookSaveDir() != null || reselectBookSaveDir()
+suspend fun ensureBookSaveDirSelected(parent: Job? = null): Boolean =
+    effectiveBookSaveDir() != null || reselectBookSaveDir(parent)
 
 /**
  * 重新拉起"书籍保存位置"选择器并覆盖已记住的目录 —— 已设置但不可用/不可写 (目录被删、授权失效)
@@ -864,8 +895,8 @@ suspend fun ensureBookSaveDirSelected(): Boolean =
  *
  * @return true = 本次已选定新目录 (已覆盖旧值); false = 用户取消 (既有目录不动)
  */
-suspend fun reselectBookSaveDir(): Boolean {
-    val uri = awaitBookTreeUriSelection()?.takeIf { it.isNotBlank() } ?: return false
+suspend fun reselectBookSaveDir(parent: Job? = null): Boolean {
+    val uri = awaitBookTreeUriSelection(parent)?.takeIf { it.isNotBlank() } ?: return false
     PreferenceProviders.get().putString(PreferKey.defaultBookTreeUri, uri)
     return true
 }

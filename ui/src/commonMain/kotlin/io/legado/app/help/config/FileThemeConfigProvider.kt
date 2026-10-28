@@ -3,6 +3,7 @@ package io.legado.app.help.config
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.lib.theme.ThemeStorePrefKeys
 import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.utils.ColorUtils
@@ -22,37 +23,67 @@ class FileThemeConfigProvider : ThemeConfigProvider {
 
     /** 存档库: 仅存储用户自定义/导入的主题 (对照原版 configList lazy 读盘) */
     private val configs: MutableList<ThemeConfigData> by lazy {
-        ThemeConfigStore.load().toMutableList()
+        // 所有访问都在 ThemeConfigStore.withLock 内; 用锁内读取避免嵌套加锁
+        ThemeConfigStore.loadUnlocked().toMutableList()
     }
 
-    override fun getConfigList(): List<ThemeConfigData> = configs.toList()
+    override fun getConfigList(): List<ThemeConfigData> =
+        ThemeConfigStore.withLock { configs.toList() }
 
     /** 对照原版 addConfig: 校验色值 + 同名覆盖(只改内存) / 追加后 save */
     override fun addConfig(config: ThemeConfigData) {
         if (!ThemeConfigStore.validate(config)) return
-        val index = configs.indexOfFirst { it.themeName == config.themeName }
-        if (index >= 0) {
-            configs[index] = config
-            save()
-            return
+        ThemeConfigStore.withLock {
+            val merged = configs.toMutableList()
+            val index = merged.indexOfFirst { it.themeName == config.themeName }
+            if (index >= 0) merged[index] = config else merged.add(config)
+            ThemeConfigStore.saveOrThrowUnlocked(merged)
+            configs.clear()
+            configs.addAll(merged)
         }
-        configs.add(config)
-        save()
+    }
+
+    /**
+     * 整批校验并一次保存: 全部有效才合并并原子写入, 写入成功后更新内存列表;
+     * 任一配置无效或写入失败抛异常, 内存列表保持原状。
+     */
+    override fun addConfigs(configs: List<ThemeConfigData>) {
+        configs.forEach {
+            if (!ThemeConfigStore.validate(it)) throw NoStackTraceException("无效的主题配置")
+        }
+        ThemeConfigStore.withLock {
+            val merged = this.configs.toMutableList()
+            configs.forEach { config ->
+                val index = merged.indexOfFirst { it.themeName == config.themeName }
+                if (index >= 0) merged[index] = config else merged.add(config)
+            }
+            ThemeConfigStore.saveOrThrowUnlocked(merged)
+            this.configs.clear()
+            this.configs.addAll(merged)
+        }
     }
 
     /** 对照原版 delConfig: removeAt + save (原版随后的 applyTheme 不改当前色, 此处省略) */
     override fun delConfig(index: Int) {
-        if (index !in configs.indices) return
-        configs.removeAt(index)
-        save()
+        ThemeConfigStore.withLock {
+            if (index !in configs.indices) return@withLock
+            val merged = configs.toMutableList().apply { removeAt(index) }
+            ThemeConfigStore.saveOrThrowUnlocked(merged)
+            configs.clear()
+            configs.addAll(merged)
+        }
     }
 
     /** 对照 ThemeCustomizeDialog.saveToConfig: 按索引替换 + save (主题改名不残留旧条目) */
     override fun replaceConfig(index: Int, config: ThemeConfigData) {
-        if (index !in configs.indices) return
         if (!ThemeConfigStore.validate(config)) return
-        configs[index] = config
-        save()
+        ThemeConfigStore.withLock {
+            if (index !in configs.indices) return@withLock
+            val merged = configs.toMutableList().apply { set(index, config) }
+            ThemeConfigStore.saveOrThrowUnlocked(merged)
+            configs.clear()
+            configs.addAll(merged)
+        }
     }
 
     /** 对照原版 applyBuiltin: 清 6 个自定义 pref → isNightTheme → applyTheme → RECREATE */
@@ -169,12 +200,19 @@ class FileThemeConfigProvider : ThemeConfigProvider {
     )
 
     /** 对照原版 save: configList 序列化覆盖写 themeConfig.json */
-    override fun save() = ThemeConfigStore.save(configs)
+    override fun save() {
+        ThemeConfigStore.withLock {
+            ThemeConfigStore.saveOrThrowUnlocked(configs)
+        }
+    }
 
     /** 对照原版 upConfig: 清空内存列表后从磁盘重读 (恢复备份覆盖文件后调用) */
     override fun upConfig() {
-        configs.clear()
-        configs.addAll(ThemeConfigStore.load())
+        ThemeConfigStore.withLock {
+            val disk = ThemeConfigStore.loadUnlocked()
+            configs.clear()
+            configs.addAll(disk)
+        }
     }
 
     /**

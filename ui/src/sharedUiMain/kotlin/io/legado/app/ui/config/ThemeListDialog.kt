@@ -22,9 +22,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.help.config.ThemeConfigData
 import io.legado.app.help.config.ThemeConfigProviders
+import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDialogScaffold
@@ -108,8 +110,13 @@ fun ThemeListDialog(
                 if (clipText != null) {
                     val config = parseThemeConfig(clipText)
                     if (config != null) {
-                        provider.addConfig(config)
-                        dataVersion++
+                        try {
+                            provider.addConfig(config)
+                            dataVersion++
+                        } catch (e: Throwable) {
+                            AppLog.put("导入主题失败\n${e.message}", e)
+                            Toasters.get().toast(e.message ?: e.toString())
+                        }
                     }
                 }
             }) {
@@ -154,8 +161,13 @@ fun ThemeListDialog(
                             onShare(json)
                         },
                         onDelete = {
-                            provider.delConfig(position - builtinCount)
-                            dataVersion++
+                            try {
+                                provider.delConfig(position - builtinCount)
+                                dataVersion++
+                            } catch (e: Throwable) {
+                                AppLog.put("删除主题失败\n${e.message}", e)
+                                Toasters.get().toast(e.message ?: e.toString())
+                            }
                         },
                     )
                 }

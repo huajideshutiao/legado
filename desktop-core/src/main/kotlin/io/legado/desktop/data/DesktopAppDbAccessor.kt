@@ -75,4 +75,9 @@ class DesktopAppDbAccessor : AppDbAccessor {
     override suspend fun <R> runInTransactionSuspending(block: suspend () -> R): R {
         return appDb.runInImmediateTransaction(block)
     }
+
+    override suspend fun <R> runInTransactionSuspending(
+        onCommitted: () -> Unit,
+        block: suspend () -> R,
+    ): R = appDb.runInImmediateTransaction(onCommitted, block)
 }

@@ -1,5 +1,8 @@
 package io.legado.desktop.model.fileBook
 
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.CancellationException
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.exception.InvalidBooksDirException
@@ -134,12 +137,20 @@ object DesktopImportBook {
         selection: List<ImportFileItem>,
         onComplete: () -> Unit,
         onNeedBooksDir: (suspend () -> Boolean)? = null,
+        scope: CoroutineScope,
     ) {
         scope.launch {
             selection.filterIsInstance<DesktopImportFile>().forEach { item ->
-                runCatching { importOne(item, onNeedBooksDir) }
-                    .onSuccess { item.isOnBookShelf = true }
-                    .onFailure { AppLog.put("导入 ${item.name} 出错\n${it.message}", it) }
+                // 每个新条目提交前检查请求是否已取消
+                currentCoroutineContext().ensureActive()
+                try {
+                    importOne(item, onNeedBooksDir)
+                    item.isOnBookShelf = true
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    AppLog.put("导入 ${item.name} 出错\n${e.message}", e)
+                }
             }
             refreshShelfKeys()
             ImportBookShared.refresh()
@@ -153,10 +164,10 @@ object DesktopImportBook {
         onNeedBooksDir: (suspend () -> Boolean)?,
     ) {
         try {
-            FileBook.importLocalFile(item.file.absolutePath)
+            FileBook.importLocalFile(item.file.absolutePath, kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job])
         } catch (e: InvalidBooksDirException) {
             if (onNeedBooksDir?.invoke() != true) throw e
-            FileBook.importLocalFile(item.file.absolutePath)
+            FileBook.importLocalFile(item.file.absolutePath, kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job])
         }
     }
 }

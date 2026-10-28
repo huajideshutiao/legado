@@ -27,6 +27,7 @@ import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.ContentProcessorAccessor
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.ThemeConfigStore
 import io.legado.app.help.config.AppConfigAccessor
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.SourceConfig
@@ -126,6 +127,17 @@ object WebBookProvidersImpl :
     override suspend fun <R> runInTransactionSuspending(block: suspend () -> R): R {
         return appDb.useWriterConnection { transactor ->
             transactor.immediateTransaction { block() }
+        }
+    }
+
+    override suspend fun <R> runInTransactionSuspending(
+        onCommitted: () -> Unit,
+        block: suspend () -> R,
+    ): R {
+        return appDb.useWriterConnection { transactor ->
+            val result = transactor.immediateTransaction { block() }
+            onCommitted()
+            result
         }
     }
 
@@ -457,21 +469,24 @@ object WebBookProvidersImpl :
     // 桥接 ThemeConfig 单例, 供 ImportThemeViewModelShared 走 provider 间接调用。
     // ThemeConfig 依赖 SharedPreferences + File + Context, 留 app 端。
     override fun getConfigList(): List<ThemeConfigData> =
+        // configList getter 内部已持库锁并返回快照, 不再嵌套加锁
         ThemeConfig.configList.map { it.toThemeConfigData() }
 
     override fun addConfig(config: ThemeConfigData) {
         ThemeConfig.addConfig(config.toThemeConfig())
     }
 
+    override fun addConfigs(configs: List<ThemeConfigData>) {
+        ThemeConfig.addConfigs(configs.map { it.toThemeConfig() })
+    }
+
     override fun delConfig(index: Int) {
         ThemeConfig.delConfig(index)
     }
 
-    /** 对照 ThemeCustomizeDialog.saveToConfig: configList[index] = ... + save() */
+    /** 对照 ThemeCustomizeDialog.saveToConfig: 索引替换 + 同一锁内完整保存/发布 */
     override fun replaceConfig(index: Int, config: ThemeConfigData) {
-        if (index !in ThemeConfig.configList.indices) return
-        ThemeConfig.configList[index] = config.toThemeConfig()
-        ThemeConfig.save()
+        ThemeConfig.replaceConfig(index, config.toThemeConfig())
     }
 
     /** 包装 ThemeConfig.applyBuiltin (清 pref + applyDayNight 含 postEvent) */

@@ -100,7 +100,10 @@ object OhosDirAuthorizations {
         for (uri in matchedUris) {
             val result = activateDirectoryPermissions(listOf(uri))
             if (result.ok && uri in result.activatedUris) return
-            if (result.code == NO_PERSIST_CAPABILITY) return
+            // 801 是"设备不支持目录授权持久化", 不是授权成功; 不能当作本次访问已获准
+            if (result.code == NO_PERSIST_CAPABILITY) {
+                throw SecurityException("设备不支持目录授权持久化, 无法授权该目录: $path")
+            }
             val failure = activationFailure(uri, result)
             if (firstFailure == null) firstFailure = failure
         }

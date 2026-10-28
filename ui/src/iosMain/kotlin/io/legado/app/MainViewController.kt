@@ -201,12 +201,9 @@ fun MainViewController(): UIViewController {
                     // legado:// deep link 导入对话框宿主 (投递侧: iOSApp.swift onOpenURL → handleLegadoDeepLink)
                     DeepLinkImportHost()
                     // 文件关联分发: 冷启动直投先排队, 首帧组合完成 (授权面/导航面就绪) 后按序消费;
-                    // 本 effect 在主窗口组合内 —— 分发任务随窗口存亡 (窗口操作寿命)
+                    // 本 effect 在主窗口组合内 —— 分发任务随窗口存亡 (窗口操作寿命), 队列元素只交付一次
                     LaunchedEffect(Unit) {
-                        IosPlatformCapabilities.pendingAssociationFiles.collect { queued ->
-                            if (queued.isEmpty()) return@collect
-                            queued.forEach { job -> job() }
-                        }
+                        IosPlatformCapabilities.associationFileJobs.collect { job -> job() }
                     }
                     // 阅读页长按文本的自绘浮动操作菜单 (四端同一份, 见 shared ReaderTextActionMenu)
                     IosReaderPlatformProvider.TextSelectionHost()

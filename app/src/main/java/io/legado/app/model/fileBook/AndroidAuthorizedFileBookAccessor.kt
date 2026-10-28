@@ -51,6 +51,21 @@ class AndroidAuthorizedFileBookAccessor(
         AndroidDirAuthorizations.ensureBookFileUsage(archiveFileUri)
         return delegate.importFromArchive(archiveFileUri, saveFileName, filter)
     }
+
+    override fun importLocalFile(uriStr: String, parent: kotlinx.coroutines.Job?): Book {
+        AndroidDirAuthorizations.ensureBookFileUsage(uriStr)
+        return delegate.importLocalFile(uriStr, parent)
+    }
+
+    override fun importFromArchive(
+        archiveFileUri: String,
+        saveFileName: String?,
+        parent: kotlinx.coroutines.Job?,
+        filter: ((String) -> Boolean)?,
+    ): List<Book> {
+        AndroidDirAuthorizations.ensureBookFileUsage(archiveFileUri)
+        return delegate.importFromArchive(archiveFileUri, saveFileName, parent, filter)
+    }
 }
 
 /**

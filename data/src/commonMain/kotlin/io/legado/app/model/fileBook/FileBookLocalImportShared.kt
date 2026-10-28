@@ -1,5 +1,7 @@
 package io.legado.app.model.fileBook
 
+import kotlinx.coroutines.Job
+
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
@@ -46,6 +48,7 @@ object FileBookLocalImportShared {
         lastModified: Long,
         storedRef: String,
         archiveHasBookFile: (String) -> Boolean,
+        parent: kotlinx.coroutines.Job? = null,
     ): Book {
         if (size == 0L) throw EmptyFileException("Unexpected empty File")
         val (name, author) = accessor.analyzeNameAuthor(fileName)
@@ -54,7 +57,9 @@ object FileBookLocalImportShared {
             fileName.endsWith(".cbz", true) -> type = BookType.image or BookType.local
             AppPattern.archiveFileRegex.matches(fileName) -> {
                 if (archiveHasBookFile(ref)) {
-                    return accessor.importFromArchive(ref) { FileBook.isBookFile(it) }.firstOrNull()
+                    return accessor.importFromArchive(ref, null, parent) {
+                        FileBook.isBookFile(it)
+                    }.firstOrNull()
                         ?: throw NoStackTraceException(appString(AppStringKey.unsupport_archivefile_entry))
                 }
             }

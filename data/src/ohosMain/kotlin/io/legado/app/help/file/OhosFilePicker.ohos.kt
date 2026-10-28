@@ -3,6 +3,7 @@ package io.legado.app.help.file
 import io.legado.app.constant.AppLog
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.KS_JSON
+import kotlinx.coroutines.Job
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlin.io.encoding.Base64
@@ -25,22 +26,53 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 //   → pickDocuments 解析 uris 返回 List<String>
 // ```
 //
-// # 降级策略 (桥接未就绪时, 与 stub 行为一致)
-// [OhosNativeBridge.isFilePickerBridgeReady] 返回 false 或 invokeFilePickerSync 返回 null /
-// 响应 ok=false / 用户取消 (cancelled=true) 时, pickDocuments/pickDocumentContent 返回 null,
-// 让调用方 (ImportBookSourceViewModelShared 等) 降级处理 (与 iOS 取消返回 null 语义一致)。
+// # 降级与失败
+// [OhosNativeBridge.isFilePickerBridgeReady] 返回 false (napi 未接入) 时, 选择类接口返回 null,
+// 调用方按取消降级。桥回传 ok=false 是真实失败 (权限/文件/参数/通道失效), 以
+// [OhosFilePickerException] 抛出并带上错误码与原因, 由调用方如实告知用户 —— 不折成"用户取消"。
+// 用户取消由 ArkTS 侧以空数组识别 (cancelled=true), 选择类接口同样返回 null。
+
+/**
+ * 文件选择桥回传的真实失败 (非用户取消)。
+ *
+ * [message] 带桥给出的错误码与原因 (如 `code=13900020 Invalid argument`), 供调用方直接展示。
+ */
+class OhosFilePickerException(
+    message: String,
+    /** 通道在请求运行期间失效: 消费已结算, 但文件 IO 终态由 ArkTS 清理。 */
+    val channelClosed: Boolean = false,
+) : Exception(message)
+
+/** 把桥响应的失败明细拼成可读原因 (错误码 + 文本 + 逐条授权策略失败)。 */
+private fun FilePickerResponse.failureMessage(action: String): String = buildString {
+    append(action)
+    append("失败")
+    code?.takeIf { it != 0 }?.let { append(" (code=").append(it).append(')') }
+    error?.takeIf { it.isNotBlank() }?.let { append(": ").append(it) }
+    policyErrors.orEmpty().takeIf { it.isNotEmpty() }?.let { errors ->
+        append(' ')
+        append(errors.joinToString { "policyCode=${it.code} uri=${it.uri}" })
+    }
+}
+
+/** 真实失败: 抛 [OhosFilePickerException] (携带 [action] 与桥给的原因)。 */
+private fun FilePickerResponse.throwFailure(action: String): Nothing =
+    throw OhosFilePickerException(failureMessage(action), channelClosed == true)
 
 /**
  * 选择文档 (对照 iOS pickDocuments / desktop FileDialog)。
  *
  * @param fileSuffixes 文件扩展名过滤 (不含点, 如 "json"/"txt"), ArkTS 侧拼成 DocumentViewPicker 的 fileSuffixFilters; 空列表表示不限制
  * @param allowsMultiple 是否允许多选
+ * @param parent 消费方协程的 Job: 它被撤销时等待立即结束 (选择结果不再交给任何人)
  * @return 选中文件 URI 列表, 用户取消或桥接未就绪返回 null
+ * @throws OhosFilePickerException 真实失败 (权限/参数/通道失效等), 携带错误码与原因
  */
 @OptIn(ExperimentalEncodingApi::class)
 fun pickDocuments(
     fileSuffixes: List<String>,
     allowsMultiple: Boolean,
+    parent: Job? = null,
 ): List<String>? {
     // 桥接未就绪: 降级返回 null (与 stub 行为一致, 调用方降级处理)
     if (!OhosNativeBridge.isFilePickerBridgeReady()) return null
@@ -48,33 +80,73 @@ fun pickDocuments(
     val payload = KS_JSON.encodeToString(
         PickDocumentsPayload(fileSuffixes = fileSuffixes, allowsMultiple = allowsMultiple)
     )
-    val resultJson = OhosNativeBridge.invokeFilePickerSync("pickDocuments", payload) ?: return null
-    val resp = runCatching { KS_JSON.decodeFromString(FilePickerResponse.serializer(), resultJson) }.getOrNull()
-    if (resp == null || !resp.ok) return null
+    val resultJson = OhosNativeBridge.invokeFilePickerSync("pickDocuments", payload, parent)
+        ?: return null
+    val resp = runCatching { KS_JSON.decodeFromString(FilePickerResponse.serializer(), resultJson) }
+        .getOrElse { throw OhosFilePickerException("选择文件响应解析失败: $resultJson") }
+    if (!resp.ok) resp.throwFailure("选择文件")
     // 用户取消: 返回 null (与 iOS documentPickerDidCancel → resume(null) 语义一致)
     if (resp.cancelled == true) return null
-    return resp.uris
+    return resp.uris.orEmpty()
 }
 
 /**
  * 读取文档内容 (对照 iOS pickDocumentContent / desktop File.readBytes)。
  *
  * @param uri 从 [pickDocuments] 返回的文件 URI
- * @return 文件字节内容, 读取失败或桥接未就绪返回 null
+ * @param parent 消费方协程的 Job: 它被撤销时等待立即结束 (读取结果不再交给任何人)
+ * @return 文件字节内容, 桥接未就绪返回 null
+ * @throws OhosFilePickerException 真实失败 (文件不可读/已删除/通道失效等), 携带错误码与原因
  */
 @OptIn(ExperimentalEncodingApi::class)
-fun pickDocumentContent(uri: String): ByteArray? {
+fun pickDocumentContent(uri: String, parent: Job? = null): ByteArray? {
     // 桥接未就绪: 降级返回 null
     if (!OhosNativeBridge.isFilePickerBridgeReady()) return null
 
     val payload = KS_JSON.encodeToString(PickDocumentContentPayload(uri = uri))
-    val resultJson = OhosNativeBridge.invokeFilePickerSync("pickDocumentContent", payload) ?: return null
-    val resp = runCatching { KS_JSON.decodeFromString(FilePickerResponse.serializer(), resultJson) }.getOrNull()
-    if (resp == null || !resp.ok) return null
-    val data = resp.data ?: return null
+    val resultJson = OhosNativeBridge.invokeFilePickerSync("pickDocumentContent", payload, parent)
+        ?: return null
+    val resp = runCatching { KS_JSON.decodeFromString(FilePickerResponse.serializer(), resultJson) }
+        .getOrElse { throw OhosFilePickerException("读取文件响应解析失败: $resultJson") }
+    if (!resp.ok) resp.throwFailure("读取文件")
+    val data = resp.data
+        ?: throw OhosFilePickerException("读取文件失败: 桥未回传文件内容")
     // 空文件: ArkTS 侧返回空字符串, 解码为 ByteArray(0)
     if (data.isEmpty()) return ByteArray(0)
-    return runCatching { Base64.decode(data) }.getOrNull()
+    return runCatching { Base64.decode(data) }.getOrElse {
+        throw OhosFilePickerException("读取文件失败: 文件内容解码失败")
+    }
+}
+
+/**
+ * 把选中的文档 URI 以 SDK FD 异步复制到 [destPath] (大文件不经过 base64/整份内存)。
+ *
+ * @return 复制成功 true; 桥接未就绪 false
+ * @throws OhosFilePickerException 真实失败 (不可读/目标不可写/通道失效), 携带错误码
+ */
+fun copyDocumentTo(uri: String, destPath: String, parent: Job? = null): Boolean {
+    if (!OhosNativeBridge.isFilePickerBridgeReady()) return false
+    val payload = KS_JSON.encodeToString(
+        CopyDocumentPayload(
+            uri = uri,
+            destPath = destPath,
+            destDir = destPath.substringBeforeLast('/'),
+        )
+    )
+    val resultJson = OhosNativeBridge.invokeFilePickerSync(
+        "copyDocumentTo", payload, parent, awaitOnCancel = true,
+    )
+        ?: return false
+    val resp = runCatching { KS_JSON.decodeFromString(FilePickerResponse.serializer(), resultJson) }
+        .getOrElse { throw OhosFilePickerException("保存导入副本响应解析失败: $resultJson") }
+    if (resp.cancelled == true) throw kotlinx.coroutines.CancellationException("保存导入副本已取消")
+    if (!resp.ok) resp.throwFailure("保存导入副本")
+    return true
+}
+
+/** 消费侧已结算但复制目标仍归本请求: 通知 ETS 在真实 IO 终结后按该目录回收。 */
+fun releasePickedDir(destDir: String, destPath: String) {
+    OhosNativeBridge.releasePickedDir(destDir, destPath)
 }
 
 /**
@@ -86,21 +158,28 @@ fun pickDocumentContent(uri: String): ByteArray? {
  *
  * @param extension 图片扩展名 (不含点, 如 "jpg", 由调用方按字节魔数判定)
  * @param bytes 图片字节
- * @return 是否写入成功 (未授予相册权限 / 写入失败均为 false, 属设备环境条件, 调用方 toast)
- * @throws IllegalStateException 桥未就绪 / 桥调用超时 (本端不变量被破坏)
+ * @param parent 消费方协程的 Job: 它被撤销时等待立即结束 (保存结果不再交给任何人)
+ * @return 写入成功返回 true; 相册未授权/图库拒绝/桥回传失败返回 false (原因已记日志, 调用方报失败)
+ * @throws IllegalStateException 桥未就绪 / 桥调用失败 / 消费方已撤销 (本端不变量被破坏)
  */
 @OptIn(ExperimentalEncodingApi::class)
-fun saveImageToAlbum(extension: String, bytes: ByteArray): Boolean {
+fun saveImageToAlbum(extension: String, bytes: ByteArray, parent: Job? = null): Boolean {
     check(OhosNativeBridge.isFilePickerBridgeReady()) {
         "鸿蒙文件保存桥未就绪: napi filePicker tsfn 未注册 (EntryAbility.registerFilePickerCallback 未执行)"
     }
     val payload = KS_JSON.encodeToString(
         SaveImageToAlbumPayload(extension = extension, data = Base64.encode(bytes))
     )
-    val resultJson = OhosNativeBridge.invokeFilePickerSync("saveImageToAlbum", payload)
-        ?: error("鸿蒙相册保存桥调用失败: 桥未就绪或 tsfn 调用异常")
-    val resp = runCatching { KS_JSON.decodeFromString(FilePickerResponse.serializer(), resultJson) }.getOrNull()
-        ?: error("鸿蒙相册保存响应解析失败: $resultJson")
+    val resultJson = OhosNativeBridge.invokeFilePickerSync("saveImageToAlbum", payload, parent)
+        ?: error("鸿蒙相册保存桥调用失败: 桥未就绪、消费方已撤销或 tsfn 调用异常")
+    val resp = runCatching { KS_JSON.decodeFromString(FilePickerResponse.serializer(), resultJson) }
+        .getOrElse {
+            AppLog.put("鸿蒙相册保存响应解析失败: $resultJson")
+            return false
+        }
+    if (!resp.ok) {
+        AppLog.put("鸿蒙相册保存失败: ${resp.failureMessage("保存图片到相册")}")
+    }
     return resp.ok
 }
 
@@ -114,26 +193,25 @@ fun saveImageToAlbum(extension: String, bytes: ByteArray): Boolean {
  * Phone (无 FolderSelection syscap): ArkTS 降级“选一个文件取父目录”返回原 URI
  * (path 为 null), 由调用方按原折回规则处理。
  *
- * @return 选中目录 (uri + 转换路径); 用户取消/桥未就绪/持久化或转换失败返回 null
+ * @param parent 消费方协程的 Job: 它被撤销时等待立即结束 (选择结果不再交给任何人)
+ * @return 选中目录 (uri + 转换路径); 用户取消/桥未就绪返回 null
+ * @throws OhosFilePickerException 持久化/转换等真实失败, 携带错误码与原因
  */
-fun pickDirectory(): OhosPickedDirectory? {
+fun pickDirectory(parent: Job? = null): OhosPickedDirectory? {
     // 桥接未就绪: 降级返回 null
     if (!OhosNativeBridge.isFilePickerBridgeReady()) return null
 
     val payload = KS_JSON.encodeToString(PickDirectoryPayload())
-    val resultJson = OhosNativeBridge.invokeFilePickerSync("pickDirectory", payload) ?: return null
-    val resp = runCatching { KS_JSON.decodeFromString(FilePickerResponse.serializer(), resultJson) }.getOrNull()
+    val resultJson = OhosNativeBridge.invokeFilePickerSync("pickDirectory", payload, parent)
         ?: return null
-    if (!resp.ok) {
-        val detail = resp.policyErrors.orEmpty()
-            .joinToString { "policyCode=${it.code} uri=${it.uri}" }
-        AppLog.put("选择目录失败 errCode=${resp.code ?: 0} ${resp.error ?: ""} $detail")
-        return null
-    }
+    val resp = runCatching { KS_JSON.decodeFromString(FilePickerResponse.serializer(), resultJson) }
+        .getOrElse { throw OhosFilePickerException("选择目录响应解析失败: $resultJson") }
+    if (!resp.ok) resp.throwFailure("选择目录")
     // 用户取消: 返回 null
     if (resp.cancelled == true) return null
     // maxSelectNumber=1, 取首个 URI; Phone 分支无 paths (path=null)
-    val uri = resp.uris?.firstOrNull() ?: return null
+    val uri = resp.uris?.firstOrNull()
+        ?: throw OhosFilePickerException("选择目录失败: 桥未回传目录 URI")
     return OhosPickedDirectory(uri = uri, path = resp.paths?.firstOrNull())
 }
 
@@ -146,14 +224,15 @@ fun pickDirectory(): OhosPickedDirectory? {
  * [ActivatePermissionsResult.policyErrors] 为逐条失败明细 (含 policyCode)。
  *
  * @param uris 已持久化的目录授权 URI 列表 (上限 500)
+ * @param parent 消费方协程的 Job: 它被撤销时等待立即结束
  */
-fun activateDirectoryPermissions(uris: List<String>): ActivatePermissionsResult {
+fun activateDirectoryPermissions(uris: List<String>, parent: Job? = null): ActivatePermissionsResult {
     if (!OhosNativeBridge.isFilePickerBridgeReady()) {
         return ActivatePermissionsResult(ok = false, code = 0, message = "filePicker 桥未就绪")
     }
     val payload = KS_JSON.encodeToString(ActivatePermissionsPayload(uris = uris))
-    val resultJson = OhosNativeBridge.invokeFilePickerSync("activateDirectoryPermissions", payload)
-        ?: return ActivatePermissionsResult(ok = false, code = 0, message = "桥调用超时或 tsfn 调用异常")
+    val resultJson = OhosNativeBridge.invokeFilePickerSync("activateDirectoryPermissions", payload, parent)
+        ?: return ActivatePermissionsResult(ok = false, code = 0, message = "桥未就绪、调用被拒或消费方已撤销")
     val resp = runCatching { KS_JSON.decodeFromString(FilePickerResponse.serializer(), resultJson) }.getOrNull()
         ?: return ActivatePermissionsResult(ok = false, code = 0, message = "响应解析失败: $resultJson")
     if (!resp.ok) {
@@ -181,6 +260,15 @@ private data class PickDocumentsPayload(
 @Serializable
 private data class PickDocumentContentPayload(
     val uri: String,
+)
+
+/** copyDocumentTo 请求 payload: 源 URI + 调用方独占目录内的目标路径。 */
+@Serializable
+private data class CopyDocumentPayload(
+    val uri: String,
+    val destPath: String,
+    /** 本次请求独占目录: 通道失效时由 ArkTS 在 IO 真终结后一并清理。 */
+    val destDir: String,
 )
 
 /** saveImageToAlbum 请求 payload (Kotlin → ArkTS, data 为 base64 编码图片字节)。 */
@@ -253,6 +341,8 @@ private data class FilePickerResponse(
     val cancelled: Boolean? = null,
     val data: String? = null,
     val error: String? = null,
+    /** 通道在请求运行期间失效 (窗口销毁): 消费可结算, 但运行中的文件 IO 仍由 ArkTS 侧收尾。 */
+    val channelClosed: Boolean? = null,
     // pickDirectory: 与 uris 一一对应的沙箱路径 (ArkTS fileUri.FileUri(uri).path 官方转换; Phone 分支不转换)
     val paths: List<String>? = null,
     // BusinessError.code (801/13900001 等)

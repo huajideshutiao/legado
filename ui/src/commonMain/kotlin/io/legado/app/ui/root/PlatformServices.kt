@@ -73,7 +73,7 @@ data class PickedFile(val ref: String, val name: String)
 
 /** 文件选择器：单选/多选/保存。 */
 interface FilePickerService {
-    fun pickFile(filter: FileFilter): String?
+    suspend fun pickFile(filter: FileFilter): String?
 
     /**
      * 弹系统面板多选文件 (书籍与字体导入用)。
@@ -85,7 +85,7 @@ interface FilePickerService {
      *
      * @return 选定文件列表; 用户取消返回空列表
      */
-    fun pickFiles(filter: FileFilter): List<PickedFile>
+    suspend fun pickFiles(filter: FileFilter): List<PickedFile>
 
     /**
      * 弹本端"保存到文件"入口, 由平台把 [text] 写进用户选定的目标, 返回保存后的引用。
@@ -102,12 +102,12 @@ interface FilePickerService {
      * @return 保存后的引用; 用户取消返回 null (调用方静默)
      * @throws 写入失败 (含临时件准备失败) 抛出, 调用方如实报失败
      */
-    fun saveText(suggestedName: String, text: String): SavedRef?
+    suspend fun saveText(suggestedName: String, text: String): SavedRef?
 
     /**
      * 同 [saveText], 内容来源是本地文件 [srcPath] (整份复制, 流式不整份读入内存)。
      */
-    fun saveFromFile(srcPath: String, suggestedName: String): SavedRef?
+    suspend fun saveFromFile(srcPath: String, suggestedName: String): SavedRef?
 
     /**
      * 保存图片字节到本端的图片落点 (书签分享卡片导出; 图片查看器长按保存在
@@ -117,7 +117,7 @@ interface FilePickerService {
      * 返回: true=写入成功; false=写入失败; null=用户取消选择位置（调用方应静默）。
      * 未实现端返回 false（调用方 toast 失败）。
      */
-    fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? = false
+    suspend fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? = false
 
     /**
      * 图片查看器长按保存的落点是否为系统相册。
@@ -156,7 +156,7 @@ interface FilePickerService {
      * @param forcePickDir true = 忽略记忆目录强制重选 (WebView 长按菜单的"选择文件夹")
      * @return true=写入成功, false=写入失败, null=用户取消选目录 (调用方静默)
      */
-    fun saveImageRememberingDir(
+    suspend fun saveImageRememberingDir(
         fileName: String,
         bytes: ByteArray,
         forcePickDir: Boolean = false,
@@ -187,7 +187,7 @@ interface FilePickerService {
      *
      * @return true=已写入, false=写入失败, null=用户取消选择位置 (调用方静默)
      */
-    fun saveImageToUser(fileName: String, bytes: ByteArray): Boolean? =
+    suspend fun saveImageToUser(fileName: String, bytes: ByteArray): Boolean? =
         if (imageViewerSavesToAlbum) saveImageBytes(fileName, bytes)
         else saveImageRememberingDir(fileName, bytes)
 
@@ -200,7 +200,7 @@ interface FilePickerService {
      *
      * 各端按需实现, 默认返回 null 由调用方降级
      */
-    fun pickDirectory(usage: DirUsage): String? = null
+    suspend fun pickDirectory(usage: DirUsage): String? = null
 
     /**
      * 目录可写性预检 (对照 app 端 BackupConfigFragment.backup 的 FileDoc.checkWrite)。

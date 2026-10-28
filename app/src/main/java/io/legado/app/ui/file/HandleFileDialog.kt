@@ -210,12 +210,20 @@ internal class HandleFileDialog(
     }
 
     private fun checkPermissions(success: () -> Unit) {
+        // 新权限请求前先撤销上一条未终结的请求, 避免同一弹窗叠加多个回调
+        permissions?.cancel()
         permissions = PermissionsCompat.Builder().addPermissions(*Permissions.Group.STORAGE)
             .rationale(androidAppString("tip_perm_request_storage"))
-            .onGranted { success() }.onDenied {
-                request.deliver(null)
-            }.onError {
-                request.deliver(null)
+            .onGranted {
+                // 请求可能在权限回传前已取消/收口: 不再拉起应用内选择器
+                if (request.isActive) success()
+            }
+            .onDenied {
+                if (request.isActive) request.deliver(null)
+            }
+            .onError { e ->
+                // 启动权限页失败/系统异常: 真实失败终结, 不冒充取消
+                if (request.isActive) request.deliverError(e)
             }.request()
     }
 

@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.BuildConfig
@@ -43,6 +44,7 @@ import io.legado.app.constant.DirUsage
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.appInfo
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.help.StartupMaintenanceShared
 import io.legado.app.help.book.BookHelp
@@ -115,7 +117,6 @@ import io.legado.app.ui.root.LaunchRequestBus
 import io.legado.app.ui.root.LegadoApp
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
-import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.ShareTextTarget
 import io.legado.app.ui.root.shareTextTarget
 import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
@@ -164,12 +165,27 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
      * 待保存图片的来源随请求参数携带 (对照原版 value 契约), 取消只结束当次请求。 */
     private lateinit var selectImageDir: HandleFileLauncher
     private fun onSelectImageDir(result: HandleFileContract.Result) {
+        result.error?.let { e ->
+            toastOnUi(e.message ?: "选择图片保存目录失败")
+            AppLog.put("选择图片保存目录失败", e)
+            return
+        }
         val uri = result.uri ?: return
         ACache.get().put(AppConst.imagePathKey, uri.toString())
         // 图片保存目录也可被本地书引用, 登记用途供书籍文件访问校验
         AndroidDirAuthorizations.remember(uri.toString(), DirUsage.ImageSave)
-        // 目录选定后继续待保存的图片 (来源由发起时的 value 携带)
-        result.value?.let { saveImage(it, uri) }
+        val src = result.value ?: return
+        val book = result.book
+        if (book != null) {
+            saveImage(src, uri, book)
+            return
+        }
+        // 配置重建后回传: 按发起时的书籍地址取回快照, 不反查当前阅读书
+        val bookUrl = result.bookUrl ?: return
+        lifecycleScope.launch {
+            val restored = runCatching { AppDbProviders.get().bookDao.getBook(bookUrl) }.getOrNull()
+            if (restored != null) saveImage(src, uri, restored)
+        }
     }
 
     // 阅读页屏幕常亮管理 (对照原版 ReadBookEventHandler.upScreenTimeOut/screenOffTimerStart)
@@ -195,9 +211,19 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     private lateinit var readerPlatform: AndroidReaderPlatformProvider
     private lateinit var services: AndroidPlatformServices
 
+    /** 主界面导入宿主的 ViewModelStore (只恢复本 Activity 自己的会话) */
+    private val mainImportSessionHolder by viewModels<io.legado.app.ui.association.DeepLinkImportSessionViewModel>()
+
     /** 导入书籍: SAF 选根目录 (对照 ImportBookActivity.selectFolder: 写 pref 后重建 rootDoc 并读目录)。 */
     private lateinit var importSelectFolder: HandleFileLauncher
     private fun onImportSelectFolder(result: HandleFileContract.Result) {
+        result.error?.let { e ->
+            toastOnUi(e.message ?: "选择书籍目录失败")
+            AppLog.put("选择书籍目录失败", e)
+            // 失败也终结本次在途标记, 否则下次 launchImportFolderPicker 永久被 pending 挡住
+            capabilities.onImportFolderSelected(false)
+            return
+        }
         if (result.uri != null) {
             AppConfig.importBookPath = result.uri.toString()
             // 导入根目录下的文件按本地书读入, 登记为书籍用途
@@ -257,9 +283,11 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     override fun onCreate(savedInstanceState: Bundle?) {
         initializePlatform()
         super.onCreate(savedInstanceState)
+        // restoreFrom 之后才重绑: 在途"书籍保存位置"选择等待认领当前有效宿主
+        capabilities.rebindPendingBookTreePickers()
         // 注册点保持 onCreate 内 (会话由宿主基类在 onCreate 建立, 任意时机注册均安全)
-        selectImageDir = registerHandleFile(::onSelectImageDir)
-        importSelectFolder = registerHandleFile(::onImportSelectFolder)
+        selectImageDir = registerHandleFile(::onSelectImageDir, key = "main.imageDir")
+        importSelectFolder = registerHandleFile(::onImportSelectFolder, key = "main.importFolder")
     }
 
     // FilePickerService 桥接: launcher 须在 Activity STARTED 前注册, 交给 AndroidFilePickerService 阻塞等待回调
@@ -298,14 +326,17 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
                 refresh = { refreshImage(src) },
                 save = {
                     val path = ACache.get().getAsString(AppConst.imagePathKey)
+                    // 发起时绑定当前书籍: 选择目录/写盘期间切书或退出阅读页不影响本次保存
+                    val book = ActiveReadBookRegistry.current?.bookValue
                     if (path.isNullOrEmpty()) {
-                        // 待保存来源随请求参数携带 (对照原版 selectImageDir.launch { value = src })
+                        // 待保存来源与书籍随请求参数携带 (对照原版 selectImageDir.launch { value = src })
                         selectImageDir.launch {
                             mode = HandleFileContract.DIR_SYS
                             value = src
+                            this.book = book
                         }
                     } else {
-                        saveImage(src, path.toUri())
+                        saveImage(src, path.toUri(), book)
                     }
                 },
                 selectDirectory = {
@@ -349,13 +380,14 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
      * 缓存文件存在 → 直接复制; 本地书 → 取原图流写入; 网络书缓存缺失 → 不处理 (原版行为)。
      * 写入契约以 false 表示目标没有被写入, 只有 true 才提示保存成功。
      */
-    private fun saveImage(src: String, uri: Uri) {
+    private fun saveImage(src: String, uri: Uri, book: Book?) {
         Coroutine.async(context = Dispatchers.IO) {
-            val book = ActiveReadBookRegistry.current?.bookValue ?: return@async false
-            val image = BookHelp.getImage(book, src)
+            // 按发起时绑定的书籍处理: 不反查当前阅读书, 切书/退出阅读页后仍保存原图
+            val targetBook = book ?: return@async false
+            val image = BookHelp.getImage(targetBook, src)
             when {
                 image.exists() -> FileUtils.saveImage(image, uri)
-                book.isLocal -> FileBook.getImage(book, src)?.use { input ->
+                targetBook.isLocal -> FileBook.getImage(targetBook, src)?.use { input ->
                     FileUtils.saveImage(input, uri, ".${BookHelp.getImageSuffix(src)}")
                 } ?: false
                 else -> false
@@ -487,7 +519,9 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
                 if (!consumed) LaunchRequestBus.dispatch(req)
             }
         }
-        val screenModelStore = remember { ScreenModelStore() }
+        // 页面状态持有者挂真实 ViewModelStore: 配置重建保留 (同 entry 键取回同一模型),
+        // 真正退出时由 ViewModel.onCleared 统一清理; 组合销毁不再清理它
+        val screenModelStore = pageHost.store
         val context = LocalContext.current
 
         // 阅读器注入: ReaderRoute/ReaderDrawStyle 消费, 缺省值是 error() 会崩;
@@ -515,6 +549,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
                     navigator = navigator,
                     screenModelStore = screenModelStore,
                     capabilities = capabilities,
+                    clearScreenModelStoreOnDispose = false,
                 )
             }
             // 书源 JS 弹窗/深链导入/查词等全局对话框宿主区:
@@ -526,29 +561,30 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
                 // 订阅 FlowBus(SOURCE_UI_REQUEST) 弹共享登录/源变量/验证码对话框
                 SourceUiEventBridgeHost()
                 // legado:// deep link 导入对话框宿主 (对照 iOS/鸿蒙 MainViewController 末尾挂载)。
-                // 仅前台 (RESUMED) 挂载: 透明壳 AssociationActivity 在前台时挂它自己的一份,
-                // MainActivity 若同时消费共享 pending 会双弹窗 (后台 Activity 的 Compose Dialog
-                // 窗口仍会显示); 壳 finish 后 MainActivity 回到前台, 宿主自然恢复。
+                // 宿主始终在组合中: 已接纳的请求在窗口暂停期间继续展示与执行;
+                // 仅新请求的接纳按前台 (RESUMED) 门控, 避免透明壳在前台时主窗口抢请求。
                 val lifecycleOwner = LocalLifecycleOwner.current
-                var hostVisible by remember {
+                var hostCanAdopt by remember {
                     mutableStateOf(
                         lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
                     )
                 }
                 DisposableEffect(lifecycleOwner) {
                     val observer = LifecycleEventObserver { _, event ->
-                        hostVisible = when (event) {
+                        hostCanAdopt = when (event) {
                             Lifecycle.Event.ON_RESUME -> true
                             Lifecycle.Event.ON_PAUSE -> false
-                            else -> hostVisible
+                            else -> hostCanAdopt
                         }
                     }
                     lifecycleOwner.lifecycle.addObserver(observer)
                     onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
                 }
-                if (hostVisible) {
-                    DeepLinkImportHost()
-                }
+                DeepLinkImportHost(
+                    canAdopt = hostCanAdopt,
+                    holder = mainImportSessionHolder,
+                    settleOnDispose = { !isChangingConfigurations },
+                )
                 // 阅读页长按文本的自绘浮动操作菜单 (对照桌面 DesktopReaderPlatformProvider.TextSelectionHost)
                 readerPlatform.TextSelectionHost()
                 // 阅读页长按图片的自绘浮动操作菜单 (与文本菜单同款样式, 见 ReaderImageActionMenu)
@@ -559,9 +595,14 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         }
     }
 
+    /** 页面状态与窗口宿主绑定: 由真实 ViewModelStore 持有, 配置重建保留同一份。 */
+    private val pageHost: PageScreenModelHost by lazy {
+        ViewModelProvider(this)[PageScreenModelHost::class.java]
+    }
+
     private fun initializePlatform() {
         // Content 在 BaseComposeActivity.onCreate 内首次组合，平台依赖必须先注册
-        capabilities = AndroidPlatformCapabilities(this)
+        capabilities = AndroidPlatformCapabilities(this, pageHost.windowId)
         services = AndroidPlatformServices(
             this, capabilities,
             openDocumentPicker, openDocumentsPicker, createDocumentPicker, openDocumentTreePicker,

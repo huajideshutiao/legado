@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.DirUsage
+import io.legado.app.exception.SecurityException
 import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.media.AvPlayerBufferingObserver
 import io.legado.app.help.media.AvPlayerItemStatusObserver
@@ -25,11 +26,22 @@ import io.legado.app.ui.IosStatusBarHiddenNotification
 import io.legado.app.ui.appSupportedOrientationMask
 import io.legado.app.ui.landscapeMask
 import io.legado.app.ui.requestSceneOrientation
-import io.legado.app.utils.IosSecurityScopeLease
 import io.legado.app.utils.IosSecurityScopedStorage
 import io.legado.app.utils.canonicalizeUri
 import io.legado.app.utils.hasPlayableScheme
 import io.legado.app.ui.toLocalFilePath
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okio.FileSystem
+import okio.Path.Companion.toPath
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
@@ -74,6 +86,8 @@ import platform.QuartzCore.CATransform3DMakeScale
 import platform.Foundation.NSError
 import platform.darwin.NSObject
 import platform.Foundation.NSNotificationCenter
+import platform.Foundation.NSProcessInfo
+import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSURL
 import platform.UIKit.UIColor
@@ -344,8 +358,12 @@ class IosVideoPlayerController(
     /** 本次装载真正生效的请求头 (伪头已剔除), 与 [loadedUrl] 同作装载守卫 */
     private var loadedHeaders: Map<String, String> = emptyMap()
 
-    /** 沙盒外本地视频的授权租约 (装载期间持有, 卸载/换源/释放即配对关闭); null = 当前源非沙盒外文件 */
-    private var fileScopeLease: IosSecurityScopeLease? = null
+    /** 外部视频稳定副本的准备任务: 换源/卸载/释放即取消 */
+    private var prepareJob: Job? = null
+
+    /** 当前播放所用稳定副本路径 (仅本控制器所有, 换源/释放时清理) */
+    private var stableCopyPath: String? = null
+    private val prepareScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     /** KVO 上报的缓冲态 (item.status 加载中 / timeControlStatus 等待起播), 事件驱动无轮询 */
     private var kvoBuffering = false
@@ -402,15 +420,26 @@ class IosVideoPlayerController(
         unloadMedia()
         // 沙盒外本地视频: 投递口已把 bookmark 登记进授权表, 装载期间持既有租约,
         // 卸载/换源/释放即配对关闭; 授权失效直接报错 (重试拿到的还是同一条失效授权)
-        fileScopeLease = if (url.startsWith("file://", true)) {
-            try {
-                IosSecurityScopedStorage.acquireLease(url.toLocalFilePath(), DirUsage.BookTree)
+        // 换到非本地源: 旧稳定副本不再使用, 立即回收
+        if (!url.startsWith("file://", true)) {
+            stableCopyPath?.let { runCatching { FileSystem.SYSTEM.delete(it.toPath()) } }
+            stableCopyPath = null
+        }
+        // 沙盒外本地视频: 先用协调把内容复制成稳定副本, 播放期间不再依赖授权租约
+        if (url.startsWith("file://", true)) {
+            val sourcePath = url.toLocalFilePath()
+            val lease = try {
+                IosSecurityScopedStorage.acquireLease(sourcePath, DirUsage.BookTree)
             } catch (e: SecurityException) {
                 rejectUnsupportedAddress("没有访问该视频文件的授权")
                 return
             }
-        } else {
-            null
+            val outsideScope = lease.holdsScope
+            lease.close()
+            if (outsideScope) {
+                prepareStableCopy(sourcePath, realHeaders)
+                return
+            }
         }
         val nsUrl = NSURL.URLWithString(url.canonicalizeUri()) ?: run {
             handlePlayError("视频地址不可用")
@@ -441,6 +470,48 @@ class IosVideoPlayerController(
         registerStatusObserver(newItem)
         if (keepPlaying) startPlayback()
         publishPlayback()
+    }
+
+    /**
+     * 沙盒外视频: 在协调内整份复制到临时目录, 用副本装载。
+     * 播放期间 AVPlayer 只读应用自己的临时文件, 不再依赖 security scope。
+     */
+    private fun prepareStableCopy(sourcePath: String, headers: Map<String, String>) {
+        prepareJob?.cancel()
+        prepareJob = prepareScope.launch {
+            var copiedPath: String? = null
+            try {
+                val localPath = withContext(Dispatchers.IO) {
+                    IosSecurityScopedStorage.withAccessAsync(sourcePath, DirUsage.BookTree) { scoped ->
+                        val dir = NSTemporaryDirectory().trimEnd('/') + "/legado-video"
+                        FileSystem.SYSTEM.createDirectories(dir.toPath())
+                        val name = scoped.substringAfterLast('/')
+                        val dst = "$dir/${NSProcessInfo.processInfo.globallyUniqueString}-$name"
+                        // 复制前登记: copy 抛异常时半件也能被 catch/finally 回收
+                        copiedPath = dst
+                        FileSystem.SYSTEM.copy(scoped.toPath(), dst.toPath())
+                        dst
+                    }
+                }
+                currentCoroutineContext().ensureActive()
+                prepareJob = null
+                // 新副本就绪后再删旧副本 (旧播放此时已卸载)
+                val previous = stableCopyPath
+                stableCopyPath = localPath
+                previous?.let { runCatching { FileSystem.SYSTEM.delete(it.toPath()) } }
+                loadUrl("file://$localPath", headers)
+            } catch (e: CancellationException) {
+                copiedPath?.takeIf { it != stableCopyPath }?.let {
+                    runCatching { FileSystem.SYSTEM.delete(it.toPath()) }
+                }
+                throw e
+            } catch (e: Throwable) {
+                copiedPath?.takeIf { it != stableCopyPath }?.let {
+                    runCatching { FileSystem.SYSTEM.delete(it.toPath()) }
+                }
+                rejectUnsupportedAddress("无法读取视频文件: ${e.message ?: e}")
+            }
+        }
     }
 
     override val positionMs: Long
@@ -546,12 +617,16 @@ class IosVideoPlayerController(
     }
 
     override fun release() {
+        prepareScope.cancel()
         loadedUrl = null
         loadedHeaders = emptyMap()
         unloadMedia()
         playWhenReady = false
         // 页面销毁: 连 AVPlayer 本体一起放掉 (stop 不放, 见 [unloadMedia] 注释)
         player = null
+        // 稳定副本归本控制器所有: 播放器放掉后清理
+        stableCopyPath?.let { runCatching { FileSystem.SYSTEM.delete(it.toPath()) } }
+        stableCopyPath = null
         publishPlayback()
     }
 
@@ -739,8 +814,8 @@ class IosVideoPlayerController(
         player?.pause()
         player?.replaceCurrentItemWithPlayerItem(null)
         item = null
-        fileScopeLease?.close()
-        fileScopeLease = null
+        prepareJob?.cancel()
+        prepareJob = null
     }
 
     private companion object {

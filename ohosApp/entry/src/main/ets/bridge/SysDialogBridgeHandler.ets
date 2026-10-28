@@ -1,3 +1,4 @@
+import { BusinessError } from '@kit.BasicServicesKit';
 import { UIContext } from '@ohos.arkui.UIContext';
 import promptAction from '@ohos.promptAction';
 import { BridgeRequest, BridgeResponse, dispatchBridgeRequest } from './BridgeDispatch';
@@ -146,6 +147,9 @@ interface DialogResult extends BridgeResponse {
 // 由 Index.ets aboutToAppear 注入的 UIContext (getPromptAction() 必需)
 let uiContext: UIContext | undefined;
 
+/** 本通道已受理、尚未回执的请求 id。 */
+const pendingDialogIds: Set<number> = new Set<number>();
+
 /**
  * 注入 UIContext (由 Index.ets aboutToAppear 调用)。
  *
@@ -167,7 +171,29 @@ export function handleDialogRequest(
   requestJson: string,
   callback: DialogResultCallback
 ): void {
-  dispatchBridgeRequest(requestJson, 'SysDialogBridge', handleDialogAction, callback);
+  let requestId = -1;
+  try {
+    requestId = (JSON.parse(requestJson) as BridgeRequest).requestId;
+  } catch (e) {
+    // 解析失败由 dispatchBridgeRequest 统一记日志
+  }
+  if (requestId >= 0) {
+    pendingDialogIds.add(requestId);
+  }
+  dispatchBridgeRequest(requestJson, 'SysDialogBridge', handleDialogAction,
+    (id: number, resultJson: string): void => {
+      pendingDialogIds.delete(id);
+      callback(id, resultJson);
+    });
+}
+
+/** 本通道仍在等待回执的请求 id: 通道关闭时随 0 号回执发出, 只结束本通道的请求。 */
+export function pendingDialogRequestIds(): number[] {
+  const ids: number[] = [];
+  pendingDialogIds.forEach((id: number): void => {
+    ids.push(id);
+  });
+  return ids;
 }
 
 /** 按 action 分发 (未知 action 回 ok:false, 与其余 handler 同口径)。 */
@@ -201,6 +227,10 @@ function selectAction(payloadJson: string): Promise<BridgeResponse> {
     // 无候选可弹 (调用方本应先判空): 明确失败而非弹一个空框
     return Promise.resolve({ ok: false, error: 'select: items 为空' } as BridgeResponse);
   }
+  if (uiContext == null) {
+    // 显示宿主缺失是真实失败, 不能折成"用户取消"
+    return Promise.resolve({ ok: false, error: 'uiContext 未注入' } as BridgeResponse);
+  }
   return showSelectList(payload.title ?? '', items).then((index?: number): BridgeResponse => {
     if (index == null) {
       return { ok: true, cancelled: true } as DialogResult;
@@ -215,6 +245,12 @@ function selectAction(payloadJson: string): Promise<BridgeResponse> {
  * 每个候选一个按钮, 按钮文案即候选文案 (与 Android selector / iOS UIAlertController
  * 的多 action 同形), 系统对话框自身负责长列表的排版与滚动。
  */
+/** OpenHarmony promptAction 用户取消的唯一真实信号: code 为空且 message 固定为 "cancel"。 */
+function isDialogCancel(err: Error): boolean {
+  const e = err as BusinessError;
+  return (e.code === null || e.code === undefined) && e.message === 'cancel';
+}
+
 function showSelectList(title: string, items: string[]): Promise<number | undefined> {
   const context = uiContext;
   if (context == null) {
@@ -237,13 +273,16 @@ function showSelectList(title: string, items: string[]): Promise<number | undefi
         return undefined;
       })
       .catch((err: Error): number | undefined => {
-        // 用户点遮罩/返回键关闭 → promise reject, 按未选择处理 (见模块头协议)
-        console.info('[SysDialogBridge] select cancelled: ' + JSON.stringify(err));
-        return undefined;
+        if (isDialogCancel(err)) {
+          // 返回/遮罩关闭: 官方 ShowDialog 同样是 reject(code=null,message="cancel")
+          return undefined;
+        }
+        console.error('[SysDialogBridge] select failed: ' + JSON.stringify(err));
+        throw err;
       });
   } catch (e) {
-    console.error('[SysDialogBridge] select failed: ' + JSON.stringify(e));
-    return Promise.resolve(undefined);
+    console.error('[SysDialogBridge] select throw: ' + JSON.stringify(e));
+    return Promise.reject(e);
   }
 }
 
@@ -257,6 +296,9 @@ function confirmAction(payloadJson: string): Promise<BridgeResponse> {
   } catch (e) {
     console.error('[SysDialogBridge] parse confirm payload failed: ' + payloadJson);
     return Promise.resolve({ ok: false, error: 'parse payload failed' } as BridgeResponse);
+  }
+  if (uiContext == null) {
+    return Promise.resolve({ ok: false, error: 'uiContext 未注入' } as BridgeResponse);
   }
   return showConfirm(payload).then((confirmed?: boolean): BridgeResponse => {
     if (confirmed == null) {
@@ -298,12 +340,15 @@ function showConfirm(payload: DialogConfirmPayload): Promise<boolean | undefined
         return index === 0;
       })
       .catch((err: Error): boolean | undefined => {
-        console.info('[SysDialogBridge] confirm cancelled: ' + JSON.stringify(err));
-        return undefined;
+        if (isDialogCancel(err)) {
+          return undefined;
+        }
+        console.error('[SysDialogBridge] confirm failed: ' + JSON.stringify(err));
+        throw err;
       });
   } catch (e) {
-    console.error('[SysDialogBridge] confirm failed: ' + JSON.stringify(e));
-    return Promise.resolve(undefined);
+    console.error('[SysDialogBridge] confirm throw: ' + JSON.stringify(e));
+    return Promise.reject(e);
   }
 }
 
@@ -426,7 +471,7 @@ function showForm(payload: DialogFormPayload): Promise<DialogResult> {
     const context = uiContext;
     if (context == null) {
       console.error('[SysDialogBridge] form failed: uiContext 未注入 (Index.ets 未调用 initSysDialogBridgeUiContext)');
-      resolve({ ok: true, cancelled: true } as DialogResult);
+      reject(new Error('form: uiContext 未注入'));
       return;
     }
     const fields: DialogFormField[] = payload.fields ?? [];

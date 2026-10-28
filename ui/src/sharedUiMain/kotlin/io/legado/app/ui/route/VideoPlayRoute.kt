@@ -36,6 +36,7 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.ImportStageDialog
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.RouteEntry
@@ -96,6 +97,8 @@ fun VideoPlayRoute(
     val book = remember(route) { route.book?.asBook() }
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) { VideoPlayScreenModel() }
+    // 宿主重建后保留的模型按当前平台实例重绑 (旧界面的播放器/窗口入口不得沿用)
+    LaunchedEffect(screenModel) { screenModel.rebindHost() }
     val state by screenModel.state.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -371,6 +374,9 @@ fun VideoPlayRoute(
             )
         },
     )
+
+    // 导入链用户选择阶段 (webFile 书点"上架"时的下载导入): 阶段归模型, 本组合只呈现
+    ImportStageDialog(screenModel.importStages)
 
     // 日志对话框 (对照 TocRoute AppLogDialog)
     if (showLogDialog) {

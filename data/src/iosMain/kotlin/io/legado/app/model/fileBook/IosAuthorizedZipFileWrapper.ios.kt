@@ -80,7 +80,9 @@ class IosZipFileWrapperFactory : ZipFileWrapperFactory {
         if (url.startsWith("http") || url.startsWith(BookType.webDavTag)) {
             return remote.create(book)
         }
-        val path = LocalBookLocators.get().getReadableFileRef(book)
+        // 本次协调给出的操作地址优先 (Book 身份/缓存键不变); 只有无旁路时才回旧定位
+        val path = FileBookOperationPath.current()
+            ?: LocalBookLocators.get().getReadableFileRef(book)
             ?: url.removePrefix("file://")
         val lower = path.lowercase()
         if (!lower.endsWith(".cbz") && !lower.endsWith(".zip")) return null

@@ -130,7 +130,8 @@ class EpubFile(var book: Book) {
                 else -> {
                     // 本地路径: LocalBookLocators 取当前可用的文件引用 (打不开时按文件名在
                     // 书籍保存位置/导入目录找回), 再 readBytes → EpubParser.parse
-                    val path = LocalBookLocators.get().getReadableFileRef(book)
+                    val path = FileBookOperationPath.current()
+                        ?: LocalBookLocators.get().getReadableFileRef(book)
                         ?: book.bookUrl.removePrefix("file://")
                     val bytes = File(path).readBytes()
                     EpubParser.parse(bytes)

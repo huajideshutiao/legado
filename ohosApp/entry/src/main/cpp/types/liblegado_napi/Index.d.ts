@@ -217,7 +217,8 @@ export interface LegadoNativeBridge {
    *                 'setPreferredOrientation'|'setSystemBarEnable'|'exitApplication',
    *                 enabled?: boolean, orientation?: number }`
    */
-  registerWindowCallback(callback: (json: string) => void): void;
+  /** 注册 Window 回调; 返回本次真实注册代次 (对话框 JS 后置资格用) */
+  registerWindowCallback(callback: (json: string) => void): number;
 
   // ===== Image / Media tsfn 回调注册 + ArkTS → Kotlin 回调 (KP8+ 新增) =====
 
@@ -440,7 +441,12 @@ export interface LegadoNativeBridge {
    *   - action='pickDocuments':     payload=`{ fileSuffixes: ['json', ...], allowsMultiple }` → 选文件, 回送 `{ ok, uris }` 或 `{ ok, cancelled: true }`
    *   - action='pickDocumentContent': payload=`{ uri }` → 读字节, 回送 `{ ok, data: '<base64>' }`
    */
-  registerFilePickerCallback(callback: (json: string) => void): void;
+  /** 注册文件选择回调; 返回本次真实注册代次 (ETS 队列据此同步建立源资格) */
+  registerFilePickerCallback(callback: (json: string) => void): number;
+  /** 窗口销毁: 撤销当前文件选择源资格 (排队请求不再启动) */
+  invalidateFilePickerSource(): void;
+  /** 窗口销毁: 撤销 window/filePicker/permission 三个 C++ 当前源资格 */
+  invalidateAllSources(): void;
 
   /**
    * FilePicker 操作结果回调 (ArkTS → Kotlin)。

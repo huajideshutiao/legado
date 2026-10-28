@@ -15,3 +15,9 @@ import io.legado.app.utils.IosSecurityScopedStorage
  */
 internal actual fun <T> withLocalDirAccess(path: String, usage: DirUsage, block: (String) -> T): T =
     IosSecurityScopedStorage.withAccess(path, usage, block = block)
+
+internal actual suspend fun <T> withLocalDirAccessAsync(
+    path: String,
+    usage: DirUsage,
+    block: suspend (String) -> T,
+): T = IosSecurityScopedStorage.withAccessAsync(path, usage) { block(it) }

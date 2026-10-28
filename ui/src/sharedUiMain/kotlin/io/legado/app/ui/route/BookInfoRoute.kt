@@ -5,6 +5,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -14,10 +15,8 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
-import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookSource
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelpShared
 import io.legado.app.help.book.addType
@@ -32,7 +31,6 @@ import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.config.AppConfigProviders
-import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.showSourceLogin
 import io.legado.app.help.toast.Toasters
@@ -55,6 +53,7 @@ import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.LocalSharedCoverBinding
+import io.legado.app.ui.root.ImportStageDialog
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.OnRouteLifecycle
@@ -67,6 +66,7 @@ import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.rememberSharedCoverDestinationBinding
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.ui.widget.dialog.WaitDialogHandle
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.CancellationException
@@ -109,9 +109,8 @@ fun BookInfoRoute(
     // 搜索结果进入的书 (对照 app 端 BaseReadViewModel.upBook 的 isSearchBook)
     val isSearchBook = route.book is BookRef.Search
 
-    // 加载书源 (对照 Activity viewModel.curBookSource, 供菜单与标签搜索限定当前书源)
-    // 自动加载依赖它, 故在初始化 effect 内同步查好再用
-    var bookSource by remember { mutableStateOf<BookSource?>(null) }
+    // 当前书源 (对照 Activity viewModel.curBookSource, 供菜单与标签搜索限定当前书源) 由模型持有:
+    // 宿主重建后仍可读, 不随组合丢失 (落地加载只在首次开工时查一次源)
 
     // 整书换源弹窗显示开关 (对照原版长按来源 showDialogFragment(ChangeBookSourceDialog))
     var showChangeSourceDialog by remember { mutableStateOf(false) }
@@ -134,7 +133,7 @@ fun BookInfoRoute(
         val boot = scope.launch(IoDispatcher) {
             val db = AppDbProviders.get()
             val source = if (book.isLocal) null else db.bookSourceDao.getBookSource(book.origin)
-            bookSource = source
+            screenModel.bookSource = source
             // 检查是否在书架 (对照 upBook / master loadBookInfo 的 inBookshelf 语义:
             // 书架的唯一定位是 bookUrl; 同名异源书不算在架, 否则加载目录会误把搜索/发现
             // 的书 replace+insert 进书架。同名查询仅用于 isSearchBook 的同源合并, 不参与在架判定)
@@ -266,19 +265,22 @@ fun BookInfoRoute(
                 // webFile: 下载导入后跳阅读 (对照 onReadClick isWebFile + readBook)
                 PlatformCapabilityProviders.get().handleWebFileRead(
                     b,
-                    onWaitDialog = { screenModel.upWaitDialog(it) },
-                    onAction = { screenModel.postAction(it) },
+                    scope = screenModel.pageScope,
+                    onWaitDialog = { show, handle -> screenModel.upWaitDialog(show, handle) },
+                    stages = screenModel.importStages,
                     onSuccess = { navBook ->
-                        scope.launch {
+                        // 结果经页面 scope 与待交路由状态: 旧成功闭包不直接 navigator.push,
+                        // 重建后由当前组合消费, 真退出随 pageScope 撤未提交工作
+                        screenModel.pageScope.launch {
                             screenModel.dispatch(
                                 BookInfoUiEvent.ShowBook(
                                     navBook,
                                     screenModel.lastedTitleOf(navBook)
                                 )
                             )
+                            screenModel.dispatch(BookInfoUiEvent.UpdateBookshelf(true))
+                            screenModel.postReaderNav(AppRoute.Reader(navBook.toRouteRef()))
                         }
-                        screenModel.dispatch(BookInfoUiEvent.UpdateBookshelf(true))
-                        navigator.push(AppRoute.Reader(navBook.toRouteRef()), RouteResults.READER)
                     }
                 )
                 return
@@ -350,7 +352,7 @@ fun BookInfoRoute(
         // 刷新: 重新拉取书籍信息 + 目录
         override fun onRefresh() {
             screenModel.refresh(
-                state.book ?: book, bookSource, errorLoadTocLabel, isSearchBook = isSearchBook
+                state.book ?: book, screenModel.bookSource, errorLoadTocLabel, isSearchBook = isSearchBook
             )
         }
 
@@ -378,7 +380,7 @@ fun BookInfoRoute(
         // 表单登录弹 Overlay (带上当前书, 对照原版 menu_login 预置 IntentData.book)
         override fun onLogin() {
             val b = state.book ?: book
-            val source = bookSource
+            val source = screenModel.bookSource
             showSourceLogin(source?.getKey() ?: b.origin, source, b)
         }
 
@@ -428,7 +430,7 @@ fun BookInfoRoute(
             val newValue = !b.config.splitLongChapter
             b.config.splitLongChapter = newValue
             screenModel.dispatch(BookInfoUiEvent.BumpBookTick)
-            screenModel.refresh(b, bookSource, errorLoadTocLabel, isSearchBook = isSearchBook)
+            screenModel.refresh(b, screenModel.bookSource, errorLoadTocLabel, isSearchBook = isSearchBook)
             if (!newValue) Toasters.get().toastLong(needMoreTimeLabel)
         }
 
@@ -496,9 +498,10 @@ fun BookInfoRoute(
             if (!state.inBookshelf) {
                 platform.toggleBookshelf(
                     b, inBookshelf = false,
+                    scope = screenModel.pageScope,
                     onComplete = onShelfResult,
-                    onWaitDialog = { screenModel.upWaitDialog(it) },
-                    onAction = { screenModel.postAction(it) },
+                    onWaitDialog = { show, handle -> screenModel.upWaitDialog(show, handle) },
+                    stages = screenModel.importStages,
                     // 上架时把已装载的目录一并落库 (对照原 addToBookshelf), 否则进阅读页要回源再拉一次
                     chapters = screenModel.loadedChapterList,
                 )
@@ -513,13 +516,13 @@ fun BookInfoRoute(
         override fun onSearchAuthor(author: String, submit: Boolean) {
             val tmp = author.split("::", limit = 2)
             if (tmp.size > 1) {
-                val source = bookSource ?: return
+                val source = screenModel.bookSource ?: return
                 navigator.push(AppRoute.ExploreShow(source, tmp[0], tmp[1]))
             } else {
                 navigator.push(
                     AppRoute.Search(
                         key = tmp[0],
-                        searchScope = bookSource?.takeIf { it.searchUrl != null }
+                        searchScope = screenModel.bookSource?.takeIf { it.searchUrl != null }
                             ?.let { SearchScope(it).toString() },
                         submit = submit,
                     )
@@ -531,13 +534,13 @@ fun BookInfoRoute(
         override fun onSearchKind(kind: String, submit: Boolean) {
             val tmp = kind.split("::", limit = 2)
             if (tmp.size > 1) {
-                val source = bookSource ?: return
+                val source = screenModel.bookSource ?: return
                 navigator.push(AppRoute.ExploreShow(source, tmp[0], tmp[1]))
             } else {
                 navigator.push(
                     AppRoute.Search(
                         key = tmp[0],
-                        searchScope = bookSource?.takeIf { it.searchUrl != null }
+                        searchScope = screenModel.bookSource?.takeIf { it.searchUrl != null }
                             ?.let { SearchScope(it).toString() },
                         submit = submit,
                     )
@@ -620,32 +623,13 @@ fun BookInfoRoute(
                         )
                     }
             }
-            // "去设置目录"动作消费 (对照原版 observeLiveBus: actionLive == "selectBooksDir" →
-            // localBookTreeSelect.launch → 选中后写 AppConfig.defaultBookTreeUri)。
-            // webFile 导入/下载在"书籍保存位置未设置"时由能力面发出该动作
-            // (SharedPlatformCapabilities 与 AndroidPlatformCapabilities 共四处分支),
-            // 而本页此前只有生产者没有消费者 → 用户点"阅读"只会静默失败。
-            // 复用各端既有的选目录入口 (PlatformCapabilities.pickBookTreeUri, 与
-            // "其它设置 → 书籍保存位置"同一个入口) 与既有偏好键 PreferKey.defaultBookTreeUri,
-            // 不另造第二套选目录/落盘实现; 用户取消 (uri == null) 时不动已有配置, 也不报错。
-            // 选择器由各端能力实现自行调度 (Android 直接拉起 SAF, 其余端在自己的 scope 里),
-            // 本协程在组合主线程上调用, 满足各端的线程要求。
-            launch {
-                val pref = PreferenceProviders.get()
-                screenModel.actionLive.collect { action ->
-                    if (action != "selectBooksDir") return@collect
-                    PlatformCapabilityProviders.get().pickBookTreeUri { uri ->
-                        if (uri != null) pref.putString(PreferKey.defaultBookTreeUri, uri)
-                    }
-                }
-            }
             // 对照 Activity observeLiveBus: EventBus.REFRESH_BOOK_INFO → refreshBook
             launch {
                 FlowBus.with(EventBus.REFRESH_BOOK_INFO).collect {
                     val b = screenModel.state.value.book ?: book
                     screenModel.refresh(
                         b,
-                        bookSource,
+                        screenModel.bookSource,
                         errorLoadTocLabel,
                         isSearchBook = isSearchBook
                     )
@@ -680,7 +664,7 @@ fun BookInfoRoute(
                             val source =
                                 (result.payload as? RouteResultPayload.BookSourceEdit)?.source
                                     ?: return@collect
-                            bookSource = source
+                            screenModel.bookSource = source
                             // 顺手同步源名到内存 book (对照 refresh 内 originName 同步, 不落库),
                             // 消除改源名后详情页来源行/后续传阅读页仍显示旧名
                             val b = screenModel.state.value.book ?: book
@@ -783,9 +767,9 @@ fun BookInfoRoute(
     val menuState = BookInfoMenuState(
         isLocal = currentBook.origin == BookType.localTag,
         isWebDav = currentBook.origin.startsWith(BookType.webDavTag),
-        hasSource = bookSource != null,
-        sourceHasLogin = bookSource?.hasLogin() == true,
-        sourceHasReviewRule = !bookSource?.reviewRule?.reviewUrl.isNullOrBlank(),
+        hasSource = screenModel.bookSource != null,
+        sourceHasLogin = screenModel.bookSource?.hasLogin() == true,
+        sourceHasReviewRule = !screenModel.bookSource?.reviewRule?.reviewUrl.isNullOrBlank(),
         canUpdate = currentBook.canUpdate,
         isLocalTxt = currentBook.isLocalTxt,
         splitLongChapter = currentBook.config.splitLongChapter,
@@ -859,14 +843,18 @@ fun BookInfoRoute(
     )
     } // CompositionLocalProvider(封面共享身份)
 
+    // 导入链用户选择阶段 (下载项 / 压缩包条目 / 不支持格式确认): 阶段归页面模型,
+    // 本组合只负责呈现 —— 重建即重读同一阶段, 已结算的阶段不会重显
+    ImportStageDialog(screenModel.importStages)
+
     // 整书换源弹窗 (对照原版长按来源 → ChangeBookSourceDialog 全高底部弹窗, 与阅读页换源同款)
     if (showChangeSourceDialog) {
         ChangeSourceDialogHost(
             book = state.book ?: book,
             onSourceChanged = { source, newBook, toc ->
                 showChangeSourceDialog = false
-                // bookSource 由 LaunchedEffect(book.origin) 按路由书籍加载, 换源后不会自动更新
-                bookSource = source
+                // bookSource 由模型持有, 换源后不随组合重建丢失, 这里同步当前源
+                screenModel.bookSource = source
                 scope.launch(IoDispatcher) {
                     runCatching {
                         val oldBook = screenModel.state.value.book ?: book
@@ -902,10 +890,26 @@ fun BookInfoRoute(
         onDismiss = { shelfDeleteRequest = null },
     )
 
-    // 等待对话框 (对照 app 端 BookInfoActivity.upWaitDialogStatus, webFile 流程加载指示)
-    val waitDialogVisible by screenModel.waitDialog.collectAsState()
-    WaitDialog(
-        visible = waitDialogVisible == true,
-        onDismissRequest = { screenModel.upWaitDialog(false) },
-    )
+    // webFile 下载导入成功后的阅读导航: 每请求一条待交结果, 真实分发后只消费本条
+    val readerNavs by screenModel.pendingReaderNavs.collectAsState()
+    LaunchedEffect(readerNavs) {
+        readerNavs.forEach { (navId, navRoute) ->
+            navigator.push(navRoute, RouteResults.READER)
+            screenModel.consumeReaderNav(navId)
+        }
+    }
+
+    // 等待对话框 (对照 app 端 BookInfoActivity.upWaitDialogStatus, webFile 流程加载指示);
+    // 按归属句柄逐条呈现: 句柄即能力面等待方持有的那个, 关闭也只动确切 handle,
+    // 交错下载/导入的框互不覆盖
+    val waits by screenModel.waits.collectAsState()
+    waits.forEach { (waitHandle, waitVisible) ->
+        key(waitHandle) {
+            WaitDialog(
+                visible = waitVisible,
+                handle = waitHandle,
+                onDismissRequest = { screenModel.upWaitDialog(false, waitHandle) },
+            )
+        }
+    }
 }

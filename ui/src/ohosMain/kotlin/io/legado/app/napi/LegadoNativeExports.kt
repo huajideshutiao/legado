@@ -969,6 +969,21 @@ object LegadoNativeExports {
         }
     }
 
+    @CName("legado_register_file_picker_gen_fn")
+    fun registerFilePickerGenFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>, Long, Long) -> Unit>>) {
+        OhosNativeBridge.registerFilePickerDispatchGen { json, gen, requestId ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this), gen, requestId)
+            }
+        }
+    }
+
+    /** 注入该通道本次注册的代次 (C++ 每次重绑 +1): 关闭回执按来源代次结算。 */
+    @CName("legado_set_file_picker_epoch")
+    fun setFilePickerChannelEpoch(epoch: Long) {
+        OhosNativeBridge.setFilePickerChannelEpoch(epoch)
+    }
+
     /**
      * ArkTS → Kotlin filePicker 操作结果回调 (由 legado_napi.cpp FilePickerCallback 调用)。
      *
@@ -1108,6 +1123,21 @@ object LegadoNativeExports {
         }
     }
 
+    @CName("legado_register_window_gen_fn")
+    fun registerWindowGenFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>, Long, Long) -> Unit>>) {
+        OhosNativeBridge.registerWindowDispatchGen { json, gen, requestId ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this), gen, requestId)
+            }
+        }
+    }
+
+    /** 注入该通道本次注册的代次 (C++ 每次重绑 +1): 关闭回执按来源代次结算。 */
+    @CName("legado_set_window_epoch")
+    fun setDialogChannelEpoch(epoch: Long) {
+        OhosNativeBridge.setDialogChannelEpoch(epoch)
+    }
+
     /**
      * 注入 battery dispatch 函数指针 (由 legado_napi.cpp RegisterBatteryCallback 调用)。
      *
@@ -1178,6 +1208,21 @@ object LegadoNativeExports {
                 dispatch(json.cstr.getPointer(this))
             }
         }
+    }
+
+    @CName("legado_register_permission_gen_fn")
+    fun registerPermissionGenFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>, Long, Long) -> Unit>>) {
+        OhosNativeBridge.registerPermissionDispatchGen { json, gen, requestId ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this), gen, requestId)
+            }
+        }
+    }
+
+    /** 注入该通道本次注册的代次 (C++ 每次重绑 +1): 关闭回执按来源代次结算。 */
+    @CName("legado_set_permission_epoch")
+    fun setPermissionChannelEpoch(epoch: Long) {
+        OhosNativeBridge.setPermissionChannelEpoch(epoch)
     }
 
     /**

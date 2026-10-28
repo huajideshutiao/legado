@@ -77,7 +77,8 @@ object WebFileImportShared {
         val source = bookSourceOf(book)
         val fileName = book.getExportFileName(webFile.suffix)
         val savedRef = FileBookProviders.get().saveBookFile(webFile.url, fileName, source)
-        val localBook = FileBook.importLocalFile(savedRef)
+        val parent = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+        val localBook = FileBook.importLocalFile(savedRef, parent)
         return FileBook.mergeBook(localBook, book)
     }
 
@@ -132,9 +133,11 @@ object WebFileImportShared {
     ): Book {
         val suffix = archiveEntryName.substringAfterLast(".")
         val saveFileName = book.getExportFileName(suffix)
-        val books = FileBook.importFromArchive(archivePath, saveFileName) {
-            it.contains(archiveEntryName)
-        }
+        val parent = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+        // 归档导入走 accessor 的带父门 (String 引用, commonMain 可调), 取消贯通解包/落库
+        val books = FileBookProviders.get().importFromArchive(
+            archivePath, saveFileName, parent,
+        ) { it.contains(archiveEntryName) }
         val imported = books.first()
         return FileBook.mergeBook(imported, book)
     }

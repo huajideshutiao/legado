@@ -12,8 +12,19 @@ internal object RequestManager : OnPermissionsResultCallback {
 
     private val handler = Handler(Looper.getMainLooper())
 
-    private val requestRunnable = Runnable {
-        request?.start()
+    /** 启动一个已分配的请求: 已取消且未起跑的立即让出并推进, 已起跑才等真实回传。 */
+    private fun postStart(assigned: Request) {
+        handler.post {
+            if (request !== assigned) return@post
+            if (assigned.isCancelled) {
+                request = null
+                assigned.clear()
+                startNextRequest()
+                return@post
+            }
+            assigned.markStarted()
+            assigned.start()
+        }
     }
 
     init {
@@ -40,8 +51,9 @@ internal object RequestManager : OnPermissionsResultCallback {
 
             // 上一条请求真实回传 (granted/denied/error) 清场后才轮到下一条
             if (!it.empty() && this.request == null) {
-                this.request = it.pop()
-                handler.post(requestRunnable)
+                val assigned = it.pop()
+                this.request = assigned
+                postStart(assigned)
             }
         }
     }
@@ -55,7 +67,15 @@ internal object RequestManager : OnPermissionsResultCallback {
         handler.post {
             requests?.remove(request)
             if (this.request === request) {
-                this.request?.clear()
+                if (request.isStarted) {
+                    // 已起跑: 只弃消费回调, 通道占用保留到真实回传
+                    request.clear()
+                } else {
+                    // 未起跑: 不会再有系统回传, 立即让出当前位并推进
+                    this.request = null
+                    request.clear()
+                    startNextRequest()
+                }
             }
         }
     }
@@ -65,8 +85,9 @@ internal object RequestManager : OnPermissionsResultCallback {
         request = null
 
         requests?.let {
-            request = if (it.empty()) null else it.pop()
-            request?.let { handler.post(requestRunnable) }
+            val next = if (it.empty()) null else it.pop()
+            request = next
+            next?.let(::postStart)
         }
     }
 

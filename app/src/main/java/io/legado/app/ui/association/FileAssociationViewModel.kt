@@ -44,11 +44,11 @@ class FileAssociationViewModel {
      * 完整分发: 压缩包解包后逐本展开 (包内仍只取书籍文件), 每个待导入条目一项
      * 一次性交出 —— 不存在单值多次投递被合并的缺口。
      */
-    suspend fun dispatchIntent(uri: Uri): List<DispatchOutcome> = try {
+    suspend fun dispatchIntent(uri: Uri, workPath: String = ArchiveUtils.TEMP_PATH): List<DispatchOutcome> = try {
         withContext(Dispatchers.IO) {
             val fileDoc = FileDoc.fromUri(uri, false)
             if (fileDoc.name.matches(AppPattern.archiveFileRegex)) {
-                ArchiveUtils.deCompress(fileDoc, ArchiveUtils.TEMP_PATH) {
+                ArchiveUtils.deCompress(fileDoc, workPath) {
                     it.matches(bookFileRegex)
                 }.map { dispatch(FileDoc.fromFile(it)) }
             } else {
@@ -75,5 +75,6 @@ class FileAssociationViewModel {
     }
 
     /** 单本导入落库 (调用方已在 IO 上)。 */
-    fun importBook(uri: Uri): Book = FileBook.importLocalFile(uri.toString())
+    fun importBook(uri: Uri, parent: kotlinx.coroutines.Job? = null): Book =
+        FileBook.importLocalFile(uri.toString(), parent)
 }

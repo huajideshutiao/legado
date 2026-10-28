@@ -63,6 +63,7 @@ import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.ReadMenuAction
+import io.legado.app.ui.book.read.ReadMenuController
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.ui.book.manage.ShelfDeleteConfirmDialog
 import io.legado.app.ui.book.manage.ShelfDeleteRequest
@@ -155,28 +156,45 @@ fun ReaderRoute(
         "ReaderPlatformProvider must be registered before opening ReaderRoute"
     }
 
-    val screenModel = screenModelStore.getOrCreateTyped(entry) {
-        ReaderScreenModel(
-            menuControllerFactory = { model -> provider.createMenuController(navigator, model) },
-            getBatteryLevel = { provider.getBatteryLevel() },
-            // 搜索菜单"结果"按钮 → 打开全文搜索页 (对照原版 openSearchActivity:
-            // 携带当前书/索引/结果列表, 免重搜; 列表仅首条 query 匹配时携带)
-            onOpenSearch = { model, book, word ->
-                // 带 resultKey 接收选中结果回写 (对齐 iOS/OHOS provider, 2026-08-06 修复漏接)
-                navigator.push(
-                    AppRoute.SearchContent(
-                        index = model.searchResultIndex,
-                        word = word ?: model.searchContentQuery,
-                        initialResults = model.searchResultList?.takeIf { list ->
-                            list.firstOrNull()?.query == model.searchContentQuery
-                        },
-                        book = book.toRouteRef(),
-                    ),
-                    resultKey = RouteResults.SEARCH_CONTENT,
-                )
-            },
+    // 平台绑定 (随宿主重建更换): provider 是当前注册实例, navigator 是当前导航器
+    val menuControllerFactory: (ReaderScreenModel) -> ReadMenuController = { model ->
+        provider.createMenuController(navigator, model)
+    }
+    val getBatteryLevel: () -> Int = { provider.getBatteryLevel() }
+    // 搜索菜单"结果"按钮 → 打开全文搜索页 (对照原版 openSearchActivity:
+    // 携带当前书/索引/结果列表, 免重搜; 列表仅首条 query 匹配时携带)
+    val onOpenSearch: (ReaderScreenModel, Book, String?) -> Unit = { model, book, word ->
+        // 带 resultKey 接收选中结果回写 (对齐 iOS/OHOS provider, 2026-08-06 修复漏接)
+        navigator.push(
+            AppRoute.SearchContent(
+                index = model.searchResultIndex,
+                word = word ?: model.searchContentQuery,
+                initialResults = model.searchResultList?.takeIf { list ->
+                    list.firstOrNull()?.query == model.searchContentQuery
+                },
+                book = book.toRouteRef(),
+            ),
+            resultKey = RouteResults.SEARCH_CONTENT,
         )
     }
+
+    val screenModel = screenModelStore.getOrCreateTyped(entry) {
+        ReaderScreenModel(
+            menuControllerFactory = menuControllerFactory,
+            getBatteryLevel = getBatteryLevel,
+            onOpenSearch = onOpenSearch,
+        )
+    }
+
+    // 先接宿主再读菜单: 首建用构造入参的绑定, 重建时若 provider/navigator 真换了才重绑
+    // (组合期同步完成 —— 菜单状态读取之前必须已指向当前宿主, 不得先喂回旧 Activity)
+    screenModel.bindHost(
+        provider = provider,
+        navigator = navigator,
+        menuControllerFactory = menuControllerFactory,
+        getBatteryLevel = getBatteryLevel,
+        onOpenSearch = onOpenSearch,
+    )
 
     // 页面级副作用统一挂本页 Lifecycle, 不再挂组合存亡 (两者在单 Activity 架构下不是同一件事):
     //
@@ -291,6 +309,7 @@ fun ReaderRoute(
         screenModel.openChapter(index, target.second.second)
     }
 
+    // 界面状态按当前菜单控制器建立 (bindHost 已在组合期完成, 读到的就是当前宿主那份)
     val state = remember(screenModel) {
         ReaderUiState(
             viewModel = screenModel.viewModel,

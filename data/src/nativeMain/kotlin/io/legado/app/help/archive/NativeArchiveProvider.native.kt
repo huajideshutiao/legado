@@ -37,6 +37,18 @@ object NativeArchiveProvider : ArchiveProvider {
         val destDir = FileUtilsCommon.getPath(
             FileUtilsCommon.getCachePath(), tempFolderName, MD5Utils.md5Encode16(name)
         )
+        return deCompressTo(archivePath, destDir)
+    }
+
+    override fun deCompressIsolated(archivePath: String, workKey: String): List<String> {
+        val destDir = FileUtilsCommon.getPath(
+            FileUtilsCommon.getCachePath(), tempFolderName, "import-$workKey"
+        )
+        return deCompressTo(archivePath, destDir)
+    }
+
+    private fun deCompressTo(archivePath: String, destDir: String): List<String> {
+        val name = archivePath.substringAfterLast('/').substringAfterLast('\\')
         File(destDir).mkdirs()
         when {
             // tar 纯格式 (ustar), 无需压缩库

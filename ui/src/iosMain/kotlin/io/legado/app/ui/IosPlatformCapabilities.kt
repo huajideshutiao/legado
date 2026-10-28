@@ -16,6 +16,7 @@ import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.isImage
 import io.legado.app.data.entities.HttpTTS
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.tts.IosReadAloudHost
 import io.legado.app.service.defaultTtsEngineConfig
 import io.legado.app.help.book.bookshelfJson
@@ -36,7 +37,9 @@ import io.legado.app.model.Debug
 import io.legado.app.model.ExportBookUtils
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.import.ImportFileItem
+import io.legado.app.ui.book.info.WebFileFlowTexts
 import io.legado.app.ui.book.info.WebFileImportShared
+import io.legado.app.ui.book.info.runWebFileReadFlow
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
 import io.legado.app.ui.book.source.manage.selectedSourcesJson
@@ -46,6 +49,7 @@ import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.DefaultDialogTransitionSpec
 import io.legado.app.ui.root.DialogTransitionSpec
+import io.legado.app.ui.root.ImportStageHost
 import io.legado.app.ui.root.PickedFile
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteTransitionSpec
@@ -55,6 +59,7 @@ import io.legado.app.ui.root.reselectBookSaveDir
 import io.legado.app.ui.root.pushExportDispatch
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.root.pushExportSectionConfig
+import io.legado.app.ui.widget.dialog.WaitDialogHandle
 import io.legado.app.utils.File
 import io.legado.app.utils.IosSecurityScopeLease
 import io.legado.app.utils.IosSecurityScopedStorage
@@ -66,19 +71,21 @@ import kotlinx.atomicfu.locks.synchronized
 import kotlinx.cinterop.useContents
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okio.use
 import platform.Foundation.NSBundle
 import platform.Foundation.NSDate
 import platform.Foundation.NSURL
@@ -120,12 +127,18 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     /**
      * 待分发的文件关联任务: 能力面只投递, 消费在主窗口组合内 (MainViewController) ——
      * 分发任务随窗口存亡, 不再挂平台单例 scope; 窗口组合完成前的冷启动直投先排队。
+     *
+     * 用无限 Channel 而非列表快照: 每个任务只交付一次, 后来的投递不会把已消费的任务再跑一遍;
+     * 无窗口时排队的任务保留到下一次组合。
      */
-    internal val pendingAssociationFiles = MutableStateFlow<List<suspend () -> Unit>>(emptyList())
+    private val associationFiles = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+
+    /** 主窗口消费队列 (窗口消失时停止消费, 未消费的任务留待下次组合)。 */
+    internal val associationFileJobs: Flow<suspend () -> Unit> = associationFiles.receiveAsFlow()
 
     /** 投递一个文件关联分发任务 (窗口组合前排队, 组合后按序消费)。 */
     internal fun offerAssociationFile(job: suspend () -> Unit) {
-        pendingAssociationFiles.update { it + job }
+        associationFiles.trySend(job)
     }
 
     /** 导出队列与"正在导出"标记的读写锁 (与队列读写同锁判断, 避免"收工瞬间入队"的书没人导)。 */
@@ -358,22 +371,28 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 
     // 完整分发链 (压缩包/JSON 一键导入/书籍文件/未知文件确认) 见 FileAssociationDispatch, 四端共用。
     // 外部打开的文件在沙盒外: 授权已由投递口 ingestIosSecurityScopedFile 以 bookmark 登记进授权表,
-    // 分发全程按既有租约机制持有授权 (JSON 读取/解压/书籍复制完成即配对释放, 不挂进程寿命);
+    // 分发全程在同一个读协调内 (JSON 正文读取与解包同样受协调), 协调器给出的地址就是后续读取的地址;
     // 任务投主窗口队列随窗口存亡, 不挂平台单例 scope
     override fun openImportFile(filePath: String) {
+        // 外部投递的地址可能是 file:// URL (含百分号编码), 先归一成 POSIX 路径再取授权
+        val path = filePath.toLocalFilePath()
         offerAssociationFile {
             withContext(Dispatchers.IO) {
-                val lease = try {
-                    IosSecurityScopedStorage.acquireLease(filePath, DirUsage.BookTree)
-                } catch (e: Exception) {
-                    AppLog.put("文件关联导入授权失败: $filePath\n${e.message}", e)
-                    Toasters.get().toast(e.message ?: "没有访问权限")
-                    return@withContext
-                }
                 try {
-                    FileAssociationDispatch.dispatch(filePath) { confirmUnknownFileImport(it) }
-                } finally {
-                    lease.close()
+                    // 未知文件确认在协调块外等待: 先只判定类型, 用户回答后再重新取得有效地址
+                    val unknown = IosSecurityScopedStorage.withAccessAsync(path, DirUsage.BookTree) {
+                        FileAssociationDispatch.isUnknownFile(it)
+                    }
+                    if (unknown && !confirmUnknownFileImport(path.substringAfterLast('/').substringAfterLast('\\'))) return@withContext
+                    IosSecurityScopedStorage.withAccessAsync(path, DirUsage.BookTree) { scopedPath ->
+                        // 未知文件已在协调外确认; 块内不再等用户, 按真实内容重新分发
+                        FileAssociationDispatch.dispatch(scopedPath, onUnknownFile = { true })
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    AppLog.put("文件关联导入失败: $path\n${e.message}", e)
+                    Toasters.get().toast(e.message ?: "没有访问权限")
                 }
             }
         }
@@ -381,38 +400,91 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 
     /**
      * 未知文件导入确认 (UIAlertController, 与 presentAlert 同一顶层宿主取法):
-     * 确认返回 true 按书籍文件尝试导入, 取消/无法弹窗返回 false。
+     * 确认返回 true 按书籍文件尝试导入, 取消返回 false。
+     *
+     * 同一时刻只留一枚确认框: 新确认到达时先收掉上一枚并结束它的等待。
+     * 等待被取消 (窗口销毁) 时同样收掉本枚, 此后旧回调不再交付。
+     * 弹不出框 (没有顶层视图) 按真实失败上报, 不当作取消。
      */
     private suspend fun confirmUnknownFileImport(fileName: String): Boolean {
         val done = CompletableDeferred<Boolean>()
-        dispatch_async(dispatch_get_main_queue()) {
-            val vc = topMostViewController()
-            if (vc == null) {
-                done.complete(false)
-                return@dispatch_async
+        // 显示对象在展示阶段就登记到本次请求: 跨调度返回值被取消丢弃时也能收框
+        val shown = atomic<UIAlertController?>(null)
+        try {
+            withContext(Dispatchers.Main) {
+                shown.value = presentUnknownFileConfirm(fileName, done)
+                    ?: throw NoStackTraceException("无法确认文件类型: 没有可用的界面")
             }
-            val alert = UIAlertController.alertControllerWithTitle(
-                title = syncGetString("draw"),
-                message = "无法识别的文件: $fileName\n是否按书籍文件尝试导入？",
-                preferredStyle = UIAlertControllerStyleAlert,
-            )
-            alert.addAction(
-                UIAlertAction.actionWithTitle(
-                    title = syncGetString("ok"),
-                    style = UIAlertActionStyleDefault,
-                    handler = { _ -> done.complete(true) },
-                )
-            )
-            alert.addAction(
-                UIAlertAction.actionWithTitle(
-                    title = syncGetString("cancel"),
-                    style = UIAlertActionStyleCancel,
-                    handler = { _ -> done.complete(false) },
-                )
-            )
-            vc.presentViewController(alert, animated = true, completion = null)
+            return done.await()
+        } finally {
+            done.complete(false)
+            shown.value?.let { presented ->
+                withContext(NonCancellable + Dispatchers.Main) {
+                    releaseUnknownFileConfirm(presented)
+                }
+            }
         }
-        return done.await()
+    }
+
+    /** 界面上正在等用户回答的未知文件确认框 (仅主线程读写)。 */
+    private class UnknownFileConfirm(
+        val alert: UIAlertController,
+        val done: CompletableDeferred<Boolean>,
+    )
+
+    private var unknownFileConfirm: UnknownFileConfirm? = null
+
+    /** 在主线程弹确认框; 拿不到宿主返回 null (调用方按真实失败上报)。 */
+    private fun presentUnknownFileConfirm(
+        fileName: String,
+        done: CompletableDeferred<Boolean>,
+    ): UIAlertController? {
+        // 上一枚还没人回答: 先收掉, 它的等待以取消结束 (不叠两层确认)
+        unknownFileConfirm?.let { previous ->
+            unknownFileConfirm = null
+            previous.done.complete(false)
+            previous.alert.dismissViewControllerAnimated(false, completion = null)
+        }
+        val vc = topMostViewController() ?: return null
+        val alert = UIAlertController.alertControllerWithTitle(
+            title = syncGetString("draw"),
+            message = "无法识别的文件: $fileName\n是否按书籍文件尝试导入？",
+            preferredStyle = UIAlertControllerStyleAlert,
+        )
+        alert.addAction(
+            UIAlertAction.actionWithTitle(
+                title = syncGetString("ok"),
+                style = UIAlertActionStyleDefault,
+                handler = { _ -> answerUnknownFileConfirm(alert, true) },
+            )
+        )
+        alert.addAction(
+            UIAlertAction.actionWithTitle(
+                title = syncGetString("cancel"),
+                style = UIAlertActionStyleCancel,
+                handler = { _ -> answerUnknownFileConfirm(alert, false) },
+            )
+        )
+        unknownFileConfirm = UnknownFileConfirm(alert, done)
+        vc.presentViewController(alert, animated = true, completion = null)
+        return alert
+    }
+
+    /** 用户回答 [alert] 这一枚确认框 (主线程): 已被替换或已收掉的那枚不再交付。 */
+    private fun answerUnknownFileConfirm(alert: UIAlertController, answer: Boolean) {
+        val current = unknownFileConfirm ?: return
+        if (current.alert !== alert) return
+        unknownFileConfirm = null
+        current.done.complete(answer)
+    }
+
+    /** 收掉 [alert] 这一枚确认框 (主线程): 已被新确认替换的那枚不动。 */
+    private fun releaseUnknownFileConfirm(alert: UIAlertController) {
+        if (unknownFileConfirm?.alert !== alert) return
+        unknownFileConfirm = null
+        if (alert.presentingViewController != null) {
+            alert.dismissViewControllerAnimated(false, completion = null)
+        }
     }
 
     // ===== 导入本地书 (状态与扫描见 NativeImportBook, 与鸿蒙共用) =====
@@ -456,15 +528,23 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
      * 选中后存 minimal bookmark (可跨启动) 并记下用途 [DirUsage.BookTree], 回调仍传目录路径
      * (与其余端同一契约)。
      */
-    override fun pickBookTreeUri(onSelected: (String?) -> Unit) {
-        scope.launch {
-            val url = pickDirectoryDocument()
-            if (url == null) {
-                onSelected(null)
-                return@launch
+    override fun pickBookTreeUri(parent: Job?, onSelected: (String?, Throwable?) -> Unit) {
+        // 有 parent 时选择工作挂原等待 Job (真退出随撤); 无 parent 的一次性入口用平台 scope
+        val launchScope = parent?.let { CoroutineScope(it + Dispatchers.Main) } ?: scope
+        launchScope.launch {
+            try {
+                val url = pickDirectoryDocument()
+                if (url == null) {
+                    onSelected(null, null)
+                    return@launch
+                }
+                val path = IosSecurityScopedStorage.addDir(url, DirUsage.BookTree)
+                onSelected(path, null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                onSelected(null, e)
             }
-            val path = IosSecurityScopedStorage.addDir(url, DirUsage.BookTree)
-            onSelected(path)
         }
     }
 
@@ -473,7 +553,7 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
      * 只查所选目录, 与 app 端一致); 返回 `file://` + 绝对路径, 与导入写入的 bookUrl 同格式。
      */
     override fun findBookFileInDir(dirUri: String, fileName: String): String? =
-        IosSecurityScopedStorage.findBookFileInTree(dirUri, fileName)
+        IosSecurityScopedStorage.findBookFileInTree(dirUri.toLocalFilePath(), fileName)
 
     // 对照 Android alertImportFileName: 复用现有 UIAlertController 文本输入弹窗
     // (presentTextInput), 允许清空 = 恢复默认文件名解析。预设值存 PreferKey.bookImportFileName。
@@ -493,26 +573,36 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     override fun addImportSelectionToBookshelf(
         items: List<ImportFileItem>,
         onComplete: () -> Unit,
+        scope: CoroutineScope,
     ) = NativeImportBook.addToBookshelf(
         items,
         onComplete,
-        onNeedBooksDir = { ensureBookSaveDirSelected() },
+        onNeedBooksDir = { ensureBookSaveDirSelected(currentCoroutineContext()[Job]) },
+        scope = scope,
     )
 
     /** 选文件导入: 面板回传的临时件先复制进沙盒再走上架链, 不经列表勾选。 */
-    override fun importPickedBookFiles(files: List<PickedFile>, onComplete: () -> Unit) =
-        NativeImportBook.importPickedFiles(
-            files.map { it.ref },
-            onComplete,
-            onNeedBooksDir = { ensureBookSaveDirSelected() },
-        )
+    override fun importPickedBookFiles(
+        files: List<PickedFile>,
+        onComplete: () -> Unit,
+        scope: CoroutineScope,
+    ) = NativeImportBook.importPickedFiles(
+        files.map { it.ref },
+        onComplete,
+        onNeedBooksDir = { ensureBookSaveDirSelected(currentCoroutineContext()[Job]) },
+        scope = scope,
+        onRelease = {
+            // 导入已把内容复制进沙盒; 无论成功/取消/失败都只清本次交付的临时副本
+            files.forEach { PlatformServiceProviders.get().files.discardPickedFile(it.ref) }
+        },
+    )
 
     override fun updateImportBookFilter(key: String) = NativeImportBook.updateFilter(key)
 
     override fun updateImportBookSort(sort: Int) = NativeImportBook.updateSort(sort)
 
-    override fun openImportedBookReader(item: ImportFileItem) {
-        NativeImportBook.openReader(item, ::offerAssociationFile) { confirmUnknownFileImport(it) }
+    override fun openImportedBookReader(item: ImportFileItem, scope: CoroutineScope) {
+        NativeImportBook.openReader(item, { confirmUnknownFileImport(it) }, scope)
     }
 
     override fun navigateImportDir(item: ImportFileItem) = NativeImportBook.enterDir(item)
@@ -572,24 +662,24 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     // 本地书文件字节数: 外部目录下的书籍文件走 security-scoped 授权读取属性
     // (bookUrl 形如 file:///path; 沙盒内文件无需授权)
     override suspend fun localBookFileSize(bookUrl: String): Long = withContext(Dispatchers.IO) {
-        val path = bookUrl.removePrefix("file://")
+        val path = bookUrl.toLocalFilePath()
         runCatching { IosSecurityScopedStorage.withAccess(path, DirUsage.BookTree) { File(it).length() } }
             .getOrDefault(0L)
     }
 
     // ===== webFile 下载导入 (对照 BookInfoActivity 同名方法) =====
     //
-    // 平台无关编排 (构建 webFile 列表 / 下载 / 导入本地 / 压缩包条目) 已下沉:
-    // 取件与文件名推导在 WebFileImportShared, 下载导入/压缩包导入在 SharedPlatformCapabilities
-    // (目录落库统一走 BookChapterLoader.fetchFromSource)。
-    // 本端只保留两处 UIKit 形态: 条目选择框与"不支持格式时交系统程序打开"
-    // (对照 app 端 `activity.selector` / alert 的 open_fun 分支)。
+    // 平台无关编排 (构建 webFile 列表 / 下载 / 导入本地 / 压缩包条目 / 候选与确认框)
+    // 已下沉: 流程与呈现都归共享层 (WebFileReadFlow + ImportStageHost), 本端只保留
+    // "下载 / 取压缩包条目 / 导入 / 交其它应用打开" 四个叶子。
 
-    /** 对照 BookInfoActivity.onReadClick isWebFile 分支: 构建 webFile 列表后弹条目选择框。 */
+    // 对照 BookInfoActivity.onReadClick isWebFile 分支: 候选/压缩包条目/不支持格式确认交给共享阶段
+    // (四端同一套 Compose 呈现, 阶段归发起页面), 本端只给叶子: 下载 / 取条目 / 导入 / 交其它应用打开
     override fun handleWebFileRead(
         book: Book,
-        onWaitDialog: (Boolean) -> Unit,
-        onAction: (String) -> Unit,
+        scope: CoroutineScope,
+        onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
+        stages: ImportStageHost,
         onSuccess: ((Book) -> Unit)?,
     ) {
         scope.launch {
@@ -598,143 +688,76 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
                 appDb.bookSourceDao.getBookSource(book.origin)
             } else null
             val webFiles = WebFileImportShared.buildWebFiles(book, source)
-            withContext(Dispatchers.Main) {
-                if (webFiles.isEmpty()) {
-                    Toasters.get().toast("Unexpected webFileData")
-                    return@withContext
-                }
-                presentWebFileSelect(book, webFiles, onWaitDialog, onAction, onSuccess)
+            if (webFiles.isEmpty()) {
+                Toasters.get().toast("Unexpected webFileData")
+                return@launch
             }
-        }
-    }
-
-    /** 条目选择框 (对照 app 端 `activity.selector(download_and_import_file, webFiles)`)。 */
-    private fun presentWebFileSelect(
-        book: Book,
-        webFiles: List<FileBook.WebFile>,
-        onWaitDialog: (Boolean) -> Unit,
-        onAction: (String) -> Unit,
-        onSuccess: ((Book) -> Unit)?,
-    ) {
-        presentSelectList(
-            title = syncGetString("download_and_import_file"),
-            items = webFiles.map { it.name },
-        ) { index ->
-            val webFile = index?.let { webFiles.getOrNull(it) } ?: return@presentSelectList
-            when {
-                webFile.isSupported ->
-                    importWebFile(book, webFile, onWaitDialog, onAction) { onSuccess?.invoke(it) }
-
-                webFile.isSupportDecompress ->
-                    downloadWebFile(book, webFile, onWaitDialog, onAction) { path ->
-                        getArchiveFilesName(path) { fileNames ->
-                            if (fileNames.size == 1) {
-                                importBookFromArchive(path, fileNames[0], book, onWaitDialog) {
-                                    onSuccess?.invoke(it)
-                                }
-                            } else {
-                                presentArchiveEntrySelect(
-                                    path, fileNames, book, onWaitDialog, onSuccess,
-                                )
-                            }
-                        }
-                    }
-
-                else -> presentUnsupportedWebFileAlert(book, webFile, onWaitDialog, onAction)
-            }
-        }
-    }
-
-    /** 压缩包内选章 (对照 app 端 `showDecompressFileImportAlert`)。 */
-    private fun presentArchiveEntrySelect(
-        archiveFilePath: String,
-        fileNames: List<String>,
-        book: Book,
-        onWaitDialog: (Boolean) -> Unit,
-        onSuccess: ((Book) -> Unit)?,
-    ) {
-        if (fileNames.isEmpty()) {
-            Toasters.get().toast(syncGetString("unsupport_archivefile_entry"))
-            return
-        }
-        presentSelectList(
-            title = syncGetString("import_select_book"),
-            items = fileNames,
-        ) { index ->
-            val name = index?.let { fileNames.getOrNull(it) } ?: return@presentSelectList
-            importBookFromArchive(archiveFilePath, name, book, onWaitDialog) {
-                onSuccess?.invoke(it)
-            }
-        }
-    }
-
-    /** 不支持的格式: 下载后交系统程序打开 (对照 app 端 alert 的 open_fun 分支)。 */
-    private fun presentUnsupportedWebFileAlert(
-        book: Book,
-        webFile: FileBook.WebFile,
-        onWaitDialog: (Boolean) -> Unit,
-        onAction: (String) -> Unit,
-    ) {
-        val alert = UIAlertController.alertControllerWithTitle(
-            title = syncGetString("draw"),
-            message = syncGetString("file_not_supported", webFile.name),
-            preferredStyle = UIAlertControllerStyleAlert,
-        )
-        alert.addAction(
-            UIAlertAction.actionWithTitle(
-                title = syncGetString("open_fun"),
-                style = UIAlertActionStyleDefault,
-                handler = { _ ->
-                    downloadWebFile(book, webFile, onWaitDialog, onAction) { path ->
-                        // iOS 无"交系统程序打开"通道 (UIApplication.openURL 打不开本地文件),
-                        // 用系统分享面板把文件交给其它 app (与导出书籍同款出口)
-                        presentShareSheet(
-                            listOf(NSURL.fileURLWithPath(path.removePrefix("file://")))
-                        )
-                    }
+            runWebFileReadFlow(
+                book = book,
+                scope = scope,
+                stages = stages,
+                onWaitDialog = onWaitDialog,
+                webFiles = webFiles,
+                texts = iosWebFileTexts(),
+                // iOS 无"交系统程序打开"的本地文件通道 (UIApplication.openURL 打不开本地文件),
+                // 用系统分享面板把文件交给其它 app (与导出书籍同款出口)
+                openDownloadedFile = { path ->
+                    presentShareSheet(
+                        listOf(NSURL.fileURLWithPath(path.removePrefix("file://")))
+                    )
                 },
+                onSuccess = onSuccess,
             )
-        )
-        alert.addAction(
-            UIAlertAction.actionWithTitle(
-                title = syncGetString("cancel"),
-                style = UIAlertActionStyleCancel,
-                handler = { _ -> },
-            )
-        )
-        presentAlert(alert)
+        }
     }
+
+    /** 共享流程的本端文案 (沿用 compose 资源键)。 */
+    private fun iosWebFileTexts() = WebFileFlowTexts(
+        selectDownloadItem = syncGetString("download_and_import_file"),
+        selectArchiveEntry = syncGetString("import_select_book"),
+        unsupportedTitle = syncGetString("draw"),
+        unsupportedMessage = { name -> syncGetString("file_not_supported", name) },
+        openWithSystem = syncGetString("open_fun"),
+        unsupportedArchiveEntry = syncGetString("unsupport_archivefile_entry"),
+    )
 
     // 对照 RemoteBookActivity.startRead 的 archive 分支: 在书籍保存目录里找已下载的压缩包,
     // 找到就交文件关联分发链, 没找到就弹确认框由调用方重新下载后重试。
     // native 端无"压缩包内选章阅读"UI, 与 NativeImportBook.openReader 同口径走
     // FileAssociationDispatch 的直接导入链 (平台能力上限, 不假装与 app 端等价)
-    override fun startReadRemoteArchive(fileName: String, onNeedDownload: () -> Unit) {
-        offerAssociationFile {
+    override fun startReadRemoteArchive(
+        fileName: String,
+        scope: CoroutineScope,
+        onNeedDownload: () -> Unit,
+    ) {
+        // 请求作用域持有本次阅读: 页面/调用方真退即停止分发
+        scope.launch {
             // 与 NativeFileBookAccessor 的有效书籍保存目录同源 (用户在"书籍保存位置"选定);
-            // 选定目录在沙盒外, 存在性检查同样要包既有授权租约, 分发全程持租约
+            // 选定目录在沙盒外, 存在性检查与分发全程在授权内
             withContext(Dispatchers.IO) {
-                val dir = effectiveBookSaveDir()
-                if (dir != null) {
-                    val path = "$dir/$fileName"
-                    val exists = runCatching {
-                        withLocalDirAccess(path) { File(path).exists() }
+                val path = effectiveBookSaveDir()?.let { "$it/$fileName" }
+                val exists = path?.let { candidate ->
+                    runCatching {
+                        withLocalDirAccess(candidate) { File(it).exists() }
                     }.getOrDefault(false)
-                    if (exists) {
-                        val lease = try {
-                            IosSecurityScopedStorage.acquireLease(path, DirUsage.BookTree)
-                        } catch (e: Exception) {
-                            AppLog.put("压缩包阅读授权失败: $path\n${e.message}", e)
-                            Toasters.get().toast(e.message ?: "没有访问权限")
-                            return@withContext
+                } ?: false
+                if (path != null && exists) {
+                    try {
+                        // 与 openImportFile 同一合同: 协调内只判定类型, 用户在协调外确认, 再重取地址分发
+                        val unknown = IosSecurityScopedStorage.withAccessAsync(path, DirUsage.BookTree) {
+                            FileAssociationDispatch.isUnknownFile(it)
                         }
-                        try {
-                            FileAssociationDispatch.dispatch(path) { confirmUnknownFileImport(it) }
-                        } finally {
-                            lease.close()
+                        if (unknown && !confirmUnknownFileImport(path.substringAfterLast('/'))) return@withContext
+                        IosSecurityScopedStorage.withAccessAsync(path, DirUsage.BookTree) { scopedPath ->
+                            FileAssociationDispatch.dispatch(scopedPath, onUnknownFile = { true })
                         }
-                        return@withContext
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        AppLog.put("阅读压缩包失败: $path\n${e.message}", e)
+                        Toasters.get().toast(e.message ?: "没有访问权限")
                     }
+                    return@withContext
                 }
                 withContext(Dispatchers.Main) {
                     val alert = UIAlertController.alertControllerWithTitle(
@@ -1144,41 +1167,6 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     }
 
     // ===== 私有辅助 =====
-
-    /**
-     * 单选列表弹窗 (webFile/压缩包条目选择框): 选中回调传条目下标, 取消或拿不到宿主传 null。
-     *
-     * iOS 无 Android 的 selector 控件, 用 UIAlertController 的多个 action 表达 (条目多时系统自带滚动);
-     * 不用 ActionSheet 形态: iPad 上 ActionSheet 需要 popover 锚点, 无锚点会崩。
-     */
-    private fun presentSelectList(
-        title: String,
-        items: List<String>,
-        onSelected: (Int?) -> Unit,
-    ) {
-        val alert = UIAlertController.alertControllerWithTitle(
-            title = title,
-            message = null,
-            preferredStyle = UIAlertControllerStyleAlert,
-        )
-        items.forEachIndexed { index, item ->
-            alert.addAction(
-                UIAlertAction.actionWithTitle(
-                    title = item,
-                    style = UIAlertActionStyleDefault,
-                    handler = { _ -> onSelected(index) },
-                )
-            )
-        }
-        alert.addAction(
-            UIAlertAction.actionWithTitle(
-                title = syncGetString("cancel"),
-                style = UIAlertActionStyleCancel,
-                handler = { _ -> onSelected(null) },
-            )
-        )
-        presentAlert(alert)
-    }
 
     /** 在顶层 vc 上弹 UIAlertController (拿不到宿主时静默放弃, 与 [presentTextInput] 同语义)。 */
     private fun presentAlert(alert: UIAlertController) {

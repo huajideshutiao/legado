@@ -2,11 +2,18 @@
 
 package io.legado.app.help.file
 
+import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.atomicfu.atomic
+
 import io.legado.app.help.topMostViewController
 import kotlinx.cinterop.readBytes
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okio.IOException
 import platform.Foundation.NSData
+import platform.Foundation.NSFileManager
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.Foundation.dataWithContentsOfURL
@@ -43,6 +50,16 @@ import io.legado.app.utils.File
  */
 private val activeDelegates = mutableListOf<Any>()
 
+// 三入口共用一次系统选择器占用: 已 present 的面板在真实 didPick/WasCancelled 前不释放。
+private val pickerGate = Mutex()
+private class PickerLease(private val gate: Mutex) {
+    private val released = atomic(false)
+    fun release() {
+        if (released.compareAndSet(false, true)) gate.unlock()
+    }
+
+}
+
 /**
  * 弹 [UIDocumentPickerViewController] 选文件, 返回选中的 [NSURL] 列表。
  *
@@ -51,19 +68,27 @@ private val activeDelegates = mutableListOf<Any>()
  * @param allowsMultiple 是否允许多选 (默认 false)
  * @return 选中的 [NSURL] 列表, 用户取消返回 null
  */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 suspend fun pickDocuments(
     contentTypes: List<String>,
     allowsMultiple: Boolean = false,
-): List<NSURL>? = suspendCancellableCoroutine { block ->
+): List<NSURL>? {
+    pickerGate.lock()
+    val lease = PickerLease(pickerGate)
+    return suspendCancellableCoroutine { block ->
     // 持有 picker 引用, 供协程取消时 dismiss (dispatch_async 异步, picker 在主线程块内才创建)
     var pickerRef: UIDocumentPickerViewController? = null
     var delegateRef: DocumentPickerDelegate? = null
     dispatch_async(dispatch_get_main_queue()) {
-        if (!block.isActive) return@dispatch_async
+        if (!block.isActive) {
+            lease.release()
+            return@dispatch_async
+        }
         val vc = topMostViewController()
-        if (vc == null) {
-            // 拿不到 root vc: 直接返回 null (调用方自行降级处理)
-            block.resume(null)
+        if (vc == null || vc.viewIfLoaded?.window == null) {
+            // 无可用界面/未挂窗口不是用户取消: 如实失败, 不返回 null 冒充取消
+            lease.release()
+            if (block.isActive) block.resumeWithException(IOException("顶层视图不可呈现, 无法弹出文件选择面板"))
             return@dispatch_async
         }
         @Suppress("DEPRECATION")
@@ -78,10 +103,17 @@ suspend fun pickDocuments(
         val delegate = DocumentPickerDelegate(
             onPick = { urls ->
                 holder.firstOrNull()?.let { activeDelegates.remove(it) }
-                if (block.isActive) block.resume(urls)
+                lease.release()
+                // 把 URLs 交给 continuation 的取消回调: resume 与消费之间被取消也能清理临时副本
+                block.resume(urls) { _, value, _ ->
+                    value.forEach { url ->
+                        runCatching { NSFileManager.defaultManager.removeItemAtURL(url, null) }
+                    }
+                }
             },
             onCancel = {
                 holder.firstOrNull()?.let { activeDelegates.remove(it) }
+                lease.release()
                 if (block.isActive) block.resume(null)
             },
         )
@@ -94,9 +126,16 @@ suspend fun pickDocuments(
     // 协程取消: dismiss 已 present 的 picker (pickerRef 可能为 null, 表示主线程块尚未执行)
     block.invokeOnCancellation {
         dispatch_async(dispatch_get_main_queue()) {
-            delegateRef?.let { activeDelegates.remove(it) }
-            pickerRef?.dismissViewControllerAnimated(true, completion = null)
+            val picker = pickerRef
+            if (picker == null) {
+                // 尚未 present: 没有平台作业, 可以撤强引用并释放占用
+                delegateRef?.let { activeDelegates.remove(it) }
+                lease.release()
+            }
+            // 已 present 时不程序 dismiss: UIDocumentPicker 无“程序关闭即作业终止”的
+            // 一手合同, 保留 delegate 等真实 didPick/WasCancelled 排空; 晚到 URL 由 resume onCancellation 清
         }
+    }
     }
 }
 
@@ -132,14 +171,22 @@ fun pickDocumentContent(url: NSURL): ByteArray? {
  *
  * @return 选中的目录 [NSURL], 用户取消返回 null
  */
-suspend fun pickDirectory(): NSURL? = suspendCancellableCoroutine { block ->
+suspend fun pickDirectory(): NSURL? {
+    pickerGate.lock()
+    val lease = PickerLease(pickerGate)
+    return suspendCancellableCoroutine { block ->
     var pickerRef: UIDocumentPickerViewController? = null
     var delegateRef: DocumentPickerDelegate? = null
     dispatch_async(dispatch_get_main_queue()) {
-        if (!block.isActive) return@dispatch_async
+        if (!block.isActive) {
+            lease.release()
+            return@dispatch_async
+        }
         val vc = topMostViewController()
-        if (vc == null) {
-            block.resume(null)
+        if (vc == null || vc.viewIfLoaded?.window == null) {
+            // 无可用界面/未挂窗口不是用户取消: 如实失败
+            lease.release()
+            if (block.isActive) block.resumeWithException(IOException("顶层视图不可呈现, 无法弹出目录选择面板"))
             return@dispatch_async
         }
         @Suppress("DEPRECATION")
@@ -153,10 +200,12 @@ suspend fun pickDirectory(): NSURL? = suspendCancellableCoroutine { block ->
         val delegate = DocumentPickerDelegate(
             onPick = { urls ->
                 holder.firstOrNull()?.let { activeDelegates.remove(it) }
+                lease.release()
                 if (block.isActive) block.resume(urls.firstOrNull())
             },
             onCancel = {
                 holder.firstOrNull()?.let { activeDelegates.remove(it) }
+                lease.release()
                 if (block.isActive) block.resume(null)
             },
         )
@@ -168,9 +217,13 @@ suspend fun pickDirectory(): NSURL? = suspendCancellableCoroutine { block ->
     }
     block.invokeOnCancellation {
         dispatch_async(dispatch_get_main_queue()) {
-            delegateRef?.let { activeDelegates.remove(it) }
-            pickerRef?.dismissViewControllerAnimated(true, completion = null)
+            if (pickerRef == null) {
+                delegateRef?.let { activeDelegates.remove(it) }
+                lease.release()
+            }
+            // 已 present: 保留 delegate/占用, 等真实 didPick/WasCancelled 释放
         }
+    }
     }
 }
 
@@ -193,24 +246,61 @@ suspend fun pickDirectory(): NSURL? = suspendCancellableCoroutine { block ->
  * @throws IOException 临时文件准备失败或拿不到顶层视图 (无法弹出面板)
  */
 suspend fun exportToUser(fileName: String, write: (File) -> Unit): String? {
-    // 1. 写沙盒临时文件 (kotlin.io.File 走 POSIX fs, 与 nativeMain FileDownloader 同模式)
-    val tmpDir = File(NSTemporaryDirectory().trimEnd('/') + "/legado-export")
+    pickerGate.lock()
+    val lease = PickerLease(pickerGate)
+    // 锁的空闲快路径不检查取消: 取到占用后先确认本次消费仍有资格, 否则不得开始写
+    try {
+        currentCoroutineContext().ensureActive()
+    } catch (e: Throwable) {
+        lease.release()
+        throw e
+    }
+    // 1. 写本次导出独占的沙盒临时件 (kotlin.io.File 走 POSIX fs, 与 nativeMain FileDownloader 同模式)
+    val tmpDir = File(
+        NSTemporaryDirectory().trimEnd('/') + "/legado-export/req-" +
+            systemCurrentTimeMillis() + "-" + exportSequence.incrementAndGet()
+    )
     val tmpFile = File(tmpDir.path + "/" + fileName)
     runCatching {
         tmpDir.mkdirs()
         write(tmpFile)
-    }.getOrElse { throw IOException("准备导出文件失败: ${it.message}", it) }
+    }.getOrElse { e ->
+        // 准备阶段失败: 未送平台, 可立即清本次目录并释放占用后如实抛错
+        runCatching { tmpDir.deleteRecursively() }
+        lease.release()
+        throw IOException("准备导出文件失败: ${e.message}", e)
+    }
+
+    // 写入已真实结束; 若消费方在华档前已取消, 清本次目录并归还占用, 不再启动平台作业
+    try {
+        currentCoroutineContext().ensureActive()
+    } catch (e: Throwable) {
+        runCatching { tmpDir.deleteRecursively() }
+        lease.release()
+        throw e
+    }
 
     // 2. 弹系统保存器 (结构照抄 pickDocuments: 主线程 present + activeDelegates 强引用 + 取消 dismiss)
+    var handedOff = false
+    fun cleanupPrepared() {
+        if (!handedOff) runCatching { tmpDir.deleteRecursively() }
+    }
     val saved = suspendCancellableCoroutine<String?> { block ->
         var pickerRef: UIDocumentPickerViewController? = null
         var delegateRef: DocumentPickerDelegate? = null
-        dispatch_async(dispatch_get_main_queue()) {
-            if (!block.isActive) return@dispatch_async
+            dispatch_async(dispatch_get_main_queue()) {
+            if (!block.isActive) {
+                // 尚未展示: 本次准备目录没有交给平台, 立即清理并释放占用
+                cleanupPrepared()
+                lease.release()
+                return@dispatch_async
+            }
             val vc = topMostViewController()
-            if (vc == null) {
+            if (vc == null || vc.viewIfLoaded?.window == null) {
+                cleanupPrepared()
+                lease.release()
                 if (block.isActive) {
-                    block.resumeWithException(IOException("拿不到顶层视图, 无法弹出导出面板"))
+                    block.resumeWithException(IOException("顶层视图不可呈现, 无法弹出导出面板"))
                 }
                 return@dispatch_async
             }
@@ -222,10 +312,17 @@ suspend fun exportToUser(fileName: String, write: (File) -> Unit): String? {
                 // 导出完成: 系统回传目标 URL
                 onPick = { urls ->
                     holder.firstOrNull()?.let { activeDelegates.remove(it) }
+                    // 成功回执: 系统已完成拷贝; 即使 resume 被取消丢弃, 本次准备目录也可立即清
+                    handedOff = true
+                    runCatching { tmpDir.deleteRecursively() }
+                    lease.release()
                     if (block.isActive) block.resume(urls.firstOrNull()?.absoluteString)
                 },
                 onCancel = {
                     holder.firstOrNull()?.let { activeDelegates.remove(it) }
+                    // 用户取消: 平台不会继续拷贝, 本次准备目录可立即清
+                    cleanupPrepared()
+                    lease.release()
                     if (block.isActive) block.resume(null)
                 },
             )
@@ -237,18 +334,29 @@ suspend fun exportToUser(fileName: String, write: (File) -> Unit): String? {
         }
         block.invokeOnCancellation {
             dispatch_async(dispatch_get_main_queue()) {
-                delegateRef?.let { activeDelegates.remove(it) }
-                pickerRef?.dismissViewControllerAnimated(true, completion = null)
+                val picker = pickerRef
+                if (picker == null) {
+                    // 尚未进入主线程 present: 无平台作业, 撤强引用并清本次准备目录
+                    delegateRef?.let { activeDelegates.remove(it) }
+                    cleanupPrepared()
+                    lease.release()
+                }
+                // pickerRef 非空但 presentation completion 尚未确认 accepted 时:
+                // 不释放/不清, 交给 completion 判定; accepted 后保留责任到真实 didPick/WasCancelled
             }
-            // 协程被取消时函数体中断, 走不到下方正常收尾的临时文件清理, 在此补删
-            runCatching { tmpFile.delete() }
         }
     }
 
-    // 3. 清临时文件 (系统已把内容拷到目标位置, 临时副本无保留价值; 删除失败不影响导出结果)
-    runCatching { tmpFile.delete() }
+    // 3. didPick 成功回执: 系统已把副本放到目标位置 (官方文档), 本次准备件可清;
+    //    取消/dismiss 不是完成回执, 来源留给系统临时目录清理
+    if (saved != null) {
+        runCatching { tmpDir.deleteRecursively() }
+    }
     return saved
 }
+
+/** 导出准备件序号: 同一毫秒内并发导出也各有独立目录。 */
+private val exportSequence = atomic(0L)
 
 /**
  * [UIDocumentPickerDelegate] 实现: 桥接 UIKit 回调到 suspend continuation。

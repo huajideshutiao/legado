@@ -4,6 +4,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.archive.ArchiveProvider
 import io.legado.app.help.archive.ArchiveProviders
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.FileUtilsCommon
 import io.legado.app.utils.MD5Utils
 import io.legado.desktop.help.archive.DesktopArchiveCodec
 import java.io.File
@@ -26,6 +27,16 @@ object DesktopArchiveProvider : ArchiveProvider {
         val name = archivePath.substringAfterLast('/').substringAfterLast('\\')
         val cachePath = AppFilesDirs.get().cacheDir
         val workDir = File(cachePath, tempFolderName).resolve(MD5Utils.md5Encode16(name))
+        workDir.mkdirs()
+        return DesktopArchiveCodec.unArchive(File(archivePath), workDir, null)
+            .map { it.absolutePath }
+    }
+
+    override fun deCompressIsolated(archivePath: String, workKey: String): List<String> {
+        val workDir = File(
+            FileUtilsCommon.getPath(FileUtilsCommon.getCachePath(), tempFolderName),
+            "import-$workKey",
+        )
         workDir.mkdirs()
         return DesktopArchiveCodec.unArchive(File(archivePath), workDir, null)
             .map { it.absolutePath }

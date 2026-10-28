@@ -15,3 +15,9 @@ import io.legado.app.help.file.OhosDirAuthorizations
  */
 internal actual fun <T> withLocalDirAccess(path: String, usage: DirUsage, block: (String) -> T): T =
     block(OhosDirAuthorizations.ensureActivatedFor(path, usage))
+
+internal actual suspend fun <T> withLocalDirAccessAsync(
+    path: String,
+    usage: DirUsage,
+    block: suspend (String) -> T,
+): T = block(OhosDirAuthorizations.ensureActivatedFor(path, usage))

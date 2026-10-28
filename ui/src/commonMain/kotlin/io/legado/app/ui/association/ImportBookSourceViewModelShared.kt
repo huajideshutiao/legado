@@ -1,5 +1,6 @@
 package io.legado.app.ui.association
 
+import kotlinx.atomicfu.atomic
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
@@ -30,6 +31,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -57,9 +59,54 @@ import kotlinx.serialization.json.contentOrNull
  *
  * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
  */
+private const val CACHE_INTERRUPTED_WARNING = "书源已提交，缓存维护未完成，可重试缓存维护"
+
 class ImportBookSourceViewModelShared(
-    private val scope: CoroutineScope,
+    val scope: CoroutineScope,
 ) {
+    /** 提交态归 VM: 对话框重建/重组后也不能重复提交同一批。 */
+    private val submitSession = ImportSubmitSession()
+
+    /** 提交态 (Writing/Committed/Failed) 归 VM: 重建对话框仍可读。 */
+    val submitState: StateFlow<ImportSubmitState> = submitSession.state
+
+    /** 提交瞬间冻结的负载: IO 阶段不再读可变列表/分组/prefs。 */
+    private data class FrozenSubmit(
+        val checked: List<Boolean>,
+        val sources: List<BookSource>,
+        val checkSources: List<BookSourcePart?>,
+        val groupName: String?,
+        val isAddGroup: Boolean,
+        val keepName: Boolean,
+        val keepGroup: Boolean,
+        val keepEnable: Boolean,
+    )
+
+    private var frozenSubmit: FrozenSubmit? = null
+
+    fun beginSubmit(checked: List<Boolean>): Boolean {
+        if (!submitSession.begin()) return false
+        val config = AppConfigProviders.get()
+        frozenSubmit = FrozenSubmit(
+            checked = checked.toList(),
+            sources = allSources.map { it.copy() },
+            checkSources = this.checkSources.map { it?.copy() },
+            groupName = groupName,
+            isAddGroup = isAddGroup,
+            keepName = config.importKeepName,
+            keepGroup = config.importKeepGroup,
+            keepEnable = config.importKeepEnable,
+        )
+        return true
+    }
+
+    fun endSubmit() {
+        submitSession.end()
+        frozenSubmit = null
+    }
+
+    fun recordSubmitResult(result: ImportSubmitResult) = submitSession.record(result)
+
 
     /** DAO 容器 (宿主启动时由 app 端注册 AppDbAccessorImpl)。 */
     private val appDb get() = AppDbProviders.get()
@@ -126,22 +173,26 @@ class ImportBookSourceViewModelShared(
      * - 若 [groupName] 非空: isAddGroup=true 时追加到原分组 (linkedSetOf 去重),
      *   isAddGroup=false 时覆盖 (与原版原逻辑完全一致, 不"偷懒"分离分支);
      * - `appDb.bookSourceDao.insert(*selectSource.toTypedArray())` 批量写入;
-     * - 默认全局排序调整 ([SourceHelp.adjustSortNumber]) 并入本操作等待完成, 不再另起
-     *   脱离请求的任务 (原版为异步发起后不等);
-     * - `ContentProcessorProviders.get().upReplaceRules()` 刷新替换规则缓存
-     *   (替代原版 `ContentProcessor.upReplaceRules()`)。
+     * - 必要的全局排序维护 ([SourceHelp.adjustSortNumber]) 与插入在**同一事务**内完成
+     *   (复用 [AppDbAccessor.runInTransactionSuspending]): 排序失败不会留下"已插入但报失败";
+     * - 事务提交后才刷新源缓存与替换规则缓存, 并产生完成结果。
      *
      * 业务在 IO 上执行。
      */
-    suspend fun importSelectAwait(checked: List<Boolean>) = withContext(IoDispatcher) {
-        val group = groupName?.trim()
-        val keepName = AppConfigProviders.get().importKeepName
-        val keepGroup = AppConfigProviders.get().importKeepGroup
-        val keepEnable = AppConfigProviders.get().importKeepEnable
+    suspend fun importSelectAwait(checked: List<Boolean>) = try {
+    withContext(IoDispatcher) {
+        val frozen = frozenSubmit
+        val checkedList = frozen?.checked ?: checked
+        val sources = frozen?.sources ?: allSources
+        val checkSources = frozen?.checkSources ?: this.checkSources
+        val group = (if (frozen != null) frozen.groupName else groupName)?.trim()
+        val keepName = if (frozen != null) frozen.keepName else AppConfigProviders.get().importKeepName
+        val keepGroup = if (frozen != null) frozen.keepGroup else AppConfigProviders.get().importKeepGroup
+        val keepEnable = if (frozen != null) frozen.keepEnable else AppConfigProviders.get().importKeepEnable
         val selectSource = arrayListOf<BookSource>()
-        checked.forEachIndexed { index, b ->
+        checkedList.forEachIndexed { index, b ->
             if (b) {
-                val source = allSources[index]
+                val source = sources[index]
                 checkSources[index]?.let {
                     if (keepName) source.bookSourceName = it.bookSourceName
                     if (keepGroup) source.bookSourceGroup = it.bookSourceGroup
@@ -152,7 +203,7 @@ class ImportBookSourceViewModelShared(
                     source.customOrder = it.customOrder
                 }
                 if (!group.isNullOrEmpty()) {
-                    source.bookSourceGroup = if (isAddGroup) {
+                    source.bookSourceGroup = if (frozen?.let { it.isAddGroup } ?: isAddGroup) {
                         val groups = linkedSetOf<String>()
                         source.bookSourceGroup?.splitNotBlank(AppPattern.splitGroupRegex)?.let {
                             groups.addAll(it)
@@ -166,46 +217,54 @@ class ImportBookSourceViewModelShared(
                 selectSource.add(source)
             }
         }
-        appDb.bookSourceDao.insert(*selectSource.toTypedArray())
-        // 批量导入会 REPLACE 已有书源行: 失效封面链路的源短时缓存
-        SourceHelp.evictAll()
-        SourceHelp.adjustSortNumber()
-        ContentProcessorProviders.get().upReplaceRules()
+        appDb.runInTransactionSuspending(
+            // END 成功后、仍在 useWriterConnection 块内发布真实提交结果
+            // 先标“已提交、缓存未完成”: 事务后若在返回/刷新前被取消, 仍是可重试的 Committed
+            onCommitted = { submitSession.committed(selectSource.size, cacheRunning = true) },
+        ) {
+            appDb.bookSourceDao.insert(*selectSource.toTypedArray())
+            // 导入后的必要排序维护与插入同事务: 要么全部提交, 要么全部回滚
+            SourceHelp.adjustSortNumber()
+        }
+        // 提交成功后刷新缓存: 失败只影响缓存, 不改写已提交结果
+        val cacheError = refreshCaches()
+        if (cacheError != null) {
+            submitSession.cacheFailed(selectSource.size, cacheError)
+            throw ImportPostCommitException("书源已写入，但$cacheError")
+        }
+        // 缓存真实完成: 清除运行态与告警 (保留真实提交数量)
+        submitSession.cacheDone(selectSource.size)
     }
+} catch (e: CancellationException) {
+    // 非 UI 直连入口也必须由 VM 终结运行态, 不依赖调用方再包一层
+    endSubmit()
+    throw e
+}
+
+    /** 缓存-only 维护: 只重跑提交后的缓存刷新, 不重写已提交数据。 */
+    suspend fun repairCaches(): String? = withContext(IoDispatcher) { refreshCaches() }
+
+    /** 缓存维护协程被取消/未启动: 结束运行态, 给出可重试的“未完成”而不是伪装失败。 */
+    fun markCacheInterrupted() {
+        // 原子检查不是 retry 后才结束导入自身的缓存维护
+        submitSession.interruptImportCache(CACHE_INTERRUPTED_WARNING)
+    }
+
+    fun finishCacheRetry(attempt: Long, warning: String?): Boolean =
+        submitSession.finishCacheRetry(attempt, warning)
+
+    /** 缓存-only 重试开始: 会话状态进入运行态, 重建 UI 也不会开放第二个重试。 */
+    fun markCacheRetrying(): Long? = submitSession.tryStartCacheRetry()
+
+    private fun refreshCaches(): String? = runCatching {
+        SourceHelp.evictAll()
+        ContentProcessorProviders.get().upReplaceRules()
+    }.exceptionOrNull()?.let { "刷新缓存失败: ${it.message ?: it}" }
 
     /**
      * 回调式导入入口 (与原版 `importSelect(finally)` 同形状): 成功/失败都回调 [finally],
      * 失败仅落日志, 结果由 [importSelectAwait] 的返回/异常区分。
      */
-    /**
-     * 确认导入 (对话框协议): 写入运行在 VM 自身作用域, 对话框关闭不中断写入;
-     * 成功回调 [onSuccess], 失败回调 [onError] (用户可见文案), 取消不入本协议。
-     */
-    fun importSelect(checked: List<Boolean>, onSuccess: () -> Unit, onError: (String) -> Unit) {
-        Coroutine.async(scope = scope) {
-            importSelectAwait(checked)
-        }.onSuccess {
-            onSuccess()
-        }.onError {
-            AppLog.put("导入书源失败\n${it.message}", it)
-            onError(it.message ?: it.toString())
-        }
-    }
-
-    /**
-     * 回调式导入入口 (与原版 `importSelect(finally)` 同形状, 规则订阅自动更新钩子用):
-     * 成功/失败都回调 [finally], 失败仅落日志, 结果由 [importSelectAwait] 的返回/异常区分。
-     */
-    fun importSelect(checked: List<Boolean>, finally: () -> Unit) {
-        Coroutine.async(scope = scope) {
-            importSelectAwait(checked)
-        }.onError {
-            AppLog.put("导入书源失败\n${it.message}", it)
-        }.onFinally {
-            finally.invoke()
-        }
-    }
-
     /**
      * 导入书源, 对应 app 端 `importSource(text)`。
      *

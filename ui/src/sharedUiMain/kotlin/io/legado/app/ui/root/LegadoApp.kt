@@ -125,6 +125,8 @@ fun LegadoApp(
     screenModelStore: ScreenModelStore = remember { ScreenModelStore() },
     capabilities: PlatformCapabilities = PlatformCapabilityProviders.get(),
     initialRequest: LaunchRequest? = null,
+    // false = store 生命周期由外部持有 (安卓由真实 ViewModelStore 清理), 组合销毁不清。
+    clearScreenModelStoreOnDispose: Boolean = true,
 ) {
     CompositionLocalProvider(
         LocalAppNavigator provides navigator,
@@ -286,8 +288,8 @@ fun LegadoApp(
                 .collect { applyCurrentPolicy() }
         }
 
-        DisposableEffect(screenModelStore) {
-            onDispose { screenModelStore.clear() }
+        DisposableEffect(screenModelStore, clearScreenModelStoreOnDispose) {
+            onDispose { if (clearScreenModelStoreOnDispose) screenModelStore.clear() }
         }
 
         // Overlay 栈状态: BackHandler 与渲染共用

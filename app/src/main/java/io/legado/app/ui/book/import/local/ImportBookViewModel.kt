@@ -7,6 +7,10 @@ import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.fileBook.importLocalFile
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CoroutineScope
 
 /**
  * 导入本地书籍的 Android ViewModel。
@@ -26,10 +30,13 @@ class ImportBookViewModel(application: Application) : BaseViewModel(application)
      */
     fun addToBookshelf(
         bookList: HashSet<ImportBook>,
+        scope: CoroutineScope? = null,
         onNeedBooksDir: (suspend () -> Boolean)? = null,
         finally: () -> Unit
     ) {
-        execute {
+        // scope = 实际页面请求的持有 scope (ScreenModel/页面 Job): 传入即由它持有本次导入
+        // (重建只重绑、真退出撤未提交工作); null 时回退 viewModelScope (跨重建存活)
+        execute(scope = scope ?: viewModelScope) {
             bookList.forEach { importBook ->
                 importBookToBookshelf(importBook, onNeedBooksDir)
             }
@@ -46,11 +53,14 @@ class ImportBookViewModel(application: Application) : BaseViewModel(application)
         importBook: ImportBook,
         onNeedBooksDir: (suspend () -> Boolean)?
     ) {
+        // 导入工作挂在 execute 的真实协程上 (viewModelScope 跨重建存活, 真退出随撤):
+        // parent 贯通到 accessor, 不再落 null → 独立 runBlocking
+        val parent = currentCoroutineContext()[Job]
         try {
-            FileBook.importLocalFile(importBook.file)
+            FileBook.importLocalFile(importBook.file, parent)
         } catch (e: InvalidBooksDirException) {
             if (onNeedBooksDir?.invoke() != true) throw e
-            FileBook.importLocalFile(importBook.file)
+            FileBook.importLocalFile(importBook.file, parent)
         }
         importBook.isOnBookShelf = true
     }

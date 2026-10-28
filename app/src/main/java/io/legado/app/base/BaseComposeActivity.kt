@@ -74,6 +74,8 @@ abstract class BaseComposeActivity(
         // activityResultRegistry (带 lifecycleOwner 的重载禁止 STARTED 后登记),
         // 之后的动态入口 (含重建后) 只发起请求, 不再登记
         handleFileSession
+        // 重建后先登记各系统通道的在途占用: 旧结果只排空, 不交给新请求
+        handleFileSession.restoreFrom(savedInstanceState)
         setupSystemBar()
         upBackgroundImage()
         setContent {
@@ -106,6 +108,12 @@ abstract class BaseComposeActivity(
 
     /** 内容已挂载后的初始化钩子(如订阅数据流)，默认空实现。 */
     open fun onActivityCreated(savedInstanceState: Bundle?) {}
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // 记录各系统通道的在途占用, 供重建后的宿主排空旧结果
+        handleFileSession.saveTo(outState)
+    }
 
     override fun onStart() {
         super.onStart()

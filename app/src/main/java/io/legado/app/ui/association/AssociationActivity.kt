@@ -3,28 +3,30 @@ package io.legado.app.ui.association
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.core.net.toUri
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.Theme
 import io.legado.app.help.LifecycleHelp
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.videoDirectTarget
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.LaunchRequest
 import io.legado.app.ui.root.LaunchRequestBus
+import io.legado.app.base.ComposeDialog
+import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.widget.dialog.WaitDialog
-import io.legado.app.ui.widget.dialog.awaitWaitDialogDismissed
 import io.legado.app.utils.startActivity
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * legado:// / yuedu:// deep link + 文件关联透明壳 Activity (对照 master AssociationActivity):
@@ -48,23 +50,11 @@ import kotlinx.coroutines.withContext
  */
 class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, imageBg = false) {
 
-    /** 待处理的"需要导航"请求 (addToBookshelf / read): 壳内转圈抓书后转发主界面。 */
-    private var pendingBookNav by mutableStateOf<Pair<DeepLinkImportType, String>?>(null)
-
-    /** 抓书是否已结束 (无论成败): 抓完先收起加载框, 再转发主界面。 */
-    private var bookNavResolved by mutableStateOf(false)
-
     /** 本壳注册的 capabilities 实例, onDestroy 身份校验用。 */
     private var registeredCapabilities: PlatformCapabilities? = null
 
-    /** 在途文件导入执行器数 (每条文件关联请求一个)。 */
-    private var activeFlows = 0
-
-    /** 本壳移交、尚未结算的请求载荷 (类型+源): 含仍在全局队列未接纳的。 */
-    private val openHandOffPayloads = mutableSetOf<Pair<DeepLinkImportType, String>>()
-
-    /** 本窗口已接纳、尚未结算的请求载荷 (接纳顺序; 与 onSettled 结算一一配对)。 */
-    private val adoptedPayloads = ArrayDeque<Pair<DeepLinkImportType, String>>()
+    /** 本壳 ViewModelStore: 导入会话、文件流程与抓书导航都随它跨配置重建。 */
+    private val importSessionHolder by viewModels<DeepLinkImportSessionViewModel>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // 冷启动: 壳是首个 Activity, PlatformCapabilities 未注册 (AppDialog.get() 会 error);
@@ -115,8 +105,8 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
         /** 主界面内部导入的标记 (外部 VIEW intent 不带, 默认按独立壳处置)。 */
         const val EXTRA_IS_SHELL_HOST = "assoc.isShellHost"
 
-        /** 文件关联 scheme (对照原版挂在透明壳上的两条 VIEW filter 的 data scheme; 原版的
-         *  `app` scheme 无 MIME 时匹配不了任何 filter, 从无功能性行为, 已清理)。 */
+        /** 文件关联 scheme (对照原版挂在透明壳上的 VIEW filter 的 content/file 分支);
+         *  `app` scheme 是原版在线导入入口, 交共享解析器 (仅限壳外部入口)。 */
         private val fileAssociationSchemes = setOf("content", "file")
 
         /** 壳销毁后仍未注册时的静态兜底: 不捕获任何 Activity, 按当前前台 Activity 惰性操作 */
@@ -155,55 +145,136 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
 
     @Composable
     override fun Content() {
-        val nav = pendingBookNav
-        if (nav == null) {
-            // 纯导入 (勾选六型/readConfig/unknown/文件关联 JSON): 只挂共享导入宿主与壳内弹窗宿主,
-            // 不渲染主界面页面; 请求结算 (确认/取消/失败) 经 onSettled 回报壳收尾
-            DeepLinkImportHost(onSettled = ::onRequestSettled)
-            // 接纳观察: pending 非空 → 空的迁移即本窗口接纳了一条请求 (接纳即离开全局容器),
-            // 按接纳顺序入队, 与 onSettled 逐一配对 —— 外部先投的请求由本窗口接纳展示, 同样陪到结算
-            LaunchedEffect(Unit) {
-                var shown: Pair<DeepLinkImportType, String>? = null
-                LegadoDeepLinkHandler.pending.collect { request ->
-                    val previous = shown
-                    shown = request?.let { it.type to it.src }
-                    if (previous != null && previous != shown) {
-                        adoptedPayloads.addLast(previous)
-                    }
+        // 共享导入宿主始终在组合: 抓书导航/文件阶段切换不卸载它, 已接纳导入不因展示切换被结算
+        DeepLinkImportHost(
+            holder = importSessionHolder,
+            settleOnDispose = { !isChangingConfigurations },
+            onAdopted = { request -> importSessionHolder.onAdopted(request) },
+            onSettled = { request -> importSessionHolder.onSettled(request) },
+        )
+
+        // 抓书导航: 每条请求独立 WaitDialog 与结果分发 (按请求 id 给组合身份, 互不覆盖/迁位);
+        // 先执行真实跳转再消费本条记账, 有其他在途工作时壳不收
+        importSessionHolder.bookNavs.values.toList().forEach { nav ->
+            key(nav.id) {
+                WaitDialog(
+                    visible = !nav.resolved,
+                    onDismissRequest = {},
+                    handle = nav.waitHandle,
+                )
+                val route = nav.route
+                LaunchedEffect(nav.id, route) {
+                    route ?: return@LaunchedEffect
+                    // 同进程直投路由引用 (BookRef.Stored 零拷贝); asRoot = 书架不进栈 (对照 master 直开)
+                    LaunchRequestBus.dispatch(LaunchRequest.OpenRoute(route, asRoot = true))
+                    startActivity<MainActivity>()
+                    importSessionHolder.consumeBookNav(nav.id)
+                }
+                val error = nav.error
+                LaunchedEffect(nav.id, error) {
+                    error ?: return@LaunchedEffect
+                    Toasters.get().toast(error)
+                    importSessionHolder.consumeBookNav(nav.id)
                 }
             }
-            return
         }
-        // addToBookshelf / read: 壳内转圈抓书 (透明浮层), 抓完先收框再转发主界面
-        WaitDialog(visible = !bookNavResolved, onDismissRequest = {})
-        LaunchedEffect(nav) {
-            val result = runCatching {
-                withContext(Dispatchers.IO) { resolveRouteForNav(nav.first, nav.second) }
+
+        // 文件流程的 UI 阶段: 始终由当前有效宿主呈现; 按请求 key 给组合身份,
+        // 前一条完成移除不引起后面条目的 effect 迁位重启
+        importSessionHolder.fileImports.forEach { (importKey, flow) ->
+            key(importKey) {
+                when (val stage = flow.uiStage) {
+                    is ImportUiStage.TreeSelect -> TreeSelectPresenter(flow, stage)
+                    is ImportUiStage.UnsupportedConfirm -> ConfirmPresenter(flow, stage)
+                    null -> Unit
+                }
             }
-            // 先收起加载框并等它确实离开界面, 再唤起主界面: 壳的窗口在页面转场期间仍在合成,
-            // 框不收就会整段转场带着它 (顺序与原版一致: 关框 → 打开详情页 → 结束壳)
-            awaitWaitDialogDismissed { bookNavResolved = true }
-            result.onSuccess { route ->
-                // 同进程直投路由引用 (BookRef.Stored 零拷贝, 保持别名契约; 不序列化不查库),
-                // asRoot = 书架不进导航栈 (对照 master BookInfoActivity/ReadBookActivity 直开);
-                // Intent 只负责把主界面唤到前台, 不带载荷
-                LaunchRequestBus.dispatch(LaunchRequest.OpenRoute(route, asRoot = true))
-                startActivity<MainActivity>()
-                finish()
-            }.onFailure { e ->
-                Toasters.get().toast(e.message ?: "打开失败")
+        }
+
+        // 待交打开结果: 按文件请求 key 归属, 每条独立分发/消费; 计入宿主收尾不丢
+        importSessionHolder.pendingOpenRoutes.forEach { (sourceKey, openRoute) ->
+            key(sourceKey) {
+                LaunchedEffect(sourceKey, openRoute) {
+                    LaunchRequestBus.dispatch(openRoute)
+                    if (openRoute.asRoot) startActivity<MainActivity>()
+                    importSessionHolder.consumeOpenRoute(sourceKey)
+                }
+            }
+        }
+
+        // 全部在途工作收口后结束透明壳: 由 VM 状态驱动, 不调用任何旧 Activity 闭包
+        LaunchedEffect(importSessionHolder.workEpoch) {
+            if (importSessionHolder.intentConsumed && !importSessionHolder.hasWork()) {
                 finish()
             }
         }
     }
 
+    /** 目录选择阶段: 以稳定 key 注册入口; 首次呈现发起, 重建后只重绑在途请求等真实回执。
+     *  回执按本次等待的 attemptId 交付, 参数相同 (同一本书重选) 的两次等待互不串。 */
+    @Composable
+    private fun TreeSelectPresenter(flow: FileAssociationImport, stage: ImportUiStage.TreeSelect) {
+        LaunchedEffect(flow, stage) {
+            val launcher = registerHandleFile(key = flow.treeKey, callback = { result ->
+                val error = result.error
+                if (error != null) {
+                    flow.failTree(stage.attemptId, error)
+                    return@registerHandleFile
+                }
+                val treeUri = result.uri
+                val current = result.value?.toUri()
+                flow.resolveTree(
+                    stage.attemptId,
+                    if (treeUri != null && current != null) treeUri to current else null,
+                )
+            })
+            flow.bindTreeAttemptCancel(stage.attemptId) { launcher.cancel() }
+            flow.attachTreePresenter(stage.attemptId) {
+                launcher.launch {
+                    title = androidAppString("select_book_folder")
+                    mode = HandleFileContract.DIR_SYS
+                    value = stage.bookUri.toString()
+                }
+            }
+        }
+    }
+
+    /** 不支持格式确认阶段: 显示者持本框, 解绑即关 (配置重建不合成用户拒绝);
+     *  按钮只结算创建本框的那次等待 (attemptId), 旧框/新框互不串回执;
+     *  show 真实失败原异常回原等待 (failConfirm), 不冒充用户拒绝也不永挂。 */
+    @Composable
+    private fun ConfirmPresenter(flow: FileAssociationImport, stage: ImportUiStage.UnsupportedConfirm) {
+        DisposableEffect(flow, stage) {
+            var dialog: ComposeDialog? = null
+            try {
+                dialog = alert(
+                    title = androidAppString("draw"),
+                    message = androidAppString("file_not_supported", stage.name),
+                ) {
+                    yesButton { flow.resolveConfirm(stage.attemptId, true) }
+                    noButton { flow.resolveConfirm(stage.attemptId, false) }
+                    onCancelled { flow.resolveConfirm(stage.attemptId, false) }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                flow.failConfirm(stage.attemptId, e)
+            }
+            onDispose { dialog?.dismiss() }
+        }
+    }
+
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         super.onActivityCreated(savedInstanceState)
+        // VM 已有在途工作则只重绑 (UI 阶段由新组合重新呈现); 已消费且工作已结束
+        // (例如文件流程在重建空档完成) 直接收壳; 只有进程死亡后新 VM 尚未消费
+        // intent, 才按仍保留的原 intent 重新接纳
         if (savedInstanceState != null) {
-            // 界面重建: 在途工作随旧实例消亡 (协程/对话框/选择请求不复活), 直接收壳不承接业务;
-            // 已移交共享导入宿主的请求仍在全局队列, 由回到前台的宿主继续
-            finish()
-            return
+            if (importSessionHolder.hasWork()) return
+            if (importSessionHolder.intentConsumed) {
+                maybeFinish()
+                return
+            }
         }
         handleIntent(intent)
     }
@@ -215,18 +286,11 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
         handleIntent(intent)
     }
 
-    /** 全部在途工作 (文件流程/移交的请求/本窗口已接纳未结算的请求) 收口后结束透明壳;
+    /** 全部在途工作 (文件流程/已投递未接纳/本窗口已接纳未结算的请求) 收口后结束透明壳;
      * 导航在途时由导航路径自己收壳。 */
     private fun maybeFinish() {
-        if (pendingBookNav != null) return
-        if (activeFlows > 0 || openHandOffPayloads.isNotEmpty() || adoptedPayloads.isNotEmpty()) return
+        if (importSessionHolder.hasWork()) return
         finish()
-    }
-
-    /** 本窗口接纳的请求结算 (确认/取消/失败): 按接纳顺序配对移出, 扣减移交集合。 */
-    private fun onRequestSettled() {
-        adoptedPayloads.removeFirstOrNull()?.let { openHandOffPayloads.remove(it) }
-        maybeFinish()
     }
 
     private fun handleIntent(intent: Intent) {
@@ -234,69 +298,46 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
         // 会被 FileAssociationImport 当书嗅探并弹"不支持该格式"。判据与 MainActivity 共用
         // [videoDirectTarget] (shared VideoDirect 一份); asRoot = 书架不进栈, back 即退调用方。
         intent.videoDirectTarget()?.let { target ->
+            // 视频真实分发只结清它本条; 壳里还有其他在途工作 (已接纳导入等) 不能连带收掉
             LaunchRequestBus.dispatch(LaunchRequest.OpenRoute(AppRoute.VideoPlay(target), asRoot = true))
             startActivity<MainActivity>()
-            finish()
+            maybeFinish()
             return
         }
         val uri = intent.data ?: run {
-            finish()
+            // 本投递无载荷: 只按宿主在途判定收尾, 不终结其他合法请求
+            maybeFinish()
             return
         }
+        importSessionHolder.markIntentConsumed()
         // 文件关联 (content/file/app): 壳内直接跑一次性执行器; isShellHost 按当次 intent 生效
         // (外部 VIEW 默认 true, 主界面内部导入带 false), 并发请求互不混淆
         if (uri.scheme in fileAssociationSchemes) {
             startFileImport(uri, intent.getBooleanExtra(EXTRA_IS_SHELL_HOST, true))
             return
         }
-        val request = LegadoDeepLink.parse(uri.toString())
+        val request = LegadoDeepLink.parse(uri.toString(), allowAppScheme = true)
         if (request == null) {
-            // 缺 src / 非 legado 系: 静默结束 (对照 app 端 handleOnLineImport 缺 src finish)
-            finish()
+            // 缺 src / 非 legado 系: 静默收本投递 (对照 app 端缺 src finish),
+            // 但壳里还有其他在途工作时不连带取消
+            maybeFinish()
             return
         }
         if (request.type == DeepLinkImportType.ADD_TO_BOOKSHELF ||
             request.type == DeepLinkImportType.READ_BOOK
         ) {
-            // 需要导航的两型: 壳内处理 (Content 里转圈 → 抓书 → 转发主界面), 不进 shared pending
-            pendingBookNav = request.type to request.src
+            // 需要导航的两型: 壳内处理 (转圈 → 抓书 → 转发主界面), 不进 shared pending;
+            // 每条独立投递独立 nav, 不覆盖也不结束其他导航
+            importSessionHolder.startBookNav(request)
             return
         }
-        LegadoDeepLinkHandler.enqueue(request)
-        openHandOffPayloads.add(request.type to request.src)
+        // 同一载荷已被别处接纳: 本投递没有待办, 收掉本次透明壳, 不触碰别处的请求
+        if (!importSessionHolder.enqueue(request)) maybeFinish()
     }
 
     private fun startFileImport(uri: Uri, isShellHost: Boolean) {
-        activeFlows++
-        FileAssociationImport(
-            activity = this,
-            uri = uri,
-            isShellHost = isShellHost,
-            onDone = {
-                activeFlows--
-                maybeFinish()
-            },
-            onHandOff = { request ->
-                // 同载荷请求只认一条 (共享入队对在途/排队/进行中同载荷去重): 载荷集合天然
-                // 合并多次移交, 结算一次即全部视为完成
-                if (openHandOffPayloads.add(request.type to request.src)) {
-                    LegadoDeepLinkHandler.enqueue(request)
-                }
-            },
-        ).start()
+        // 执行器与 Job 归 VM: 配置重建只换 Activity, 不取消读取/权限/选择阶段
+        importSessionHolder.startFileImport(uri, isShellHost)
     }
 
-    /**
-     * 抓书并定路由 (复用 shared [ReadBookShared] / [AddToBookshelfShared] 的统一路由解析):
-     * - read: 命中在架书直接读 (进入阅读页), 未在书架则走 addToBookshelf (抓详情进详情页);
-     * - addToBookshelf: 抓详情 + 未上架标记 → 详情页。
-     */
-    private suspend fun resolveRouteForNav(
-        type: DeepLinkImportType,
-        bookUrl: String,
-    ): AppRoute = when (type) {
-        DeepLinkImportType.READ_BOOK -> ReadBookShared.resolveRoute(bookUrl)
-        DeepLinkImportType.ADD_TO_BOOKSHELF -> AddToBookshelfShared.resolveRoute(bookUrl)
-        else -> error("不支持的导航类型: $type")
-    }
 }

@@ -24,3 +24,10 @@ internal expect fun <T> withLocalDirAccess(
     usage: DirUsage = DirUsage.BookTree,
     block: (String) -> T,
 ): T
+
+/** [withLocalDirAccess] 的挂起形态: 用于授权块内还要等待的访问 (如压缩包整段分发)。 */
+internal expect suspend fun <T> withLocalDirAccessAsync(
+    path: String,
+    usage: DirUsage = DirUsage.BookTree,
+    block: suspend (String) -> T,
+): T

@@ -64,53 +64,45 @@ fun WaitDialogContent(
 }
 
 /**
- * "界面上现在有几个等待框"的进程内登记 + 变化通知, 供 [awaitWaitDialogDismissed] 判定。
+ * "本框是否还在界面上"的进程内登记, 供 [awaitWaitDialogDismissed] 判定。
  *
- * 本对象只被 [WaitDialog] 的组合生命周期与 [awaitWaitDialogDismissed] 触碰; 读改写可能来自
- * 不同组合 (对话框嵌套), 故读写同一把锁。
+ * 按调用方持有的 [WaitDialogHandle] 逐框登记: 框实际显示期间登记, 离开组合即解除并
+ * 放行等待方。等待方因此只等"本框" —— 自己的框未显示过就立即返回, 别窗/别流程的框
+ * 不参与 (不能用进程内数量推断归属: 无关框先退会放行, 自己的框未退也不该等它)。
  *
- * 变化通知而不是逐帧轮询: 等待方在能力面的协程作用域里跑 (没有 Compose 帧时钟), 逐帧自旋
- * 会直接抛异常, 且空转浪费帧。
+ * 本对象只被 [WaitDialog] 的组合生命周期与 [awaitWaitDialogDismissed] 触碰; 读改写
+ * 可能来自不同组合, 故读写同一把锁。
  */
 private object WaitDialogVisibility {
 
     private val lock = SynchronizedObject()
-    private var visibleCount = 0
-    private var changeWaiters = mutableListOf<CompletableDeferred<Unit>>()
+    private val active = HashMap<WaitDialogHandle, CompletableDeferred<Unit>>()
 
-    fun onEnter() = applyChange { visibleCount++ }
-
-    fun onLeave() = applyChange { visibleCount-- }
-
-    val count: Int get() = synchronized(lock) { visibleCount }
-
-    /**
-     * 挂起到可见数降到 [baseline] 以下。
-     *
-     * 判定与注册在同一次加锁内完成: 变化若落在“读数量”与“注册唤醒”之间就不会漏掉
-     * (等待方可能在别的线程, 与写方的主线程并行)。
-     */
-    suspend fun awaitBelow(baseline: Int) {
-        while (true) {
-            val waiter = synchronized(lock) {
-                if (visibleCount < baseline) return
-                CompletableDeferred<Unit>().also { changeWaiters.add(it) }
-            }
-            waiter.await()
-        }
+    /** 框实际显示: 登记本框句柄 (同句柄重复显示幂等)。 */
+    fun onEnter(handle: WaitDialogHandle) {
+        synchronized(lock) { active.getOrPut(handle) { CompletableDeferred() } }
     }
 
-    private fun applyChange(block: () -> Unit) {
-        val waiters = synchronized(lock) {
-            block()
-            changeWaiters.toList().also { changeWaiters.clear() }
-        }
-        waiters.forEach { it.complete(Unit) }
+    /** 框离开组合: 解除登记并放行等待本框的协程。 */
+    fun onLeave(handle: WaitDialogHandle) {
+        val gone = synchronized(lock) { active.remove(handle) } ?: return
+        gone.complete(Unit)
+    }
+
+    /**
+     * 挂起直到 [handle] 对应的框离开组合。
+     *
+     * 判定与读取在同一次加锁内完成: 若框从未显示 (无登记) 立即返回; 已显示则等它的
+     * 解除信号 —— "hide 后才进入组合"的框不会登记 (visible 已为 false), 不会漏也不会多等。
+     */
+    suspend fun awaitGone(handle: WaitDialogHandle) {
+        val gone = synchronized(lock) { active[handle] } ?: return
+        gone.await()
     }
 }
 
 /**
- * 收起本次流程的等待框 ([hide]), 并等到它确实已从界面移除之后才返回。
+ * 收起本次流程的等待框 ([hide]), 并等到**本流程那一框**确实已从界面移除之后才返回。
  *
  * 用于"先关框、再跳转"的流程: 调用方把置隐动作交给 [hide], 本函数返回时框已不在画面上, 接着
  * 发起页面跳转即可 —— 转场动画的任何一帧都不会带上等待框 (原版是 "关框 → 打开页面" 的顺序)。
@@ -120,12 +112,12 @@ private object WaitDialogVisibility {
  * 立刻在同一个主线程消息里发起跳转, 这次重组可能根本来不及跑 —— 承载它的页面被转场盖住后其组合
  * 随即停摆, 框会一直挂在界面上, 于是整段转场都带着它。
  *
- * # 等待口径
- * 先记下"当前在屏数量"作基准 (此刻本流程那个框还在, 含在基准内), 再执行 [hide], 等到数量降回
- * 基准之下 —— 即本流程那个框已离开组合。基准值而不是"等到零": 无关页面同时挂着等待框时只等
- * 自己那个收掉。
+ * # 等待口径 (按 [handle] 归属, 不看进程内数量)
+ * [handle] 是本流程创建并交给显示方的句柄: 自己的框尚未显示过 (无登记) 时立即返回 —— 流程在
+ * 组合前/重建空档就完成也不挂; 已显示则只等本框离开组合, 无关页面同时挂着的等待框既不放行也
+ * 不被等待。
  *
- * 等待方与写方可能不同线程 (调用方的协程常在 IO 线程, 框的注销在主线程): 数量判定与注册唤醒
+ * 等待方与写方可能不同线程 (调用方的协程常在 IO 线程, 框的注销在主线程): 判定与注册唤醒
  * 在同一把锁内完成, 变化落在两者之间不会被漏掉。
  *
  * 框离开组合即窗口已被移除, 不必再等帧: [WaitDialog] 的内部对话框与本次登记都在同一次重组应用
@@ -134,11 +126,12 @@ private object WaitDialogVisibility {
  *
  * [hide] 在调用方线程执行: 置隐涉及平台主线程操作时, 由调用方自己在 [hide] 里切线程。
  */
-suspend fun awaitWaitDialogDismissed(hide: suspend () -> Unit) {
-    val baseline = WaitDialogVisibility.count
+suspend fun awaitWaitDialogDismissed(
+    hide: suspend () -> Unit,
+    handle: WaitDialogHandle,
+) {
     hide()
-    if (baseline == 0) return
-    WaitDialogVisibility.awaitBelow(baseline)
+    WaitDialogVisibility.awaitGone(handle)
 }
 
 /**
@@ -151,25 +144,29 @@ suspend fun awaitWaitDialogDismissed(hide: suspend () -> Unit) {
  * 四端共用 (原 app 端命令式 WaitDialog 类 + dialogMap 单例已删: 它唯一的调用方
  * AppUpdate.check 已下沉 shared, 等待态由调用方自己的 state 驱动本函数)。
  *
- * 本框在界面上期间会登记到 [WaitDialogVisibility], 供"先关框再跳转"的调用方等待
- * (见 [awaitWaitDialogDismissed])。
+ * 本框在界面上期间会按 [handle] 登记到 [WaitDialogVisibility], 供"先关框再跳转"的调用方
+ * 只等本框 (见 [awaitWaitDialogDismissed])。
  *
  * @param visible 是否显示
  * @param message 提示文案 (默认取 i18n key "loading")
  * @param onDismissRequest 用户按返回键触发关闭时回调 (点击外部不触发, 对齐 app 端)
+ * @param handle 本框的归属句柄; null = 本框不参与"先关框再跳转"等待 (如页内局部 loading)
  */
 @Composable
 fun WaitDialog(
     visible: Boolean,
     message: String = stringResource(Res.string.loading),
     onDismissRequest: () -> Unit,
+    handle: WaitDialogHandle? = null,
 ) {
     if (!visible) return
-    // 登记声明在对话框之前 (同一次重组应用里两者一同注销): 等待方看到数量下降时,
+    // 登记声明在对话框之前 (同一次重组应用里两者一同注销): 等待方看到本框解除登记时,
     // 对话框窗口的摘除已在本轮同步派发里完成
-    DisposableEffect(Unit) {
-        WaitDialogVisibility.onEnter()
-        onDispose { WaitDialogVisibility.onLeave() }
+    if (handle != null) {
+        DisposableEffect(handle) {
+            WaitDialogVisibility.onEnter(handle)
+            onDispose { WaitDialogVisibility.onLeave(handle) }
+        }
     }
     // 原版特例: 转圈小窗不走 AppDialogSizes 的 0.9 屏宽钳制, 保持内容自适应
     AppDialog(

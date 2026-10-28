@@ -19,11 +19,15 @@ import io.legado.app.help.i18n.androidAppString
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.utils.registerForActivityResult
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class PermissionActivity : AppCompatActivity() {
 
     private var rationaleDialog: ComposeDialog? = null
+
+    /** 本次权限页归属的请求 id (回传只交付给原请求)。 */
+    private var requestId: Long = -1L
 
     private val settingActivityResult =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -39,6 +43,7 @@ class PermissionActivity : AppCompatActivity() {
     @SuppressLint("BatteryLife")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestId = intent.getLongExtra(KEY_INPUT_REQUEST_ID, -1L)
         val rationale = intent.getStringExtra(KEY_RATIONALE)
         val permissions = intent.getStringArrayExtra(KEY_INPUT_PERMISSIONS)!!
         when (intent.getIntExtra(KEY_INPUT_REQUEST_TYPE, Request.TYPE_REQUEST_PERMISSION)) {
@@ -52,9 +57,13 @@ class PermissionActivity : AppCompatActivity() {
                         } else {
                             openSettingsActivity()
                         }
+                    } catch (e: CancellationException) {
+                        // 权限页重建: 旧实例的等待随宿主消亡, 不是权限失败;
+                        // 新实例重新展示理由并重新请求, 同一条请求继续等真实结果
+                        throw e
                     } catch (e: Exception) {
                         AppLog.put("请求权限出错\n$e", e, true)
-                        RequestPlugins.sRequestCallback?.onError(e)
+                        resultCallback()?.onError(e)
                         finish()
                     }
                 }
@@ -78,7 +87,7 @@ class PermissionActivity : AppCompatActivity() {
                     }
                 } catch (e: Exception) {
                     AppLog.put("请求所有文件的管理权限出错\n$e", e, true)
-                    RequestPlugins.sRequestCallback?.onError(e)
+                    resultCallback()?.onError(e)
                     finish()
                 }
             }
@@ -97,9 +106,11 @@ class PermissionActivity : AppCompatActivity() {
                             intent.putExtra(Settings.EXTRA_CHANNEL_ID, applicationInfo.uid)
                             settingActivityResult.launch(intent)
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         AppLog.put("请求通知权限出错\n$e", e, true)
-                        RequestPlugins.sRequestCallback?.onError(e)
+                        resultCallback()?.onError(e)
                         finish()
                     }
                 }
@@ -127,9 +138,11 @@ class PermissionActivity : AppCompatActivity() {
                         }
                         intent.component = null
                         settingActivityResult.launch(intent)
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         AppLog.put("请求后台权限出错\n$e", e, true)
-                        RequestPlugins.sRequestCallback?.onError(e)
+                        resultCallback()?.onError(e)
                         finish()
                     }
                 }
@@ -140,7 +153,7 @@ class PermissionActivity : AppCompatActivity() {
         // (原版空回调恒消费返回键, 导致该界面返回键完全失效, 用户被困无法退出)
         onBackPressedDispatcher.addCallback(this) {
             rationaleDialog?.dismiss()
-            RequestPlugins.sRequestCallback?.onRequestPermissionsResult(
+            resultCallback()?.onRequestPermissionsResult(
                 permissions,
                 IntArray(0)
             )
@@ -148,8 +161,12 @@ class PermissionActivity : AppCompatActivity() {
         }
     }
 
+    /** 只把回传交给同一原请求; 旧页面迟到结果不推进别人的队列。 */
+    private fun resultCallback(): OnRequestPermissionsResultCallback? =
+        RequestPlugins.sRequestCallback?.takeIf { requestId > 0L && it.id == requestId }
+
     private fun onRequestPermissionFinish() {
-        RequestPlugins.sRequestCallback?.onSettingActivityResult()
+        resultCallback()?.onSettingActivityResult()
         finish()
     }
 
@@ -160,24 +177,10 @@ class PermissionActivity : AppCompatActivity() {
             settingActivityResult.launch(settingIntent)
         } catch (e: Exception) {
             toastOnUi(androidAppString("tip_cannot_jump_setting_page"))
-            RequestPlugins.sRequestCallback?.onError(e)
+            resultCallback()?.onError(e)
             finish()
         }
     }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        RequestPlugins.sRequestCallback?.onRequestPermissionsResult(
-            permissions,
-            grantResults
-        )
-        finish()
-    }
-
 
     override fun startActivity(intent: Intent) {
         super.startActivity(intent)
@@ -207,14 +210,14 @@ class PermissionActivity : AppCompatActivity() {
         ) {
             positiveButton(androidAppString("dialog_setting")) { onOk.invoke() }
             negativeButton(androidAppString("dialog_cancel")) {
-                RequestPlugins.sRequestCallback?.onRequestPermissionsResult(
+                resultCallback()?.onRequestPermissionsResult(
                     permissions,
                     IntArray(0)
                 )
                 finish()
             }
             onCancelled {
-                RequestPlugins.sRequestCallback?.onRequestPermissionsResult(
+                resultCallback()?.onRequestPermissionsResult(
                     permissions,
                     IntArray(0)
                 )
@@ -229,5 +232,6 @@ class PermissionActivity : AppCompatActivity() {
         const val KEY_INPUT_REQUEST_TYPE = "KEY_INPUT_REQUEST_TYPE"
         const val KEY_INPUT_PERMISSIONS_CODE = "KEY_INPUT_PERMISSIONS_CODE"
         const val KEY_INPUT_PERMISSIONS = "KEY_INPUT_PERMISSIONS"
+        const val KEY_INPUT_REQUEST_ID = "KEY_INPUT_REQUEST_ID"
     }
 }

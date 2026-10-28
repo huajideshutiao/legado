@@ -44,6 +44,7 @@ import io.legado.app.ui.book.read.page.PageSelectionState
 import io.legado.app.ui.book.read.page.detectClickArea
 import io.legado.app.ui.book.read.page.overlay.SearchHighlightOverlay
 import io.legado.app.ui.book.searchContent.SearchResult
+import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -115,6 +116,12 @@ interface ReaderPlatformProvider {
 
     /** 路由退出：清理 [onEnter] 注册的副作用 */
     fun onExit(screenModel: ReaderScreenModel) {}
+
+    /**
+     * 宿主重绑时成对释放本端为 [controller] 建的 UI 绑定/订阅 (菜单显隐、自动翻页、
+     * 页面变化订阅等宿主对象)。业务状态不在这里复位。默认空实现。
+     */
+    fun releaseMenuController(screenModel: ReaderScreenModel, controller: ReadMenuController) {}
 
     /**
      * 屏幕超时设置变更 (对照 app 端 keepLightChange → upScreenTimeOut)。
@@ -318,17 +325,56 @@ object ReaderPlatformProviders {
  *   携带当前书/索引/结果列表，供 SearchMenuState "结果"按钮使用）
  */
 class ReaderScreenModel(
-    menuControllerFactory: (ReaderScreenModel) -> ReadMenuController,
-    private val getBatteryLevel: () -> Int,
+    private var menuControllerFactory: (ReaderScreenModel) -> ReadMenuController,
+    private var getBatteryLevel: () -> Int,
     layoutConfig: ReadBookViewModelShared.LayoutConfig = ReadBookViewModelShared.LayoutConfig.DEFAULT,
-    private val onOpenSearch: (ReaderScreenModel, Book, String?) -> Unit = { _, _, _ -> },
+    private var onOpenSearch: (ReaderScreenModel, Book, String?) -> Unit = { _, _, _ -> },
 ) : ScreenModel {
 
     // 自管 scope（与 TocScreenModel 一致，异常兜底见 screenModelScope）
     private val scope = screenModelScope("阅读")
 
     private val readBook = ReadBookShared()
-    val menuController: ReadMenuController by lazy { menuControllerFactory(this) }
+
+    /** 平台菜单控制器: 首次访问时按当前绑定创建; 宿主重绑时只作废旧实例并按新绑定重建。 */
+    private var menuControllerCache: ReadMenuController? = null
+    val menuController: ReadMenuController
+        get() = menuControllerCache ?: menuControllerFactory(this).also { menuControllerCache = it }
+
+    /** 当前生效的宿主绑定; 两个实例都没变就不重绑 (重绑 = 作废旧控制器 + 重建菜单状态)。 */
+    private var boundProvider: ReaderPlatformProvider? = null
+    private var boundNavigator: AppNavigator? = null
+
+    /**
+     * 绑定当前宿主 (组合期、任何菜单状态读取之前调用)。
+     *
+     * - 身份相同: 直接返回。原先无条件作废控制器, 同一宿主里组合再跑就会再造一份菜单状态,
+     *   而 Android 菜单状态的 `init` 就起了页面变化订阅 —— 旧订阅不停就是双份回调, 不只是多一个对象。
+     * - 身份不同: 先让旧 provider 成对释放旧控制器的 UI 绑定/订阅 (菜单显隐、自动翻页、页面变化订阅),
+     *   再清缓存等下一次访问按新绑定创建; 业务状态 (ReadBookShared/阅读进度/在途请求) 全留在本模型。
+     *
+     * 放在组合期而不是 effect 里: 重建后任何菜单读取都必须先拿到新绑定, 不能先喂回旧 Activity。
+     */
+    fun bindHost(
+        provider: ReaderPlatformProvider,
+        navigator: AppNavigator,
+        menuControllerFactory: (ReaderScreenModel) -> ReadMenuController,
+        getBatteryLevel: () -> Int,
+        onOpenSearch: (ReaderScreenModel, Book, String?) -> Unit,
+    ) {
+        if (boundProvider === provider && boundNavigator === navigator) return
+        val previousProvider = boundProvider
+        val previousController = menuControllerCache
+        boundProvider = provider
+        boundNavigator = navigator
+        this.menuControllerFactory = menuControllerFactory
+        this.getBatteryLevel = getBatteryLevel
+        this.onOpenSearch = onOpenSearch
+        menuControllerCache = null
+        if (previousController != null) {
+            previousProvider?.releaseMenuController(this, previousController)
+        }
+    }
 
     /** 进行中的 [initBook] 任务: 后到的初始化取消先到的, 只有当前任务有权提交结果。 */
     private var initBookJob: Job? = null

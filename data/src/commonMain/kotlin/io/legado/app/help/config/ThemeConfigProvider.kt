@@ -144,6 +144,14 @@ interface ThemeConfigProvider {
     fun addConfig(config: ThemeConfigData)
 
     /**
+     * 整批校验并一次保存 (导入链专用)。
+     *
+     * 全部配置有效才合并进现有列表并原子写入一次; 任一配置无效或写入失败抛异常,
+     * 内存列表与磁盘均保持原状。写入成功后才发布新列表。
+     */
+    fun addConfigs(configs: List<ThemeConfigData>)
+
+    /**
      * 删除指定索引的主题配置 (对照 `ThemeConfig.delConfig(index: Int)`)。
      *
      * app 端实现内部: `configList.removeAt(index)` + `save()` + `applyTheme(appCtx)`。

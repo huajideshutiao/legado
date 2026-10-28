@@ -4,6 +4,7 @@ import androidx.activity.result.contract.ActivityResultContract
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityOptionsCompat
 import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlin.coroutines.resume
@@ -28,8 +29,20 @@ fun <I, O> AppCompatActivity.registerForActivityResult(contract: ActivityResultC
     return object : ActivityResultLauncherAwait<I, O>() {
         override suspend fun launch(input: I, options: ActivityOptionsCompat?): O {
             mutex.lock()
+            // 快取锁路径不检查取消: 取到通道后先确认本次调用仍有资格, 取消则归还再上抛
+            try {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            } catch (e: Throwable) {
+                mutex.unlock()
+                throw e
+            }
             return suspendCancellableCoroutine { continuation ->
                 waiter = continuation
+                if (!continuation.isActive) {
+                    waiter = null
+                    mutex.unlock()
+                    return@suspendCancellableCoroutine
+                }
                 try {
                     launcher.launch(input, options)
                 } catch (e: Throwable) {

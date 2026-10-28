@@ -1,5 +1,6 @@
 package io.legado.app.ui
 
+import io.legado.app.ui.video.VideoDirect
 import io.legado.app.constant.AppLog
 import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -37,18 +38,23 @@ import io.legado.app.help.upLoadToDirectLink
 import io.legado.app.help.storage.NativeSaveLog
 import io.legado.app.model.Debug
 import io.legado.app.model.ExportBookUtils
+import io.legado.app.model.fileBook.TempBookPersistence
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.model.fileBook.OhosTransientFileAccess
 import io.legado.app.napi.NotificationButton
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.service.defaultTtsEngineConfig
 import io.legado.app.ui.book.import.ImportFileItem
+import io.legado.app.ui.book.info.WebFileFlowTexts
 import io.legado.app.ui.book.info.WebFileImportShared
+import io.legado.app.ui.book.info.runWebFileReadFlow
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.manage.selectedSourcesJson
 import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.BookRef
+import io.legado.app.ui.root.ImportStageHost
 import io.legado.app.ui.root.PickedFile
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.ensureBookSaveDirSelected
@@ -56,6 +62,7 @@ import io.legado.app.ui.root.pushExportDispatch
 import io.legado.app.ui.root.reselectBookSaveDir
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.root.pushExportSectionConfig
+import io.legado.app.ui.widget.dialog.WaitDialogHandle
 import io.legado.app.utils.File
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.ScreenInfoProviders
@@ -66,11 +73,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -90,14 +96,16 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)
 
     /**
-     * 待分发的文件关联任务: 能力面只投递, 消费在主窗口组合内 (MainOhos) ——
-     * 分发任务随窗口存亡, 不再挂平台单例 scope; 窗口组合完成前的冷启动直投先排队。
+     * 待分发的文件关联任务: 能力面只投递, 消费在主窗口组合内 (MainOhos)。
+     *
+     * 队列而非"列表 + 全量执行": 每个任务只被取走一次, 后来的请求不会重做前面的任务,
+     * 重新订阅也不会重放已消费的任务。投递早于首帧组合时先缓冲。
      */
-    internal val pendingAssociationFiles = MutableStateFlow<List<suspend () -> Unit>>(emptyList())
+    internal val pendingAssociationFiles = Channel<suspend () -> Unit>(Channel.UNLIMITED)
 
-    /** 投递一个文件关联分发任务 (窗口组合前排队, 组合后按序消费)。 */
+    /** 投递一个文件关联分发任务 (窗口组合前缓冲, 组合后按序逐个取走执行)。 */
     internal fun offerAssociationFile(job: suspend () -> Unit) {
-        pendingAssociationFiles.update { it + job }
+        pendingAssociationFiles.trySend(job)
     }
 
     override val capabilityScope: CoroutineScope get() = scope
@@ -268,10 +276,13 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     // ===== 书籍详情页 =====
 
     // 本地书文件字节数 (bookUrl 形如 file:///path, 鸿蒙沙盒为 POSIX 路径, 去 scheme 即可);
-    // bookUrl 可能指向用户授权目录内的原文件 (阅读重定位后不复制), 先激活授权再取属性
+    // bookUrl 可能指向用户授权目录内的原文件 (阅读重定位后不复制), 先激活授权再取属性;
+    // 文件关联投递的文件只有临时读许可 ([OhosTransientFileAccess]), 直接读
     override suspend fun localBookFileSize(bookUrl: String): Long = withContext(IoDispatcher) {
         val path = bookUrl.removePrefix("file://")
-        OhosDirAuthorizations.ensureActivatedFor(path, DirUsage.BookTree)
+        if (!OhosTransientFileAccess.covers(path)) {
+            OhosDirAuthorizations.ensureActivatedFor(path, DirUsage.BookTree)
+        }
         File(path).length()
     }
 
@@ -285,17 +296,18 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
 
     // ===== webFile 下载导入 (对照 BookInfoActivity 同名方法 / iOS IosPlatformCapabilities) =====
     //
-    // 平台无关编排 (构建 webFile 列表 / 下载 / 导入本地 / 压缩包条目) 已下沉:
-    // 取件与文件名推导在 WebFileImportShared, 下载导入/压缩包导入在 SharedPlatformCapabilities
-    // (目录落库统一走 BookChapterLoader.fetchFromSource)。本端只保留两处平台形态:
-    // 条目选择框 (系统对话框桥) 与"不支持格式时交系统程序打开" (无系统应用打开通道, 同 iOS
-    // 用系统分享面板把文件交给其它 app)。
+    // 平台无关编排 (构建 webFile 列表 / 下载 / 导入本地 / 压缩包条目 / 候选与确认框)
+    // 已下沉: 流程与呈现都归共享层 (WebFileReadFlow + ImportStageHost), 本端只保留
+    // "下载 / 取压缩包条目 / 导入 / 交其它应用打开" 四个叶子 (无系统应用打开通道,
+    // 同 iOS 用系统分享面板把文件交给其它 app)。
 
-    /** 对照 BookInfoActivity.onReadClick isWebFile 分支: 构建 webFile 列表后弹条目选择框。 */
+    // 对照 BookInfoActivity.onReadClick isWebFile 分支: 候选/压缩包条目/不支持格式确认交给共享阶段
+    // (四端同一套 Compose 呈现, 阶段归发起页面), 本端只给叶子: 下载 / 取条目 / 导入 / 交其它应用打开
     override fun handleWebFileRead(
         book: Book,
-        onWaitDialog: (Boolean) -> Unit,
-        onAction: (String) -> Unit,
+        scope: CoroutineScope,
+        onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
+        stages: ImportStageHost,
         onSuccess: ((Book) -> Unit)?,
     ) {
         scope.launch {
@@ -308,98 +320,59 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
                 Toasters.get().toast("Unexpected webFileData")
                 return@launch
             }
-            // 条目选择框 (对照 app 端 activity.selector(download_and_import_file, webFiles));
-            // 取消/关闭 = 未选择, 直接结束 (不弹第二个框)
-            val index = selectFromList(
-                title = syncGetString("download_and_import_file"),
-                items = webFiles.map { it.name },
-            ) ?: return@launch
-            val webFile = webFiles.getOrNull(index) ?: return@launch
-            when {
-                webFile.isSupported ->
-                    importWebFile(book, webFile, onWaitDialog, onAction) { onSuccess?.invoke(it) }
-
-                webFile.isSupportDecompress ->
-                    downloadWebFile(book, webFile, onWaitDialog, onAction) { path ->
-                        getArchiveFilesName(path) { fileNames ->
-                            if (fileNames.size == 1) {
-                                importBookFromArchive(path, fileNames[0], book, onWaitDialog) {
-                                    onSuccess?.invoke(it)
-                                }
-                            } else {
-                                showArchiveEntrySelect(path, fileNames, book, onWaitDialog, onSuccess)
-                            }
-                        }
-                    }
-
-                else -> showUnsupportedWebFileAlert(book, webFile, onWaitDialog, onAction)
-            }
+            runWebFileReadFlow(
+                book = book,
+                scope = scope,
+                stages = stages,
+                onWaitDialog = onWaitDialog,
+                webFiles = webFiles,
+                texts = ohosWebFileTexts(),
+                // 鸿蒙无"按扩展名把本地文件交系统应用打开"的通道 (安卓 openFileUri 那条),
+                // 用系统分享面板把文件交给其它 app (与 iOS presentShareSheet 同款出口);
+                // MIME 用 application/octet-stream: 鸿蒙侧按 UTD 反查, 认不出具体类型也照常
+                // 出现在候选应用里 (与 iOS 不带类型同口径), 不自行猜 MIME。
+                openDownloadedFile = { path ->
+                    services.sharing.shareFile(path, "application/octet-stream")
+                },
+                onSuccess = onSuccess,
+            )
         }
     }
 
-    /** 压缩包内选章 (对照 app 端 `showDecompressFileImportAlert` / iOS presentArchiveEntrySelect)。 */
-    private fun showArchiveEntrySelect(
-        archiveFilePath: String,
-        fileNames: List<String>,
-        book: Book,
-        onWaitDialog: (Boolean) -> Unit,
-        onSuccess: ((Book) -> Unit)?,
-    ) {
-        if (fileNames.isEmpty()) {
-            Toasters.get().toast(syncGetString("unsupport_archivefile_entry"))
-            return
-        }
-        val index = selectFromList(
-            title = syncGetString("import_select_book"),
-            items = fileNames,
-        ) ?: return
-        val name = fileNames.getOrNull(index) ?: return
-        importBookFromArchive(archiveFilePath, name, book, onWaitDialog) { onSuccess?.invoke(it) }
-    }
-
-    /** 不支持的格式: 确认后下载并交其它应用打开 (对照 app 端 alert 的 open_fun 分支)。 */
-    private fun showUnsupportedWebFileAlert(
-        book: Book,
-        webFile: FileBook.WebFile,
-        onWaitDialog: (Boolean) -> Unit,
-        onAction: (String) -> Unit,
-    ) {
-        val open = confirm(
-            title = syncGetString("draw"),
-            message = syncGetString("file_not_supported", webFile.name),
-            confirmText = syncGetString("open_fun"),
-            cancelText = syncGetString("cancel"),
-        )
-        if (!open) return
-        downloadWebFile(book, webFile, onWaitDialog, onAction) { path ->
-            // 鸿蒙无"按扩展名把本地文件交系统应用打开"的通道 (安卓 openFileUri 那条),
-            // 用系统分享面板把文件交给其它 app (与 iOS presentShareSheet 同款出口);
-            // MIME 用 application/octet-stream: 鸿蒙侧按 UTD 反查, 认不出具体类型也照常
-            // 出现在候选应用里 (与 iOS 不带类型同口径), 不自行猜 MIME。
-            services.sharing.shareFile(path, "application/octet-stream")
-        }
-    }
+    /** 共享流程的本端文案 (沿用 compose 资源键)。 */
+    private fun ohosWebFileTexts() = WebFileFlowTexts(
+        selectDownloadItem = syncGetString("download_and_import_file"),
+        selectArchiveEntry = syncGetString("import_select_book"),
+        unsupportedTitle = syncGetString("draw"),
+        unsupportedMessage = { name -> syncGetString("file_not_supported", name) },
+        openWithSystem = syncGetString("open_fun"),
+        unsupportedArchiveEntry = syncGetString("unsupport_archivefile_entry"),
+    )
 
     // 对照 RemoteBookActivity.startRead 的 archive 分支 + Android startReadRemoteArchive:
     // 在有效书籍保存目录里找已下载的压缩包 (目录与 NativeFileBookAccessor 同源),
     // 找到就交文件关联分发链 (与 NativeImportBook.openReader 同口径走直接导入),
     // 没找到就弹确认框由调用方重新下载后重试。
-    override fun startReadRemoteArchive(fileName: String, onNeedDownload: () -> Unit) {
-        offerAssociationFile {
+    override fun startReadRemoteArchive(
+        fileName: String,
+        scope: CoroutineScope,
+        onNeedDownload: () -> Unit,
+    ) {
+        // 请求作用域持有本次阅读: 页面/调用方真退即停止分发
+        scope.launch {
             // 与 NativeFileBookAccessor 的有效书籍保存目录同源 (用户在"书籍保存位置"选定);
             // 选定目录在沙盒外, 存在性检查与整段分发都先激活既有目录授权
             withContext(IoDispatcher) {
                 val dir = effectiveBookSaveDir()
                 if (dir != null) {
                     val path = "$dir/$fileName"
-                    val exists = runCatching {
-                        withLocalDirAccess(path) { File(path).exists() }
-                    }.getOrDefault(false)
-                    if (exists) {
-                        // 容器外路径先按用途激活授权, 用块内返回的规范化路径去分发;
+                    // 一次授权取值: 存在性检查与后续分发用同一个规范化路径 (不重复激活)
+                    val authorizedPath = runCatching {
+                        withLocalDirAccess(path) { scopedPath -> scopedPath.takeIf { File(it).exists() } }
+                    }.getOrNull()
+                    if (authorizedPath != null) {
                         // 分发是挂起函数, 不能塞进 withLocalDirAccess 的非挂起块
-                        val authorizedPath = withLocalDirAccess(path) { it }
-                        FileAssociationDispatch.dispatch(authorizedPath) { confirmUnknownFileImport(it) }
+                        FileAssociationDispatch.dispatch(authorizedPath, onUnknownFile = { confirmUnknownFileImport(it) })
                         return@withContext
                     }
                 }
@@ -808,13 +781,27 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
                 // 真实路径再交分发链 (与 ArkTS 媒体桥折回视频地址同一规则)
                 val mountPath = filePath.docsUriToMountPath()
                 if (mountPath == filePath) {
-                    FileAssociationDispatch.dispatch(filePath) { confirmUnknownFileImport(it) }
+                    FileAssociationDispatch.dispatch(filePath, onUnknownFile = { confirmUnknownFileImport(it) })
                     return@withContext
                 }
-                // 该文件在应用沙盒之外: 先按书籍文件用途登记它的授权 URI (与选目录同一套登记机制,
-                // 不弹界面), 否则文件访问会被授权表拦成"没有访问权限"
-                OhosDirAuthorizations.remember(filePath, mountPath, DirUsage.BookTree)
-                FileAssociationDispatch.dispatch(mountPath) { confirmUnknownFileImport(it) }
+                // 系统投递的文件只有临时读许可 (未持久化, 无法 activatePermission): 按本次导入登记成
+                // 进程内临时访问; 普通书先复制进沙盒再分发, 长期引用不指向临时许可 (重启/退后台后必失效)
+                val fileName = mountPath.substringAfterLast('/')
+                val isVideo = VideoDirect.targetFor(mountPath, title = fileName) != null
+                if (isVideo) {
+                    // 视频体积大且播放链直接使用地址: 不执行 K 侧字节读取, 无需登记
+                    // OhosTransientFileAccess (该表只服务 FileBookAccessor 的授权旁路)
+                    FileAssociationDispatch.dispatch(mountPath, onUnknownFile = { confirmUnknownFileImport(it) })
+                } else {
+                    // 仅普通书在复制/分发期间需要 K 侧临时读取旁路; 本批次结束即注销
+                    OhosTransientFileAccess.remember(mountPath)
+                    try {
+                        val durable = TempBookPersistence.persist(mountPath, fileName)
+                        FileAssociationDispatch.dispatch(durable, onUnknownFile = { confirmUnknownFileImport(it) })
+                    } finally {
+                        OhosTransientFileAccess.forget(mountPath)
+                    }
+                }
             }
         }
     }
@@ -823,7 +810,7 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
      * 未知文件导入确认 (复用既有同步确认框桥; 调用点均在 IO 作用域, 阻塞等待与 startReadRemoteArchive 同口):
      * 确认返回 true 按书籍文件尝试导入, 取消/弹框失败返回 false。
      */
-    private fun confirmUnknownFileImport(fileName: String): Boolean =
+    private suspend fun confirmUnknownFileImport(fileName: String): Boolean =
         confirm(
             title = syncGetString("draw"),
             message = "无法识别的文件: $fileName\n是否按书籍文件尝试导入？",
@@ -871,30 +858,38 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     override fun addImportSelectionToBookshelf(
         items: List<ImportFileItem>,
         onComplete: () -> Unit,
+        scope: CoroutineScope,
     ) = NativeImportBook.addToBookshelf(
         items,
         onComplete,
-        onNeedBooksDir = { ensureBookSaveDirSelected() },
+        onNeedBooksDir = { ensureBookSaveDirSelected(currentCoroutineContext()[Job]) },
+        scope = scope,
     )
 
     /** 选文件导入: 面板回传的临时件先复制进沙盒再走上架链, 不经列表勾选。 */
-    override fun importPickedBookFiles(files: List<PickedFile>, onComplete: () -> Unit) =
-        NativeImportBook.importPickedFiles(
+    override fun importPickedBookFiles(
+        files: List<PickedFile>,
+        onComplete: () -> Unit,
+        scope: CoroutineScope,
+    ) = NativeImportBook.importPickedFiles(
             files.map { it.ref },
-            onComplete = {
-                // 物化副本只在导入期间需要 (已复制进沙盒书籍目录), 导入完即清
+            onComplete = onComplete,
+            onNeedBooksDir = { ensureBookSaveDirSelected(currentCoroutineContext()[Job]) },
+            scope = scope,
+            onRelease = {
+                // 物化副本只在导入期间需要 (已复制进沙盒书籍目录), 任何终态都只清本次交付的副本
                 files.forEach { PlatformServiceProviders.get().files.discardPickedFile(it.ref) }
-                onComplete()
             },
-            onNeedBooksDir = { ensureBookSaveDirSelected() },
         )
 
     override fun updateImportBookFilter(key: String) = NativeImportBook.updateFilter(key)
 
     override fun updateImportBookSort(sort: Int) = NativeImportBook.updateSort(sort)
 
-    override fun openImportedBookReader(item: ImportFileItem) {
-        NativeImportBook.openReader(item, ::offerAssociationFile) { confirmUnknownFileImport(it) }
+    override fun openImportedBookReader(item: ImportFileItem, scope: CoroutineScope) {
+        NativeImportBook.openReader(
+            item, { confirmUnknownFileImport(it) }, scope,
+        )
     }
 
     override fun navigateImportDir(item: ImportFileItem) = NativeImportBook.enterDir(item)
@@ -910,50 +905,38 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
      *
      * 平台形态: ArkTS 侧 `UIContext.getPromptAction().showDialog` (系统提示对话框),
      * 经 [OhosNativeBridge.invokeDialogSync] (请求走 window tsfn, 结果走 platformEvent) 同步取回。
-     * 用户取消/关闭对话框 = 未选择, 桥未就绪或超时同样返回 null (调用方直接结束, 不假选第一项)。
+     * 用户取消/关闭对话框 = 未选择, 桥未就绪同样返回 null (调用方直接结束, 不假选第一项)。
+     *
+     * 等待以调用方协程为父: 调用方被撤销时等待立即结束, 迟到的选择不再交给它。
      */
-    private fun selectFromList(title: String, items: List<String>): Int? {
+    private suspend fun selectFromList(title: String, items: List<String>): Int? {
         val payload = KS_JSON.encodeToString(
             OhosDialogSelectPayload(title = title, items = items)
         )
-        val resultJson = OhosNativeBridge.invokeDialogSync("select", payload) ?: return null
+        val resultJson = OhosNativeBridge.invokeDialogSync(
+            "select",
+            payload,
+            currentCoroutineContext()[Job],
+        ) ?: return null
         val resp = runCatching {
             KS_JSON.decodeFromString(OhosDialogResult.serializer(), resultJson)
         }.getOrNull()
         if (resp == null || !resp.ok) {
-            AppLog.putDebug("弹候选列表失败: ${resp?.error ?: resultJson}", tag = "ohos-dialog")
+            val message = "弹候选列表失败: ${resp?.error ?: resultJson}"
+            AppLog.put(message)
+            Toasters.get().toast(message)
             return null
         }
         return resp.index
     }
 
     /**
-     * 弹多字段输入对话框并返回结果 (action 为点中的动作键, values 为各字段当前文本)。
-     *
-     * 平台形态: ArkTS 侧自绘自定义对话框 ([OhosDialogFormPayload] 声明字段与动作键, 见
-     * SysDialogBridgeHandler.ets 的 `form` 能力) —— 系统提示对话框 (showDialog) 只有标题/正文/
-     * 按钮, 承载不了输入框。用户取消/关闭/桥未就绪返回 null。
-     */
-    private fun formDialog(payload: OhosDialogFormPayload): OhosDialogResult? {
-        val payloadJson = KS_JSON.encodeToString(payload)
-        val resultJson = OhosNativeBridge.invokeDialogSync("form", payloadJson) ?: return null
-        val resp = runCatching {
-            KS_JSON.decodeFromString(OhosDialogResult.serializer(), resultJson)
-        }.getOrNull()
-        if (resp == null || !resp.ok) {
-            AppLog.putDebug("弹多字段对话框失败: ${resp?.error ?: resultJson}", tag = "ohos-dialog")
-            return null
-        }
-        if (resp.cancelled) return null
-        return resp
-    }
-
-    /**
      * 弹是-否确认框并返回是否确认 (对照 app 端 `activity.alert { okButton/noButton }`)。
      *
      * 点"否"与取消/关闭 (未选择) 在调用点语义相同 (都不继续), 故统一返回 false。
+     * 等待以调用方协程为父: 调用方被撤销时等待立即结束, 迟到的确认不再交给它。
      */
-    private fun confirm(
+    private suspend fun confirm(
         title: String,
         message: String?,
         confirmText: String,
@@ -967,12 +950,18 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
                 cancelText = cancelText,
             )
         )
-        val resultJson = OhosNativeBridge.invokeDialogSync("confirm", payload) ?: return false
+        val resultJson = OhosNativeBridge.invokeDialogSync(
+            "confirm",
+            payload,
+            currentCoroutineContext()[Job],
+        ) ?: return false
         val resp = runCatching {
             KS_JSON.decodeFromString(OhosDialogResult.serializer(), resultJson)
         }.getOrNull()
         if (resp == null || !resp.ok) {
-            AppLog.putDebug("弹确认框失败: ${resp?.error ?: resultJson}", tag = "ohos-dialog")
+            val message = "弹确认框失败: ${resp?.error ?: resultJson}"
+            AppLog.put(message)
+            Toasters.get().toast(message)
             return false
         }
         return resp.confirmed == true
@@ -1042,39 +1031,6 @@ private data class OhosDialogConfirmPayload(
     val message: String? = null,
     val confirmText: String,
     val cancelText: String,
-)
-
-/** form 请求里的一个输入字段 (Kotlin → ArkTS)。 */
-@Serializable
-private data class OhosDialogFormField(
-    /** 字段键 (回传 [OhosDialogResult.values] 的键)。 */
-    val key: String,
-    /** 字段名 (输入框上方的标签)。 */
-    val label: String,
-    /** 初始文本。 */
-    val initial: String = "",
-    /** 输入框占位提示。 */
-    val hint: String? = null,
-    /** 是否用数字键盘。 */
-    val numeric: Boolean = false,
-)
-
-/** form 请求里的一个提交按钮 (Kotlin → ArkTS): 点它即带上 [key] 提交当前各字段值。 */
-@Serializable
-private data class OhosDialogFormAction(
-    val key: String,
-    val text: String,
-)
-
-/** form 请求 payload (Kotlin → ArkTS); 标题/标签/按钮文案由本侧给, ArkTS 不拼文案。 */
-@Serializable
-private data class OhosDialogFormPayload(
-    val title: String,
-    val message: String? = null,
-    val fields: List<OhosDialogFormField>,
-    val actions: List<OhosDialogFormAction>,
-    /** 取消按钮文案; 缺省时只能拍遮罩/返回键关闭。 */
-    val cancelText: String? = null,
 )
 
 /**

@@ -45,6 +45,7 @@ class DeepLinkImportTarget private constructor(
     val replaceRuleVm: ImportReplaceRuleViewModelShared? = null,
 ) {
 
+
     /**
      * 触发下载 → 解析 → 与本地库比对 (与手动网络导入同一条链)。
      *
@@ -55,8 +56,8 @@ class DeepLinkImportTarget private constructor(
 
     companion object {
 
-        /** 按类型创建目标, 不支持的类型返回 null。每条 deep link 请求新建, 避免 state 残留。 */
-        fun of(type: DeepLinkImportType, scope: CoroutineScope): DeepLinkImportTarget? = when (type) {
+        /** 按类型创建目标。四型直通类型由宿主提前分流, 不会走到这里。 */
+        fun of(type: DeepLinkImportType, scope: CoroutineScope): DeepLinkImportTarget = when (type) {
             DeepLinkImportType.BOOK_SOURCE -> ImportBookSourceViewModelShared(scope).let { vm ->
                 DeepLinkImportTarget(
                     ImportBookSourceItemsVm(vm), "import_book_source",
@@ -70,6 +71,14 @@ class DeepLinkImportTarget private constructor(
                     vm.errorState, vm.successState, vm::import, replaceRuleVm = vm,
                 )
             }
+
+            DeepLinkImportType.SOURCE_FILTER_RULE ->
+                ImportSourceFilterRuleViewModelShared(scope).let { vm ->
+                    DeepLinkImportTarget(
+                        ImportSourceFilterRuleItemsVm(vm), "source_filter_rule",
+                        vm.errorState, vm.successState, vm::import,
+                    )
+                }
 
             DeepLinkImportType.TXT_TOC_RULE -> ImportTxtTocRuleViewModelShared(scope).let { vm ->
                 DeepLinkImportTarget(
@@ -103,7 +112,7 @@ class DeepLinkImportTarget private constructor(
             DeepLinkImportType.READ_CONFIG,
             DeepLinkImportType.READ_BOOK,
             DeepLinkImportType.UNKNOWN,
-            -> null
+            -> error("直通类型不走勾选导入: $type")
         }
     }
 }
@@ -123,6 +132,8 @@ internal fun ImportTargetDialog(
     target: DeepLinkImportTarget,
     onDismiss: () -> Unit,
     onImported: (selectCount: Int) -> Unit = {},
+    checkedState: MutableList<Boolean>? = null,
+    onCheckedState: ((MutableList<Boolean>) -> Unit)? = null,
 ) {
     // SharedFlow 无初始值, null = "还没收到解析结果"(加载中)
     val errorRaw by target.errorState.collectAsState(initial = null)
@@ -141,6 +152,8 @@ internal fun ImportTargetDialog(
             onImported = onImported,
             loading = loading,
             errorText = errorText,
+            checkedState = checkedState,
+            onCheckedState = onCheckedState,
         )
         return
     }
@@ -152,6 +165,8 @@ internal fun ImportTargetDialog(
             onImported = onImported,
             loading = loading,
             errorText = errorText,
+            checkedState = checkedState,
+            onCheckedState = onCheckedState,
         )
         return
     }
@@ -162,5 +177,7 @@ internal fun ImportTargetDialog(
         onImported = onImported,
         loading = loading,
         errorText = errorText,
+        checkedState = checkedState,
+        onCheckedState = onCheckedState,
     )
 }

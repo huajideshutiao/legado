@@ -102,6 +102,15 @@ interface AppDbAccessor {
      * app 端实现见 `io.legado.app.model.webBook.WebBookProvidersImpl`。
      */
     suspend fun <R> runInTransactionSuspending(block: suspend () -> R): R
+
+    /**
+     * 同 [runInTransactionSuspending], 但 [onCommitted] 在事务成功返回之后、
+     * 仍处于 useWriterConnection 块内发布已提交结果; 失败/回滚不会调用。
+     */
+    suspend fun <R> runInTransactionSuspending(
+        onCommitted: () -> Unit,
+        block: suspend () -> R,
+    ): R
 }
 
 /**
@@ -119,6 +128,19 @@ suspend fun <R> AppDatabase.runInImmediateTransaction(block: suspend () -> R): R
     useWriterConnection { transactor ->
         transactor.immediateTransaction { block() }
     }
+
+/**
+ * 事务成功返回后, 仍在 useWriterConnection 块内发布已提交结果 (END 已同步执行成功);
+ * 失败/回滚不会调用 [onCommitted], 也不在 transaction block 内提前发布。
+ */
+suspend fun <R> AppDatabase.runInImmediateTransaction(
+    onCommitted: () -> Unit,
+    block: suspend () -> R,
+): R = useWriterConnection { transactor ->
+    val result = transactor.immediateTransaction { block() }
+    onCommitted()
+    result
+}
 
 /**
  * appDb provider 容器。宿主启动早期注册一次。

@@ -290,17 +290,24 @@ fun ThemeCustomizeDialog(
             return
         }
         // 对照原版 saveToConfig: 保留 old.isNightTheme, 仅更新名字与三色
-        ThemeConfigProviders.get().replaceConfig(
-            configIndex,
-            ThemeConfigData(
-                themeName = name,
-                isNightTheme = list[configIndex].isNightTheme,
-                primaryColor = "#${bg.hexString}",
-                accentColor = "#${accent.hexString}",
-                backgroundColor = "#${bg.hexString}",
-                bottomBackground = "#${bbg.hexString}",
-            ),
-        )
+        try {
+            ThemeConfigProviders.get().replaceConfig(
+                configIndex,
+                ThemeConfigData(
+                    themeName = name,
+                    isNightTheme = list[configIndex].isNightTheme,
+                    primaryColor = "#${bg.hexString}",
+                    accentColor = "#${accent.hexString}",
+                    backgroundColor = "#${bg.hexString}",
+                    bottomBackground = "#${bbg.hexString}",
+                ),
+            )
+        } catch (e: Throwable) {
+            // 真实盘满/不可写: 留在编辑框并提示原因, 不刷新成功态
+            AppLog.put("保存主题失败\n${e.message}", e)
+            onToast(e.message ?: e.toString())
+            return
+        }
         notifyConfigChanged()
         onDismiss()
     }
@@ -311,16 +318,22 @@ fun ThemeCustomizeDialog(
             onToast(themeNameMsg)
             return
         }
-        ThemeConfigProviders.get().addConfig(
-            ThemeConfigData(
-                themeName = name,
-                isNightTheme = isNight,
-                primaryColor = "#${bg.hexString}",
-                accentColor = "#${accent.hexString}",
-                backgroundColor = "#${bg.hexString}",
-                bottomBackground = "#${bbg.hexString}",
-            ),
-        )
+        try {
+            ThemeConfigProviders.get().addConfig(
+                ThemeConfigData(
+                    themeName = name,
+                    isNightTheme = isNight,
+                    primaryColor = "#${bg.hexString}",
+                    accentColor = "#${accent.hexString}",
+                    backgroundColor = "#${bg.hexString}",
+                    bottomBackground = "#${bbg.hexString}",
+                ),
+            )
+        } catch (e: Throwable) {
+            AppLog.put("保存主题失败\n${e.message}", e)
+            onToast(e.message ?: e.toString())
+            return
+        }
         notifyConfigChanged()
         onDismiss()
     }

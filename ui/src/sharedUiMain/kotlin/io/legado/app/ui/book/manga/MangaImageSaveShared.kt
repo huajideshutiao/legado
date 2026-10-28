@@ -23,7 +23,7 @@ import io.legado.app.utils.systemCurrentTimeMillis
 suspend fun saveCachedMangaImage(
     url: String,
     book: Book?,
-    save: (fileName: String, bytes: ByteArray) -> Boolean?,
+    save: suspend (fileName: String, bytes: ByteArray) -> Boolean?,
 ): Boolean? {
     book ?: return false
     return runCatching {

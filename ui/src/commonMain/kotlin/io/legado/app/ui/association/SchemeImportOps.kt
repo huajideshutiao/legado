@@ -5,11 +5,16 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.addType
+import io.legado.app.help.archive.ArchiveProviders
 import io.legado.app.help.config.ReadBookConfigProviders
+import io.legado.app.help.config.ReadBookConfigShared
+import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.http.KmpResponseBody
 import io.legado.app.help.http.OkHttpClientProviders
-import io.legado.app.help.http.decompressed
 import io.legado.app.help.http.newCallResponseBody
+import io.legado.app.help.storage.BackupFileOps
+import io.legado.app.help.writeBytesAtomically
 import io.legado.app.model.webBook.WebBook.getBookInfoByUrlAwait
 import io.legado.app.ui.association.SchemeImportOps.determineType
 import io.legado.app.ui.association.SchemeImportOps.importReadConfig
@@ -17,6 +22,8 @@ import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
+import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.withContext
 
 /**
  * legado:// deep link 里三个此前"不支持"的类型的落地实现 (KMP commonMain, 各端共享)。
@@ -34,41 +41,87 @@ import io.legado.app.ui.root.toRouteRef
  */
 object SchemeImportOps {
 
+    /** 压缩包探测目录序号: 每次探测独占一个目录, 不与并发请求共用。 */
+    private val probeSequence = atomic(0L)
+
     /**
      * 下载 [url] 内容, 按 Content-Type 嗅探是"排版配置 zip"还是"JSON 一键导入"
      * (对照 app 端 `determineType`)。
+     *
+     * 下载载荷与 MIME 原样保留: 排版配置拿整包 zip; 压缩包内若没有排版配置、而是单个
+     * JSON, 才按条目语义解出正文交给导入 VM。
      *
      * @return 排版配置分支返回 [DetermineResult.ReadConfig] (已完成导入);
      *   JSON 分支返回 [DetermineResult.Json] (交调用方按 [DeepLinkImportType] 继续走导入 VM);
      *   下载/解析失败抛异常, 调用方按 ImportError 处理。
      */
     suspend fun determineType(url: String): DetermineResult = withDownloadedBody(url) { body ->
-        val contentType = body.contentType()?.toString()
-        if (contentType == "application/zip" || contentType == "application/octet-stream") {
-            DetermineResult.ReadConfig(importReadConfigBytes(body.bytes()))
-        } else {
-            val json = body.bytes().decodeToString()
-            // 下载到网页而不是可导入内容: 这条链接没有书源认领, 报"未找到匹配书源"
-            // (与抓书链同一文案), 不把用户引向"文件格式"
-            val jsonType = detectJsonType(json)
-                ?: error(if (json.trimStart().startsWith("<")) "未找到匹配书源" else "格式不对")
-            DetermineResult.Json(jsonType.toDeepLinkImportType(), json)
+        withContext(IoDispatcher) {
+            val bytes = body.bytes()
+            if (body.isZipPayload()) {
+                importZipPayload(bytes)
+            } else {
+                val json = bytes.decodeToString()
+                // 下载到网页而不是可导入内容: 这条链接没有书源认领, 报"未找到匹配书源"
+                // (与抓书链同一文案), 不把用户引向"文件格式"
+                val jsonType = detectJsonType(json)
+                    ?: error(if (json.trimStart().startsWith("<")) "未找到匹配书源" else "格式不对")
+                DetermineResult.Json(jsonType.toDeepLinkImportType(), json)
+            }
         }
     }
 
     /** 下载 [url] 后导入排版配置 (对照 app 端 `getBytes` + `importReadConfig`)。 */
     suspend fun importReadConfig(url: String): String = withDownloadedBody(url) { body ->
-        importReadConfigBytes(body.bytes())
+        withContext(IoDispatcher) { importReadConfigBytes(body.bytes()) }
+    }
+
+    /** Content-Type 是 zip / octet-stream (参数如 charset 不参与判定)。 */
+    private fun KmpResponseBody.isZipPayload(): Boolean {
+        val mime = contentType()?.toString()?.substringBefore(';')?.trim()?.lowercase()
+        return mime == "application/zip" || mime == "application/octet-stream"
     }
 
     /**
-     * 下载 [url] 内容并解压, 把响应体交给 [handle], 用完必关。
+     * 压缩包载荷分流: 包内有 readConfig.json 就是排版配置整包; 否则按压缩 JSON 解出正文。
      *
-     * `#requestWithoutUA` 去 UA 的写法与解压只此一份 (类型嗅探与排版配置导入两处共用)。
+     * 探测在独立临时目录完成, 结束后只清理本目录; 真正的排版导入仍复用 [importReadConfigBytes]。
+     */
+    private fun importZipPayload(bytes: ByteArray): DetermineResult {
+        val sep = BackupFileOps.separator
+        val probeDir = AppFilesDirs.get().cacheDir + sep + "schemeImport" + sep +
+            "probe-" + probeSequence.incrementAndGet()
+        try {
+            BackupFileOps.delete(probeDir)
+            BackupFileOps.createFolderIfNotExist(probeDir)
+            val zipPath = probeDir + sep + "payload.zip"
+            check(writeBytesAtomically(zipPath, bytes)) { "写入临时压缩包失败" }
+            // 条目名与正文都走现成归档能力: 排版配置看包内是否有 readConfig.json;
+            // 压缩 JSON 取归档首个文件条目的正文 (不按后缀挑选, 不改读后续条目)
+            val names = ArchiveProviders.get().getFilesName(zipPath) { true }
+            if (names.any { it == ReadBookConfigShared.configFileName }) {
+                return DetermineResult.ReadConfig(importReadConfigBytes(bytes))
+            }
+            val first = names.firstOrNull() ?: error("格式不对")
+            val content = ArchiveProviders.get().getByteArrayContent(bytes, first)
+                ?: error("格式不对")
+            val json = content.decodeToString()
+            val jsonType = detectJsonType(json) ?: error("格式不对")
+            return DetermineResult.Json(jsonType.toDeepLinkImportType(), json)
+        } finally {
+            BackupFileOps.delete(probeDir)
+        }
+    }
+
+    /**
+     * 下载 [url] 内容, 把响应体交给 [handle], 用完必关。
+     *
+     * `#requestWithoutUA` 去 UA 的写法只此一份 (类型嗅探与排版配置导入两处共用)。
+     * 响应体原样交给调用方, 由调用方按 MIME 决定是否解压。
      */
     private suspend fun <T> withDownloadedBody(
         url: String,
-        handle: (KmpResponseBody) -> T,
+        handle: suspend (KmpResponseBody) -> T,
     ): T {
         val body = OkHttpClientProviders.get().okHttpClient.newCallResponseBody {
             if (url.endsWith("#requestWithoutUA")) {
@@ -77,7 +130,7 @@ object SchemeImportOps {
             } else {
                 url(url)
             }
-        }.decompressed()
+        }
         return try {
             handle(body)
         } finally {
@@ -116,6 +169,7 @@ object SchemeImportOps {
 fun JsonType.toDeepLinkImportType(): DeepLinkImportType = when (this) {
     JsonType.BOOK_SOURCE, JsonType.RSS_SOURCE -> DeepLinkImportType.BOOK_SOURCE
     JsonType.REPLACE_RULE -> DeepLinkImportType.REPLACE_RULE
+    JsonType.SOURCE_FILTER_RULE -> DeepLinkImportType.SOURCE_FILTER_RULE
     JsonType.THEME -> DeepLinkImportType.THEME
     JsonType.DICT_RULE -> DeepLinkImportType.DICT_RULE
     JsonType.TXT_RULE -> DeepLinkImportType.TXT_TOC_RULE

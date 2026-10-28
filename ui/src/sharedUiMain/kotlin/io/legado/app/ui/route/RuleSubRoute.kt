@@ -39,6 +39,10 @@ import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.utils.isAbsUrl
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.book_source
@@ -81,6 +85,8 @@ fun RuleSubRoute(
     val pendingEdit = remember { mutableStateOf<RuleSub?>(null) }
     val pendingDelete = remember { mutableStateOf<RuleSub?>(null) }
     val importTarget = remember { mutableStateOf<DeepLinkImportTarget?>(null) }
+    // 每次导入自己的作用域: 关闭导入框即撤销未提交的下载/解析, 不随页面常驻
+    val importScope = remember { mutableStateOf<CoroutineScope?>(null) }
 
     val actions = remember(screenModel, navigator, scope) {
         object : RuleSubUiActions {
@@ -113,8 +119,13 @@ fun RuleSubRoute(
                     scope.launch { Toasters.get().toast(getString(Res.string.error)) }
                     return
                 }
-                importTarget.value = DeepLinkImportTarget.of(type, scope)
-                    ?.also { it.startImport(ruleSub.url) }
+                importScope.value?.cancel()
+                val childScope = CoroutineScope(
+                    scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job])
+                )
+                importScope.value = childScope
+                importTarget.value = DeepLinkImportTarget.of(type, childScope)
+                    .also { it.startImport(ruleSub.url) }
             }
 
             // 弹出删除确认弹窗, 确认后 dispatch Delete (对照 app 端 delete alert)
@@ -173,7 +184,12 @@ fun RuleSubRoute(
     importTarget.value?.let { target ->
         ImportTargetDialog(
             target = target,
-            onDismiss = { importTarget.value = null },
+            onDismiss = {
+                // 关闭导入框 = 撤销本次未提交工作; 已提交写入由对话框在成功后关闭
+                importScope.value?.cancel()
+                importScope.value = null
+                importTarget.value = null
+            },
         )
     }
 }

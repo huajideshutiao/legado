@@ -2,6 +2,7 @@ package io.legado.app.ui.file
 
 import android.net.Uri
 import io.legado.app.base.BaseComposeActivity
+import io.legado.app.data.entities.Book
 import io.legado.app.lib.dialogs.SelectItem
 
 class HandleFileContract {
@@ -20,13 +21,20 @@ class HandleFileContract {
         var allowExtensions: Array<String> = arrayOf(),
         var otherActions: ArrayList<SelectItem<Int>>? = null,
         var requestCode: Int = 0,
-        var value: String? = null
+        var value: String? = null,
+        /** 发起时绑定的书籍 (图片保存等需要后续 IO 的操作按发起时快照处理)。 */
+        var book: Book? = null,
     )
 
     data class Result(
         val uri: Uri?,
         val requestCode: Int,
-        val value: String?
+        val value: String?,
+        val book: Book? = null,
+        /** 发起时绑定书籍的地址 (重建后按它取回同一本书的快照)。 */
+        val bookUrl: String? = null,
+        /** 非取消的真实失败 (权限启动/系统授权持久化失败); null 表示正常选择/用户取消。 */
+        val error: Throwable? = null,
     )
 
 }
@@ -40,13 +48,19 @@ class HandleFileContract {
  */
 fun BaseComposeActivity.registerHandleFile(
     callback: (HandleFileContract.Result) -> Unit,
+    key: String? = null,
 ): HandleFileLauncher {
-    return HandleFileLauncher(handleFileSession, callback)
+    val launcher = HandleFileLauncher(handleFileSession, callback, key)
+    // 重建后仍有效的入口 (同一宿主上的回调) 凭稳定 key 重新绑定原请求
+    if (key != null) handleFileSession.bindKey(key, launcher)
+    return launcher
 }
 
 class HandleFileLauncher(
     private val session: HandleFileSession,
-    private val callback: (HandleFileContract.Result) -> Unit,
+    internal val callback: (HandleFileContract.Result) -> Unit,
+    /** 重建后仍有效的入口用稳定 key 重绑原请求; 页面级入口传 null (重建即作废)。 */
+    val key: String? = null,
 ) {
 
     fun launch(input: (HandleFileContract.HandleFileParam.() -> Unit)? = null) {

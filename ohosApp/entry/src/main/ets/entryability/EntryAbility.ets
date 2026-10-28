@@ -34,7 +34,7 @@ import { initMediaBridge, handleMediaCommand, buildLaunchWantAgent } from '../br
 import { initTtsBridge, handleTtsCommand } from '../bridge/TtsBridgeHandler';
 import { handleCryptoRequest } from '../bridge/CryptoBridgeHandler';
 import { handleHttpRequest } from '../bridge/HttpBridgeHandler';
-import { initFilePickerBridge, handleFilePickerRequest } from '../bridge/FilePickerBridgeHandler';
+import { initFilePickerBridge, handleFilePickerRequest, drainFilePickerRequests, invalidateFilePickerSource } from '../bridge/FilePickerBridgeHandler';
 import { initPasteboardBridge, handlePasteboardRequest } from '../bridge/PasteboardBridgeHandler';
 import { handleNetworkRequest } from '../bridge/NetworkBridgeHandler';
 import { handleTextCodecRequest } from '../bridge/TextCodecBridgeHandler';
@@ -47,11 +47,11 @@ import { initSystemBridge, handleShowToast, handleOpenUrl } from '../bridge/Syst
 import { handleBatteryRequest } from '../bridge/BatteryBridgeHandler';
 import { initPlatformEvent, emitAppLifecycle, emitColorMode, emitDialogResult, emitPlatformEvent, NotificationActionEvent } from '../bridge/PlatformEventBridge';
 import { initShareBridge, handleShareRequest } from '../bridge/SystemShareBridgeHandler';
-import { handleDialogRequest } from '../bridge/SysDialogBridgeHandler';
+import { pendingDialogRequestIds, handleDialogRequest } from '../bridge/SysDialogBridgeHandler';
 import { installSystemEventSources } from '../bridge/SystemEventSources';
 import { systemShare } from '@kit.ShareKit';
 import { handleKeyboardCommand } from '../bridge/KeyboardBridgeHandler';
-import { initPermissionBridge, handlePermissionRequest } from '../bridge/PermissionBridgeHandler';
+import { initPermissionBridge, handlePermissionRequest, pendingPermissionRequestIds } from '../bridge/PermissionBridgeHandler';
 // 系统崩溃事件订阅 (hiAppEvent): 系统同时覆盖 ArkTS 崩溃 (JsError) 与原生崩溃 (NativeCrash),
 // 现场含全量线程调用栈与故障日志文件路径, 取代原先只覆盖 ArkTS 的 errorManager 观测器。
 // 崩溃事件在**下次启动**补报 (崩溃当场进程已终止), 故必须在 onCreate 尽早注册。
@@ -116,9 +116,34 @@ function routeOfNotification(id: number): string | undefined {
 const NOTIFICATION_ID_PARAM: string = 'notificationId';
 const NOTIFICATION_ACTION_PARAM: string = 'action';
 
+/**
+ * 对话框通道失效回传 (与 Kotlin OhosDialogResult 的 ok/error 字段对齐)。
+ *
+ * 仅用作 emitDialogResult(0, ...) 的载荷: Kotlin 按 requestId=0 识别通道失效并用自己的文案结束
+ * 全部等待, 这里的 error 只供日志定位。
+ */
+interface DialogChannelClosedPayload {
+  ok: boolean;
+  error: string;
+  pendingIds: number[];
+}
+
+/** 文件选择通道失效回传 (与 Kotlin OhosNativeBridge 的 ok/error 字段对齐)。 */
+interface FilePickerChannelClosedPayload {
+  ok: boolean;
+  error: string;
+  pendingIds: number[];
+}
+
+/** 权限通道失效回传 (与 Kotlin OhosNativeBridge 的 ok/error 字段对齐)。 */
+interface PermissionChannelClosedPayload {
+  ok: boolean;
+  error: string;
+  pendingIds: number[];
+}
+
 /** 窗口策略命令 payload (与 OhosNativeBridge.kt WindowCommand 对齐)。 */
-interface WindowCommand {
-  action: string;  // 'setKeepScreenOn' | 'setPreferredOrientation' | 'setSystemBarEnable' | 'setSystemBarProperties' | 'exitApplication' | 'showDialog'
+interface WindowCommand {  action: string;  // 'setKeepScreenOn' | 'setPreferredOrientation' | 'setSystemBarEnable' | 'setSystemBarProperties' | 'exitApplication' | 'showDialog'
   enabled?: boolean;
   orientation?: number;
   /** 'setSystemBarEnable' 专用: 状态栏/导航栏各自的可见性 (单栏显隐)。 */
@@ -462,6 +487,9 @@ function reportHostException(kind: string, detail: string): void {
 }
 
 export default class EntryAbility extends UIAbility {
+  // 对话框源资格: 注册返回真实代次; JS 后置阶段仍须拒绝旧源 showDialog
+  private dialogMinGen: number = 0;
+  private dialogMaxGen: number = 0;
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     console.info('[Legado] EntryAbility.onCreate');
@@ -691,11 +719,15 @@ export default class EntryAbility extends UIAbility {
     registerSafely((): void => {
       // 相册保存 (saveImageToAlbum) 需 UIAbilityContext 申请权限 + 建图库资源
       initFilePickerBridge(this.context);
-      legado.registerFilePickerCallback((json: string): void => {
+      const registeredGen: number = legado.registerFilePickerCallback((json: string): void => {
         handleFilePickerRequest(json, (requestId: number, resultJson: string): void => {
           legado.filePickerCallback(requestId, resultJson);
         });
       });
+      // 只有真实 number 代次才建立新源资格; 注册抛错时 registerSafely 捕获, 保留旧源
+      if (typeof registeredGen === 'number' && registeredGen > 0) {
+        invalidateFilePickerSource(registeredGen);
+      }
     }, '[Legado] filePicker tsfn callback registered via napi', '[Legado] registerFilePickerCallback failed: ');
 
     // Pasteboard tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 FilePicker 模式)
@@ -1051,6 +1083,9 @@ export default class EntryAbility extends UIAbility {
     windowStage.loadContent('pages/Index', (err) => {
       if (err && err.code) {
         console.error('[Legado] loadContent failed: ' + JSON.stringify(err));
+        // 主窗口没内容层: 该窗口上的对话框不可能再回传结果, 结束等待中的对话框请求
+        this.closeDialogChannel('主窗口加载失败: ' + (err.message ?? String(err.code)));
+        this.closeFilePickerChannel('主窗口加载失败: ' + (err.message ?? String(err.code)));
         return;
       }
       console.info('[Legado] loadContent pages/Index succeed');
@@ -1065,6 +1100,9 @@ export default class EntryAbility extends UIAbility {
         });
       }).catch((err: Error): void => {
         console.error('[Legado] getMainWindow failed: ' + JSON.stringify(err));
+        // 拿不到主窗口: 窗口类命令与对话框都无处执行, 结束等待中的对话框请求
+        this.closeDialogChannel('主窗口不可用: ' + (err.message ?? String(err)));
+        this.closeFilePickerChannel('主窗口不可用: ' + (err.message ?? String(err)));
       });
 
       // 窗口策略桥 (KMP → ArkTS @ohos.window): 注册 tsfn 回调。
@@ -1074,9 +1112,35 @@ export default class EntryAbility extends UIAbility {
       // 的 JSON 命令跨线程 dispatch 到此回调, 由 ArkTS 在窗口上执行 @ohos.window API。
       // 未注册时 KMP 侧降级 println (见 OhosNativeBridge.sendWindowCommand)。
       try {
-        legado.registerWindowCallback((json: string): void => {
+        const windowGen: number = legado.registerWindowCallback((json: string): void => {
           try {
             const cmd = JSON.parse(json) as WindowCommand;
+            if (cmd.action === 'showDialog') {
+              // 对话框走 UIContext promptAction, 不需要主窗口对象;
+              // 不能挂在 getMainWindow() 的 Promise 后, 否则窗口初始化失败时本请求永远无回执
+              let requestId = 0;
+              let requestGen = 0;
+              try {
+                const inner = JSON.parse(cmd.payload ?? '{}') as { requestId?: number; gen?: number };
+                requestId = inner.requestId ?? 0;
+                requestGen = inner.gen ?? 0;
+              } catch (e) {
+                console.error('[Legado] showDialog payload parse failed: ' + JSON.stringify(e));
+              }
+              if (requestGen > this.dialogMaxGen) this.dialogMaxGen = requestGen;
+              if (requestId > 0 && requestGen < this.dialogMinGen) {
+                emitDialogResult(requestId, JSON.stringify({
+                  ok: false,
+                  channelClosed: true,
+                  error: '对话框请求所属窗口已失效'
+                }));
+                return;
+              }
+              handleDialogRequest(cmd.payload ?? '', (requestId: number, resultJson: string): void => {
+                emitDialogResult(requestId, resultJson);
+              });
+              return;
+            }
             windowStage.getMainWindow().then((win: window.Window) => {
               switch (cmd.action) {
                 case 'setKeepScreenOn':
@@ -1123,15 +1187,6 @@ export default class EntryAbility extends UIAbility {
                     console.error('[Legado] window callback terminateSelf failed: ' + JSON.stringify(e));
                   }
                   break;
-                case 'showDialog':
-                  // 对话框桥 (KMP → ArkTS 跨线程 dispatch, 复用本通道避免新增独立 tsfn;
-                  // 同 exitApplication 的复用先例)。payload 是 OhosNativeBridge.DialogBridgeRequest
-                  // JSON, 交 SysDialogBridgeHandler 弹对话框 (候选列表 / 是-否确认框 / 多字段输入框),
-                  // 用户选择后经 legado.platformEvent (type='dialogResult') 回送 KMP。
-                  handleDialogRequest(cmd.payload ?? '', (requestId: number, resultJson: string): void => {
-                    emitDialogResult(requestId, resultJson);
-                  });
-                  break;
                 default:
                   console.warn('[Legado] window callback unknown action: ' + cmd.action);
               }
@@ -1142,6 +1197,8 @@ export default class EntryAbility extends UIAbility {
             console.error('[Legado] window callback failed: ' + JSON.stringify(e) + ', json=' + json);
           }
         });
+        this.dialogMinGen = windowGen;
+        this.dialogMaxGen = windowGen;
         console.info('[Legado] window tsfn callback registered via napi');
       } catch (e) {
         console.error('[Legado] registerWindowCallback failed: ' + JSON.stringify(e));
@@ -1151,6 +1208,70 @@ export default class EntryAbility extends UIAbility {
 
   onWindowStageDestroy(): void {
     console.info('[Legado] EntryAbility.onWindowStageDestroy');
+    // 窗口销毁: 立即撤销 C++ 三个当前源资格, 并让 JS 后置 showDialog 拒绝旧源
+    this.dialogMinGen = this.dialogMaxGen + 1;
+    legado.invalidateAllSources();
+    this.closeDialogChannel('主窗口已销毁');
+    this.closeFilePickerChannel('主窗口已销毁');
+    this.closePermissionChannel('主窗口已销毁');
+  }
+
+  /**
+   * 通知 Kotlin 对话框通道已失效 (requestId=0)。
+   *
+   * 对话框请求走 window tsfn, 结果由该窗口的 UIContext 回传; 窗口加载失败或销毁后结果不可能再来,
+   * Kotlin 侧 OhosNativeBridge.onDialogResult 据此用失败结果结束该通道上全部等待 (不当作取消)。
+   */
+  private closeDialogChannel(reason: string): void {
+    const payload: DialogChannelClosedPayload = {
+      ok: false,
+      error: reason,
+      pendingIds: pendingDialogRequestIds()
+    };
+    try {
+      emitDialogResult(0, JSON.stringify(payload));
+    } catch (e) {
+      console.error('[Legado] closeDialogChannel failed: ' + JSON.stringify(e));
+    }
+  }
+
+  /**
+   * 通知 Kotlin 文件选择通道已失效 (requestId=0)。
+   *
+   * 选择与读取请求走 filePicker tsfn; 窗口销毁或主窗口不可用后结果不会再来,
+   * Kotlin 侧 OhosNativeBridge.onFilePickerResult(0, ...) 据此用真实失败结束该通道上全部等待。
+   */
+  private closeFilePickerChannel(reason: string): void {
+    try {
+      // 撤 C++ 当前源资格 + ETS 已见源队列: 窗口销毁后不再启动任何旧源输入/复制
+      invalidateFilePickerSource();
+      legado.invalidateFilePickerSource();
+      const payload: FilePickerChannelClosedPayload = {
+        ok: false,
+        error: reason,
+        pendingIds: drainFilePickerRequests()
+      };
+      legado.filePickerCallback(0, JSON.stringify(payload));
+    } catch (e) {
+      console.error('[Legado] closeFilePickerChannel failed: ' + JSON.stringify(e));
+    }
+  }
+
+  /**
+   * 通知 Kotlin 权限通道已失效 (requestId=0): 正在进行中的权限等待以真实错误结束,
+   * 不再无限期挂起; 迟到的真实结果因表内无该请求而丢弃。
+   */
+  private closePermissionChannel(reason: string): void {
+    try {
+      const payload: PermissionChannelClosedPayload = {
+        ok: false,
+        error: reason,
+        pendingIds: pendingPermissionRequestIds()
+      };
+      legado.permissionCallback(0, JSON.stringify(payload));
+    } catch (e) {
+      console.error('[Legado] closePermissionChannel failed: ' + JSON.stringify(e));
+    }
   }
 
   /**

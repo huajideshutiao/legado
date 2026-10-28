@@ -1,5 +1,6 @@
 package io.legado.app.ui.association
 
+import kotlinx.atomicfu.atomic
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
@@ -16,12 +17,18 @@ import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.isJsonObject
+import io.legado.app.utils.parseToJsonElementLenient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * 导入 HttpTTS 语音源 VM 共享核心 (commonMain)。
@@ -43,8 +50,34 @@ import kotlinx.coroutines.withContext
  * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
  */
 class ImportHttpTtsViewModelShared(
-    private val scope: CoroutineScope,
+    val scope: CoroutineScope,
 ) {
+    /** 提交态归 VM: 对话框重建/重组后也不能重复提交同一批。 */
+    private val submitSession = ImportSubmitSession()
+
+    /** 提交态 (Writing/Committed/Failed) 归 VM: 重建对话框仍可读。 */
+    val submitState: StateFlow<ImportSubmitState> = submitSession.state
+
+    private data class FrozenSubmit(
+        val checked: List<Boolean>,
+        val items: List<HttpTTS>,
+    )
+
+    private var frozenSubmit: FrozenSubmit? = null
+
+    fun beginSubmit(checked: List<Boolean>): Boolean {
+        if (!submitSession.begin()) return false
+        frozenSubmit = FrozenSubmit(checked = checked.toList(), items = allSources.map { it.copy() })
+        return true
+    }
+
+    fun endSubmit() {
+        submitSession.end()
+        frozenSubmit = null
+    }
+
+    fun recordSubmitResult(result: ImportSubmitResult) = submitSession.record(result)
+
 
     /** DAO 容器 (宿主启动时由 app 端注册 AppDbAccessorImpl)。 */
     private val appDb get() = AppDbProviders.get()
@@ -97,47 +130,25 @@ class ImportHttpTtsViewModelShared(
      */
     suspend fun importSelectAwait(checked: List<Boolean>) = withContext(IoDispatcher) {
         val selectSource = arrayListOf<HttpTTS>()
-        checked.forEachIndexed { index, b ->
+        val frozen = frozenSubmit
+        val checkedList = frozen?.checked ?: checked
+        val items = frozen?.items ?: allSources
+        checkedList.forEachIndexed { index, b ->
             if (b) {
-                selectSource.add(allSources[index])
+                selectSource.add(items[index])
             }
         }
-        appDb.httpTTSDao.insert(*selectSource.toTypedArray())
+        appDb.runInTransactionSuspending(
+            onCommitted = { submitSession.committed(selectSource.size) },
+        ) {
+            appDb.httpTTSDao.insert(*selectSource.toTypedArray())
+        }
     }
 
     /**
      * 回调式导入入口 (与原版 `importSelect(finally)` 同形状): 成功/失败都回调 [finally],
      * 失败仅落日志, 结果由 [importSelectAwait] 的返回/异常区分。
      */
-    /**
-     * 确认导入 (对话框协议): 写入运行在 VM 自身作用域, 对话框关闭不中断写入;
-     * 成功回调 [onSuccess], 失败回调 [onError] (用户可见文案), 取消不入本协议。
-     */
-    fun importSelect(checked: List<Boolean>, onSuccess: () -> Unit, onError: (String) -> Unit) {
-        Coroutine.async(scope = scope) {
-            importSelectAwait(checked)
-        }.onSuccess {
-            onSuccess()
-        }.onError {
-            AppLog.put("导入语音源失败\n${it.message}", it)
-            onError(it.message ?: it.toString())
-        }
-    }
-
-    /**
-     * 回调式导入入口 (与原版 `importSelect(finally)` 同形状, 规则订阅自动更新钩子用):
-     * 成功/失败都回调 [finally], 失败仅落日志, 结果由 [importSelectAwait] 的返回/异常区分。
-     */
-    fun importSelect(checked: List<Boolean>, finally: () -> Unit) {
-        Coroutine.async(scope = scope) {
-            importSelectAwait(checked)
-        }.onError {
-            AppLog.put("导入语音源失败\n${it.message}", it)
-        }.onFinally {
-            finally.invoke()
-        }
-    }
-
     /**
      * 导入 HttpTTS, 对应 app 端 `importSource(text)`。
      *
@@ -193,13 +204,18 @@ class ImportHttpTtsViewModelShared(
     private suspend fun importSourceAwait(text: String) {
         when {
             text.isJsonObject() -> {
-                KS_JSON.decodeFromString<HttpTTS>(text).let {
-                    allSources.add(it)
-                }
+                allSources.add(decodeSource(text))
             }
 
-            text.isJsonArray() -> KS_JSON.decodeFromString<List<HttpTTS>>(text).let { items ->
-                allSources.addAll(items)
+            text.isJsonArray() -> {
+                // 整批校验后再落列表: 任一条目缺必需键即整批失败, 不留下半批空源
+                val element = runCatching { parseToJsonElementLenient(text) }.getOrElse {
+                    throw NoStackTraceException("格式不对")
+                }
+                val items = (element as? JsonArray)?.toList()
+                    ?: throw NoStackTraceException("格式不对")
+                if (items.isEmpty()) throw NoStackTraceException("格式不对")
+                allSources.addAll(items.map { decodeSource(it.toString()) })
             }
 
             text.isAbsUrl() -> {
@@ -207,6 +223,29 @@ class ImportHttpTtsViewModelShared(
             }
 
             else -> throw NoStackTraceException("格式不对")
+        }
+    }
+
+    /**
+     * 解析单条语音源: 名称、地址按原版文本提取合同取值 (基本值取文本, 数组逐项取文本再换行拼接,
+     * 其他结构取 JSON 文本), 没有 JSON 字符串类型限制; 取不到才失败, 空串允许。
+     *
+     * 提取后的文本回写到实体字段再整体解码, 数值等可文本化输入不会被实体类型拒绝。
+     * internal: 源码预览回写 (ImportHttpTtsItemsVm) 共用同一入口, 不能靠实体默认值生成空源。
+     */
+    internal fun decodeSource(json: String): HttpTTS {
+        val obj = runCatching { parseToJsonElementLenient(json) as? JsonObject }.getOrNull()
+            ?: throw NoStackTraceException("格式不对")
+        val name = obj["name"]?.extractText() ?: throw NoStackTraceException("格式不对")
+        val url = obj["url"]?.extractText() ?: throw NoStackTraceException("格式不对")
+        val normalized = JsonObject(
+            obj + mapOf(
+                "name" to JsonPrimitive(name),
+                "url" to JsonPrimitive(url),
+            )
+        )
+        return runCatching { KS_JSON.decodeFromString<HttpTTS>(normalized.toString()) }.getOrElse {
+            throw NoStackTraceException("格式不对")
         }
     }
 
@@ -255,4 +294,20 @@ class ImportHttpTtsViewModelShared(
         }
         _successState.tryEmit(allSources.size)
     }
+}
+
+/**
+ * 原版 readString 的单字段文本提取: 基本值取文本; 数组逐项取文本后换行拼接;
+ * 其他结构取 JSON 文本; 缺失返回 null.
+ */
+private fun JsonElement.extractText(): String? = when (this) {
+    is JsonPrimitive -> content
+    is JsonArray -> mapNotNull { item ->
+        when (item) {
+            is JsonPrimitive -> item.content
+            else -> item.toString()
+        }
+    }.joinToString("\n")
+
+    is JsonObject -> toString()
 }

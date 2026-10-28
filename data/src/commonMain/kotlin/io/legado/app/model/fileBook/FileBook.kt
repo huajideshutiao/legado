@@ -1,5 +1,7 @@
 package io.legado.app.model.fileBook
 
+import kotlinx.coroutines.Job
+
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.Book
@@ -106,16 +108,22 @@ object FileBook : BaseFileBook {
         archiveFileUri: String, saveFileName: String? = null, filter: ((String) -> Boolean)? = null
     ): List<Book> = accessor.importFromArchive(archiveFileUri, saveFileName, filter)
 
-    fun importLocalFile(uriStr: String): Book = accessor.importLocalFile(uriStr)
+    fun importFromArchiveWithParent(
+        archiveFileUri: String,
+        saveFileName: String?,
+        parent: Job?,
+        filter: ((String) -> Boolean)?,
+    ): List<Book> = accessor.importFromArchive(archiveFileUri, saveFileName, parent, filter)
+
+    fun importLocalFile(uriStr: String, parent: Job? = null): Book =
+        accessor.importLocalFile(uriStr, parent)
 
     fun deleteBook(book: Book, deleteOriginal: Boolean) =
         accessor.deleteBook(book, deleteOriginal)
 
     //文件类书源 合并在线书籍信息 在线 > 本地
-    fun mergeBook(localBook: Book, onLineBook: Book?): Book =
-        runBlockingInScope(EmptyCoroutineContext) {
-            FileBookRemoteImportShared.mergeBook(localBook, onLineBook)
-        }
+    suspend fun mergeBook(localBook: Book, onLineBook: Book?): Book =
+        FileBookRemoteImportShared.mergeBook(localBook, onLineBook)
 
     //下载book对应的远程文件 并更新Book
     fun downloadRemoteBook(book: Book): Boolean =

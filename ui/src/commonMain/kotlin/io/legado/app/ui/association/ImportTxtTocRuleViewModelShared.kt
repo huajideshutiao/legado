@@ -1,5 +1,6 @@
 package io.legado.app.ui.association
 
+import kotlinx.atomicfu.atomic
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
@@ -23,6 +24,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 
 /**
@@ -45,8 +47,34 @@ import kotlinx.coroutines.withContext
  * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
  */
 class ImportTxtTocRuleViewModelShared(
-    private val scope: CoroutineScope,
+    val scope: CoroutineScope,
 ) {
+    /** 提交态归 VM: 对话框重建/重组后也不能重复提交同一批。 */
+    private val submitSession = ImportSubmitSession()
+
+    /** 提交态 (Writing/Committed/Failed) 归 VM: 重建对话框仍可读。 */
+    val submitState: StateFlow<ImportSubmitState> = submitSession.state
+
+    private data class FrozenSubmit(
+        val checked: List<Boolean>,
+        val items: List<TxtTocRule>,
+    )
+
+    private var frozenSubmit: FrozenSubmit? = null
+
+    fun beginSubmit(checked: List<Boolean>): Boolean {
+        if (!submitSession.begin()) return false
+        frozenSubmit = FrozenSubmit(checked = checked.toList(), items = allSources.map { it.copy() })
+        return true
+    }
+
+    fun endSubmit() {
+        submitSession.end()
+        frozenSubmit = null
+    }
+
+    fun recordSubmitResult(result: ImportSubmitResult) = submitSession.record(result)
+
 
     /** DAO 容器 (宿主启动时由 app 端注册 AppDbAccessorImpl)。 */
     private val appDb get() = AppDbProviders.get()
@@ -98,48 +126,26 @@ class ImportTxtTocRuleViewModelShared(
      * 业务在 IO 上执行。
      */
     suspend fun importSelectAwait(checked: List<Boolean>) = withContext(IoDispatcher) {
+        val frozen = frozenSubmit
+        val checkedList = frozen?.checked ?: checked
+        val items = frozen?.items ?: allSources
         val selectSource = arrayListOf<TxtTocRule>()
-        checked.forEachIndexed { index, b ->
+        checkedList.forEachIndexed { index, b ->
             if (b) {
-                selectSource.add(allSources[index])
+                selectSource.add(items[index])
             }
         }
-        appDb.txtTocRuleDao.insert(*selectSource.toTypedArray())
+        appDb.runInTransactionSuspending(
+            onCommitted = { submitSession.committed(selectSource.size) },
+        ) {
+            appDb.txtTocRuleDao.insert(*selectSource.toTypedArray())
+        }
     }
 
     /**
      * 回调式导入入口 (与原版 `importSelect(finally)` 同形状): 成功/失败都回调 [finally],
      * 失败仅落日志, 结果由 [importSelectAwait] 的返回/异常区分。
      */
-    /**
-     * 确认导入 (对话框协议): 写入运行在 VM 自身作用域, 对话框关闭不中断写入;
-     * 成功回调 [onSuccess], 失败回调 [onError] (用户可见文案), 取消不入本协议。
-     */
-    fun importSelect(checked: List<Boolean>, onSuccess: () -> Unit, onError: (String) -> Unit) {
-        Coroutine.async(scope = scope) {
-            importSelectAwait(checked)
-        }.onSuccess {
-            onSuccess()
-        }.onError {
-            AppLog.put("导入目录规则失败\n${it.message}", it)
-            onError(it.message ?: it.toString())
-        }
-    }
-
-    /**
-     * 回调式导入入口 (与原版 `importSelect(finally)` 同形状, 规则订阅自动更新钩子用):
-     * 成功/失败都回调 [finally], 失败仅落日志, 结果由 [importSelectAwait] 的返回/异常区分。
-     */
-    fun importSelect(checked: List<Boolean>, finally: () -> Unit) {
-        Coroutine.async(scope = scope) {
-            importSelectAwait(checked)
-        }.onError {
-            AppLog.put("导入目录规则失败\n${it.message}", it)
-        }.onFinally {
-            finally.invoke()
-        }
-    }
-
     /**
      * 导入 TxtTocRule, 对应 app 端 `importSource(text)`。
      *

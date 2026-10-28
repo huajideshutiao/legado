@@ -12,6 +12,39 @@ import io.legado.app.lib.webdav.WebDav
 import io.legado.app.utils.File
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.inputStream
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+
+/**
+ * 系统投递文件的一次性读许可登记 (仅进程内, 不写持久授权表)。
+ *
+ * 文件关联投递进来的文件带的是系统给的**临时读许可**: 未持久化, 无法 activatePermission,
+ * 退到后台后失效。本表只记录"这些路径在本次进程内可直接读", 供 [OhosAuthorizedFileBookAccessor]
+ * 跳过目录授权激活; 它不参与 [OhosDirAuthorizations] 的用途匹配, 也不序列化到配置。
+ */
+object OhosTransientFileAccess {
+
+    private val lock = SynchronizedObject()
+
+    /** 归一后的文件路径集合 (进程内有效)。 */
+    private val paths = mutableSetOf<String>()
+
+    /** 登记 [path] 在本次进程内可读 (系统临时许可)。 */
+    fun remember(path: String) {
+        synchronized(lock) { paths += normalize(path) }
+    }
+
+    /** [path] 是否已登记为本次进程内可读。 */
+    fun covers(path: String): Boolean = synchronized(lock) { normalize(path) in paths }
+
+    /** 本次临时读取结束后注销: 临时许可不再作为长期引用依据。 */
+    fun forget(path: String) {
+        synchronized(lock) { paths -= normalize(path) }
+    }
+
+    /** 归一为真实路径 (与 [OhosDirAuthorizations] 登记/匹配同一口径: 解析符号链接与 `..`)。 */
+    private fun normalize(path: String): String = File(path).absolutePath
+}
 
 /**
  * 鸿蒙 [FileBookAccessor] 授权装饰器: 本地书的文件访问入口先经目录授权激活
@@ -68,6 +101,22 @@ class OhosAuthorizedFileBookAccessor(
             }
         }
 
+    override fun importLocalFile(uriStr: String, parent: kotlinx.coroutines.Job?): Book =
+        withActivation(delegate.resolveLocalFile(uriStr).path) {
+            withSaveDirActivation { delegate.importLocalFile(uriStr, parent) }
+        }
+
+    override fun importFromArchive(
+        archiveFileUri: String,
+        saveFileName: String?,
+        parent: kotlinx.coroutines.Job?,
+        filter: ((String) -> Boolean)?,
+    ): List<Book> = withActivation(delegate.resolveLocalFile(archiveFileUri).path) {
+        withSaveDirActivation {
+            delegate.importFromArchive(archiveFileUri, saveFileName, parent, filter)
+        }
+    }
+
     override fun deleteBook(book: Book, deleteOriginal: Boolean) {
         // 只有删原文件需要授权 (封面/章节缓存都在沙盒内)
         if (!deleteOriginal || !book.bookUrl.startsWith("file:")) {
@@ -120,7 +169,10 @@ class OhosAuthorizedFileBookAccessor(
     }
 
     private fun <T> withActivation(path: String, block: () -> T): T {
-        OhosDirAuthorizations.ensureActivatedFor(path, DirUsage.BookTree)
+        // 系统投递的文件只有临时读许可: 本次进程内直接读, 不做持久授权激活 (激活必然被拒)
+        if (!OhosTransientFileAccess.covers(path)) {
+            OhosDirAuthorizations.ensureActivatedFor(path, DirUsage.BookTree)
+        }
         return block()
     }
 
@@ -136,13 +188,12 @@ class OhosAuthorizedFileBookAccessor(
     /**
      * 本地书文件路径 (非本地书返回 null, 走无授权路径)。
      *
-     * 取 [LocalBookLocators] 解析后的可用引用: 引用失效时按文件名在书籍保存位置/导入目录找回,
-     * 授权挂在本次读取真正会打开的那个路径上。
+     * 路径解析复用 delegate 的 [NativeFileBookAccessor.localFilePathOf]: 引用失效时按文件名在
+     * 书籍保存位置/导入目录找回, 授权挂在本次读取真正会打开的那个路径上 (与打开方同一口径)。
      */
     private fun localPath(book: Book): String? {
         if (!book.bookUrl.startsWith("file:")) return null
-        return LocalBookLocators.get().getReadableFileRef(book)
-            ?: book.bookUrl.removePrefix("file://")
+        return delegate.localFilePathOf(book)
     }
 }
 
@@ -160,7 +211,9 @@ class OhosZipFileWrapperFactory : ZipFileWrapperFactory {
         if (!url.startsWith("http") && !url.startsWith(BookType.webDavTag)) {
             val path = LocalBookLocators.get().getReadableFileRef(book)
                 ?: url.removePrefix("file://")
-            OhosDirAuthorizations.ensureActivatedFor(path, DirUsage.BookTree)
+            if (!OhosTransientFileAccess.covers(path)) {
+                OhosDirAuthorizations.ensureActivatedFor(path, DirUsage.BookTree)
+            }
         }
         return remote.create(book)
     }

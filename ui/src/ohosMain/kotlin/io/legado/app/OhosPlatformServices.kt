@@ -1,11 +1,16 @@
 package io.legado.app
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.DirUsage
 import io.legado.app.help.copyToClipboard
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.file.OhosDirAuthorizations
-import io.legado.app.help.file.pickDocumentContent
+import io.legado.app.help.file.OhosFilePickerException
+import io.legado.app.help.file.copyDocumentTo
+import io.legado.app.help.file.releasePickedDir
 import io.legado.app.help.file.pickDocuments
 import io.legado.app.help.file.pickDirectory as pickDirectoryPolicy
 import io.legado.app.help.file.saveImageToAlbum
@@ -48,6 +53,10 @@ import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.systemCurrentTimeMillis
 import androidx.compose.ui.graphics.toArgb
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 
@@ -98,14 +107,25 @@ object OhosPlatformServices : PlatformServices {
         // 鸿蒙 requestPermissionsFromUser 会回授权结果, 故返回值即最终是否授予
         override fun requestPermission(permission: String): Boolean = query("request", permission)
 
-        private fun query(action: String, permission: String): Boolean {
-            if (!OhosNativeBridge.isPermissionBridgeReady()) return false
+        private fun query(
+            action: String,
+            permission: String,
+            parent: kotlinx.coroutines.Job? = null,
+        ): Boolean {
+            check(OhosNativeBridge.isPermissionBridgeReady()) { "权限桥未就绪" }
             val payload = KS_JSON.encodeToString(PermissionPayload(permission = permission))
-            val json = OhosNativeBridge.invokePermissionSync(action, payload) ?: return false
+            val json = OhosNativeBridge.invokePermissionSync(action, payload, parent = parent)
+                ?: throw IllegalStateException("权限桥调用失败: $action")
             val resp = runCatching {
                 KS_JSON.decodeFromString(PermissionResponse.serializer(), json)
-            }.getOrNull()
-            return resp?.ok == true && resp.granted == true
+            }.getOrElse { e ->
+                throw IllegalStateException("权限响应解析失败", e)
+            }
+            if (!resp.ok) {
+                throw IllegalStateException(resp.error ?: "权限$action失败")
+            }
+            // 用户拒绝仍是成功回执 granted=false; 只有系统/通道/解析失败才上抛
+            return resp.granted == true
         }
     }
 
@@ -384,26 +404,61 @@ private data class MediaCommand(
  * 鸿蒙文件选择: 接 [io.legado.app.help.file] 的 napi 桥实现 (对照 iOS IosFilePickerService)。
  *
  * DocumentViewPicker 返回的是 `file://docs/...` URI, 不能直接喂给 [File] (POSIX 路径);
- * 故 [pickFile] 选中后立刻经 [pickDocumentContent] 读出字节落盘到 cacheDir,
+ * 故 [pickFile] 选中后立刻经 [copyDocumentTo] 由 SDK FD 复制到 cacheDir,
  * 返回沙盒内真实路径, 下游 BackupFileOps.readText 等按普通文件消费。
  */
 private object OhosFilePickerService : FilePickerService {
 
-    override fun pickFile(filter: FileFilter): String? =
-        pickDocuments(filter.extensions, allowsMultiple = false)
+    override suspend fun pickFile(filter: FileFilter): String? =
+        pickDocumentsReporting(filter.extensions, allowsMultiple = false)
             ?.firstOrNull()
-            ?.let(::materialize)
+            ?.let { materialize(it) }
 
     /**
      * 多选文件 (书籍/字体导入): 面板按后缀过滤, 回传的 URI 逐个物化成应用缓存里的真实路径
      * (下游导入链只认 POSIX 路径), 文件名取 URI 末段 (按 URI 规则百分号解码)。
+     *
+     * 单个文件读不出来时保留其他文件并报出该文件名与原因, 不静默丢掉多选项目。
      */
-    override fun pickFiles(filter: FileFilter): List<PickedFile> =
-        pickDocuments(filter.extensions, allowsMultiple = true)
-            ?.mapNotNull { uri ->
-                materialize(uri)?.let { path -> PickedFile(path, path.substringAfterLast('/')) }
+    override suspend fun pickFiles(filter: FileFilter): List<PickedFile> {
+        val picked = pickDocumentsReporting(filter.extensions, allowsMultiple = true)
+            ?: return emptyList()
+        val result = ArrayList<PickedFile>(picked.size)
+        try {
+            for (uri in picked) {
+                materialize(uri)?.let { path ->
+                    result += PickedFile(path, path.substringAfterLast('/'))
+                }
             }
-            ?: emptyList()
+        } catch (t: Throwable) {
+            // 取消或中途物化失败: 已经物化的副本归本次请求所有, 全部回收后原样上抛
+            result.forEach { discardPickedFile(it.ref) }
+            throw t
+        }
+        return result
+    }
+
+    /**
+     * 弹选择面板并取回 URI 列表; 真实失败 (权限/参数/通道失效) 记日志并 toast 原因后返回 null。
+     *
+     * 用户取消同样返回 null (调用方静默), 但失败不会伪装成取消: 原因先经 [OhosFilePickerException]
+     * 从桥层带出, 在这里对用户可见。
+     */
+    private suspend fun pickDocumentsReporting(
+        extensions: List<String>,
+        allowsMultiple: Boolean,
+    ): List<String>? = try {
+        pickDocuments(
+            fileSuffixes = extensions,
+            allowsMultiple = allowsMultiple,
+            parent = currentCoroutineContext()[Job],
+        )
+    } catch (e: OhosFilePickerException) {
+        val message = e.message ?: "选择文件失败"
+        AppLog.put(message, e)
+        Toasters.get().toast(message)
+        null
+    }
 
     /**
      * 弹目录选择器 ([pickDirectory], 对照原版导出形制 —— 先选目录, 再把文件写进该目录),
@@ -415,7 +470,7 @@ private object OhosFilePickerService : FilePickerService {
      *
      * @return 用户取消选目录返回 null (调用方静默)
      */
-    override fun saveText(suggestedName: String, text: String): SavedRef? {
+    override suspend fun saveText(suggestedName: String, text: String): SavedRef? {
         val dir = pickDirectory(DirUsage.Export) ?: return null
         val path = "$dir/$suggestedName"
         BackupFileOps.writeText(path, text)
@@ -423,7 +478,7 @@ private object OhosFilePickerService : FilePickerService {
     }
 
     /** 同上, 内容按整份复制到选定目录。 */
-    override fun saveFromFile(srcPath: String, suggestedName: String): SavedRef? {
+    override suspend fun saveFromFile(srcPath: String, suggestedName: String): SavedRef? {
         val dir = pickDirectory(DirUsage.Export) ?: return null
         val path = "$dir/$suggestedName"
         BackupFileOps.copyFile(srcPath, path)
@@ -441,11 +496,13 @@ private object OhosFilePickerService : FilePickerService {
      * 如实报"保存失败"——不能改写进用户看不到的应用私有目录还报成功 (那个落点用户取不到,
      * 报成功就是谎报)。
      */
-    override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? {
+    override suspend fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? {
         val ext = imageExtension(bytes, suggestedName).removePrefix(".")
         // Result.getOrElse 的入参是 Throwable (失败原因), 不是成功值 —— 取成功值要用 getOrDefault。
         // 两类失败分开如实记录: 抛异常走原因, 正常返回 false 则是未授权/被图库拒绝
-        val result = runCatching { saveImageToAlbum(ext, bytes) }
+        val result = runCatching {
+            saveImageToAlbum(ext, bytes, parent = currentCoroutineContext()[Job])
+        }
         val failure = result.exceptionOrNull()
         if (failure != null) {
             AppLog.put("保存图片到相册失败\n$suggestedName\n${failure.message}", failure)
@@ -502,17 +559,33 @@ private object OhosFilePickerService : FilePickerService {
     // (带 [usage]: 该目录只放行同用途的访问);
     // Phone (path 为 null) 折回挂载点路径后同样记入授权表 (该设备无目录授权持久化能力,
     // 登记即该路径在本用途下的唯一授权, 不做可读性过滤)
-    override fun pickDirectory(usage: DirUsage): String? {
-        val picked = pickDirectoryPolicy() ?: return null
+    override suspend fun pickDirectory(usage: DirUsage): String? {
+        val picked = try {
+            pickDirectoryPolicy(parent = currentCoroutineContext()[Job])
+        } catch (e: OhosFilePickerException) {
+            val message = e.message ?: "选择目录失败"
+            AppLog.put(message, e)
+            Toasters.get().toast(message)
+            return null
+        } ?: return null
         val convertedPath = picked.path
         if (convertedPath == null) {
             val legacyPath = picked.uri.toLegacySandboxPath()
+            // 禁止把单文件父目录/不可访问路径记成目录授权: 必须确为可访问目录才登记
+            if (!File(legacyPath).isDirectory) {
+                val message = "选中目录不可访问: $legacyPath"
+                AppLog.put(message)
+                Toasters.get().toast(message)
+                return null
+            }
             OhosDirAuthorizations.remember(picked.uri, legacyPath, usage)
             return legacyPath
         }
         // 官方转换不校验可访问性: 此刻临时授权在, 目录仍不可读即真实失败, 不假成功
         if (!File(convertedPath).isDirectory) {
-            AppLog.put("选中目录不可访问 path=$convertedPath")
+            val message = "选中目录不可访问: $convertedPath"
+            AppLog.put(message)
+            Toasters.get().toast(message)
             return null
         }
         OhosDirAuthorizations.remember(picked.uri, convertedPath, usage)
@@ -526,29 +599,82 @@ private object OhosFilePickerService : FilePickerService {
         else -> this
     }
 
-    // 物化副本清理 (对照 Android discardPickedFile): 只删 cacheDir/filePicker 下自建临时文件,
+    // 物化副本清理 (对照 Android discardPickedFile): 只删本次选择独占的请求目录
+    // (cacheDir/filePicker/<请求 id>), 同名的另一次选择拥有自己的目录, 不会互相删;
     // 用户原文件不碰; 不清理则反复换壁纸在缓存里累积原图副本
     override fun discardPickedFile(path: String) {
-        val tempDir = AppFilesDirs.get().cacheDir + "/filePicker"
-        val file = File(path)
-        if (file.parentFile?.absolutePath == File(tempDir).absolutePath) {
-            runCatching { file.delete() }
+        val requestDir = File(path).parentFile ?: return
+        if (requestDir.parentFile?.absolutePath == File(pickedFileRoot()).absolutePath) {
+            runCatching { requestDir.deleteRecursively() }
         }
     }
 
-    /** URI → 沙盒缓存文件路径; 读取失败返回 null (与取消同样降级)。 */
-    private fun materialize(uri: String): String? = runCatching {
-        val bytes = pickDocumentContent(uri) ?: return null
+    /** 物化副本的根目录 (每次选择在其下建独占子目录)。 */
+    private fun pickedFileRoot(): String = AppFilesDirs.get().cacheDir + "/filePicker"
+
+    /** 本次选择的独占子目录 (请求序号区分, 同名文件在不同请求下互不覆盖)。 */
+    private fun newPickedFileDir(): File {
+        val seq = synchronized(pickedFileSeqLock) { ++pickedFileSeq }
+        return File(pickedFileRoot(), "req-$seq")
+    }
+
+    private val pickedFileSeqLock = SynchronizedObject()
+    private var pickedFileSeq = 0L
+
+    /**
+     * URI → 本次选择独占的沙盒缓存文件路径; 读取/写入失败返回 null 并报出文件名与原因。
+     *
+     * 文件名保留原样 (对外展示与入库名不变), 仅目录按请求隔离。
+     */
+    private suspend fun materialize(uri: String): String? {
         // URI 末段按 URI 规则百分号解码 (RFC 3986): 带空格/中文的文件名不解码会以编码形式入库
         val name = uri.substringAfterLast('/').substringBefore('?')
             .percentDecode()
             .ifBlank { "picked_${systemCurrentTimeMillis()}" }
-        val dir = AppFilesDirs.get().cacheDir + "/filePicker"
-        File(dir).mkdirs()
+        // 已取消的消费方不允许再启动新的复制作业
+        currentCoroutineContext().ensureActive()
+        // 目录由 ArkTS 在真正起跑时创建并拥有: 投递未到达 ETS 时不会留下无主目录
+        val dir = newPickedFileDir()
         val target = File(dir, name)
-        target.writeBytes(bytes)
-        target.path
-    }.getOrNull()
+        return try {
+            // 取消仍接父 Job: 未起跑的排队项会被 ETS cancel 撤销并回失败;
+            // 已起跑的复制等到真实回执 (双 FD close) 才返回, 不会边写边删目录。
+            val copied = copyDocumentTo(
+                uri, target.path, parent = currentCoroutineContext()[Job],
+            )
+            // 复制已终结: 此时才允许按取消/失败清理本请求独占目录
+            if (!currentCoroutineContext().isActive) {
+                runCatching { dir.deleteRecursively() }
+                currentCoroutineContext().ensureActive()
+            }
+            if (!copied) {
+                runCatching { dir.deleteRecursively() }
+                return null
+            }
+            target.path
+        } catch (e: CancellationException) {
+            runCatching { dir.deleteRecursively() }
+            throw e
+        } catch (e: OhosFilePickerException) {
+            if (e.channelClosed) {
+                // 通道失效只结算消费: 运行中的 fs.copyFile 仍持有目标 FD,
+                // 由 ETS 在 IO 真实终结后按具体目录清理, 这里不能先删
+                releasePickedDir(dir.path, target.path)
+                throw e
+            }
+            runCatching { dir.deleteRecursively() }
+            val message = "无法保存 $name 的导入副本: ${e.message}"
+            AppLog.put(message, e)
+            Toasters.get().toast(message)
+            null
+        } catch (e: Exception) {
+            runCatching { dir.deleteRecursively() }
+            val message = "无法保存 $name 的导入副本: ${e.message}"
+            AppLog.put(message, e)
+            Toasters.get().toast(message)
+            null
+        }
+    }
 }
 
 /** 系统栏图标内容色: 深色图标 (浅色底色) / 浅色图标 (深色底色) */

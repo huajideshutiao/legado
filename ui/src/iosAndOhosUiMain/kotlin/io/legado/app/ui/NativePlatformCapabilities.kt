@@ -30,6 +30,9 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.SharedPlatformCapabilities
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okio.FileSystem
@@ -127,8 +130,8 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
                     // 入口与偏好键); 用户取消 (uri == null) 时不动既有配置
                     if (error is InvalidBooksDirException) {
                         withContext(mainDispatcher) {
-                            PlatformCapabilityProviders.get().pickBookTreeUri { uri ->
-                                if (uri != null) {
+                            PlatformCapabilityProviders.get().pickBookTreeUri { uri, err ->
+                                if (err == null && uri != null) {
                                     PreferenceProviders.get().putString(
                                         PreferKey.defaultBookTreeUri, uri
                                     )
@@ -190,9 +193,17 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
         }
     }
 
-    override fun pickBookTreeUri(onSelected: (String?) -> Unit) {
-        capabilityScope.launch {
-            onSelected(PlatformServiceProviders.get().files.pickDirectory(DirUsage.BookTree))
+    override fun pickBookTreeUri(parent: Job?, onSelected: (String?, Throwable?) -> Unit) {
+        // 有 parent 时选择工作挂原等待 Job (真退出随撤); 无 parent 的一次性入口用能力 scope
+        val launchScope = parent?.let { CoroutineScope(it + mainDispatcher) } ?: capabilityScope
+        launchScope.launch {
+            try {
+                onSelected(PlatformServiceProviders.get().files.pickDirectory(DirUsage.BookTree), null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                onSelected(null, e)
+            }
         }
     }
 

@@ -29,8 +29,11 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.help.writeTextAtomically
 import io.legado.app.model.Debug
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.ui.FileAssociationDispatch
 import io.legado.app.ui.book.import.ImportFileItem
+import io.legado.app.ui.book.info.WebFileFlowTexts
 import io.legado.app.ui.book.info.WebFileImportShared
+import io.legado.app.ui.book.info.runWebFileReadFlow
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
@@ -45,6 +48,7 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.DefaultDialogTransitionSpec
 import io.legado.app.ui.root.DialogTransitionSpec
+import io.legado.app.ui.root.ImportStageHost
 import io.legado.app.ui.root.PickedFile
 import io.legado.app.ui.root.SharedPlatformCapabilities
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -57,6 +61,7 @@ import io.legado.app.ui.root.pushExportDispatch
 import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.root.pushExportSectionConfig
+import io.legado.app.ui.widget.dialog.WaitDialogHandle
 import io.legado.app.utils.browseUrl
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.atomicWriteTempPath
@@ -563,8 +568,8 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
                     // 入口与偏好键); 用户取消 (uri == null) 时不动既有配置
                     if (error is InvalidBooksDirException) {
                         withContext(Dispatchers.Main) {
-                            PlatformCapabilityProviders.get().pickBookTreeUri { uri ->
-                                if (uri != null) {
+                            PlatformCapabilityProviders.get().pickBookTreeUri { uri, err ->
+                                if (err == null && uri != null) {
                                     prefs.putString(PreferKey.defaultBookTreeUri, uri)
                                 }
                             }
@@ -575,12 +580,13 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         }
     }
 
-    // 对照 BookInfoActivity.onReadClick isWebFile 分支 + showWebFileDownloadAlert:
-    // 直链书点"阅读"先选一个下载项, 再下载导入并跳阅读
+    // 对照 BookInfoActivity.onReadClick isWebFile 分支: 候选/压缩包条目/不支持格式确认交给共享阶段
+    // (四端同一套 Compose 呈现, 阶段归发起页面), 本端只给叶子: 下载 / 取条目 / 导入 / 交系统打开
     override fun handleWebFileRead(
         book: Book,
-        onWaitDialog: (Boolean) -> Unit,
-        onAction: (String) -> Unit,
+        scope: CoroutineScope,
+        onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
+        stages: ImportStageHost,
         onSuccess: ((Book) -> Unit)?,
     ) {
         scope.launch {
@@ -595,118 +601,53 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
                     Toasters.get().toast("Unexpected webFileData")
                     return@withContext
                 }
-                showWebFileDownloadAlert(book, webFiles, onWaitDialog, onAction, onSuccess)
+                runWebFileReadFlow(
+                    book = book,
+                    scope = scope,
+                    stages = stages,
+                    onWaitDialog = onWaitDialog,
+                    webFiles = webFiles,
+                    texts = WebFileFlowTexts(
+                        selectDownloadItem = syncGetString("download_and_import_file"),
+                        selectArchiveEntry = syncGetString("import_select_book"),
+                        unsupportedTitle = syncGetString("draw"),
+                        unsupportedMessage = { name -> syncGetString("file_not_supported", name) },
+                        openWithSystem = syncGetString("open_fun"),
+                        unsupportedArchiveEntry = syncGetString("unsupport_archivefile_entry"),
+                    ),
+                    // 不支持格式: 下载后交系统程序打开 (openFileUri 通道)
+                    openDownloadedFile = { path -> openFileWithSystem(path) },
+                    onSuccess = onSuccess,
+                )
             }
         }
-    }
-
-    // 对照 BookInfoActivity.showWebFileDownloadAlert: 下载项选择框 (桌面端走
-    // DesktopDialogRequest.SelectList, 与 app 端 activity.selector 同语义)
-    private fun showWebFileDownloadAlert(
-        book: Book,
-        webFiles: List<FileBook.WebFile>,
-        onWaitDialog: (Boolean) -> Unit,
-        onAction: (String) -> Unit,
-        onSuccess: ((Book) -> Unit)?,
-    ) {
-        DesktopDialogs.show(
-            DesktopDialogRequest.SelectList(
-                title = syncGetString("download_and_import_file"),
-                items = webFiles.map { it.name },
-            ) { index ->
-                val webFile = index?.let { webFiles.getOrNull(it) } ?: return@SelectList
-                when {
-                    webFile.isSupported ->
-                        importWebFile(book, webFile, onWaitDialog, onAction) { onSuccess?.invoke(it) }
-
-                    webFile.isSupportDecompress ->
-                        downloadWebFile(book, webFile, onWaitDialog, onAction) { path ->
-                            getArchiveFilesName(path) { fileNames ->
-                                if (fileNames.size == 1) {
-                                    importBookFromArchive(
-                                        path,
-                                        fileNames[0],
-                                        book,
-                                        onWaitDialog
-                                    ) { onSuccess?.invoke(it) }
-                                } else {
-                                    showDecompressFileImportAlert(
-                                        path,
-                                        fileNames,
-                                        book,
-                                        onWaitDialog,
-                                        onSuccess
-                                    )
-                                }
-                            }
-                        }
-
-                    else -> showUnsupportedWebFileAlert(book, webFile, onWaitDialog, onAction)
-                }
-            }
-        )
-    }
-
-    // 对照 BookInfoActivity.showDecompressFileImportAlert: 压缩包内选书
-    private fun showDecompressFileImportAlert(
-        archiveFilePath: String,
-        fileNames: List<String>,
-        book: Book,
-        onWaitDialog: (Boolean) -> Unit,
-        onSuccess: ((Book) -> Unit)?,
-    ) {
-        if (fileNames.isEmpty()) {
-            Toasters.get().toast(syncGetString("unsupport_archivefile_entry"))
-            return
-        }
-        DesktopDialogs.show(
-            DesktopDialogRequest.SelectList(
-                title = syncGetString("import_select_book"),
-                items = fileNames,
-            ) { index ->
-                val name = index?.let { fileNames.getOrNull(it) } ?: return@SelectList
-                importBookFromArchive(archiveFilePath, name, book, onWaitDialog) {
-                    onSuccess?.invoke(it)
-                }
-            }
-        )
-    }
-
-    // 对照 app 端 showWebFileDownloadAlert 的 open_fun 分支: 不支持的格式下载后交系统程序打开
-    // (桌面等价的 openFileUri 通道 = openFileWithSystem, 与 ServiceLauncher 同一出口)
-    private fun showUnsupportedWebFileAlert(
-        book: Book,
-        webFile: FileBook.WebFile,
-        onWaitDialog: (Boolean) -> Unit,
-        onAction: (String) -> Unit,
-    ) {
-        DesktopDialogs.show(
-            DesktopDialogRequest.Confirm(
-                title = syncGetString("draw"),
-                message = syncGetString("file_not_supported", webFile.name),
-                okText = syncGetString("open_fun"),
-                noText = syncGetString("cancel"),
-                onOk = {
-                    downloadWebFile(book, webFile, onWaitDialog, onAction) { path ->
-                        openFileWithSystem(path)
-                    }
-                },
-                onNo = {},
-            )
-        )
     }
 
     // 对照 RemoteBookActivity.startRead 的 archive 分支: 在书籍保存目录里找已下载的压缩包,
     // 找到就交文件关联分发链 (与 NativeImportBook.openReader 同口径: 桌面无压缩包内选章 UI,
     // 走 FileAssociationDispatch 的直接导入链), 没找到就弹确认框由调用方重新下载后重试
-    override fun startReadRemoteArchive(fileName: String, onNeedDownload: () -> Unit) {
-        scope.launch {
+    override fun startReadRemoteArchive(
+        fileName: String,
+        scope: CoroutineScope,
+        onNeedDownload: () -> Unit,
+    ) {
+        scope.launch(Dispatchers.IO) {
             // 与 DesktopFileBookAccessor 的有效书籍保存目录同源 (用户在"书籍保存位置"选定)
             val dir = effectiveBookSaveDir()
             val path = dir?.let { File(it, fileName) }
             if (path != null && path.isFile) {
-                // 交主窗口内的文件关联分发队列 (窗口操作寿命, 与冷启动/拖放同一条链)
-                offerAssociationFiles(listOf(path.absolutePath))
+                // 压缩包存在时在请求作用域内直接分发 (与冷启动/拖放共用分发链),
+                // 不再投窗口队列: 页面真退即停
+                try {
+                    FileAssociationDispatch.dispatch(
+                        path.absolutePath,
+                        onUnknownFile = { confirmUnknownFileImport(it) },
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    AppLog.put("阅读压缩包失败: ${path.absolutePath}\n${e.message}", e, true)
+                }
                 return@launch
             }
             withContext(Dispatchers.Main) {
@@ -1060,8 +1001,18 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
 
     // ===== 其它设置 =====
 
-    override fun pickBookTreeUri(onSelected: (String?) -> Unit) {
-        scope.launch { onSelected(FileDialogs.pickDirectory("选择书籍目录")?.absolutePath) }
+    override fun pickBookTreeUri(parent: Job?, onSelected: (String?, Throwable?) -> Unit) {
+        // 有 parent 时选择工作挂原等待 Job (真退出随撤); 无 parent 的一次性入口用平台 scope
+        val launchScope = parent?.let { CoroutineScope(it + Dispatchers.Main) } ?: scope
+        launchScope.launch {
+            try {
+                onSelected(FileDialogs.pickDirectory("选择书籍目录")?.absolutePath, null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                onSelected(null, e)
+            }
+        }
     }
 
     // 桌面端目录是普通路径: 先查选定目录本身, 再查一层子目录 (与 Android 端 SAF 查找同语义)。
@@ -1159,20 +1110,30 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         )
     }
 
-    override fun addImportSelectionToBookshelf(items: List<ImportFileItem>, onComplete: () -> Unit) {
+    override fun addImportSelectionToBookshelf(
+        items: List<ImportFileItem>,
+        onComplete: () -> Unit,
+        scope: CoroutineScope,
+    ) {
         // 压缩包导入需要书籍保存位置: 未设置时经既有"书籍保存位置"选择器选定后继续导入
         DesktopImportBook.addToBookshelf(
             items,
             onComplete,
             onNeedBooksDir = { ensureBookSaveDirSelected() },
+            scope = scope,
         )
     }
 
     /** 选文件导入: 选到的文件直接当条目走上架链 (不经列表勾选)。 */
-    override fun importPickedBookFiles(files: List<PickedFile>, onComplete: () -> Unit) {
+    override fun importPickedBookFiles(
+        files: List<PickedFile>,
+        onComplete: () -> Unit,
+        scope: CoroutineScope,
+    ) {
         addImportSelectionToBookshelf(
             files.map { DesktopImportFile(File(it.ref)) },
             onComplete,
+            scope,
         )
     }
 
@@ -1186,9 +1147,21 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         DesktopImportBook.goBack()
     }
 
-    override fun openImportedBookReader(item: ImportFileItem) {
+    override fun openImportedBookReader(item: ImportFileItem, scope: CoroutineScope) {
         val file = (item as? DesktopImportFile)?.file ?: return
-        openImportFile(file.absolutePath)
+        // 页面请求作用域持有本次分发: 页面真退即停止, 不再投窗口队列
+        scope.launch(Dispatchers.IO) {
+            try {
+                FileAssociationDispatch.dispatch(
+                    file.absolutePath,
+                    onUnknownFile = { confirmUnknownFileImport(it) },
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                AppLog.put("打开导入文件失败: ${file.absolutePath}\n${e.message}", e, true)
+            }
+        }
     }
 
     // 完整分发链 (压缩包/JSON 一键导入/书籍文件/未知文件确认) 见 FileAssociationDispatch, 四端共用。
@@ -1199,11 +1172,11 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
 
     /**
      * 未知文件导入确认 (经 [DesktopDialogHost] 弹在主窗口, 与其余命令式对话框同一出口):
-     * 确认返回 true 按书籍文件尝试导入, 取消/关闭返回 false。
+     * 确认返回 true 按书籍文件尝试导入, 取消/关闭返回 false; 窗口销毁时本次等待随之中止。
      */
     internal suspend fun confirmUnknownFileImport(fileName: String): Boolean {
         val done = CompletableDeferred<Boolean>()
-        DesktopDialogs.show(
+        val requestId = DesktopDialogs.show(
             DesktopDialogRequest.Confirm(
                 title = syncGetString("draw"),
                 message = "无法识别的文件: $fileName\n是否按书籍文件尝试导入？",
@@ -1211,9 +1184,15 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
                 noText = syncGetString("cancel"),
                 onOk = { done.complete(true) },
                 onNo = { done.complete(false) },
-            )
+            ),
+            onAbandon = { done.cancel() },
         )
-        return done.await()
+        try {
+            return done.await()
+        } finally {
+            // 本次等待结束时撤销同一请求: 未答的确认框不再留在队列里占住显示位
+            DesktopDialogs.dismiss(requestId)
+        }
     }
 
     /**

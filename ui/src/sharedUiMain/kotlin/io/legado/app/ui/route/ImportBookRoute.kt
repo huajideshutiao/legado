@@ -103,10 +103,14 @@ fun ImportBookRoute(
                 if (supported.isEmpty()) return@launch
                 // 条目构造要读文件属性 (含路径映射), 推到 IO; 导入本身在平台自己的作用域里跑
                 withContext(IoDispatcher) {
-                    platform.importPickedBookFiles(supported) {
-                        screenModel.dispatch(ImportBookUiEvent.SelectAll(false))
-                        screenModel.dispatch(ImportBookUiEvent.BumpRefreshTick)
-                    }
+                    platform.importPickedBookFiles(
+                        files = supported,
+                        onComplete = {
+                            screenModel.dispatch(ImportBookUiEvent.SelectAll(false))
+                            screenModel.dispatch(ImportBookUiEvent.BumpRefreshTick)
+                        },
+                        scope = scope,
+                    )
                 }
             }
         }
@@ -135,10 +139,14 @@ fun ImportBookRoute(
 
         // 对照 addSelectionToBookshelf: 上架成功后清空 selected + refreshTick++
         override fun onAddSelectionToBookshelf() {
-            platform.addImportSelectionToBookshelf(state.selected.toList()) {
-                screenModel.dispatch(ImportBookUiEvent.SelectAll(false))
-                screenModel.dispatch(ImportBookUiEvent.BumpRefreshTick)
-            }
+            platform.addImportSelectionToBookshelf(
+                items = state.selected.toList(),
+                onComplete = {
+                    screenModel.dispatch(ImportBookUiEvent.SelectAll(false))
+                    screenModel.dispatch(ImportBookUiEvent.BumpRefreshTick)
+                },
+                scope = scope,
+            )
         }
 
         // 对照 onItemClick: isUpDir→goBackDir / isDir→nextDoc /
@@ -157,14 +165,14 @@ fun ImportBookRoute(
                 }
 
                 !item.isOnBookShelf -> screenModel.dispatch(ImportBookUiEvent.Toggle(item))
-                else -> platform.openImportedBookReader(item)
+                else -> platform.openImportedBookReader(item, scope)
             }
         }
 
         // 对照 onItemLongClick: 可勾选条目长按打开阅读页
         override fun onItemLongClick(item: ImportFileItem) {
             if (!item.isUpDir && !item.isDir && !item.isOnBookShelf) {
-                platform.openImportedBookReader(item)
+                platform.openImportedBookReader(item, scope)
             }
         }
     }

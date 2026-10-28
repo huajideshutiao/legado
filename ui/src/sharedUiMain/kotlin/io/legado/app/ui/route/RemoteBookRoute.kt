@@ -20,6 +20,7 @@ import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.LocalConfigProviders
 import io.legado.app.help.config.LocalConfigShared
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.toast.Toasters
 import io.legado.app.model.remote.RemoteBook
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.import.remote.RemoteBookScreen
@@ -41,6 +42,7 @@ import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.dialog.HelpDialog
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.no
@@ -73,8 +75,13 @@ fun RemoteBookRoute(
             // 与既有偏好键, 用户取消 (uri == null) 时不动既有配置、不报错
             onPermissionDenied = {
                 scope.launch {
-                    PlatformCapabilityProviders.get().pickBookTreeUri { uri ->
-                        if (uri != null) {
+                    // 接本页请求 scope 的 Job: 选择随请求真退出而撤
+                    PlatformCapabilityProviders.get().pickBookTreeUri(
+                        scope.coroutineContext[Job],
+                    ) { uri, err ->
+                        if (err != null) {
+                            Toasters.get().toast(err.message ?: "选择书籍目录失败")
+                        } else if (uri != null) {
                             PreferenceProviders.get().putString(PreferKey.defaultBookTreeUri, uri)
                         }
                     }

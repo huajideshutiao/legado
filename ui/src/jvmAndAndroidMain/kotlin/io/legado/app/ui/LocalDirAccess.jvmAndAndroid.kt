@@ -11,3 +11,9 @@ import io.legado.app.constant.DirUsage
  */
 internal actual fun <T> withLocalDirAccess(path: String, usage: DirUsage, block: (String) -> T): T =
     block(path)
+
+internal actual suspend fun <T> withLocalDirAccessAsync(
+    path: String,
+    usage: DirUsage,
+    block: suspend (String) -> T,
+): T = block(path)

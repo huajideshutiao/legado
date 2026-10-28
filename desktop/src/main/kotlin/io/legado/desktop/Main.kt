@@ -850,7 +850,10 @@ private fun runDesktopApp() = application {
                 if (queued.isEmpty()) return@collect
                 val files = pendingAssociationFiles.getAndUpdate { emptyList() }
                 withContext(Dispatchers.IO) {
-                    files.forEach { FileAssociationDispatch.dispatch(it, DesktopPlatformCapabilities::confirmUnknownFileImport) }
+                    FileAssociationDispatch.dispatchAll(
+                        files,
+                        DesktopPlatformCapabilities::confirmUnknownFileImport,
+                    )
                 }
             }
         }

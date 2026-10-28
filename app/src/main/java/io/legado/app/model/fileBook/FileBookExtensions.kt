@@ -7,6 +7,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.model.remote.RemoteBook
 import io.legado.app.utils.FileDoc
+import kotlinx.coroutines.Job
 import java.io.InputStream
 
 /**
@@ -32,13 +33,13 @@ import java.io.InputStream
 
 // ---------- importLocalFile ----------
 
-/** 导入本地文件 (Uri 重载, 对应原 `FileBook.importLocalFile(uri: Uri)`)。 */
-fun FileBook.importLocalFile(uri: Uri): Book =
-    FileBookProviders.get().importLocalFile(uri.toString())
+/** 导入本地文件 (Uri 重载, 对应原 `FileBook.importLocalFile(uri: Uri)`); parent 接真实调用方 Job。 */
+fun FileBook.importLocalFile(uri: Uri, parent: Job? = null): Book =
+    FileBookProviders.get().importLocalFile(uri.toString(), parent)
 
-/** 导入本地文件 (FileDoc 重载, 对应原 `FileBook.importLocalFile(fileDoc: FileDoc)`)。 */
-fun FileBook.importLocalFile(fileDoc: FileDoc): Book =
-    FileBookProviders.get().importLocalFile(fileDoc.uri.toString())
+/** 导入本地文件 (FileDoc 重载, 对应原 `FileBook.importLocalFile(fileDoc: FileDoc)`); parent 同上。 */
+fun FileBook.importLocalFile(fileDoc: FileDoc, parent: Job? = null): Book =
+    FileBookProviders.get().importLocalFile(fileDoc.uri.toString(), parent)
 
 // ---------- importFromArchive ----------
 
@@ -49,6 +50,15 @@ fun FileBook.importFromArchive(
     filter: ((String) -> Boolean)? = null
 ): List<Book> =
     FileBookProviders.get().importFromArchive(archiveFileUri.toString(), saveFileName, filter)
+
+/** 带真实调用方 Job 的归档导入门 (原三参/尾 filter 合法调用不受影响)。 */
+fun FileBook.importFromArchiveWithParent(
+    archiveFileUri: Uri,
+    saveFileName: String?,
+    parent: Job?,
+    filter: ((String) -> Boolean)?,
+): List<Book> =
+    FileBookProviders.get().importFromArchive(archiveFileUri.toString(), saveFileName, parent, filter)
 
 // ---------- saveBookFile ----------
 

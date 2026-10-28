@@ -1,13 +1,18 @@
 package io.legado.app.ui
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.Book
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.archive.ArchiveProviders
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.model.fileBook.TempBookPersistence
 import io.legado.app.ui.association.DeepLinkImportRequest
 import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.association.detectJsonType
@@ -18,6 +23,8 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.video.VideoDirect
 import io.legado.app.utils.isJson
+import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.atomicfu.atomic
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
@@ -43,6 +50,9 @@ import okio.Path.Companion.toPath
  */
 object FileAssociationDispatch {
 
+    /** 导入请求序号: 解压目录按请求独占, 同名压缩包/连续导入互不覆盖。 */
+    private val importSequence = atomic(0L)
+
     /**
      * 分发文件关联导入; [filePath] 为绝对路径 (或 file:// URL)。
      *
@@ -58,40 +68,97 @@ object FileAssociationDispatch {
     suspend fun dispatch(
         filePath: String,
         onUnknownFile: suspend (fileName: String) -> Boolean,
-    ) {
+        navigate: Boolean = true,
+    ): Book? {
         val path = filePath.toLocalFilePath()
         val fileName = path.fileName()
-        // 压缩包: 先解压再逐个分发 (对照 app 端 archive 分支)
+        // 压缩包: 先解压再逐个分发 (对照 app 端 archive 分支)。
+        // 解压目录按本次请求独占; 书籍导入前先落长期副本, 处理完只清理本次目录。
         if (fileName.matches(AppPattern.archiveFileRegex)) {
-            val extracted = runCatching { ArchiveProviders.get().deCompress(path) }.getOrElse { e ->
+            val workKey = "${systemCurrentTimeMillis()}-${importSequence.incrementAndGet()}"
+            val extracted = runCatching {
+                ArchiveProviders.get().deCompressIsolated(path, workKey)
+            }.getOrElse { e ->
                 Toasters.get().toast(e.message ?: "解压失败")
                 AppLog.put("解压关联文件失败: $path", e)
-                return
+                return null
             }
-            // 与 app 端调用点自己传的 filter 同口径: 只取书籍文件 (非拍板项不得顺手扩)
-            val books = extracted.filter { it.fileName().matches(AppPattern.bookFileRegex) }
-            if (books.isEmpty()) {
-                Toasters.get().toast("压缩包内没有可导入的书籍文件")
-                return
+            val workDir = FileUtilsCommon.getPath(
+                FileUtilsCommon.getCachePath(),
+                ArchiveProviders.get().tempFolderName,
+                "import-$workKey",
+            )
+            var lastBook: Book? = null
+            try {
+                // 与 app 端调用点自己传的 filter 同口径: 只取书籍文件 (非拍板项不得顺手扩)
+                val books = extracted.filter { it.fileName().matches(AppPattern.bookFileRegex) }
+                if (books.isEmpty()) {
+                    Toasters.get().toast("压缩包内没有可导入的书籍文件")
+                    return null
+                }
+                for (extractedPath in books) {
+                    // 解压条目在暂存目录: 先落成应用内长期文件再导入, 后续清理不会删掉新书
+                    val durable = TempBookPersistence.persist(
+                        extractedPath,
+                        extractedPath.fileName(),
+                    )
+                    val book = dispatchFile(durable, onUnknownFile, navigate = false)
+                    // 当前包内批次按原合同: 任一失败即停批 (外部独立文件由 dispatchAll 各自继续)
+                    if (book == null) break
+                    lastBook = book
+                }
+                if (navigate) lastBook?.let { openBook(it) }
+            } finally {
+                FileUtilsCommon.delete(workDir)
             }
-            books.forEach { dispatchFile(it, onUnknownFile) }
-            return
+            return lastBook
         }
-        dispatchFile(path, onUnknownFile)
+        return dispatchFile(path, onUnknownFile, navigate)
+    }
+
+    /**
+     * 一批本地文件: 逐项导入, 每项开始前检查取消; 普通失败继续, 整批结束只导航最后成功的一本。
+     */
+    suspend fun dispatchAll(
+        filePaths: List<String>,
+        onUnknownFile: suspend (fileName: String) -> Boolean,
+    ) {
+        var lastBook: Book? = null
+        filePaths.forEach { filePath ->
+            currentCoroutineContext().ensureActive()
+            lastBook = dispatch(filePath, onUnknownFile, navigate = false) ?: lastBook
+        }
+        lastBook?.let { openBook(it) }
+    }
+
+    /**
+     * 仅判定是否属于“未知文件”（需用户确认），不执行任何导入。
+     *
+     * 供宿主在协调块外等待用户确认：确认后再重新取得有效访问地址并 [dispatch]，
+     * 避免外部文件读协调在等用户回答期间一直占着。
+     */
+    suspend fun isUnknownFile(filePath: String): Boolean {
+        val path = filePath.toLocalFilePath()
+        val fileName = path.fileName()
+        if (fileName.matches(AppPattern.archiveFileRegex)) return false
+        if (VideoDirect.targetFor(path, title = fileName) != null) return false
+        if (fileName.matches(AppPattern.bookFileRegex)) return false
+        return !runCatching { probeIsJson(path) }.getOrDefault(false)
     }
 
     /** 单文件分发 (对照原版 dispatch: 先试视频, 再试 JSON, 再试书籍文件, 其余待用户确认)。 */
     private suspend fun dispatchFile(
         path: String,
         onUnknownFile: suspend (fileName: String) -> Boolean,
-    ) {
+        navigate: Boolean = true,
+    ): Book? {
         val fileName = path.fileName()
         // 视频文件优先判定: 它们既不是 JSON 也不是书, 且动辄上百 MB —— 不能先走 JSON 探字节
         // 再落回“不支持”。判据与 Android/iOS/鸿蒙 入口共用 [VideoDirect] 一份。
         VideoDirect.targetFor(path, title = fileName)?.let { target ->
             // getOrNull: 文件关联可能在 UI 就绪前就把路径投进来 (navigator 未注册)
             AppNavigatorProviders.getOrNull()?.push(AppRoute.VideoPlay(target))
-            return
+            return null
         }
         // 先试 JSON: 与 app 端 InputStream.isJson() 一样只探首尾 128 字节, 命中才全量读
         // (epub/pdf 可能上百 MB, 不能为了判定就整份读进内存)
@@ -103,37 +170,41 @@ object FileAssociationDispatch {
                 .onFailure { AppLog.put("尝试导入为JSON文件失败\n${it.message}", it) }
                 .getOrNull()
             if (json != null) {
-                if (dispatchJson(json)) return
+                if (dispatchJson(json)) return null
                 // 嗅探为 JSON 但业务类型未知: 明确报告格式错误并终止, 严禁继续向下命中文本书籍正则当成小说导入
                 Toasters.get().toast(syncGetString("wrong_format"))
                 AppLog.put("文件关联导入: 格式不对 (未知 JSON 业务类型) $path")
             }
             // 读过就当处完了: 报错已报 (或读取失败已落日志), 不得再往下走书籍分支
-            return
+            return null
         }
 
         if (fileName.matches(AppPattern.bookFileRegex)) {
-            importAsBook(path)
-            return
+            return importAsBook(path, navigate)
         }
         // 未知文件: 待当前窗口确认, 确认后走既有本地书导入 (importLocalFile 失败时报
         // "无法打开文件"), 拒绝则取消本次导入 (不静默也不报错)
-        if (onUnknownFile(fileName)) {
-            importAsBook(path)
+        return if (onUnknownFile(fileName)) {
+            importAsBook(path, navigate)
         } else {
             AppLog.put("文件关联导入: 用户取消导入未知文件 $path")
+            null
         }
     }
 
     /** 既有本地书导入链 (书架正则命中与未知文件确认后共用; 对照原版 dispatchIntent 失败出口)。 */
-    private suspend fun importAsBook(path: String) {
-        val book = runCatching { FileBook.importLocalFile(path) }.getOrElse { e ->
+    private suspend fun importAsBook(path: String, navigate: Boolean = true): Book? {
+        val book = runCatching {
+            FileBook.importLocalFile(path, kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job])
+        }.getOrElse { e ->
+            if (e is CancellationException) throw e
             // 对照原版 FileAssociationViewModel.dispatchIntent 的失败出口文案: 无法打开文件 + 原因
             Toasters.get().toast("无法打开文件\n${e.message ?: e}")
             AppLog.put("导入关联书籍失败: $path", e)
-            return
+            return null
         }
-        openBook(book)
+        if (navigate) openBook(book)
+        return book
     }
 
     /**

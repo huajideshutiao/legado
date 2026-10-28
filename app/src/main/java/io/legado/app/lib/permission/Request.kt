@@ -10,9 +10,15 @@ import androidx.core.content.ContextCompat
 import io.legado.app.App
 import io.legado.app.powerManager
 import io.legado.app.utils.startActivity
+import java.security.SecureRandom
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 @Suppress("MemberVisibilityCanBePrivate")
 internal class Request : OnRequestPermissionsResultCallback {
+
+    /** 本次请求的唯一标识: 权限页回传按它绑定原请求。 */
+    override val id: Long = nextRequestId.incrementAndGet()
 
     private var requestCode: Int = TYPE_REQUEST_PERMISSION
     private var permissions: ArrayList<String> = ArrayList()
@@ -20,6 +26,23 @@ internal class Request : OnRequestPermissionsResultCallback {
     private var deniedCallback: OnPermissionsDeniedCallback? = null
     private var errorCallback: OnErrorCallback? = null
     private var rationale: CharSequence? = null
+
+    /** 本次请求是否已终结: 成功/拒绝/错误/取消只交付一次。 */
+    private val finished = AtomicBoolean(false)
+
+    /** 消费方已撤销: 未真正启动的请求不再拉起权限页。 */
+    private val cancelled = AtomicBoolean(false)
+
+    /** 已真正拉起系统权限调用 (此前只是分配了当前位)。 */
+    @Volatile
+    private var started = false
+
+    val isStarted: Boolean get() = started
+    val isCancelled: Boolean get() = cancelled.get()
+
+    fun markStarted() {
+        started = true
+    }
 
     private val deniedPermissions: Array<String>?
         get() {
@@ -52,44 +75,52 @@ internal class Request : OnRequestPermissionsResultCallback {
 
     @SuppressLint("ObsoleteSdkInt")
     fun start() {
+        if (cancelled.get()) return
         RequestPlugins.setOnRequestPermissionsCallback(this)
 
-        val deniedPermissions = deniedPermissions
-        val rationale = this.rationale
-        if (deniedPermissions == null) {
-            onPermissionsGranted()
-            return
-        }
-        if (rationale == null) {
-            onPermissionsDenied(deniedPermissions)
-            return
-        }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            toSetting()
-        } else {
-            if (deniedPermissions.contains(Permissions.MANAGE_EXTERNAL_STORAGE)) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    toManageFileSetting(deniedPermissions)
-                }
-            } else if (deniedPermissions.contains(Permissions.POST_NOTIFICATIONS)) {
-                toNotificationSetting(deniedPermissions)
-            } else if (deniedPermissions.contains(Permissions.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    toIgnoreBatterySetting(deniedPermissions)
-                }
-            } else if (deniedPermissions.isNotEmpty()) {
-                App.instance.startActivity<PermissionActivity> {
-                    putExtra(PermissionActivity.KEY_RATIONALE, rationale)
-                    putExtra(PermissionActivity.KEY_INPUT_REQUEST_TYPE, TYPE_REQUEST_PERMISSION)
-                    putExtra(PermissionActivity.KEY_INPUT_PERMISSIONS_CODE, requestCode)
-                    putExtra(PermissionActivity.KEY_INPUT_PERMISSIONS, deniedPermissions)
+        try {
+            val deniedPermissions = deniedPermissions
+            val rationale = this.rationale
+            if (deniedPermissions == null) {
+                onPermissionsGranted()
+                return
+            }
+            if (rationale == null) {
+                onPermissionsDenied(deniedPermissions)
+                return
+            }
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+                toSetting()
+            } else {
+                if (deniedPermissions.contains(Permissions.MANAGE_EXTERNAL_STORAGE)) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        toManageFileSetting(deniedPermissions)
+                    }
+                } else if (deniedPermissions.contains(Permissions.POST_NOTIFICATIONS)) {
+                    toNotificationSetting(deniedPermissions)
+                } else if (deniedPermissions.contains(Permissions.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        toIgnoreBatterySetting(deniedPermissions)
+                    }
+                } else if (deniedPermissions.isNotEmpty()) {
+                    App.instance.startActivity<PermissionActivity> {
+                        putExtra(PermissionActivity.KEY_RATIONALE, rationale)
+                        putExtra(PermissionActivity.KEY_INPUT_REQUEST_TYPE, TYPE_REQUEST_PERMISSION)
+                        putExtra(PermissionActivity.KEY_INPUT_PERMISSIONS_CODE, requestCode)
+            putExtra(PermissionActivity.KEY_INPUT_REQUEST_ID, id)
+                        putExtra(PermissionActivity.KEY_INPUT_PERMISSIONS, deniedPermissions)
+                    }
                 }
             }
+        } catch (e: Exception) {
+            // 启动权限页失败也要终结本条请求, 不能让发起方一直等
+            onError(e)
         }
     }
 
     /** 弃全部消费侧回调 (granted/denied/error); 回传占用由 RequestManager 维持到真实返回。 */
     fun clear() {
+        cancelled.set(true)
         grantedCallback = null
         deniedCallback = null
         errorCallback = null
@@ -137,27 +168,52 @@ internal class Request : OnRequestPermissionsResultCallback {
     }
 
     private fun onPermissionsGranted() {
+        if (!finishOnce()) return
         try {
             grantedCallback?.onPermissionsGranted()
         } catch (ignore: Exception) {
         }
 
-        RequestPlugins.sResultCallback?.onPermissionsGranted()
+        notifyManagerGranted()
     }
 
     private fun onPermissionsDenied(deniedPermissions: Array<String>) {
+        if (!finishOnce()) return
         try {
             deniedCallback?.onPermissionsDenied(deniedPermissions)
         } catch (ignore: Exception) {
         }
 
-        RequestPlugins.sResultCallback?.onPermissionsDenied(deniedPermissions)
+        notifyManagerDenied(deniedPermissions)
+    }
+
+    /** 终结一次; 已终结的重复回传直接丢弃。 */
+    private fun finishOnce(): Boolean = finished.compareAndSet(false, true)
+
+    /** 只有当前正在等待的请求才能推进队列, 旧请求的迟到回传不得清掉下一条。 */
+    private fun notifyManagerGranted() {
+        if (RequestPlugins.sRequestCallback === this) {
+            RequestPlugins.sResultCallback?.onPermissionsGranted()
+        }
+    }
+
+    private fun notifyManagerDenied(deniedPermissions: Array<String>) {
+        if (RequestPlugins.sRequestCallback === this) {
+            RequestPlugins.sResultCallback?.onPermissionsDenied(deniedPermissions)
+        }
+    }
+
+    private fun notifyManagerError(e: Exception) {
+        if (RequestPlugins.sRequestCallback === this) {
+            RequestPlugins.sResultCallback?.onError(e)
+        }
     }
 
     private fun toSetting() {
         App.instance.startActivity<PermissionActivity> {
             putExtra(PermissionActivity.KEY_RATIONALE, rationale)
             putExtra(PermissionActivity.KEY_INPUT_REQUEST_TYPE, TYPE_REQUEST_SETTING)
+            putExtra(PermissionActivity.KEY_INPUT_REQUEST_ID, id)
         }
     }
 
@@ -166,6 +222,7 @@ internal class Request : OnRequestPermissionsResultCallback {
             putExtra(PermissionActivity.KEY_RATIONALE, rationale)
             putExtra(PermissionActivity.KEY_INPUT_REQUEST_TYPE, TYPE_MANAGE_ALL_FILES_ACCESS)
             putExtra(PermissionActivity.KEY_INPUT_PERMISSIONS_CODE, requestCode)
+            putExtra(PermissionActivity.KEY_INPUT_REQUEST_ID, id)
             putExtra(PermissionActivity.KEY_INPUT_PERMISSIONS, deniedPermissions)
         }
     }
@@ -175,6 +232,7 @@ internal class Request : OnRequestPermissionsResultCallback {
             putExtra(PermissionActivity.KEY_RATIONALE, rationale)
             putExtra(PermissionActivity.KEY_INPUT_REQUEST_TYPE, TYPE_REQUEST_NOTIFICATIONS)
             putExtra(PermissionActivity.KEY_INPUT_PERMISSIONS_CODE, requestCode)
+            putExtra(PermissionActivity.KEY_INPUT_REQUEST_ID, id)
             putExtra(PermissionActivity.KEY_INPUT_PERMISSIONS, deniedPermissions)
         }
     }
@@ -187,6 +245,7 @@ internal class Request : OnRequestPermissionsResultCallback {
                 TYPE_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
             )
             putExtra(PermissionActivity.KEY_INPUT_PERMISSIONS_CODE, requestCode)
+            putExtra(PermissionActivity.KEY_INPUT_REQUEST_ID, id)
             putExtra(PermissionActivity.KEY_INPUT_PERMISSIONS, deniedPermissions)
         }
     }
@@ -213,11 +272,14 @@ internal class Request : OnRequestPermissionsResultCallback {
     }
 
     override fun onError(e: Exception) {
+        if (!finishOnce()) return
         errorCallback?.onError(e)
-        RequestPlugins.sResultCallback?.onError(e)
+        notifyManagerError(e)
     }
 
     companion object {
+        private val nextRequestId = AtomicLong(SecureRandom().nextLong() and Long.MAX_VALUE)
+
         const val TYPE_REQUEST_PERMISSION = 1
         const val TYPE_REQUEST_SETTING = 2
         const val TYPE_MANAGE_ALL_FILES_ACCESS = 3

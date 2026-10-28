@@ -17,6 +17,8 @@ enum class DeepLinkImportType {
     BOOK_SOURCE,
     /** /replaceRule */
     REPLACE_RULE,
+    /** 筛选规则 (无专属 path, 由自动识别进入) */
+    SOURCE_FILTER_RULE,
     /** /textTocRule */
     TXT_TOC_RULE,
     /** /httpTTS */
@@ -93,12 +95,18 @@ object LegadoDeepLink {
      * (未识别 path 不返回 null 而是 [DeepLinkImportType.UNKNOWN],
      * 对应原版 else 分支 determineType 下载嗅探)。
      */
-    fun parse(url: String): DeepLinkImportRequest? {
+    /**
+     * 解析 deep link, 非 legado/yuedu scheme (或显式允许的 app scheme) 或缺 `src` 参数返回 null。
+     *
+     * @param allowAppScheme 仅 Android 透明壳的外部入口传 true: 原版 `app://` 在线导入
+     *   (带匹配文件类型/路径与非空 src) 由同一 path 映射分发; 其他端保持仅 legado/yuedu。
+     */
+    fun parse(url: String, allowAppScheme: Boolean = false): DeepLinkImportRequest? {
         val trimmed = url.trim()
         val schemeEnd = trimmed.indexOf("://")
         if (schemeEnd <= 0) return null
         val scheme = trimmed.substring(0, schemeEnd)
-        if (scheme != "legado" && scheme != "yuedu") return null
+        if (scheme != "legado" && scheme != "yuedu" && !(allowAppScheme && scheme == "app")) return null
         // fragment 截掉 (Android Uri 的 query 不含 fragment)
         val rest = trimmed.substring(schemeEnd + 3).substringBefore('#')
         val queryStart = rest.indexOf('?')
@@ -218,6 +226,33 @@ object LegadoDeepLinkHandler {
     /** 待处理导入请求 (null=无), 各端窗口空闲时据此 [adopt] 接纳。 */
     val pending: StateFlow<DeepLinkImportRequest?> = _pending.asStateFlow()
 
+    /**
+     * 移交方登记的接纳回执 (持续状态): id → 是否已被任意宿主接纳。
+     * 从 [registerHandoff] 登记起保留, 直到移交方自己观察到并 [releaseHandoff] 释放 ——
+     * 因此 adopt→consume 快速连发也丢不了 (StateFlow 合并中间值也无所谓, 回执本体是状态)。
+     */
+    private val handoffAdopted = LinkedHashMap<Long, Boolean>()
+
+    /** 接纳回执变化信号 (含初始值); 只用于唤醒, 判定一律读 [isHandoffAdopted] 的持续状态。 */
+    private val _adoptionTick = MutableStateFlow(0L)
+    val adoptionTick: StateFlow<Long> = _adoptionTick.asStateFlow()
+
+    /**
+     * 移交方在入队被接纳后登记本投递的接纳回执; 结清自己的账目后须 [releaseHandoff]。
+     */
+    fun registerHandoff(requestId: Long) {
+        synchronized(lock) { handoffAdopted[requestId] = false }
+    }
+
+    /** 本投递是否已被任意宿主接纳 (持续状态, 不随 consume 丢失)。 */
+    fun isHandoffAdopted(requestId: Long): Boolean =
+        synchronized(lock) { handoffAdopted[requestId] ?: false }
+
+    /** 移交方观察到接纳回执并结清账目后释放; 不释放会累积。 */
+    fun releaseHandoff(requestId: Long) {
+        synchronized(lock) { handoffAdopted.remove(requestId) }
+    }
+
     /** 已被窗口接纳、进行中的请求 (id → 请求)。接纳后不在 pending/queue 里,
      *  但载荷仍参与 [enqueue] 去重: 进行中的同一载荷双通道再投一次不弹第二个框。 */
     private val adopted = LinkedHashMap<Long, DeepLinkImportRequest>()
@@ -237,23 +272,25 @@ object LegadoDeepLinkHandler {
      * iOSApp 外部 URI 闸门), 不拦就是连弹两个相同导入框; 待处理、排队与进行中
      * ([adopted]) 三处都参与比对, 消费完再审同一载荷, 属用户再次导入, 照常放行
      * (判据是确定性的比对, 不设时间窗)。
+     *
+     * @return [EnqueueResult.ACCEPTED] 请求已进入待处理容器, 调用方须等它被接纳并结算;
+     *   [EnqueueResult.DUPLICATE] 同一载荷已有请求在处理, 本次投递无需再等结果
      */
-    fun enqueue(request: DeepLinkImportRequest) {
-        synchronized(lock) {
-            enqueueLocked(request)
-        }
+    fun enqueue(request: DeepLinkImportRequest): EnqueueResult = synchronized(lock) {
+        enqueueLocked(request)
     }
 
-    /** 供 [enqueue] 与 [handleResolved] 复用的入队主体, 调用方必须已持 [lock]。 */
-    private fun enqueueLocked(request: DeepLinkImportRequest) {
-        if (_pending.value?.samePayloadAs(request) == true) return
-        if (queue.any { it.samePayloadAs(request) }) return
-        if (adopted.values.any { it.samePayloadAs(request) }) return
+    /** 供 [enqueue] 复用的入队主体, 调用方必须已持 [lock]。 */
+    private fun enqueueLocked(request: DeepLinkImportRequest): EnqueueResult {
+        if (_pending.value?.samePayloadAs(request) == true) return EnqueueResult.DUPLICATE
+        if (queue.any { it.samePayloadAs(request) }) return EnqueueResult.DUPLICATE
+        if (adopted.values.any { it.samePayloadAs(request) }) return EnqueueResult.DUPLICATE
         if (_pending.value == null) {
             _pending.value = request
         } else {
             queue.addLast(request)
         }
+        return EnqueueResult.ACCEPTED
     }
 
     /** 同一导入载荷: 类型与 src (待导入内容的 URL 或纯 JSON 文本) 均一致。 */
@@ -272,6 +309,11 @@ object LegadoDeepLinkHandler {
             val current = _pending.value ?: return false
             if (current.id != requestId) return false
             adopted[current.id] = current
+            // 已登记回执的移交投递: 置"已接纳"并唤醒观察方 (回执本体保留到移交方释放)
+            if (handoffAdopted.containsKey(current.id)) {
+                handoffAdopted[current.id] = true
+                _adoptionTick.value = _adoptionTick.value + 1
+            }
             _pending.value = queue.removeFirstOrNull()
             return true
         }
@@ -289,26 +331,36 @@ object LegadoDeepLinkHandler {
     }
 
     /**
-     * 把嗅探出具体类型的请求升级进容器 (对照原版 `determineType` 内嗅探出 JSON 类型后
-     * 直接 `showImportDialog(...)`, 不再是"未识别 path"了)。
-     *
-     * 供 [io.legado.app.ui.association.SchemeImportOps.determineType] 嗅探 UNKNOWN 类型的
-     * 下载内容后, 把 `DeepLinkImportType.UNKNOWN` 请求"升级"为具体类型请求 (`src` 直接是
-     * 已下载的 JSON 文本, 而非再次触发下载的 URL —— Import*ViewModelShared 的
-     * `importSource`/`import` 均接受纯 JSON 文本, 与接受 URL 是同一入口)。
-     *
-     * 仅服务 UNKNOWN 升级: 待处理请求是 UNKNOWN 且 id 匹配 [originalId] 时原位升级并保持
-     * 原请求 id (该请求尚未被任何窗口接纳); 其余情况一律按新请求 [enqueue] —— 新文件只能
-     * 作为新请求, 不做 UNKNOWN 替换。
+     * 丢弃本窗口投递但**尚未被任何宿主接纳**的请求 (真实退出): 清掉 pending 与排队项,
+     * pending 被丢弃时把队首提升为新的首投。
+     * 已接纳项不动: 归属已转移到接纳它的宿主, 只能由真实拥有者 [consume] 结算。
      */
-    fun handleResolved(request: DeepLinkImportRequest, originalId: Long) {
+    fun discard(requestId: Long) {
         synchronized(lock) {
-            val current = _pending.value
-            if (current?.type == DeepLinkImportType.UNKNOWN && current.id == originalId) {
-                _pending.value = request.copy(id = originalId)
+            if (_pending.value?.id == requestId) {
+                _pending.value = queue.removeFirstOrNull()
             } else {
-                enqueueLocked(request)
+                queue.removeAll { it.id == requestId }
             }
         }
     }
+
+    /** 当前已接纳请求快照 (宿主重建时用于恢复本窗口会话, 不参与 pending/queue)。 */
+    fun adoptedRequests(): List<DeepLinkImportRequest> = synchronized(lock) {
+        adopted.values.toList()
+    }
+
+    fun adoptedRequest(id: Long): DeepLinkImportRequest? = synchronized(lock) {
+        adopted[id]
+    }
+
+}
+
+/** [LegadoDeepLinkHandler.enqueue] 的投递结果。 */
+enum class EnqueueResult {
+    /** 请求已进入待处理容器, 投递方须等它被接纳并结算。 */
+    ACCEPTED,
+
+    /** 同一载荷已有请求在处理, 本次投递无需再等结果。 */
+    DUPLICATE,
 }

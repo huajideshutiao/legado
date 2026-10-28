@@ -240,7 +240,7 @@ class RemoteBookViewModelShared(
     fun startRead(remoteBook: RemoteBook) {
         val filename = remoteBook.filename
         if (archiveFileRegex.matches(filename)) {
-            PlatformCapabilityProviders.get().startReadRemoteArchive(filename) {
+            PlatformCapabilityProviders.get().startReadRemoteArchive(filename, scope) {
                 // 对照原版 showRemoteBookDownloadAlert 的 okButton: 下载完成后重试阅读
                 addSelectionToBookshelf(setOf(remoteBook)) { startRead(remoteBook) }
             }

@@ -241,6 +241,25 @@ class AndroidReaderPlatformProvider(
         lifecycleObserver = observer
     }
 
+    /**
+     * 宿主重绑 (当前 Activity 被重建、模型仍保留) 时成对收回旧绑定: 停自动翻页与页面变化订阅,
+     * 并清掉 activeMenuState 里的旧状态 —— 否则旧状态在 `init` 里起的订阅不停,
+     * 同一 screenModel 会有两份回调 (不只多一个对象), 且旧状态仍指向已销毁的 Activity。
+     */
+    override fun releaseMenuController(
+        screenModel: ReaderScreenModel,
+        controller: ReadMenuController,
+    ) {
+        val state = (controller as? AndroidReaderMenuController)?.state as? AndroidReaderMenuState
+            ?: return
+        state.stopAutoPage()
+        state.stopPageChangedWatch()
+        if (activeMenuState?.first === screenModel && activeMenuState?.second === state) {
+            activeMenuState = null
+            readerAutoPageActive = false
+        }
+    }
+
     override fun onExit(screenModel: ReaderScreenModel) {
         // 退出阅读页: 先停自动翻页 (对照原版返回键 → autoPageStop) + 停页面变化订阅,
         // 再调 exitReaderWindow 清除常亮与系统栏状态, 避免 stopAutoPage 的常亮回落重加 FLAG_KEEP_SCREEN_ON
@@ -402,7 +421,7 @@ private class AndroidReaderMenuState(
     // 滚动模式朗读重定位: 暂停期间页面是否变化 (对照原版 ReadBookActivity.pageChanged)
     private var aloudPageChanged = false
 
-    // 页面变化订阅句柄: 屏幕级生命周期, 由 onExit 取消、onEnter/init 重建。
+    // 页面变化订阅句柄: 屏幕级生命周期, 由 onExit/宿主重绑释放、onEnter/init 重建。
     // 只挂 activity.lifecycleScope 时同一 Activity 内反复进出阅读页会累积常驻订阅者
     private var pageChangedJob: Job? = null
 

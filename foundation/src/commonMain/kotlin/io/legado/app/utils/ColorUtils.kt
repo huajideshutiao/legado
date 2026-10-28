@@ -17,6 +17,36 @@ import kotlin.math.sqrt
 object ColorUtils {
 
     /**
+     * 颜色名表 (对齐 AOSP `Color.sColorNameMap`): 与 Android 原生 `Color.parseColor`
+     * 接受同一组名字, 大小写不敏感。
+     */
+    private val colorNames = mapOf(
+        "black" to 0xFF000000.toInt(),
+        "darkgray" to 0xFF444444.toInt(),
+        "gray" to 0xFF888888.toInt(),
+        "lightgray" to 0xFFCCCCCC.toInt(),
+        "white" to 0xFFFFFFFF.toInt(),
+        "red" to 0xFFFF0000.toInt(),
+        "green" to 0xFF00FF00.toInt(),
+        "blue" to 0xFF0000FF.toInt(),
+        "yellow" to 0xFFFFFF00.toInt(),
+        "cyan" to 0xFF00FFFF.toInt(),
+        "magenta" to 0xFFFF00FF.toInt(),
+        "aqua" to 0xFF00FFFF.toInt(),
+        "fuchsia" to 0xFFFF00FF.toInt(),
+        "darkgrey" to 0xFF444444.toInt(),
+        "grey" to 0xFF888888.toInt(),
+        "lightgrey" to 0xFFCCCCCC.toInt(),
+        "lime" to 0xFF00FF00.toInt(),
+        "maroon" to 0xFF800000.toInt(),
+        "navy" to 0xFF000080.toInt(),
+        "olive" to 0xFF808000.toInt(),
+        "purple" to 0xFF800080.toInt(),
+        "silver" to 0xFFC0C0C0.toInt(),
+        "teal" to 0xFF008080.toInt(),
+    )
+
+    /**
      * WCAG 2.x 相对亮度: L = 0.2126*R + 0.7152*G + 0.0722*B (R/G/B 为 gamma 解码后的线性值)。
      * 对齐 androidx.core.graphics.ColorUtils.calculateLuminance。
      */
@@ -260,10 +290,28 @@ object ColorUtils {
     }
 
     /**
-     * 解析颜色字符串, 支持 #RRGGBB / #AARRGGBB / #RGB / #ARGB (对齐 android.graphics.Color.parseColor)。
+     * 主题域颜色解析: 只接受 Android 原生 `Color.parseColor` 的完整合同
+     * (23 个颜色名 + `#RRGGBB` / `#AARRGGBB`); 通用解析器额外支持的短格式不进主题域。
+     */
+    fun parseThemeColor(colorString: String): Int {
+        colorNames[colorString.lowercase()]?.let { return it }
+        if (colorString.isEmpty() || colorString[0] != '#') {
+            throw IllegalArgumentException("Unknown color format: $colorString")
+        }
+        val length = colorString.length - 1
+        if (length != 6 && length != 8) {
+            throw IllegalArgumentException("Unknown color format: $colorString")
+        }
+        return parseColor(colorString)
+    }
+
+    /**
+     * 解析颜色字符串: #RRGGBB / #AARRGGBB / #RGB / #ARGB, 以及 Android 原生支持的颜色名
+     * (对齐 android.graphics.Color.parseColor 的宽松超集; 主题域校验用 [parseThemeColor])。
      */
     fun parseColor(colorString: String): Int {
         if (colorString.isEmpty()) throw IllegalArgumentException("Empty color string")
+        colorNames[colorString.lowercase()]?.let { return it }
         if (colorString[0] != '#') throw IllegalArgumentException("Unknown color format: $colorString")
         val hex = colorString.substring(1)
         return when (hex.length) {

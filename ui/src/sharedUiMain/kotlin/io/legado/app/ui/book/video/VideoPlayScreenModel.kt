@@ -1,6 +1,9 @@
 package io.legado.app.ui.book.video
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -14,6 +17,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.chapter.ChapterLoadState
 import io.legado.app.ui.root.BookRef
+import io.legado.app.ui.root.ImportStageOwner
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.VideoPlayTarget
@@ -310,7 +314,26 @@ class VideoPlayScreenModel : ScreenModel {
     private val scope = screenModelScope("视频播放")
 
     val shared = VideoPlayViewModelShared(scope = scope)
-    val platform = VideoPlayPlatformProviders.getOrNull()
+    var platform by mutableStateOf(VideoPlayPlatformProviders.getOrNull())
+        private set
+
+    /** 导入链用户选择阶段 (webFile 书点"上架"会走下载导入): 归本模型, 由本页组合呈现。 */
+    val importStages = ImportStageOwner()
+
+    /**
+     * 宿主重建后把平台绑定换到当前实例: 保留的模型不沿用旧界面的播放器/窗口入口。
+     * 播放器绑在界面上, 重建时先释放旧的再按新宿主建新的。
+     */
+    fun rebindHost() {
+        val current = VideoPlayPlatformProviders.getOrNull()
+        if (current === platform) return
+        platform = current
+        controller?.release()
+        controller = current?.createController(
+            screenModel = this,
+            onPlaybackEnded = ::onNextChapter,
+        )
+    }
 
     /**
      * 进入小窗的请求期 (按下画中画钮到系统确认之间)。
@@ -337,9 +360,11 @@ class VideoPlayScreenModel : ScreenModel {
      * 播控器。不写成 val: 桌面端媒体播放组件是首次进本页才按需下载的, 构造期可能还没装好,
      * 当时拿到的是占位控制器 —— 下载完成后靠 [onRetryLoad] 补建真控制器。其它端一次创建即定型。
      */
-    var controller: VideoPlayerController? = platform?.createController(
-        screenModel = this,
-        onPlaybackEnded = ::onNextChapter,
+    var controller: VideoPlayerController? by mutableStateOf(
+        platform?.createController(
+            screenModel = this,
+            onPlaybackEnded = ::onNextChapter,
+        )
     )
         private set
 
@@ -681,7 +706,7 @@ class VideoPlayScreenModel : ScreenModel {
         val book = shared.curBook ?: return
         val inShelf = !book.isNotShelf
         PlatformCapabilityProviders.get().toggleBookshelf(
-            book, inShelf, onComplete = { result ->
+            book, inShelf, scope = scope, stages = importStages, onComplete = { result ->
                 // null = 下架成功: 上一版只接 true/false → 书已删但星永远亮着,
                 // 再点又是“删一本不存在的书”
                 val nowInShelf = if (result == null) false else result

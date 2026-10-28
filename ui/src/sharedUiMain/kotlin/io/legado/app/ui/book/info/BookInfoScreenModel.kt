@@ -20,9 +20,12 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.lib.webdav.ObjectNotFoundException
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.ui.root.ImportStageOwner
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.ScreenModel
+import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.screenModelScope
+import io.legado.app.ui.widget.dialog.WaitDialogHandle
 import io.legado.app.utils.ConvertUtils
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -30,14 +33,12 @@ import kotlin.concurrent.atomics.incrementAndFetch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -63,6 +64,24 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
 
     // 自管 scope (对照 TocScreenModel, 由 ScreenModelStore 在 onCleared 取消)
     private val scope = screenModelScope("书籍详情")
+
+    // 页面级请求的执行 scope = 本 Model 自管 scope: 真页退出 (ScreenModelStore.onCleared) 即撤,
+    // 不把页面状态塞全局能力面, 也不为保留囚住旧 UI 对象。
+    val pageScope: CoroutineScope get() = scope
+
+    // 待交阅读导航: 每请求一条 (id → 路由), 真实分发后只消费本条, 不用序号补单槽
+    private val _pendingReaderNavs = MutableStateFlow<Map<Long, AppRoute>>(emptyMap())
+    val pendingReaderNavs: StateFlow<Map<Long, AppRoute>> = _pendingReaderNavs.asStateFlow()
+    private val readerNavSeq = atomic(0L)
+
+    /** 交当前有效组合打开阅读路由 (不经旧成功闭包直接 push)。 */
+    fun postReaderNav(route: AppRoute) {
+        _pendingReaderNavs.update { it + (readerNavSeq.incrementAndGet() to route) }
+    }
+
+    fun consumeReaderNav(id: Long) {
+        _pendingReaderNavs.update { it - id }
+    }
 
     private val _state = MutableStateFlow(
         BookInfoUiState(
@@ -98,30 +117,28 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
     )
     val state: StateFlow<BookInfoUiState> = _state.asStateFlow()
 
-    // 等待对话框显隐 (原 app 端 waitDialogData, webFile 流程的加载指示)
-    private val _waitDialog = MutableStateFlow<Boolean?>(null)
-    val waitDialog: StateFlow<Boolean?> = _waitDialog.asStateFlow()
+    // webFile 等待框: 按归属句柄逐条保存 (原 app 端 waitDialogData 的显隐 + 归属)。
+    // 句柄由能力面 (等待方) 创建并经 onWaitDialog 传入; 两条下载/导入交错时
+    // 各自的框互不覆盖, 旧流程收框只动它自己的那个 handle。
+    private val _waits = MutableStateFlow<Map<WaitDialogHandle, Boolean>>(emptyMap())
+    val waits: StateFlow<Map<WaitDialogHandle, Boolean>> = _waits.asStateFlow()
 
-    // 动作事件 (原 app 端 actionLive, webFile 流程的 selectBooksDir 回调)。
-    //
-    // replay = 0 (不是 LiveData → signalFlow 惯用的 1): 这是一次性**请求**而不是粘性状态,
-    // 唯一的消费者是 BookInfoRoute 的组合期收集协程 —— 它随本页被压栈/Lazy 回收而结束、
-    // 返回本页时重新收集。若保留 replay = 1, 用户处理完 (或取消) 那次请求后去别的页面再回来,
-    // 缓存的"去设置目录"会被重放, 每次返回都平白弹一次目录选择器。
-    // 发出点全部在同页用户操作 (点"阅读"/"上架") 触发的协程里, 消费者必然已就位, 不会丢事件。
-    private val _actionLive = MutableSharedFlow<String>(
-        replay = 0,
-        extraBufferCapacity = 8,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
-    val actionLive: SharedFlow<String> = _actionLive.asSharedFlow()
+    /**
+     * 导入链用户选择阶段 (下载项候选 / 压缩包条目 / 不支持格式确认)。
+     *
+     * 随模型存活: 宿重建后新组合读到同一阶段就重显, 请求去留不靠"框还在不在"推断。
+     * 原先的四端各自弹原生框并且有一条 actionLive 单向通道 (replay=0) 把"去设置目录"
+     * 发出去就算完 —— 框一关或没收集者时请求从此没人管, 那条通道已整体删除,
+     * 目录需求改由调用方挂起等真回执 (见 [io.legado.app.ui.root.ensureBookSaveDirSelected])。
+     */
+    val importStages = ImportStageOwner()
 
-    fun upWaitDialog(show: Boolean) {
-        _waitDialog.value = show
-    }
-
-    fun postAction(action: String) {
-        _actionLive.tryEmit(action)
+    fun upWaitDialog(show: Boolean, handle: WaitDialogHandle) {
+        _waits.update { current ->
+            if (show) current + (handle to true)
+            // 关闭只收确切 handle 的框: 不是本 handle 的在显框一概不动
+            else if (current.containsKey(handle)) current - handle else current
+        }
     }
 
     /**
@@ -138,6 +155,21 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
      * 也不再二次执行 rss 书的 tocUrl 补位。
      */
     var bootStarted: Boolean = false
+
+    /**
+     * 当前书源 (对照 app 端 `BookInfoViewModel.curBookSource`), 供菜单/登录/搜索限定当前书源。
+     *
+     * 随模型跨宿主重建保留: 落地加载只在首次开工时查一次源, 源若只存在组合里"重建后再也拿不回来",
+     * 菜单与登录会误判"无当前书源"。所有换源入口 (落地加载、书源编辑回执、整书换源回执)
+     * 都写这一份。读它即订阅重组 (Compose 状态)。
+     */
+    private val bookSourceState =
+        androidx.compose.runtime.mutableStateOf<BookSource?>(null)
+    var bookSource: BookSource?
+        get() = bookSourceState.value
+        set(value) {
+            bookSourceState.value = value
+        }
 
     /**
      * 当前书籍展示版本 (每次 [BookInfoUiEvent.ShowBook] 递增)。
@@ -433,7 +465,9 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
     }
 
     override fun onCleared() {
+        // 真页退出: 撤本页全部在途请求 (下载/导入/解包) 与待交结果
         scope.cancel()
+        _pendingReaderNavs.value = emptyMap()
     }
 }
 

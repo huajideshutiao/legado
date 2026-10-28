@@ -43,6 +43,7 @@ import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.atomicWriteTempPath
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.FileNotFoundException
@@ -173,44 +174,65 @@ class DesktopFileBookAccessor(
     override fun importFromArchive(
         archiveFileUri: String,
         saveFileName: String?,
-        filter: ((String) -> Boolean)?
+        filter: ((String) -> Boolean)?,
+    ): List<Book> = importFromArchive(archiveFileUri, saveFileName, null, filter)
+
+    override fun importFromArchive(
+        archiveFileUri: String,
+        saveFileName: String?,
+        parent: kotlinx.coroutines.Job?,
+        filter: ((String) -> Boolean)?,
     ): List<Book> {
         val archiveFile = resolveLocalFile(archiveFileUri)
+        // 每次导入独占工作目录; 不与同 URI 的并发/历史解包共享 md5 槽
+        val workDir = File(
+            desktopAppCacheDir(),
+            archiveTempFolderName + "/req-" + java.util.UUID.randomUUID(),
+        )
+        try {
         // 对齐 app 端 ArchiveUtils.deCompress: 按 filter 过滤条目, 解到目标目录, 返回文件列表
-        val files = deCompress(archiveFileUri, archiveFile, filter)
+        val files = deCompress(archiveFile, workDir, filter)
         if (files.isEmpty()) {
             throw NoStackTraceException(appString(AppStringKey.unsupport_archivefile_entry))
         }
-        return files.map { file ->
-            saveBookFile(file.inputStream(), saveFileName ?: file.name).let { uriStr ->
-                importLocalFile(uriStr).apply {
+        val result = arrayListOf<Book>()
+        files.forEach { file ->
+            parent?.ensureActive()
+            // 包内批次按原合同: 任一失败即停批 (与 map 一致); 独立外部请求各自继续
+            val book = saveBookFile(file.inputStream(), saveFileName ?: file.name).let { uriStr ->
+                importLocalFile(uriStr, parent).apply {
                     //附加压缩包名称 以便解压文件被删后再解压
                     origin = "${BookType.localTag}::${archiveFile.name}"
                     addType(BookType.archive)
-                    runBlocking { AppDbProviders.get().bookDao.update(this@apply) }
                 }
             }
+            runBlocking(parent ?: kotlin.coroutines.EmptyCoroutineContext) {
+                AppDbProviders.get().bookDao.update(book)
+            }
+            result.add(book)
+        }
+        return result
+        } finally {
+            runCatching { workDir.deleteRecursively() }
         }
     }
 
     /**
-     * 解压到 `{desktopAppCacheDir}/ArchiveTemp/{md5_16(uri)}` 并返回解出的文件。
+     * 解压到每请求独占目录并返回解出的文件。
      *
      * 对齐 app 端 `ArchiveUtils.deCompress` + `LibArchiveUtils.unArchive` 语义
      * (md5(uri) 命名工作目录 / 路径穿越校验 / filter 过滤条目), 底层换
      * [DesktopArchiveCodec] (commons-compress + junrar) 替代 native libarchive。
      */
     private fun deCompress(
-        archiveUri: String,
         archiveFile: File,
+        destDir: File,
         filter: ((String) -> Boolean)?
     ): List<File> {
         val codec = archiveSupport
             ?: throw UnsupportedOperationException("压缩包解压需注入 archiveSupport (commons-compress/junrar 留 :desktop), headless 不支持")
         codec.checkArchive(archiveFile.name)
-        val destDir = Paths.get(
-            desktopAppCacheDir(), archiveTempFolderName, MD5Utils.md5Encode16(archiveUri)
-        ).toFile().apply { mkdirs() }
+        destDir.mkdirs()
         return codec.unArchive(archiveFile, destDir, filter)
     }
 
@@ -220,7 +242,10 @@ class DesktopFileBookAccessor(
      * 判型 / 构造 Book / 落库在 [FileBookLocalImportShared] (四端唯一一份), 此处只取平台文件信息。
      * 压缩包判据仍用本端解包能力 ([getArchiveFilesName], 解包器未注入时由其报错)。
      */
-    override fun importLocalFile(uriStr: String): Book = runBlocking {
+    override fun importLocalFile(uriStr: String): Book = importLocalFile(uriStr, null)
+
+    override fun importLocalFile(uriStr: String, parent: kotlinx.coroutines.Job?): Book =
+        runBlocking(parent ?: kotlin.coroutines.EmptyCoroutineContext) {
         val file = resolveLocalFile(uriStr)
         FileBookLocalImportShared.importLocalFile(
             accessor = this@DesktopFileBookAccessor,
@@ -234,6 +259,7 @@ class DesktopFileBookAccessor(
             archiveHasBookFile = { ref ->
                 getArchiveFilesName(resolveLocalFile(ref)).any { FileBook.isBookFile(it) }
             },
+            parent = parent,
         )
     }
 

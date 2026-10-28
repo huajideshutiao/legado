@@ -16,6 +16,7 @@ import io.legado.app.help.notification.cancelIosUpdateBookRefresh
 import io.legado.app.help.openURL
 import io.legado.app.help.service.IosCacheBookNotifications
 import io.legado.app.help.toast.Toasters
+import io.legado.app.utils.ingestIosSecurityScopedFile
 import io.legado.app.help.topMostViewController
 import io.legado.app.help.writeBytesAtomically
 import io.legado.app.ui.root.BrowserService
@@ -124,8 +125,8 @@ private object IosFilePickerService : FilePickerService {
 
     // suspend 选择器转同步 (模式同 KmpHttpTypes.ios.kt 的 KmpCall.execute):
     // 调用方均在 withContext(IoDispatcher) 内调用, 主线程调用会 deadlock
-    override fun pickFile(filter: FileFilter): String? =
-        runBlocking { pickDocuments(filter.toUtis()) }?.firstOrNull()?.path
+    override suspend fun pickFile(filter: FileFilter): String? =
+        pickDocuments(filter.toUtis())?.firstOrNull()?.path
 
     /**
      * 多选文件 (书籍/字体导入)。
@@ -133,8 +134,8 @@ private object IosFilePickerService : FilePickerService {
      * 面板用 Import 模式: 系统把选中文件复制进沙盒临时目录后回传路径, 不需要目录授权 ——
      * 书放在提供方根目录 (选不到目录) 或云盘这类位置也能导。
      */
-    override fun pickFiles(filter: FileFilter): List<PickedFile> =
-        runBlocking { pickDocuments(filter.toUtis(), allowsMultiple = true) }
+    override suspend fun pickFiles(filter: FileFilter): List<PickedFile> =
+        pickDocuments(filter.toUtis(), allowsMultiple = true)
             ?.mapNotNull { url ->
                 url.path?.let { path -> PickedFile(path, path.substringAfterLast('/')) }
             }
@@ -144,15 +145,14 @@ private object IosFilePickerService : FilePickerService {
      * iOS 没有"先选路径后写入"的系统面板: 先把内容写进沙盒临时件, 再弹系统"文件"面板让用户挑
      * 目标位置 (系统把临时件拷贝过去), 返回目标地址。
      */
-    override fun saveText(suggestedName: String, text: String): SavedRef? =
-        runBlocking { exportToUser(suggestedName) { it.writeText(text) }?.let(::SavedRef) }
+    override suspend fun saveText(suggestedName: String, text: String): SavedRef? =
+        exportToUser(suggestedName) { it.writeText(text) }?.let(::SavedRef)
 
     /** 同上, 内容按整份复制到临时件。 */
-    override fun saveFromFile(srcPath: String, suggestedName: String): SavedRef? = runBlocking {
+    override suspend fun saveFromFile(srcPath: String, suggestedName: String): SavedRef? =
         exportToUser(suggestedName) { tmp -> File(srcPath).copyTo(tmp, overwrite = true) }?.let(::SavedRef)
-    }
 
-    override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? {
+    override suspend fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? {
         // 图片落沙盒导出目录: Info.plist 开启文件共享后用户可在"文件" app 中取用
         val dir = AppFilesDirs.get().filesDir + "/export"
         File(dir).mkdirs()
@@ -169,8 +169,8 @@ private object IosFilePickerService : FilePickerService {
      *
      * 用户取消返回 null; 建 bookmark 失败时报出来并返回 null (不交出拿不回授权的路径)。
      */
-    override fun pickDirectory(usage: DirUsage): String? {
-        val url = runBlocking { pickDirectoryDocument() } ?: return null
+    override suspend fun pickDirectory(usage: DirUsage): String? {
+        val url = pickDirectoryDocument() ?: return null
         return IosSecurityScopedStorage.addDir(url, usage) ?: run {
             AppLog.put("选定目录无法保存访问授权: ${url.path}")
             Toasters.get().toast("无法保存目录的访问授权，请重新选择目录")
@@ -712,7 +712,8 @@ object IosLaunchRequests {
         return when (value.substringBefore("://", missingDelimiterValue = "").lowercase()) {
             // "文件" app / 其他应用共享进来的本地文件与 Android content/file 同语义
             "file", "content", "app" -> LaunchRequest.ImportFile(value)
-            "" -> null
+            // 无 scheme 的绝对路径: 授权层已归一的文件地址 (见 iOSApp.swift 的文件投递口)
+            "" -> if (value.startsWith("/")) LaunchRequest.ImportFile(value) else null
             else -> LaunchRequest.DeepLink(value)
         }
     }
@@ -730,6 +731,17 @@ fun handleIosLaunchRequest(uri: String): Boolean {
     val request = IosLaunchRequests.parse(uri) ?: return false
     IosLaunchRequests.post(request)
     return true
+}
+
+/**
+ * Swift 文件投递窄门面: 授权登记 + 启动请求分发。Swift 只调本入口, 不直接引用未导出的 foundation 顶层函数。
+ *
+ * @return 归一化后的 POSIX 路径; 授权无法建立时回传原 URL, 由下游按"没有访问权限"提示
+ */
+fun handleIosIncomingFile(url: NSURL): String? {
+    val path = ingestIosSecurityScopedFile(url)
+    handleIosLaunchRequest(uri = path ?: url.absoluteString ?: return null)
+    return path
 }
 
 /**

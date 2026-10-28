@@ -1,3 +1,4 @@
+import { BusinessError } from '@kit.BasicServicesKit';
 /**
  * ArkTS 桥接公共分发工具。
  *
@@ -16,12 +17,16 @@ export interface BridgeRequest {
   requestId: number;
   action: string;
   payload?: string;
+  /** 请求所属通道注册代次 (Kotlin 捕获, C++ dispatch_gen 校验后投递)。 */
+  gen?: number;
 }
 
 /** 桥响应公共字段 (各 handler 的响应接口 extends 此接口; ok:false 时仅含 error)。 */
 export interface BridgeResponse {
   ok: boolean;
   error?: string;
+  /** 平台/桥真实错误码 (如 promptAction 401/100001); 用户取消不使用该字段。 */
+  code?: number;
 }
 
 /** 结果回送函数 (由 EntryAbility 注入, 内部调 legado.xxxCallback)。 */
@@ -56,7 +61,12 @@ export function dispatchBridgeRequest(
   handleAction(req).then((resp: BridgeResponse) => {
     callback(req.requestId, JSON.stringify(resp));
   }).catch((err: Error) => {
-    const resp: BridgeResponse = { ok: false, error: err.message ?? String(err) };
+    const be = err as BusinessError;
+    const resp: BridgeResponse = {
+      ok: false,
+      code: be.code,
+      error: err.message ?? String(err),
+    };
     callback(req.requestId, JSON.stringify(resp));
   });
 }
