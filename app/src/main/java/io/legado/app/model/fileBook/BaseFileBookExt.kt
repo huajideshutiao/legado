@@ -1,6 +1,7 @@
 package io.legado.app.model.fileBook
 
 import io.legado.app.data.entities.Book
+import kotlinx.coroutines.Job
 import java.io.FileNotFoundException
 import java.io.InputStream
 
@@ -26,8 +27,8 @@ import java.io.InputStream
  * 以保持 Java 调用方 checked exception 处理行为不变。
  */
 @Throws(FileNotFoundException::class, SecurityException::class)
-fun BaseFileBook.getBookInputStream(book: Book): InputStream =
-    FileBookProviders.get().getBookInputStream(book)
+fun BaseFileBook.getBookInputStream(book: Book, parent: Job? = null): InputStream =
+    FileBookProviders.get().getBookInputStream(book, parent)
 
 /**
  * 获取书籍文件最后修改时间 (对应原 BaseFileBook.getLastModified 默认实现)。

@@ -37,6 +37,7 @@ import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.ImportStageDialog
 import io.legado.app.ui.root.RouteResults
+import io.legado.app.ui.root.rememberRouteVisibleState
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.toRouteRef
@@ -67,8 +68,12 @@ fun RemoteBookRoute(
     val scope = screenModel.scope
 
     // 待交导航: 由**当前**路由组合消费 (模型只放目标, 不存 navigator)
+    // 待交导航: 由当前本页**真正可见**时逐条 push, push 后再消费本条。
+    // 被别的页盖住/退后台只保留结果 (不抢当前页), 回到本页再交付; 真退出时模型 onCleared 清空。
     val pendingNavs by screenModel.pendingNavigation.collectAsState()
-    LaunchedEffect(pendingNavs) {
+    val pageVisible by rememberRouteVisibleState()
+    LaunchedEffect(pendingNavs, pageVisible) {
+        if (!pageVisible) return@LaunchedEffect
         pendingNavs.forEach { (navId, navRoute) ->
             navigator.push(navRoute, RouteResults.READER)
             screenModel.consumeNavigation(navId)

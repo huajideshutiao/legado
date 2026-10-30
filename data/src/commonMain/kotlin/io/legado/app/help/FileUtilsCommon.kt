@@ -1,6 +1,7 @@
 package io.legado.app.help
 
 import io.legado.app.utils.InputStream
+import kotlinx.coroutines.Job
 
 /**
  * 跨平台 file IO 门面 (expect object)。
@@ -59,8 +60,11 @@ expect object FileUtilsCommon {
      *
      * IO 失败**直接抛出**, 不收成返回值 —— 原版流式失败即失败, 书源 JS 侧要能看到异常;
      * 收成 Boolean 会让调用方只能造一个丢掉原始类型与堆栈的替代异常。
+     *
+     * [parent] 非空时每块前核资格 (取消抛 [kotlinx.coroutines.CancellationException]):
+     * 整份写入的准备循环归本请求, 撤销不必等整份写完。传 null = 没有可归属的请求。
      */
-    fun copyToFile(path: String, input: InputStream)
+    fun copyToFile(path: String, input: InputStream, parent: Job? = null)
 
     /**
      * 删除文件或目录。

@@ -963,14 +963,19 @@ class ReadBookViewModelShared(
         var ensuredSaveDir = false
         while (true) {
             try {
-                FileBookProviders.get().getBookInputStream(book).close()
+                // 本页真实请求当父: 检查里的远端重新下载/解包随本页请求取消
+                FileBookProviders.get().getBookInputStream(book, currentCoroutineContext()[Job]).close()
                 return true
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
                 if (e is InvalidBooksDirException && !ensuredSaveDir) {
                     ensuredSaveDir = true
-                    if (ensureBookSaveDirSelected()) continue
+                    // 同链传本页请求 Job: 选择器拉起与等待归本请求 (取消即停), 与下载/解包同一父门
+                    if (ensureBookSaveDirSelected(currentCoroutineContext()[Job])) continue
+                    // 用户在选目录时取消 = 本次正常终结, 不是失败: 不把旧的
+                    // InvalidBooksDirException 冒充成本次打开失败上报 (A05 同源闭合)
+                    return false
                 }
                 // 失败归属校验: 检查是整书级 IO, 期间切书/关书后旧书的失败不得污染当前阅读状态
                 if (readBook.book.value?.bookUrl == book.bookUrl) {

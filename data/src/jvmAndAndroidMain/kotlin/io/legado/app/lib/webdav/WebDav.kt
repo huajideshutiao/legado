@@ -15,6 +15,7 @@ import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.findNS
 import io.legado.app.utils.findNSPrefix
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -327,8 +328,9 @@ actual open class WebDav actual constructor(
         if (file.exists() && !replaceExisting) {
             return
         }
+        // 本请求 Job 是父门: 下载原语内部准备循环每块前与最终替换前都核它
         downloadInputStream().use { byteStream ->
-            copyToFileAtomically(savedPath, byteStream)
+            copyToFileAtomically(savedPath, byteStream, currentCoroutineContext()[Job])
         }
     }
 

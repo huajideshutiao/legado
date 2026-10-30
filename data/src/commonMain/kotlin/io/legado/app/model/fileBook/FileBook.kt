@@ -8,7 +8,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.TocEmptyException
 import io.legado.app.help.book.ContentProcessorProviders
-import io.legado.app.help.coroutine.runBlockingInScope
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.lib.webdav.WebDav
@@ -26,7 +25,6 @@ import io.legado.app.model.fileBook.FileBook.isBookFile
 import io.legado.app.model.fileBook.FileBook.mergeBook
 import io.legado.app.model.fileBook.FileBook.upBookInfo
 import io.legado.app.utils.systemCurrentTimeMillis
-import kotlin.coroutines.EmptyCoroutineContext
 
 /**
  * 书籍文件导入 目录正文解析
@@ -125,11 +123,18 @@ object FileBook : BaseFileBook {
     suspend fun mergeBook(localBook: Book, onLineBook: Book?): Book =
         FileBookRemoteImportShared.mergeBook(localBook, onLineBook)
 
-    //下载book对应的远程文件 并更新Book
-    fun downloadRemoteBook(book: Book): Boolean =
-        runBlockingInScope(EmptyCoroutineContext) {
-            FileBookRemoteImportShared.downloadRemoteBook(book)
-        }
+    /**
+     * 下载 book 对应的远程文件并更新 Book。
+     *
+     * 原先包在 `runBlockingInScope(EmptyCoroutineContext)` 里: 自建作用域, 下载 Job 与发起它的请求
+     * 无父子关系, 页面退出/请求撤销都停不下来 (调用方外层套页面 scope 也没用)。
+     * 现在本方法就是挂起函数, 直接复用共享层的挂起实现, 取消/失败/成功都随本请求贯通。
+     *
+     * 只有"返回 InputStream 的同步叶子" (见 [FileBookAccessor.getBookInputStream] 的文件失效回退)
+     * 需要阻塞等待, 由各端自己在叶子内带真实父门阻塞, 不在这里造第二条无父通道。
+     */
+    suspend fun downloadRemoteBook(book: Book): Boolean =
+        FileBookRemoteImportShared.downloadRemoteBook(book)
 
     /**
      * 导入远程书籍 (对应原 `FileBook.importRemoteBook`)。

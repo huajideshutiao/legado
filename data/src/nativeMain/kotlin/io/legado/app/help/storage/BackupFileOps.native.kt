@@ -4,6 +4,7 @@ import io.legado.app.help.writeTextAtomically
 import io.legado.app.utils.File
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.copyFileAtomically
+import kotlinx.coroutines.Job
 import okio.FileSystem
 import okio.IOException
 import okio.Path.Companion.toPath
@@ -140,10 +141,11 @@ actual object BackupFileOps {
         return children.map { it.path }
     }
 
-    actual fun copyFile(srcPath: String, destPath: String) {
+    actual fun copyFile(srcPath: String, destPath: String, parent: Job?) {
         // 整份复制替换目标 (共享实现): 临时件每次唯一 + 整份改名就位 —— 直接覆盖写在复制中途被打断
-        // 会留下半截目标 (备份 zip 被截断即读不出的坏包), 失败时目标原内容照旧并抛错
-        copyFileAtomically(File(srcPath), File(destPath))
+        // 会留下半截目标 (备份 zip 被截断即读不出的坏包), 失败时目标原内容照旧并抛错;
+        // parent 贯通到既有原子复制的准备循环与最终替换前
+        copyFileAtomically(File(srcPath), File(destPath), parent)
     }
 
     /**

@@ -87,9 +87,9 @@ import io.legado.app.ui.about.preferenceUpVersionStore
 import io.legado.app.ui.about.notifyAppCrash
 import io.legado.app.ui.about.upVersion
 import io.legado.app.ui.root.AppFontScaleScope
-import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.ui.root.ImportStageDialog
 import io.legado.app.ui.root.ImportStageOwner
+import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.LegadoApp
@@ -666,6 +666,8 @@ private fun runDesktopApp() = application {
     // 窗口可见性: 先以 visible=false 创建, 尺寸/最大化都在显示前应用完再置 true,
     // 窗口第一次出现即最终状态 (见下方 DisposableEffect)
     val windowVisible = DesktopWindowChrome.windowVisible
+    // 本窗口前台标志: 桌面只在收起托盘/最小化时置 false (失焦不动它, 见 DesktopTitleBar.onIconifiedChanged)
+    val frameForeground by AppForegroundState.isForeground.collectAsState()
     // classpath 资源加载: 手动 Skia 解码 + BitmapPainter
     val iconPainter = remember {
         runCatching {
@@ -852,8 +854,12 @@ private fun runDesktopApp() = application {
         // 本 LaunchedEffect 在主窗口组合内 —— 分发任务随窗口存亡 (窗口操作寿命)
         // 本窗口持有的用户选择阶段: 队列任务用它等真回执 (不建全局 owner 表)
         val associationStages = remember { ImportStageOwner() }
-        val frameVisible by AppForegroundState.isForeground.collectAsState()
-        ImportStageDialog(associationStages, visible = frameVisible)
+        // 窗口是否真正在屏幕上: Window(visible=) 只反映托盘显隐, 最小化不改它
+        // (DesktopTitleBar.onIconifiedChanged 只翻 AppForegroundState); 两者并起来,
+        // 判据仍是"窗口在屏幕上", 不含焦点。
+        val windowOnScreen = windowVisible && frameForeground
+        // 呈现放在下方 AppTheme 内 (主题/窗口锚点齐备后再画); 这里只持有阶段与消费队列,
+        // 呈现迁移不重启持有者与队列
         LaunchedEffect(associationStages) {
             pendingAssociationFiles.collect { queued ->
                 if (queued.isEmpty()) return@collect
@@ -923,6 +929,12 @@ private fun runDesktopApp() = application {
                             .fillMaxSize()
                             .onFilesDroppedToWindow(fileDropHint)
                     ) {
+                        // 文件关联的用户选择阶段 (未知文件确认): 归本窗口, 按窗口真实可见性呈现。
+                        // 隐藏到托盘/最小化 → 停呈现; 仅失焦不算不可见 (对话框自身夺焦点, 用焦点判会自激)
+                        ImportStageDialog(
+                            owner = associationStages,
+                            visible = windowOnScreen,
+                        )
                         // 书源 JS 弹窗事件桥宿主: 订阅 FlowBus(SOURCE_UI_REQUEST) 弹 Compose Dialog
                         // (四端同一份, 实现见 shared/sharedUiMain 的 SourceUiEventBridgeHost)
                         SourceUiEventBridgeHost()

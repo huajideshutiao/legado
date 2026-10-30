@@ -194,9 +194,11 @@ class AndroidPlatformCapabilities(
     /**
      * 宿主 restoreFrom 之后调用: 在途"书籍保存位置"选择等待 (逐请求稳定 key 登记)
      * 用同 key 在当前有效宿主重绑, 系统结果/暂存回执交回原等待方。
+     * 只认领**本窗口** ([windowId] 相同) 发起的等待; 别窗的等待留在登记里,
+     * 由它自己窗口的宿主重建时认领 (发起方等待已死则由取消阶段撤走登记)。
      */
     fun rebindPendingBookTreePickers() {
-        rebindBookTreePicksTo(activity)
+        rebindBookTreePicksTo(activity, windowId)
     }
 
     /**
@@ -387,7 +389,10 @@ class AndroidPlatformCapabilities(
          * 一次"书籍保存位置"选择的登记: 每次选择一个唯一 id 一条登记, 持有当前有效入口
          * (重建重绑后替换), 取消阶段撤的就是这个当前入口。
          */
-        private class PendingBookTreePick {
+        private class PendingBookTreePick(
+            /** 发起窗口: 重绑只认领同窗口宿主, 不把别窗发起的等待移到本窗。 */
+            val windowId: Long,
+        ) {
             @Volatile
             var rebind: ((MainActivity) -> Unit)? = null
             @Volatile
@@ -416,9 +421,13 @@ class AndroidPlatformCapabilities(
         fun registerBookTreePick(id: Long, pick: PendingBookTreePick) =
             synchronized(bookTreePickLock) { pendingBookTreePicks[id] = pick }
 
-        fun rebindBookTreePicksTo(activity: MainActivity) =
+        fun rebindBookTreePicksTo(activity: MainActivity, windowId: Long) =
             synchronized(bookTreePickLock) { pendingBookTreePicks.values.toList() }
-                .forEach { it.rebind?.invoke(activity) }
+                .forEach { pick ->
+                    // 只认领同窗口发起的等待: 不分窗口全部移过来会把别窗的等待绑到本窗宿主,
+                    // 回执/授权动作落到错误窗口 (发起方窗口重建时自会认领自己的)
+                    if (pick.windowId == windowId) pick.rebind?.invoke(activity)
+                }
 
         /**
          * 撤本次选择消费 (取消阶段/真实终态): 只撤这一条并清登记, 已起跑 SDK 占用保真实排空。
@@ -436,6 +445,35 @@ class AndroidPlatformCapabilities(
             mainHandler.post {
                 val launcher = pick.launcher
                 if (launcher != null) launcher.cancel() else clearBookTreePick(id)
+            }
+        }
+
+        /**
+         * 书籍目录选择回执: 真实失败原异常回原等待, 用户取消回 null, 不折成统一 null/false。
+         *
+         * 纯静态叶子 (只用入参, 不碰任何实例状态): 重绑 lambda 据此不隐式捕获旧能力面/旧宿主,
+         * 重建后按当前绑定回执时, 回调里不会挂着上上个窗口的 Activity。
+         */
+        private fun bookTreeCallback(
+            act: MainActivity,
+            onSelected: (String?, Throwable?) -> Unit,
+            onConsumed: () -> Unit,
+        ): (HandleFileContract.Result) -> Unit {
+            return { result ->
+                onConsumed()
+                val error = result.error
+                if (error != null) {
+                    act.toastOnUi(error.message ?: "选择书籍目录失败")
+                    AppLog.put("选择书籍目录失败", error)
+                    onSelected(null, error)
+                } else {
+                    val uri = result.uri
+                    if (uri != null) {
+                        // 明确选作书籍目录后必须获得书籍用途资格 (与导入目录/保存目录同一接纳动作)
+                        AndroidDirAuthorizations.remember(uri.toString(), DirUsage.BookTree)
+                    }
+                    onSelected(uri?.toString(), null)
+                }
             }
         }
 
@@ -1534,7 +1572,7 @@ class AndroidPlatformCapabilities(
             val pickId = nextBookTreePickId()
             // 进程内唯一 + 进程间不可能相撞 (见 bookTreeProcessNonce)
             val key = "book-tree-$bookTreeProcessNonce-$pickId"
-            val registered = PendingBookTreePick()
+            val registered = PendingBookTreePick(windowId)
             registered.rebind = { act ->
                 registered.launcher = act.registerHandleFile(
                     key = key,
@@ -1557,30 +1595,6 @@ class AndroidPlatformCapabilities(
         launcher?.launch {
             title = androidAppString("select_book_folder")
             mode = HandleFileContract.DIR_SYS
-        }
-    }
-
-    /** 书籍目录选择回执: 真实失败原异常回原等待, 用户取消回 null, 不折成统一 null/false。 */
-    private fun bookTreeCallback(
-        act: MainActivity,
-        onSelected: (String?, Throwable?) -> Unit,
-        onConsumed: () -> Unit,
-    ): (HandleFileContract.Result) -> Unit {
-        return { result ->
-            onConsumed()
-            val error = result.error
-            if (error != null) {
-                act.toastOnUi(error.message ?: "选择书籍目录失败")
-                AppLog.put("选择书籍目录失败", error)
-                onSelected(null, error)
-            } else {
-                val uri = result.uri
-                if (uri != null) {
-                    // 明确选作书籍目录后必须获得书籍用途资格 (与导入目录/保存目录同一接纳动作)
-                    AndroidDirAuthorizations.remember(uri.toString(), DirUsage.BookTree)
-                }
-                onSelected(uri?.toString(), null)
-            }
         }
     }
 

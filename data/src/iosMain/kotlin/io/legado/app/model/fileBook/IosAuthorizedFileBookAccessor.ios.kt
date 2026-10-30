@@ -64,9 +64,9 @@ class IosAuthorizedFileBookAccessor(
     private val delegate: NativeFileBookAccessor = NativeFileBookAccessor(),
 ) : FileBookAccessor by delegate {
 
-    override fun getBookInputStream(book: Book): InputStream {
+    override fun getBookInputStream(book: Book, parent: Job?): InputStream {
         val path = localPath(book)
-        if (path == null) return delegate.getBookInputStream(book)
+        if (path == null) return delegate.getBookInputStream(book, parent)
         val opened = runCatching {
             val lease = IosSecurityScopedStorage.acquireLease(path, DirUsage.BookTree)
             try {
@@ -83,7 +83,7 @@ class IosAuthorizedFileBookAccessor(
         }
         opened.getOrNull()?.let { return it }
         // 书文件读不到 (文件被删/授权失效): 按压缩包名找回原压缩包重新解压 (对照原版, 见 [reopenFromArchive])
-        reopenFromArchive(book)?.let { return it }
+        reopenFromArchive(book, parent)?.let { return it }
         throw opened.exceptionOrNull()!!
     }
 
@@ -226,7 +226,7 @@ class IosAuthorizedFileBookAccessor(
         }
         // 进入正式提交 (协调替换) 之前核真实父资格
         parent?.ensureActive()
-        return "file://" + writeSaveFile(fileName, bytes)
+        return "file://" + writeSaveFile(fileName, bytes, parent)
     }
 
     override suspend fun saveBookFile(
@@ -248,7 +248,7 @@ class IosAuthorizedFileBookAccessor(
             coroutineContext = currentCoroutineContext(),
         ).getByteArrayAwait()
         parent?.ensureActive()
-        return "file://" + writeSaveFile(fileName, bytes)
+        return "file://" + writeSaveFile(fileName, bytes, parent)
     }
 
     override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
@@ -267,18 +267,25 @@ class IosAuthorizedFileBookAccessor(
                 lease.close()
             }
             parent?.ensureActive()
+            // 最终协调落位绑定真实父 (caller): 等协调期间本请求被取消, 协调器对尚未起跑的
+            // 写块 cancel() 不执行; 真起跑后的写触点再核一次, 已撤销不得继续动正式件
             val landed = if (saveTargetExists(dir, fileName)) {
-                IosSecurityScopedStorage.withAccess(
+                IosSecurityScopedStorage.withAccessCaller(
                     target, DirUsage.BookTree, write = true,
                     writeOptions = NSFileCoordinatorWritingForReplacing,
+                    caller = parent,
                 ) { coordinated ->
-                    BackupFileOps.copyFile(tempPath, coordinated)
+                    parent?.ensureActive()
+                    BackupFileOps.copyFile(tempPath, coordinated, parent)
                     coordinated
                 }
             } else {
-                IosSecurityScopedStorage.withAccess(dir, DirUsage.BookTree, write = true) { coordinatedDir ->
+                IosSecurityScopedStorage.withAccessCaller(
+                    dir, DirUsage.BookTree, write = true, caller = parent,
+                ) { coordinatedDir ->
                     val path = "$coordinatedDir/$fileName"
-                    BackupFileOps.copyFile(tempPath, path)
+                    parent?.ensureActive()
+                    BackupFileOps.copyFile(tempPath, path, parent)
                     path
                 }
             }
@@ -296,23 +303,34 @@ class IosAuthorizedFileBookAccessor(
         }
     }
 
-    /** 按“已存在替换/新建目录写”协调并落盘, 返回实际落点。 */
-    private fun writeSaveFile(fileName: String, bytes: ByteArray): String {
+    /**
+     * 按“已存在替换/新建目录写”协调并落盘, 返回实际落点。
+     *
+     * 协调绑定真实父 ([IosSecurityScopedStorage.withAccessCaller] 的 caller): 等协调期间本请求
+     * 被取消, 协调器对尚未起跑的写块 cancel() 不执行; 真起跑后的写触点再核一次父,
+     * 已撤销不得继续动正式件 ([writeBytesAtomically] 内部替换前还会再核同一父)。
+     */
+    private fun writeSaveFile(fileName: String, bytes: ByteArray, parent: Job?): String {
         val dir = requireBookSaveDir()
         return if (saveTargetExists(dir, fileName)) {
-            IosSecurityScopedStorage.withAccess(
+            IosSecurityScopedStorage.withAccessCaller(
                 "$dir/$fileName", DirUsage.BookTree, write = true,
                 writeOptions = NSFileCoordinatorWritingForReplacing,
+                caller = parent,
             ) { coordinated ->
-                if (!writeBytesAtomically(coordinated, bytes)) {
+                parent?.ensureActive()
+                if (!writeBytesAtomically(coordinated, bytes, parent)) {
                     throw NoStackTraceException("写入书籍文件失败: $coordinated")
                 }
                 coordinated
             }
         } else {
-            IosSecurityScopedStorage.withAccess(dir, DirUsage.BookTree, write = true) { coordinatedDir ->
+            IosSecurityScopedStorage.withAccessCaller(
+                dir, DirUsage.BookTree, write = true, caller = parent,
+            ) { coordinatedDir ->
                 val path = "$coordinatedDir/$fileName"
-                if (!writeBytesAtomically(path, bytes)) {
+                parent?.ensureActive()
+                if (!writeBytesAtomically(path, bytes, parent)) {
                     throw NoStackTraceException("写入书籍文件失败: $path")
                 }
                 path

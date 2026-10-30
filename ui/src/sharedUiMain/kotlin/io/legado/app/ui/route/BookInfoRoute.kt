@@ -56,6 +56,7 @@ import io.legado.app.ui.root.LocalSharedCoverBinding
 import io.legado.app.ui.root.ImportStageDialog
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.rememberRouteVisibleState
 import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.PageSystemBarAppearance
 import io.legado.app.ui.root.PageSystemBarAppearanceEffect
@@ -893,9 +894,12 @@ fun BookInfoRoute(
         onDismiss = { shelfDeleteRequest = null },
     )
 
-    // webFile 下载导入成功后的阅读导航: 每请求一条待交结果, 真实分发后只消费本条
+    // webFile 下载导入成功后的阅读导航: 每请求一条待交结果, 真实分发后只消费本条。
+    // 只在本页真正可见时交付: 被盖住/退后台保留结果 (不抢当前页), 回到本页再 push
     val readerNavs by screenModel.pendingReaderNavs.collectAsState()
-    LaunchedEffect(readerNavs) {
+    val navPageVisible by rememberRouteVisibleState()
+    LaunchedEffect(readerNavs, navPageVisible) {
+        if (!navPageVisible) return@LaunchedEffect
         readerNavs.forEach { (navId, navRoute) ->
             navigator.push(navRoute, RouteResults.READER)
             screenModel.consumeReaderNav(navId)

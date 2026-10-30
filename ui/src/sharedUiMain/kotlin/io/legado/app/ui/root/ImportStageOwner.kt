@@ -1,12 +1,15 @@
 package io.legado.app.ui.root
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
@@ -123,15 +126,34 @@ class ImportStageOwner : ImportStageHost {
  */
 @Composable
 fun ImportStageDialog(owner: ImportStageOwner) {
-    // 页面链: 用 Route 生命周期判可见 (本页被盖住/退后台只隐藏, 不结算)
-    ImportStageDialog(owner, visible = routeResumed())
+    // 页面链: 复用既有 rememberRouteVisibleState (Route 生命周期), 不再自建观察器
+    val visible by rememberRouteVisibleState()
+    ImportStageDialog(owner, visible = visible)
+}
+
+/**
+ * 窗口链 (主窗口组合, 不在 Route 根里) 的可见性: 取**本窗口自身** Compose 生命周期的
+ * STARTED 区间。
+ *
+ * 不用 CREATED 起点: 官方生命周期映射里 iOS `didEnterBackground`/`viewDidDisappear`
+ * 把 STARTED 降到 CREATED, 若按 ">= CREATED" 判, 退到后台的窗口仍算可见。
+ * 也不用 RESUMED: 那是焦点区间, 对话框/子窗夺焦点就会掉出 RESUMED, 弹层会自激收放。
+ *
+ * 直接复用 [Lifecycle.currentStateFlow] (库已提供同源状态流), 不另造布尔观察器。
+ */
+@Composable
+fun rememberWindowVisibleState(): State<Boolean> {
+    val current by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
+    return remember(current) {
+        mutableStateOf(current.isAtLeast(Lifecycle.State.STARTED))
+    }
 }
 
 /**
  * 窗口链 (iOS/鸿蒙/桌面的主窗口组合): 可见性由调用方按**本窗口真实生命周期**给。
  *
- * 不能借页面标志: 主窗口不在 Route 根里, [routeResumed] 在那里恒为 false, 弹层会永不出现;
- * 也不默认 true: 窗口不可见时真值应为 false, 由窗口宿主提供。
+ * 不能借页面标志: 主窗口不在 Route 根里, 页面可见性在那里恒为 false, 弹层会永不出现;
+ * 也不默认 true: 窗口不可见时真值应为 false, 由窗口宿主提供 (见 [rememberWindowVisibleState])。
  */
 @Composable
 fun ImportStageDialog(owner: ImportStageOwner, visible: Boolean) {
@@ -172,24 +194,4 @@ fun ImportStageDialog(owner: ImportStageOwner, visible: Boolean) {
             )
         }
     }
-}
-
-/**
- * 本页是否处于"可以呈现弹层"的状态 (栈顶且前台)。
- *
- * 直接读 Route 生命周期 ([LocalLifecycleOwner] 由 LegadoApp 的 RouteLifecycleOwner 提供):
- * 被压栈/退后台时页面组合可能仍在 (转场离场页、被盖住的页), 但用户看不见它 —— 此时隐藏弹层,
- * 与"取消本次选择"不是一件事。
- */
-@Composable
-private fun routeResumed(): Boolean {
-    // 复用既有 Route 可见性入口 (OnRouteLifecycle 挂页面生命周期, 不是再造一套观察器):
-    // 状态翻转可能发生在界面不再重绘期间 (窗口隐藏/被盖住), 挂组合会漏掉
-    var resumed by remember { mutableStateOf(false) }
-    OnRouteLifecycle(
-        minState = Lifecycle.State.RESUMED,
-        onEnter = { resumed = true },
-        onLeave = { resumed = false },
-    )
-    return resumed
 }

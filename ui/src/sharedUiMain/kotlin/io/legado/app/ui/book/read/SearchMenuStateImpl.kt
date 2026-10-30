@@ -4,11 +4,11 @@ import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.toArgb
 import io.legado.app.help.config.ReadBookConfigProviders
-import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.ui.book.read.ReadMenuColors
 import io.legado.app.ui.book.searchContent.SearchResult
-import io.legado.app.utils.toColorInt
+import io.legado.app.ui.compose.platform.SharedThemeStoreProvider
 
 /**
  * [SearchMenuState] 的 shared 实现（对照 app 端 `SearchMenu` View 的状态 + 桥接
@@ -41,7 +41,7 @@ class SearchMenuStateImpl(
 
     // 配色与阅读菜单同源, 但这里是**普通 getter** (组合外也会被读): 不能碰 AppTheme Composable。
     // 已接纳菜单在显时直接沿用它的真实取色 (同层叠加必须逐字一致); 无绑定时按当前阅读配置 +
-    // 当前主题底栏色 (非组合的窄取色接口) 计算, 不退回 0 之类的假色。
+    // SharedThemeStoreProvider().bottomBackground (native/desktop 阅读菜单同款的非组合真实取色) 计算。
     private val menuColors: ReadMenuColors
         get() {
             model.menuStateOrNull?.let { state ->
@@ -49,7 +49,7 @@ class SearchMenuStateImpl(
             }
             return createReadMenuColors(
                 ReadBookConfigProviders.get().config,
-                ThemeConfigProviders.get().bottomBackground.toColorInt(),
+                SharedThemeStoreProvider().bottomBackground.toArgb(),
             )
         }
 

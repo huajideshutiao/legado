@@ -6,6 +6,8 @@ import io.legado.app.utils.File
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.ensureParentDirectory
 import io.legado.app.utils.isAtomicWriteTempName
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import okio.FileSystem
 import okio.Path.Companion.toPath
 
@@ -89,15 +91,17 @@ actual object FileUtilsCommon {
         }
     }
 
-    actual fun copyToFile(path: String, input: InputStream) {
+    actual fun copyToFile(path: String, input: InputStream, parent: Job?) {
         // expect InputStream 无 copyTo 扩展, 分块读后写文件; IO 异常直接上抛
         val file = File(path)
         file.ensureParentDirectory()
         // native File 无 outputStream (okio 封装), 用 okio sink 边读边写:
-        // 内存只有一块复用缓冲区, 与文件体积无关 (expect KDoc 的"分块, 不整块缓冲")
+        // 内存只有一块复用缓冲区, 与文件体积无关 (expect KDoc 的"分块, 不整块缓冲");
+        // 每块前核父资格, 撤销不必等整份写完
         FileSystem.SYSTEM.write(file.path.toPath()) {
             val buffer = ByteArray(64 * 1024)
             while (true) {
+                parent?.ensureActive()
                 val n = input.read(buffer)
                 if (n <= 0) break
                 write(buffer, 0, n)

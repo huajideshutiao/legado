@@ -1,6 +1,7 @@
 package io.legado.app.help.storage
 
 import io.legado.app.utils.InputStream
+import kotlinx.coroutines.Job
 
 /**
  * 跨平台文件 + zip 操作 expect 声明（BackupShared/RestoreShared 用）。
@@ -83,8 +84,11 @@ expect object BackupFileOps {
      *
      * @param srcPath 源文件路径
      * @param destPath 目标文件路径 (父目录不存在则创建, 已存在则整份替换)
+     * @param parent 发起这次复制的请求 Job: 复制循环每块前与最终替换正式名前各核一次资格
+     *   (取消抛 [kotlinx.coroutines.CancellationException], 目标保持原内容)。传 null = 调用方没有
+     *   可归属的请求 (备份/恢复等同步入口), 行为与原实现一致。
      */
-    fun copyFile(srcPath: String, destPath: String)
+    fun copyFile(srcPath: String, destPath: String, parent: Job? = null)
 
     /**
      * 把多个文件压成 zip。

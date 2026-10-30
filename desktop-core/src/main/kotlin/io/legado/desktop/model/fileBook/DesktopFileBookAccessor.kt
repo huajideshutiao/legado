@@ -17,10 +17,10 @@ import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isPdf
-import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.book.requireBookSaveDir
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.OLD_COVERS_REF_SEGMENT
+import io.legado.app.help.copyToFileAtomically
 import io.legado.app.help.file.desktopAppCacheDir
 import io.legado.app.help.file.desktopAppRootDir
 import io.legado.app.help.file.desktopResolveStoredRef
@@ -127,7 +127,19 @@ class DesktopFileBookAccessor(
         }
     }
 
-    override fun getBookInputStream(book: Book): InputStream {
+    /**
+     * 同步叶子的下载回退: 本方法要返回 InputStream, 只能阻塞等下载完成。
+     *
+     * 阻塞形态不变, 但**不**自建无父作用域: [parent] 是本页真实请求 Job (取消即停下这次回退),
+     * 没有可归属的请求时 (纯解析入口) 传 null, 本叶自己当根, 不去借页面外的 Job。
+     * [FileBook.downloadRemoteBook] 本身是挂起函数, 挂起链一律直接调它, 不走这条。
+     */
+    private fun downloadRemoteBookBlocking(book: Book, parent: Job?): Boolean =
+        runBlocking(parent ?: kotlin.coroutines.EmptyCoroutineContext) {
+            FileBook.downloadRemoteBook(book)
+        }
+
+    override fun getBookInputStream(book: Book, parent: Job?): InputStream {
         // 对齐 app 端 FileBookAccessorImpl.getBookInputStream: 文件失效时回退
         // "重新解压压缩包" → "下载远程文件", 全失败才抛 FileNotFoundException
         val inputStream = openLocalFile(book) ?: run {
@@ -135,11 +147,11 @@ class DesktopFileBookAccessor(
             val archiveFile = findArchiveFile(book)
             val webDavUrl = book.getRemoteUrl()
             if (archiveFile != null) {
-                importFromArchive(archiveFile.toURI().toString(), book.originName) {
+                importFromArchive(archiveFile.toURI().toString(), book.originName, parent) {
                     it.contains(book.originName)
-                }.firstOrNull()?.let { getBookInputStream(it) }
-            } else if (webDavUrl != null && FileBook.downloadRemoteBook(book)) {
-                getBookInputStream(book)
+                }.firstOrNull()?.let { getBookInputStream(it, parent) }
+            } else if (webDavUrl != null && downloadRemoteBookBlocking(book, parent)) {
+                getBookInputStream(book, parent)
             } else {
                 null
             }
@@ -367,42 +379,9 @@ class DesktopFileBookAccessor(
             } finally {
                 probe.delete()
             }
-            copyToFileAtomicallyWithParent(file.absolutePath, input, parent)
+            // 复用既有整份写入原语 (准备循环每块前与最终替换前都核父), 不再自建等价拷贝
+            copyToFileAtomically(file.absolutePath, input, parent)
             return desktopStoredLocalRef(file)
-        }
-    }
-
-    /**
-     * 分块写同目录临时件再原子改名就位: 每块前与进入正式提交前都核父资格。
-     *
-     * 取消抛 [CancellationException] (原异常交回调用方), 临时件清掉、目标保持原内容;
-     * 已开始的改名是短提交, 按文件原语的既有能力保终态 (要么旧完整内容, 要么新完整内容)。
-     */
-    private fun copyToFileAtomicallyWithParent(
-        path: String,
-        input: InputStream,
-        parent: Job?,
-    ) {
-        val tempPath = atomicWriteTempPath(path)
-        try {
-            parent?.ensureActive()
-            FileOutputStream(tempPath).use { output ->
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                while (true) {
-                    parent?.ensureActive()
-                    val read = input.read(buffer)
-                    if (read < 0) break
-                    output.write(buffer, 0, read)
-                }
-            }
-            // 进入正式提交 (替换正式名) 之前最后核资格: 已撤销不得动正式件
-            parent?.ensureActive()
-            check(FileUtilsCommon.replaceFileAtomically(tempPath, path)) {
-                "整份写入失败, 目标保持原内容: $path"
-            }
-        } catch (t: Throwable) {
-            FileUtilsCommon.delete(tempPath)
-            throw t
         }
     }
 

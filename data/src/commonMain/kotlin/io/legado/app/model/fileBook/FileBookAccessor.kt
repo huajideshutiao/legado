@@ -40,8 +40,13 @@ interface FileBookAccessor {
      *
      * 内部走 Uri.inputStream(appCtx) + 失败回退 importFromArchive / downloadRemoteBook,
      * 重 Android 依赖 (appCtx / Uri.inputStream) 留 app 端。
+     *
+     * 本方法是**同步叶子** (返回 InputStream, 没有挂起上下文), 但失败回退里的"重新下载远端文件"
+     * 和"重新解包"都是真请求: [parent] 让调用方把本页真实请求 Job 交进来, 取消即可停下这次回退。
+     * 传 null = 调用方是纯解析入口 (如 TextFileCore 的 getChapterList/getContent), 本叶自己就是根,
+     * 实现**不得**改成挂到任何页面外的 Job/全局作用域上。
      */
-    fun getBookInputStream(book: Book): InputStream
+    fun getBookInputStream(book: Book, parent: Job? = null): InputStream
 
     /**
      * 获取书籍文件最后修改时间 (对应 BaseFileBook.getLastModified 默认实现)。

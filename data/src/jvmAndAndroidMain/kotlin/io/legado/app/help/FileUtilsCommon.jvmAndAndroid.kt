@@ -11,6 +11,8 @@ import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.isAtomicWriteTempName
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import java.io.File
 
 /**
@@ -70,14 +72,24 @@ actual object FileUtilsCommon {
         return FileUtilsBase.writeBytes(path, data)
     }
 
-    actual fun copyToFile(path: String, input: InputStream) {
-        // 对齐原 app 端 downloadFile 的 inputStream.copyTo(outputStream) 语义; IO 异常直接上抛
+    actual fun copyToFile(path: String, input: InputStream, parent: Job?) {
+        // 对齐原 app 端 downloadFile 的 inputStream.copyTo(outputStream) 语义; IO 异常直接上抛。
+        // 分块复制取代 input.copyTo(out): 每块前核父资格, 撤销不必等整份写完 (块大小与 kotlin.io
+        // copyTo 一致, 语义不变)。传 null = 没有可归属的请求, 行为与原实现逐字一致。
         val file = File(path)
         if (!file.exists()) {
             file.parentFile?.mkdirs()
             file.createNewFile()
         }
-        file.outputStream().use { out -> input.copyTo(out) }
+        file.outputStream().use { out ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                parent?.ensureActive()
+                val read = input.read(buffer)
+                if (read < 0) break
+                out.write(buffer, 0, read)
+            }
+        }
     }
 
     actual fun delete(path: String, deleteRootDir: Boolean): Boolean {

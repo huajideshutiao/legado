@@ -97,7 +97,7 @@ object FileBookAccessorImpl : FileBookAccessor {
      *
      * 走 Uri.inputStream(appCtx), 失败回退 importFromArchive / downloadRemoteBook。
      */
-    override fun getBookInputStream(book: Book): InputStream {
+    override fun getBookInputStream(book: Book, parent: Job?): InputStream {
         val ref = LocalBookLocators.get().getReadableFileRef(book) ?: book.bookUrl
         val uri = ref.parseToUri()
         val inputStream = uri.inputStream(App.instance).getOrNull() ?: let {
@@ -105,14 +105,14 @@ object FileBookAccessorImpl : FileBookAccessor {
             val webDavUrl = book.getRemoteUrl()
             if (localArchiveUri != null) {
                 // 重新导入对应的压缩包
-                importFromArchive(localArchiveUri.toString(), book.originName) {
+                importFromArchive(localArchiveUri.toString(), book.originName, parent) {
                     it.contains(book.originName)
                 }.firstOrNull()?.let {
-                    getBookInputStream(it)
+                    getBookInputStream(it, parent)
                 }
-            } else if (webDavUrl != null && FileBook.downloadRemoteBook(book)) {
-                // 下载远程链接
-                getBookInputStream(book)
+            } else if (webDavUrl != null && downloadRemoteBookBlocking(book, parent)) {
+                // 下载远程链接 (阻塞叶子: 父门由调用方给的请求 Job 决定)
+                getBookInputStream(book, parent)
             } else {
                 null
             }
@@ -120,6 +120,18 @@ object FileBookAccessorImpl : FileBookAccessor {
         if (inputStream != null) return inputStream
         throw FileNotFoundException("${uri.path} 文件不存在")
     }
+
+    /**
+     * 同步叶子的下载回退: 本方法要返回 InputStream, 只能阻塞等下载完成。
+     *
+     * 阻塞形态不变, 但**不**自建无父作用域: [parent] 是本页真实请求 Job (取消即停下这次回退),
+     * 没有可归属的请求时 (纯解析入口) 传 null, 本叶自己当根, 不去借页面外的 Job。
+     * [FileBook.downloadRemoteBook] 本身是挂起函数, 挂起链一律直接调它, 不走这条。
+     */
+    private fun downloadRemoteBookBlocking(book: Book, parent: Job?): Boolean =
+        runBlocking(parent ?: kotlin.coroutines.EmptyCoroutineContext) {
+            FileBook.downloadRemoteBook(book)
+        }
 
     /** 获取书籍文件最后修改时间 (原 BaseFileBook.getLastModified 默认实现)。 */
     override fun getLastModified(book: Book): Result<Long> {
@@ -381,7 +393,7 @@ object FileBookAccessorImpl : FileBookAccessor {
                     }
                     val file = treeFile.getFile(fileName)
                     // 原语只用不夺取输入流所有权: 本流由调用点 use 收口, 不留活 FD
-                    staged.inputStream().use { copyToFileAtomically(file.path, it) }
+                    staged.inputStream().use { copyToFileAtomically(file.path, it, parent) }
                     Uri.fromFile(file).toString()
                 }
             } finally {

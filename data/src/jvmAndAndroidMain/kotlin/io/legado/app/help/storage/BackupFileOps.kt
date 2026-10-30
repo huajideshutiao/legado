@@ -13,6 +13,7 @@ import io.legado.app.help.storage.BackupFileOps.zipFiles
 import io.legado.app.help.writeTextAtomically
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.copyFileAtomically
+import kotlinx.coroutines.Job
 import io.legado.app.utils.compress.ZipUtils
 import java.io.File
 import java.io.FileInputStream
@@ -87,10 +88,11 @@ actual object BackupFileOps {
         return File(path).listFiles()?.map { it.absolutePath }
     }
 
-    actual fun copyFile(srcPath: String, destPath: String) {
+    actual fun copyFile(srcPath: String, destPath: String, parent: Job?) {
         // 整份复制替换目标 (共享实现): 直接往目标覆盖写, 复制中途被打断会留下半截目标
-        // (备份 zip 被截断即读不出的坏包), 失败时目标原内容照旧并抛错
-        copyFileAtomically(File(srcPath), File(destPath))
+        // (备份 zip 被截断即读不出的坏包), 失败时目标原内容照旧并抛错;
+        // parent 贯通到既有原子复制的准备循环与最终替换前
+        copyFileAtomically(File(srcPath), File(destPath), parent)
     }
 
     actual fun zipFiles(srcPaths: List<String>, zipPath: String): Boolean {

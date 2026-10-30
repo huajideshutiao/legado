@@ -1,5 +1,7 @@
 package io.legado.app.utils
 
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -18,13 +20,24 @@ import java.io.FileOutputStream
  *
  * @return [dst] (便于调用方链式使用)
  */
-fun copyFileAtomically(src: File, dst: File): File {
+fun copyFileAtomically(src: File, dst: File, parent: Job? = null): File {
     dst.parentFile?.mkdirs()
     val temp = File(atomicWriteTempPath(dst.path))
     try {
+        // 复制循环每块前核父: 撤销不必等整份复制完 (块大小与 input.copyTo 一致, 语义不变)
         FileInputStream(src).use { input ->
-            FileOutputStream(temp).use { output -> input.copyTo(output) }
+            FileOutputStream(temp).use { output ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    parent?.ensureActive()
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    output.write(buffer, 0, read)
+                }
+            }
         }
+        // 进入正式提交 (替换正式名) 之前最后核一次: 已撤销不得动正式件
+        parent?.ensureActive()
         FileUtilsBase.replaceFileAtomically(temp, dst)
     } catch (e: Throwable) {
         temp.delete()

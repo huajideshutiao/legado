@@ -67,11 +67,11 @@ class OhosAuthorizedFileBookAccessor(
     private val delegate: NativeFileBookAccessor = NativeFileBookAccessor(),
 ) : FileBookAccessor by delegate {
 
-    override fun getBookInputStream(book: Book): InputStream {
-        val opened = runCatching { withActivation(book) { delegate.getBookInputStream(book) } }
+    override fun getBookInputStream(book: Book, parent: Job?): InputStream {
+        val opened = runCatching { withActivation(book) { delegate.getBookInputStream(book, parent) } }
         opened.getOrNull()?.let { return it }
         // 书文件读不到 (文件被删/授权失效): 按压缩包名找回原压缩包重新解压 (对照原版, 见 [reopenFromArchive])
-        reopenFromArchive(book)?.let { return it }
+        reopenFromArchive(book, parent)?.let { return it }
         throw opened.exceptionOrNull()!!
     }
 

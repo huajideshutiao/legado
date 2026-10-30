@@ -1,6 +1,11 @@
 package io.legado.app.utils
 
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
+import okio.FileSystem
 import okio.IOException
+import okio.Path.Companion.toPath
+import okio.buffer
 
 /**
  * 用 [src] 整份替换 [dst], 任一步失败都保持 [dst] 已有的内容可用
@@ -50,11 +55,25 @@ fun replaceFileAtomically(src: File, dst: File) {
  *
  * @return [dst] (便于调用方链式使用)
  */
-fun copyFileAtomically(src: File, dst: File): File {
+fun copyFileAtomically(src: File, dst: File, parent: Job? = null): File {
     dst.parentFile?.mkdirs()
     val temp = File(atomicWriteTempPath(dst.path))
     try {
-        src.copyTo(temp, overwrite = true)
+        // 复制循环每块前核父 (kotlin.io 的 File.copyTo 不给逐块检查点, 这里按同一缓冲语义自读自写):
+        // 撤销不必等整份复制完
+        FileSystem.SYSTEM.source(src.path.toPath()).buffer().use { input ->
+            FileSystem.SYSTEM.sink(temp.path.toPath()).buffer().use { output ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    parent?.ensureActive()
+                    val read = input.read(buffer, 0, buffer.size)
+                    if (read == -1) break
+                    output.write(buffer, 0, read)
+                }
+            }
+        }
+        // 进入正式提交 (替换正式名) 之前最后核一次: 已撤销不得动正式件
+        parent?.ensureActive()
         replaceFileAtomically(temp, dst)
     } catch (e: Throwable) {
         temp.delete()

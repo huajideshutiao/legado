@@ -5,6 +5,9 @@ import io.ktor.utils.io.readAvailable
 import io.legado.app.utils.File
 import io.legado.app.utils.atomicWriteTempPath
 import io.legado.app.utils.ensureParentDirectory
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import okio.FileSystem
 import okio.Path.Companion.toPath
 
@@ -27,16 +30,21 @@ private const val CHANNEL_COPY_BUFFER_SIZE = 64 * 1024
  */
 suspend fun copyToFileAtomically(path: String, channel: ByteReadChannel) {
     val tempPath = atomicWriteTempPath(path)
+    // 本请求 Job 是父门: 准备循环每块前与最终替换前都要核, 撤销不得继续写临时件、更不得动正式件
+    val parent = currentCoroutineContext()[Job]
     try {
+        parent?.ensureActive()
         File(tempPath).ensureParentDirectory()
         FileSystem.SYSTEM.write(tempPath.toPath()) {
             val buffer = ByteArray(CHANNEL_COPY_BUFFER_SIZE)
             while (true) {
+                parent?.ensureActive()
                 val n = channel.readAvailable(buffer, 0, buffer.size)
                 if (n == -1) break
                 if (n > 0) write(buffer, 0, n)
             }
         }
+        parent?.ensureActive()
         check(FileUtilsCommon.replaceFileAtomically(tempPath, path)) {
             "整份写入失败, 目标保持原内容: $path"
         }

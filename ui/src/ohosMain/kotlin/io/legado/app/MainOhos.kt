@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
@@ -54,9 +53,9 @@ import io.legado.app.ui.reader.ReaderImageActionMenu
 import io.legado.app.ui.root.AppFontScaleScope
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
-import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.ui.root.ImportStageDialog
 import io.legado.app.ui.root.ImportStageOwner
+import io.legado.app.ui.root.rememberWindowVisibleState
 import io.legado.app.ui.root.LegadoApp
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
@@ -228,8 +227,11 @@ fun MainOhos() {
                     // 每个任务只取一次: 后来的请求不会重做前面的任务, 重组也不会重放已消费的任务。
                     // 本窗口持有的用户选择阶段: 队列任务用它等真回执 (不建全局 owner 表)
                     val associationStages = remember { ImportStageOwner() }
-                    val frameVisible by AppForegroundState.isForeground.collectAsState()
-                    ImportStageDialog(associationStages, visible = frameVisible)
+                    // 本窗口自身可见性: 取本窗口 Compose 生命周期的 STARTED 区间。
+                    // AppForegroundState 在鸿蒙由 OhosPlatformEvents 按 ON_FOREGROUND/ON_BACKGROUND 置位,
+                    // 是应用前后台口径, 不等于本窗口可见, 故这里不用它。
+                    val windowVisible by rememberWindowVisibleState()
+                    ImportStageDialog(associationStages, visible = windowVisible)
                     LaunchedEffect(associationStages) {
                         for (job in OhosPlatformCapabilities.pendingAssociationFiles) {
                             try {

@@ -86,7 +86,8 @@ class NativeFileBookAccessor : FileBookAccessor {
         }
     }
 
-    override fun getBookInputStream(book: Book): InputStream {
+    // 本端读文件不走网络: 没有可归属失败回退的远端下载/解包, [parent] 不收 (签名与接口一致)
+    override fun getBookInputStream(book: Book, parent: Job?): InputStream {
         // 流式打开 (不整书读入内存); 调用方负责 close。
         // 打开失败抛 okio IOException 族 (ENOENT 为 FileNotFoundException, 其余含权限不足为普通 IOException)。
         return openLocalFile(localFilePathOf(book))
@@ -292,10 +293,13 @@ class NativeFileBookAccessor : FileBookAccessor {
         }
         val tempPath = atomicWriteTempPath(file.path)
         val temp = File(tempPath)
+        // 本请求 Job 是父门: 下载后的正式落位 (复制 + 最终替换) 核同一真实父, 已撤销不得动正式件
+        val parent = currentCoroutineContext()[Job]
         try {
-            // 先下到同目录临时件, 完整后再原子替换正式名
+            // 先下到同目录临时件 (下载内部逐块核父), 完整后再原子替换正式名
             webDav.downloadTo(tempPath, true)
-            BackupFileOps.copyFile(tempPath, file.path)
+            parent?.ensureActive()
+            BackupFileOps.copyFile(tempPath, file.path, parent)
         } finally {
             runCatching { temp.delete() }
         }
@@ -316,30 +320,31 @@ class NativeFileBookAccessor : FileBookAccessor {
         // 让 `Throwable.isSecurityException()` (native actual 匹配 io.legado.app.exception.SecurityException)
         // 的调用方 (RemoteBookViewModelShared 的 onPermissionDenied / ReaderScreenModel 的权限请求链)
         // 拉起"去设置目录"出口; 原版该分支同样 `catch (e: Exception)` 包住整段写。
-        val dir = bookSaveDir()
-        val file = File("$dir/$fileName")
-        try {
-            File(dir).mkdirs()
-        } catch (e: Exception) {
-            // 只有目录不可建/不可写才是权限问题
-            throw SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e").apply {
-                addSuppressed(e)
+        // 目录解析 / mkdirs / 读流 / 落位整段在同一关闭保护内: 未设置保存位置
+        // (InvalidBooksDirException)、目录不可建 (SecurityException)、物化失败或请求取消,
+        // 每条退出路径都先按保存入口契约关闭输入 (真实流 close 后再 read 会抛 Stream closed)
+        return try {
+            val dir = bookSaveDir()
+            val file = File("$dir/$fileName")
+            try {
+                File(dir).mkdirs()
+            } catch (e: Exception) {
+                // 只有目录不可建/不可写才是权限问题
+                throw SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e").apply {
+                    addSuppressed(e)
+                }
             }
-        }
-        try {
             // 进入物化前核父资格, 并在读完每一块后继续核: 撤销不必等整份读完
             parent?.ensureActive()
             val bytes = inputStream.readFully(parent)
-            // 进入正式提交 (替换正式名) 之前再核一次: 已撤销不得动正式件
-            parent?.ensureActive()
-            // 整份临时件就位后再替换正式名: 写途中失败保留旧完整内容
-            if (!writeBytesAtomically(file.path, bytes)) {
+            // 整份临时件就位后再替换正式名 (替换前由原语再核一次父): 写途中失败保留旧完整内容
+            if (!writeBytesAtomically(file.path, bytes, parent)) {
                 throw NoStackTraceException("写入书籍文件失败: ${file.path}")
             }
+            "file://" + file.absolutePath
         } finally {
             inputStream.close()
         }
-        return "file://" + file.absolutePath
     }
 
     override fun analyzeNameAuthor(fileName: String): Pair<String, String> {
@@ -408,10 +413,10 @@ internal fun InputStream.readFully(parent: Job? = null): ByteArray {
  *
  * @return 打开成功返回输入流; 没有对应的原压缩包或包内没有同名书返回 null (调用方按原先的失败如实上报)
  */
-internal fun FileBookAccessor.reopenFromArchive(book: Book): InputStream? {
+internal fun FileBookAccessor.reopenFromArchive(book: Book, parent: Job? = null): InputStream? {
     val archiveRef = LocalBookLocators.get().getReadableArchiveRef(book) ?: return null
-    return importFromArchive(archiveRef, book.originName) { it.contains(book.originName) }
-        .firstOrNull()?.let { getBookInputStream(it) }
+    return importFromArchive(archiveRef, book.originName, parent) { it.contains(book.originName) }
+        .firstOrNull()?.let { getBookInputStream(it, parent) }
 }
 
 /**

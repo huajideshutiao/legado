@@ -74,9 +74,15 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
     val pendingReaderNavs: StateFlow<Map<Long, AppRoute>> = _pendingReaderNavs.asStateFlow()
     private val readerNavSeq = atomic(0L)
 
-    /** 交当前有效组合打开阅读路由 (不经旧成功闭包直接 push)。 */
+    /**
+     * 交当前有效组合打开阅读路由 (不经旧成功闭包直接 push)。
+     *
+     * 编号在 [update] 之外发: `update` 的 lambda 可能被重试 (并发的 setter 竞争), 在里面自增会
+     * 重复取号/撞号; atomicfu 的发号本身是原子的, 放进 lambda 也不会丢, 但纯 lambda 才可重试。
+     */
     fun postReaderNav(route: AppRoute) {
-        _pendingReaderNavs.update { it + (readerNavSeq.incrementAndGet() to route) }
+        val id = readerNavSeq.incrementAndGet()
+        _pendingReaderNavs.update { it + (id to route) }
     }
 
     fun consumeReaderNav(id: Long) {

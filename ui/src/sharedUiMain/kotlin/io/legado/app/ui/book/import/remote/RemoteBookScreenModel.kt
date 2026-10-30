@@ -8,6 +8,7 @@ import io.legado.app.ui.root.ensureBookSaveDirSelected
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.ui.root.toRouteRef
 import kotlinx.coroutines.cancel
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,13 +46,16 @@ class RemoteBookScreenModel : ScreenModel {
     // pendingReaderNavs 同一形状
     private val _pendingNavigation = MutableStateFlow<Map<Long, AppRoute>>(emptyMap())
     val pendingNavigation: StateFlow<Map<Long, AppRoute>> = _pendingNavigation.asStateFlow()
-    private var navSeq = 0L
+    // 发号用原子量: startRead 从 IO 回调 (onStartRead) 进入, 普通 ++ 会并发撞号;
+    // 且在 update lambda 里自增会随 lambda 重试重复取号, 故发号放在 update 之外
+    private val navSeq = atomic(0L)
 
     val shared = RemoteBookViewModelShared(
         scope = businessScope,
         // 已上架书点阅读: 交当前路由去 push (app 端 startReadBook / 桌面切 READER 路由同一语义)
         onStartRead = { book: Book ->
-            _pendingNavigation.update { it + (++navSeq to AppRoute.Reader(book.toRouteRef())) }
+            val id = navSeq.incrementAndGet()
+            _pendingNavigation.update { it + (id to AppRoute.Reader(book.toRouteRef())) }
         },
         // 上架要落盘: 保存位置不可用时挂起等用户真选定 (取消即正常结束), 归本页请求
         onPermissionDenied = {
@@ -68,7 +72,9 @@ class RemoteBookScreenModel : ScreenModel {
     }
 
     override fun onCleared() {
-        // 页面真退出: 本页业务请求与目录选择一起撤; 阶段显示随之消失 (组合不再渲染)
+        // 页面真退出: 本页业务请求与目录选择一起撤; 待交导航已无人消费, 一并清掉
+        // (被覆盖/退后台时不清 —— 那时只是本页不可见, 结果要留给回来的 UI)
+        _pendingNavigation.value = emptyMap()
         businessScope.cancel()
     }
 }

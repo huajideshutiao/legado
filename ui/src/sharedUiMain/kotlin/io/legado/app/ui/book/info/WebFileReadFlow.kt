@@ -124,33 +124,38 @@ private suspend fun <T> withBookSaveDir(block: suspend () -> T): T? = try {
  * 本请求的等待框: 开框 → 执行 → 收框。
  *
  * 开框也在保护范围内 (跨 dispatcher 的返回可被 prompt cancellation 丢弃, 发布在 try 外就漏清理)。
+ *
  * 收框分两种终态:
- * - 成功: 等框确实离开界面再返回 —— 调用方随后要导航, "关框 → 打开页面"必须同序;
- * - 失败/取消: **只**发布本框收起, 不在这里等界面重绘 —— 后台/隐藏窗口可以不出帧,
- *   等它就会把业务失败/取消挂住。终态仍按原异常交回。
+ * - **确要接下一 UI 步** ([awaitDismissWhen] 判定, 例如导入成功且调用方随后要跳阅读页):
+ *   先保证收起已发布, 再等本框真的离开 —— 保持"关框 → 打开页面"的顺序;
+ * - 失败 / 用户取消 (如选目录返回 null) / 协程取消: **只**发布收起, 不等界面重绘 ——
+ *   隐藏窗口不出帧, 等它会把终态挂住。终态仍按原异常/原返回值交回。
+ *
+ * 收起发布放 [NonCancellable] (必须执行); 等待本身留在可取消上下文里, 本请求撤销即停止等待。
  */
 private suspend fun <T> withWaitDialog(
+    awaitDismissWhen: (T) -> Boolean,
     onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
     block: suspend () -> T,
 ): T {
     val handle = WaitDialogHandle()
-    var succeeded = false
+    var result: T? = null
+    var finished = false
     try {
         withContext(mainDispatcher) { onWaitDialog(true, handle) }
-        val result = block()
-        succeeded = true
-        return result
+        val value = block()
+        result = value
+        finished = true
+        return value
     } finally {
-        if (succeeded) {
-            withContext(NonCancellable) {
-                awaitWaitDialogDismissed(
-                    { withContext(mainDispatcher) { onWaitDialog(false, handle) } },
-                    handle,
-                )
-            }
-        } else {
-            // 失败/取消: 发布收起即可, 不等重绘
-            withContext(NonCancellable + mainDispatcher) { onWaitDialog(false, handle) }
+        // 先保证收起被发布 (取消也不跳过)
+        withContext(NonCancellable + mainDispatcher) { onWaitDialog(false, handle) }
+        if (finished && awaitDismissWhen(result as T)) {
+            // 等框离开; hide 重复调用幂等, 本请求取消则不再继续等
+            awaitWaitDialogDismissed(
+                { withContext(mainDispatcher) { onWaitDialog(false, handle) } },
+                handle,
+            )
         }
     }
 }
@@ -165,7 +170,10 @@ private suspend fun importWebFile(
     book: Book,
     webFile: FileBook.WebFile,
     onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
-): Book? = withWaitDialog(onWaitDialog) {
+): Book? = withWaitDialog(
+    awaitDismissWhen = { it != null },
+    onWaitDialog = onWaitDialog,
+) {
     withBookSaveDir {
         val merged = withContext(IoDispatcher) { WebFileImportShared.importWebFile(book, webFile) }
         withContext(IoDispatcher) {
@@ -180,7 +188,10 @@ private suspend fun downloadWebFile(
     book: Book,
     webFile: FileBook.WebFile,
     onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
-): String? = withWaitDialog(onWaitDialog) {
+): String? = withWaitDialog(
+    awaitDismissWhen = { it != null },
+    onWaitDialog = onWaitDialog,
+) {
     withBookSaveDir {
         withContext(IoDispatcher) { WebFileImportShared.downloadWebFile(book, webFile) }
     }
@@ -192,7 +203,10 @@ private suspend fun importFromArchive(
     archiveEntryName: String,
     book: Book,
     onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
-): Book? = withWaitDialog(onWaitDialog) {
+): Book? = withWaitDialog(
+    awaitDismissWhen = { it != null },
+    onWaitDialog = onWaitDialog,
+) {
     withBookSaveDir {
         val imported = withContext(IoDispatcher) {
             WebFileImportShared.importBookFromArchive(archivePath, archiveEntryName, book)

@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -21,9 +20,9 @@ import io.legado.app.help.AppVersionProviders
 import io.legado.app.help.versionNameToVersionCode
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
-import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.ui.root.ImportStageDialog
 import io.legado.app.ui.root.ImportStageOwner
+import io.legado.app.ui.root.rememberWindowVisibleState
 import io.legado.app.ui.book.info.SharedBlurCoverBg
 import io.legado.app.ui.browser.IosWebViewSlot
 import io.legado.app.ui.browser.LocalWebViewSlot
@@ -209,8 +208,12 @@ fun MainViewController(): UIViewController {
                     // 本 effect 在主窗口组合内 —— 分发任务随窗口存亡 (窗口操作寿命), 队列元素只交付一次
                     // 本窗口持有的用户选择阶段: 队列任务用它等真回执 (不建全局 owner 表)
                     val associationStages = remember { ImportStageOwner() }
-                    val frameVisible by AppForegroundState.isForeground.collectAsState()
-                    ImportStageDialog(associationStages, visible = frameVisible)
+                    // 本窗口自身可见性: 取本窗口 Compose 生命周期的 STARTED 区间
+                    // (iOS didEnterBackground/viewDidDisappear 会把 STARTED 降到 CREATED)。
+                    // AppForegroundState 在 iOS 有置位点 (IosBackgroundTasks), 但那是进程前后台口径,
+                    // 不等于"本窗口当前可见", 故这里不用它。
+                    val windowVisible by rememberWindowVisibleState()
+                    ImportStageDialog(associationStages, visible = windowVisible)
                     LaunchedEffect(associationStages) {
                         IosPlatformCapabilities.associationFileJobs.collect { job ->
                             job(associationStages)

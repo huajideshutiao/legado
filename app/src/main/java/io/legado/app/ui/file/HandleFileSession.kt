@@ -90,6 +90,9 @@ class HandleFileSession(private val activity: AppCompatActivity) {
                     }
                 }
                 request.holdOrDeliver(uri)
+            } else {
+                // 已收口/已撤销: 真实回执只排空, 请求收口出集合 (不取持久授权、不交付)
+                request?.finish()
             }
         }
 
@@ -117,6 +120,9 @@ class HandleFileSession(private val activity: AppCompatActivity) {
                     }
                 }
                 request.holdOrDeliver(uri)
+            } else {
+                // 已收口/已撤销: 真实回执只排空, 请求收口出集合 (不取持久授权、不交付)
+                request?.finish()
             }
         }
 
@@ -133,6 +139,9 @@ class HandleFileSession(private val activity: AppCompatActivity) {
             }
             if (request != null && request.isActive) {
                 request.holdOrDeliver(result.uri)
+            } else {
+                // 已收口/已撤销: 真实回执只排空, 请求收口出集合 (不交付)
+                request?.finish()
             }
         }
 
@@ -156,9 +165,10 @@ class HandleFileSession(private val activity: AppCompatActivity) {
      */
     fun restoreFrom(state: Bundle?) {
         if (state == null) return
-        // 恢复资格: 同一进程内的重建, 请求的 Owner (Job/VM) 还在, 请求照常恢复并等重绑;
-        // 进程重建后原 Owner 已不存在 —— 恢复出来的请求没有消费者, 只会让回执永久挂着,
-        // 故只接回在途通道占用, 让系统回传被真实排空。
+        // 恢复资格: sameProcess 只证进程存活, 不证业务 Owner 活 —— Owner 是否仍活由同 key
+        // 重新登记 (bindKey) 证明; 撤销资格按快照里的真实撤销 + 重建窗口内的撤销记录判,
+        // 不随恢复复活。进程重建后原 Owner 已不存在 —— 恢复出来的请求没有消费者,
+        // 只会让回执永久挂着, 故只接回在途通道占用, 让系统回传被真实排空。
         val sameProcess = state.getLong(KEY_PROCESS_TAG, 0L) == processTag
         val count = if (sameProcess) state.getInt(KEY_REQ_COUNT, 0) else 0
         for (i in 0 until count) {
@@ -188,6 +198,10 @@ class HandleFileSession(private val activity: AppCompatActivity) {
                 // 推进发号器: 进程恢复后新请求不得复用已保存的 id (否则会互删 heldResults 条目)
                 advanceRequestIdSeq(restoredId)
             }
+            // 撤销资格: 快照里保存的真实撤销 + 快照之后落在重建窗口内的撤销记录
+            // (父取消/入口撤销发生时旧宿主已停, 快照来不及反映), 两者都不可被重绑复活
+            request.revoked = state.getBoolean(reqKey(KEY_REQ_REVOKED, i), false) ||
+                revokedRequestIds.contains(request.requestId)
             // 占位 callback 是空的: 真实回执 (ON_START 补投早于组合) 先到必须暂存,
             // 留到同 key 有效入口 bindKey 时交付, 否则原等待协程永挂
             request.awaitingRebind = true
@@ -215,9 +229,15 @@ class HandleFileSession(private val activity: AppCompatActivity) {
                     }
                 }
             } else if (request.pendingResult == null) {
-                // 只弹了选择方式弹窗: 重建后继续展示, 用户无需重来;
-                // 已有真实回执的请求不再显示, 只等有效入口 bindKey 交付
-                HandleFileDialog(activity, request).show()
+                if (request.revoked) {
+                    // 已撤销: 没有可交付的消费者, 只收口排空, 不再弹选择方式弹窗
+                    // (弹窗里的后续动作对撤销请求全是空转)
+                    request.finish()
+                } else {
+                    // 只弹了选择方式弹窗: 重建后继续展示, 用户无需重来;
+                    // 已有真实回执的请求不再显示, 只等有效入口 bindKey 交付
+                    HandleFileDialog(activity, request).show()
+                }
             }
         }
         // 未被带 key 请求认领的旧通道占用 (原发起方已消亡): 只排空
@@ -238,7 +258,8 @@ class HandleFileSession(private val activity: AppCompatActivity) {
     /** 保存带 key 的未完成请求与各通道在途占用, 供重建后重绑/排空。 */
     fun saveTo(state: Bundle) {
         // 保存资格: 只要入口有稳定 key 就保存 —— 普通配置重建时业务 Owner (Job/VM) 还活着,
-        // 必须能按同 key 重绑回原请求, 否则"重建即挂死"。
+        // 必须能按同 key 重绑回原请求, 否则"重建即挂死"; 真实撤销资格 (revoked) 一并保存,
+        // 恢复侧不得复活。
         // 恢复资格另判: 进程重建后原 Owner 已死, 由 restoreFrom 按进程标记排空 (见下)。
         state.putLong(KEY_PROCESS_TAG, processTag)
         val pending = requests.filter { it.key != null && !it.finished }
@@ -254,6 +275,7 @@ class HandleFileSession(private val activity: AppCompatActivity) {
             state.putString(reqKey(KEY_REQ_BOOK, i), request.bookUrl)
             state.putBoolean(reqKey(KEY_REQ_AWAITING, i), request.awaitingSys)
             state.putString(reqKey(KEY_REQ_CHANNEL, i), request.awaitingChannel)
+            state.putBoolean(reqKey(KEY_REQ_REVOKED, i), request.revoked)
         }
         state.putBoolean(KEY_TREE_HELD, treeHeld)
         state.putBoolean(KEY_DOC_HELD, docHeld)
@@ -267,6 +289,9 @@ class HandleFileSession(private val activity: AppCompatActivity) {
         // 回调也可能合法再发请求加入本 list —— 边遍历边结构修改不可依赖
         keyedRequests[key]?.toList()?.forEach { request ->
             if (request.finished) return@forEach
+            // 接纳前核真实撤销记录: 撤销自取消瞬间起跨重绑不可逆, 重绑不得复活消费资格
+            // (已撤销时置位后走原路径: 暂存回执按 isActive 只排空)
+            if (revokedRequestIds.contains(request.requestId)) request.revoked = true
             request.launcher = launcher
             request.boundCallback = launcher.callback
             // 有效入口已绑定: 重建期间暂存的真实回执现在交付
@@ -304,7 +329,12 @@ class HandleFileSession(private val activity: AppCompatActivity) {
      */
     fun revokeConsumption(launcher: HandleFileLauncher) {
         requests.forEach { request ->
-            if (request.launcher === launcher) request.revoked = true
+            if (request.launcher === launcher) {
+                request.revoked = true
+                // 跨重建撤销记录 (进程级, 与 heldResults 同一保留机制): 撤销落在重建窗口内时,
+                // 恢复/重绑按它判资格。不是 Owner 表 —— Owner 是否仍活由同 key 重新登记证明。
+                if (request.key != null) revokedRequestIds.add(request.requestId)
+            }
         }
     }
 
@@ -554,6 +584,17 @@ class HandleFileSession(private val activity: AppCompatActivity) {
          */
         private val heldResults = LinkedHashMap<Long, HandleFileContract.Result>()
 
+        /**
+         * 已撤销请求的进程级记录 (按请求 id): 撤销落在"快照之后、恢复之前"的重建窗口内时,
+         * 快照里的撤销标志来不及反映, 恢复/重绑按这里判资格 —— 撤销自取消瞬间起跨重绑不可逆。
+         * 与 [heldResults] 同一进程级保留机制, 不是 Owner 表: Owner 是否仍活由同 key 重新
+         * 登记 (bindKey) 证明, 这里只记"消费资格已撤"。
+         */
+        private val revokedRequestIds =
+            java.util.Collections.newSetFromMap(
+                java.util.concurrent.ConcurrentHashMap<Long, Boolean>()
+            )
+
         /** 本会话内请求唯一 id: 同入口 key 的多个独立请求各有自己的回执槽, 互不取用/删除。 */
         private val requestIdSeq = java.util.concurrent.atomic.AtomicLong()
 
@@ -589,6 +630,7 @@ class HandleFileSession(private val activity: AppCompatActivity) {
         const val KEY_REQ_CODE = "code"
         const val KEY_REQ_VALUE = "value"
         const val KEY_REQ_BOOK = "book"
+        const val KEY_REQ_REVOKED = "revoked"
         const val KEY_REQ_ID = "handleFile.req.id"
 
         const val KEY_REQ_AWAITING = "awaiting"
