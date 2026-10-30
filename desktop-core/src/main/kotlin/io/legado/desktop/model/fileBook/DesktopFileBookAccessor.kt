@@ -17,6 +17,7 @@ import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isPdf
+import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.book.requireBookSaveDir
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.OLD_COVERS_REF_SEGMENT
@@ -42,6 +43,7 @@ import io.legado.app.utils.InputStream
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.atomicWriteTempPath
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
@@ -334,34 +336,80 @@ class DesktopFileBookAccessor(
         } else {
             WebDav.fromPath(str.substring(BookType.webDavTag.length)).downloadInputStream()
         }
-        return saveBookFile(inputStream, fileName)
+        return saveBookFile(inputStream, fileName, currentCoroutineContext()[Job])
     }
 
-    override fun saveBookFile(inputStream: InputStream, fileName: String): String {
+    override fun saveBookFile(
+        inputStream: InputStream,
+        fileName: String,
+        parent: Job?,
+    ): String {
         // desktop 无 SAF, 用有效书籍保存目录 + java.io.File (app 端走 defaultBookTreeUri + DocumentFile);
         // 返回存储引用: 数据根下存相对引用 (`books/x.epub`, 便携移动后有效), 兼容旧 file: URI
         //
-        // 异常口径与 app 端 FileBook.saveBookFile 文件路径分支逐字一致: 写不进去 (目录被删/无写权限/
-        // 磁盘满) 一律转 `SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e")`,
-        // 好让既有 `Throwable.isSecurityException()` 的调用方 (RemoteBookViewModelShared 的
-        // onPermissionDenied / ReaderScreenModel 的权限请求链) 拉起"去设置目录"出口;
-        // 原版该分支同样是 `catch (e: Exception)` 包住整段写 (含 copyTo), 故此处不另分类型。
-        val file = File(bookSaveDir(), fileName)
+        // 落盘协议与 app 端同一条: 目录可用性先行探测 (探不出 = 目录被删/无写权限 -> 权限类提示),
+        // 内容先整份写同目录临时件再原子改名就位 —— 目标名在写入期间始终是完整内容;
+        // 传输错误原样透传, 不再统一包装成权限失败 (那会把网络/取消说成目录问题)。
+        //
+        // 整个保存过程 (含目录解析与探测) 都在 use 内: 保存入口的消费契约是"进来就把流吃掉",
+        // 目录未设置/探测失败抛异常时也必须关闭调用方交来的流。
         inputStream.use { input ->
+            val file = File(bookSaveDir(), fileName)
+            val probe = File(atomicWriteTempPath(file.absolutePath))
             try {
-                file.outputStream().use { output -> input.copyTo(output) }
+                FileOutputStream(probe).close()
             } catch (e: Exception) {
-                throw SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e").apply {
+                throw SecurityException(
+                    "请重新设置书籍保存位置\nPermission Denial\n$e"
+                ).apply {
                     addSuppressed(e)
                 }
+            } finally {
+                probe.delete()
             }
+            copyToFileAtomicallyWithParent(file.absolutePath, input, parent)
+            return desktopStoredLocalRef(file)
         }
-        return desktopStoredLocalRef(file)
+    }
+
+    /**
+     * 分块写同目录临时件再原子改名就位: 每块前与进入正式提交前都核父资格。
+     *
+     * 取消抛 [CancellationException] (原异常交回调用方), 临时件清掉、目标保持原内容;
+     * 已开始的改名是短提交, 按文件原语的既有能力保终态 (要么旧完整内容, 要么新完整内容)。
+     */
+    private fun copyToFileAtomicallyWithParent(
+        path: String,
+        input: InputStream,
+        parent: Job?,
+    ) {
+        val tempPath = atomicWriteTempPath(path)
+        try {
+            parent?.ensureActive()
+            FileOutputStream(tempPath).use { output ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    parent?.ensureActive()
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    output.write(buffer, 0, read)
+                }
+            }
+            // 进入正式提交 (替换正式名) 之前最后核资格: 已撤销不得动正式件
+            parent?.ensureActive()
+            check(FileUtilsCommon.replaceFileAtomically(tempPath, path)) {
+                "整份写入失败, 目标保持原内容: $path"
+            }
+        } catch (t: Throwable) {
+            FileUtilsCommon.delete(tempPath)
+            throw t
+        }
     }
 
     /** web 上传临时文件落盘 (对齐 app 端: 委托 inputStream 重载)。 */
     override fun saveBookFileFromPath(filePath: String, fileName: String): String =
-        saveBookFile(File(filePath).inputStream(), fileName)
+        // web 上传通道没有可归属的页面请求: 父门显式 null
+        saveBookFile(File(filePath).inputStream(), fileName, null)
 
     /**
      * 流式保存 WebDav 远端书籍文件 ("下载到本地" / "刷新远端更新" 链路)。
@@ -395,7 +443,10 @@ class DesktopFileBookAccessor(
         } finally {
             probe.delete()
         }
+        // 进入下载前与收尾前核父资格: 取消不再白下整份
+        currentCoroutineContext()[Job]?.ensureActive()
         webDav.downloadTo(file.absolutePath, true)
+        currentCoroutineContext()[Job]?.ensureActive()
         return desktopStoredLocalRef(file)
     }
 

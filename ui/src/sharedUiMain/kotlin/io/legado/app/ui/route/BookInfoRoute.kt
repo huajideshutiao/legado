@@ -363,7 +363,10 @@ fun BookInfoRoute(
 
         // 下载到本地: 委托平台 (依赖 FileBook/Uri)
         override fun onDownloadToLocal() {
-            PlatformCapabilityProviders.get().downloadBookToLocal(state.book ?: book)
+            PlatformCapabilityProviders.get().downloadBookToLocal(
+                state.book ?: book,
+                scope = screenModel.pageScope,
+            )
         }
 
         // 置顶: 更新 order + durChapterTime

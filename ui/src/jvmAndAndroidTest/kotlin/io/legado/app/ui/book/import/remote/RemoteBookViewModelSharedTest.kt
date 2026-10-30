@@ -3,6 +3,8 @@ package io.legado.app.ui.book.import.remote
 import io.legado.app.lib.webdav.Authorization
 import io.legado.app.lib.webdav.WebDavFile
 import io.legado.app.model.remote.RemoteBook
+import io.legado.app.ui.root.ImportConfirmAction
+import io.legado.app.ui.root.ImportStageHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,6 +26,16 @@ class RemoteBookViewModelSharedTest {
                 serverID: Long?,
                 remoteBook: RemoteBook,
             ) = Unit
+        },
+        // 本测试不触发选择阶段; 显式给一个"用户取消"的桩, 不用可空兜底
+        stages = object : ImportStageHost {
+            override suspend fun choose(title: String, items: List<String>): Int? = null
+            override suspend fun confirm(
+                title: String?,
+                message: String,
+                neutralText: String?,
+                okText: String?,
+            ): ImportConfirmAction = ImportConfirmAction.Cancel
         },
     )
 

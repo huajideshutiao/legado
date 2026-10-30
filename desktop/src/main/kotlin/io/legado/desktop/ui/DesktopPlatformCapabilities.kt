@@ -47,7 +47,9 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.DefaultDialogTransitionSpec
 import io.legado.app.ui.root.DialogTransitionSpec
+import io.legado.app.ui.root.ImportConfirmAction
 import io.legado.app.ui.root.ImportStageHost
+import io.legado.app.ui.root.confirmUnknownFile
 import io.legado.app.ui.root.PickedFile
 import io.legado.app.ui.root.SharedPlatformCapabilities
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -84,7 +86,6 @@ import io.legado.desktop.ui.component.FileDialogs
 import io.legado.desktop.ui.tray.DesktopMediaTray
 import io.legado.desktop.ui.tray.ExportTrayBinding
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -553,29 +554,44 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     }
 
     // 对照 BookInfoViewModel.downloadToLocal: 业务已共享 (FileBook.downloadRemoteBook)
-    override fun downloadBookToLocal(book: Book, success: (() -> Unit)?) {
+    override fun downloadBookToLocal(
+        book: Book,
+        scope: CoroutineScope,
+        success: (() -> Unit)?,
+    ) {
+        // 归本页请求 (原先挂能力作用域: 页面真退仍在跑)
         scope.launch {
-            runCatching { FileBook.downloadRemoteBook(book) }
-                .onSuccess {
+            try {
+                FileBook.downloadRemoteBook(book)
+                withContext(Dispatchers.Main) {
+                    Toasters.get().toast("下载成功")
+                    success?.invoke()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                if (e !is InvalidBooksDirException) {
+                    AppLog.put("下载远程书籍<${book.name}>失败", e, true)
+                    return@launch
+                }
+                // 保存位置未设置: 挂起等用户真选定
+                if (!reselectBookSaveDir(currentCoroutineContext()[Job])) {
+                    // 用户在选目录时取消 = 本次正常终结 (不是失败, 不记日志)
+                    return@launch
+                }
+                // 已选定: 重试一次; 每一层取消都原样抛出, 真失败照旧记一次
+                try {
+                    FileBook.downloadRemoteBook(book)
                     withContext(Dispatchers.Main) {
                         Toasters.get().toast("下载成功")
                         success?.invoke()
                     }
+                } catch (retryCancel: CancellationException) {
+                    throw retryCancel
+                } catch (retry: Throwable) {
+                    AppLog.put("下载远程书籍<${book.name}>失败", retry, true)
                 }
-                .onFailure { error ->
-                    // 保存位置未设置时走既有的"去设置目录"出口 (与书籍详情的 web 文件导入同一
-                    // 入口与偏好键); 用户取消 (uri == null) 时不动既有配置
-                    if (error is InvalidBooksDirException) {
-                        withContext(Dispatchers.Main) {
-                            PlatformCapabilityProviders.get().pickBookTreeUri { uri, err ->
-                                if (err == null && uri != null) {
-                                    prefs.putString(PreferKey.defaultBookTreeUri, uri)
-                                }
-                            }
-                        }
-                    }
-                    AppLog.put("下载远程书籍<${book.name}>失败", error, true)
-                }
+            }
         }
     }
 
@@ -621,6 +637,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     override fun startReadRemoteArchive(
         fileName: String,
         scope: CoroutineScope,
+        stages: ImportStageHost,
         onNeedDownload: () -> Unit,
     ) {
         scope.launch(Dispatchers.IO) {
@@ -633,7 +650,14 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
                 try {
                     FileAssociationDispatch.dispatch(
                         path.absolutePath,
-                        onUnknownFile = { confirmUnknownFileImport(it) },
+                        onUnknownFile = { name ->
+                        // 未知文件确认走本页阶段 (阶段归请求, 不在能力面弹宿主框)
+                        stages.confirmUnknownFile(
+                            title = syncGetString("draw"),
+                            message = "无法识别的文件: $name\n是否按书籍文件尝试导入？",
+                            okText = syncGetString("ok"),
+                        )
+                    },
                     )
                 } catch (e: CancellationException) {
                     throw e
@@ -642,18 +666,13 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
                 }
                 return@launch
             }
-            withContext(Dispatchers.Main) {
-                DesktopDialogs.show(
-                    DesktopDialogRequest.Confirm(
-                        title = syncGetString("draw"),
-                        message = syncGetString("archive_not_found"),
-                        okText = syncGetString("ok"),
-                        noText = syncGetString("cancel"),
-                        onOk = { onNeedDownload() },
-                        onNo = {},
-                    )
-                )
-            }
+            // 缺包确认: 阶段归本页请求 (挂起等真回执, 不用命令式窗口回调)
+            val action = stages.confirm(
+                title = syncGetString("draw"),
+                message = syncGetString("archive_not_found"),
+                okText = syncGetString("ok"),
+            )
+            if (action == ImportConfirmAction.Ok) onNeedDownload()
         }
     }
 
@@ -1139,14 +1158,25 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         DesktopImportBook.goBack()
     }
 
-    override fun openImportedBookReader(item: ImportFileItem, scope: CoroutineScope) {
+    override fun openImportedBookReader(
+        item: ImportFileItem,
+        scope: CoroutineScope,
+        stages: ImportStageHost,
+    ) {
         val file = (item as? DesktopImportFile)?.file ?: return
         // 页面请求作用域持有本次分发: 页面真退即停止, 不再投窗口队列
         scope.launch(Dispatchers.IO) {
             try {
                 FileAssociationDispatch.dispatch(
                     file.absolutePath,
-                    onUnknownFile = { confirmUnknownFileImport(it) },
+                    onUnknownFile = { name ->
+                        // 未知文件确认走本页阶段 (阶段归请求, 不在能力面弹宿主框)
+                        stages.confirmUnknownFile(
+                            title = syncGetString("draw"),
+                            message = "无法识别的文件: $name\n是否按书籍文件尝试导入？",
+                            okText = syncGetString("ok"),
+                        )
+                    },
                 )
             } catch (e: CancellationException) {
                 throw e
@@ -1160,31 +1190,6 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     // 交主窗口内的文件关联分发队列 (窗口操作寿命), 不在平台单例作用域里起文件任务
     override fun openImportFile(filePath: String) {
         offerAssociationFiles(listOf(filePath))
-    }
-
-    /**
-     * 未知文件导入确认 (经 [DesktopDialogHost] 弹在主窗口, 与其余命令式对话框同一出口):
-     * 确认返回 true 按书籍文件尝试导入, 取消/关闭返回 false; 窗口销毁时本次等待随之中止。
-     */
-    internal suspend fun confirmUnknownFileImport(fileName: String): Boolean {
-        val done = CompletableDeferred<Boolean>()
-        val requestId = DesktopDialogs.show(
-            DesktopDialogRequest.Confirm(
-                title = syncGetString("draw"),
-                message = "无法识别的文件: $fileName\n是否按书籍文件尝试导入？",
-                okText = syncGetString("ok"),
-                noText = syncGetString("cancel"),
-                onOk = { done.complete(true) },
-                onNo = { done.complete(false) },
-            ),
-            onAbandon = { done.cancel() },
-        )
-        try {
-            return done.await()
-        } finally {
-            // 本次等待结束时撤销同一请求: 未答的确认框不再留在队列里占住显示位
-            DesktopDialogs.dismiss(requestId)
-        }
     }
 
     /**

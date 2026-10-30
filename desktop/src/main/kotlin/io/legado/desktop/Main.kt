@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -86,11 +87,15 @@ import io.legado.app.ui.about.preferenceUpVersionStore
 import io.legado.app.ui.about.notifyAppCrash
 import io.legado.app.ui.about.upVersion
 import io.legado.app.ui.root.AppFontScaleScope
+import io.legado.app.ui.root.AppForegroundState
+import io.legado.app.ui.root.ImportStageDialog
+import io.legado.app.ui.root.ImportStageOwner
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.LegadoApp
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.confirmUnknownFile
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.desktop.audio.DesktopAppUserModelId
 import io.legado.desktop.audio.registerDesktopAudioPlayProviders
@@ -845,14 +850,24 @@ private fun runDesktopApp() = application {
         // 文件关联分发: 队列在 main() 就可能有值 (argv 冷启动), 这里等首帧组合完成
         // (navigator 已注册) 再消费; 解压/读文件是阻塞 IO, 切 IO 线程;
         // 本 LaunchedEffect 在主窗口组合内 —— 分发任务随窗口存亡 (窗口操作寿命)
-        LaunchedEffect(Unit) {
+        // 本窗口持有的用户选择阶段: 队列任务用它等真回执 (不建全局 owner 表)
+        val associationStages = remember { ImportStageOwner() }
+        val frameVisible by AppForegroundState.isForeground.collectAsState()
+        ImportStageDialog(associationStages, visible = frameVisible)
+        LaunchedEffect(associationStages) {
             pendingAssociationFiles.collect { queued ->
                 if (queued.isEmpty()) return@collect
                 val files = pendingAssociationFiles.getAndUpdate { emptyList() }
                 withContext(Dispatchers.IO) {
                     FileAssociationDispatch.dispatchAll(
                         files,
-                        DesktopPlatformCapabilities::confirmUnknownFileImport,
+                        onUnknownFile = { name ->
+                            associationStages.confirmUnknownFile(
+                                title = syncGetString("draw"),
+                                message = "无法识别的文件: $name\n是否按书籍文件尝试导入？",
+                                okText = syncGetString("ok"),
+                            )
+                        },
                     )
                 }
             }

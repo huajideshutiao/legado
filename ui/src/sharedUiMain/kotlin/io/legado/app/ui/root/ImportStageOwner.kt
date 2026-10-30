@@ -1,15 +1,12 @@
 package io.legado.app.ui.root
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
@@ -58,13 +55,14 @@ class ImportStageOwner : ImportStageHost {
             }
             answer.await()
         } finally {
-            // 只终结自己: 阶段按编号清, answer 引用按身份清 (别人的阶段/答案一概不动)
+            // 只终结自己: 阶段按编号清, answer 引用按身份清 (别人的阶段/答案一概不动)。
+            // answer.cancel 也放进同一保证执行的范围: 它若排在 NonCancellable 返程之后,
+            // 返程被取消就会跳过, 已取消的 Deferred 便留着接受迟到结算
             withContext(NonCancellable + mainDispatcher) {
                 clearStage(next.stageId)
                 if (choiceAnswer === answer) choiceAnswer = null
+                answer.cancel()
             }
-            // 已取消的 Deferred 不能留活: 迟到的点击/结算不得再成功
-            answer.cancel()
         }
     }
 
@@ -86,8 +84,8 @@ class ImportStageOwner : ImportStageHost {
             withContext(NonCancellable + mainDispatcher) {
                 clearStage(next.stageId)
                 if (confirmAnswer === answer) confirmAnswer = null
+                answer.cancel()
             }
-            answer.cancel()
         }
     }
 
@@ -125,7 +123,19 @@ class ImportStageOwner : ImportStageHost {
  */
 @Composable
 fun ImportStageDialog(owner: ImportStageOwner) {
-    if (!routeResumed()) return
+    // 页面链: 用 Route 生命周期判可见 (本页被盖住/退后台只隐藏, 不结算)
+    ImportStageDialog(owner, visible = routeResumed())
+}
+
+/**
+ * 窗口链 (iOS/鸿蒙/桌面的主窗口组合): 可见性由调用方按**本窗口真实生命周期**给。
+ *
+ * 不能借页面标志: 主窗口不在 Route 根里, [routeResumed] 在那里恒为 false, 弹层会永不出现;
+ * 也不默认 true: 窗口不可见时真值应为 false, 由窗口宿主提供。
+ */
+@Composable
+fun ImportStageDialog(owner: ImportStageOwner, visible: Boolean) {
+    if (!visible) return
     when (val current = owner.stage) {
         null -> Unit
 
@@ -173,16 +183,13 @@ fun ImportStageDialog(owner: ImportStageOwner) {
  */
 @Composable
 private fun routeResumed(): Boolean {
-    val owner = LocalLifecycleOwner.current
-    var resumed by remember(owner) {
-        mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
-    }
-    DisposableEffect(owner) {
-        val observer = LifecycleEventObserver { _, _ ->
-            resumed = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-        }
-        owner.lifecycle.addObserver(observer)
-        onDispose { owner.lifecycle.removeObserver(observer) }
-    }
+    // 复用既有 Route 可见性入口 (OnRouteLifecycle 挂页面生命周期, 不是再造一套观察器):
+    // 状态翻转可能发生在界面不再重绘期间 (窗口隐藏/被盖住), 挂组合会漏掉
+    var resumed by remember { mutableStateOf(false) }
+    OnRouteLifecycle(
+        minState = Lifecycle.State.RESUMED,
+        onEnter = { resumed = true },
+        onLeave = { resumed = false },
+    )
     return resumed
 }

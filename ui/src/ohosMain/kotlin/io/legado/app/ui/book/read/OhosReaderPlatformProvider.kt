@@ -116,7 +116,11 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
     override fun onExit(screenModel: ReaderScreenModel) {
         OhosReadAloudHost.stop()
         autoPageStop(screenModel)
-        (screenModel.menuController.state as? OhosReadMenuState)?.dispose()
+        // 只放自己这条绑定 (不经模型取新控制器)
+        activeMenuBinding
+            ?.takeIf { it.first === screenModel }
+            ?.second
+            ?.let { releaseMenuController(screenModel, it) }
         readerAutoPageActive = false
         dismissActionMenus()
         textActions = null
@@ -201,9 +205,35 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
         screenModel: ReaderScreenModel,
     ): ReadMenuController = OhosReadMenuController(navigator, screenModel)
 
+    /**
+     * 本窗口已接纳的绑定身份 = (页面模型, 控制器)。
+     *
+     * 只记 controller 不够: 同一个 provider 可能先后服务两个阅读页, 旧页 `onExit` 会把新页的
+     * 控制器当成"自己的"释放掉。带上 model 后, 释放/退出只作用于自己这条绑定。
+     */
+    private var activeMenuBinding: Pair<ReaderScreenModel, ReadMenuController>? = null
+
+    override fun activateMenuController(
+        screenModel: ReaderScreenModel,
+        controller: ReadMenuController,
+    ) {
+        activeMenuBinding = screenModel to controller
+    }
+
+    override fun releaseMenuController(
+        screenModel: ReaderScreenModel,
+        controller: ReadMenuController,
+    ) {
+        (controller.state as? OhosReadMenuState)?.dispose()
+        if (activeMenuBinding?.first === screenModel && activeMenuBinding?.second === controller) {
+            activeMenuBinding = null
+        }
+    }
+
     // 自动翻页面板停止按钮 (对照 app/desktop 端 autoPageStop → stopAutoPage: 停控制器 + 复位开关)
     override fun autoPageStop(screenModel: ReaderScreenModel) {
-        (screenModel.menuController.state as? OhosReadMenuState)?.stopAutoPage()
+        (activeMenuBinding?.takeIf { it.first === screenModel }?.second?.state as? OhosReadMenuState)
+            ?.stopAutoPage()
     }
 
     // 自动翻页滑条抬手 → 重新应用当前 TTS 语速 (对照 app 端 upTtsSpeechRate: 重读配置 +

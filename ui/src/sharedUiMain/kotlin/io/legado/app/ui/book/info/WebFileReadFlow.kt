@@ -121,23 +121,36 @@ private suspend fun <T> withBookSaveDir(block: suspend () -> T): T? = try {
 }
 
 /**
- * 本请求的等待框: 开框 → 执行 → 等框确实离开界面再返回。
- * 收框放 [NonCancellable]: 请求被撤时框也必须收掉 (本就属于本请求的显示对象)。
+ * 本请求的等待框: 开框 → 执行 → 收框。
+ *
+ * 开框也在保护范围内 (跨 dispatcher 的返回可被 prompt cancellation 丢弃, 发布在 try 外就漏清理)。
+ * 收框分两种终态:
+ * - 成功: 等框确实离开界面再返回 —— 调用方随后要导航, "关框 → 打开页面"必须同序;
+ * - 失败/取消: **只**发布本框收起, 不在这里等界面重绘 —— 后台/隐藏窗口可以不出帧,
+ *   等它就会把业务失败/取消挂住。终态仍按原异常交回。
  */
 private suspend fun <T> withWaitDialog(
     onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
     block: suspend () -> T,
 ): T {
     val handle = WaitDialogHandle()
-    withContext(mainDispatcher) { onWaitDialog(true, handle) }
+    var succeeded = false
     try {
-        return block()
+        withContext(mainDispatcher) { onWaitDialog(true, handle) }
+        val result = block()
+        succeeded = true
+        return result
     } finally {
-        withContext(NonCancellable) {
-            awaitWaitDialogDismissed(
-                { withContext(mainDispatcher) { onWaitDialog(false, handle) } },
-                handle,
-            )
+        if (succeeded) {
+            withContext(NonCancellable) {
+                awaitWaitDialogDismissed(
+                    { withContext(mainDispatcher) { onWaitDialog(false, handle) } },
+                    handle,
+                )
+            }
+        } else {
+            // 失败/取消: 发布收起即可, 不等重绘
+            withContext(NonCancellable + mainDispatcher) { onWaitDialog(false, handle) }
         }
     }
 }

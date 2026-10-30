@@ -261,10 +261,16 @@ interface PlatformCapabilities {
     /** 更新排序方式 (对照 upSort / viewModel.sort + AppConfig.localBookImportSort) */
     fun updateImportBookSort(sort: Int) = unsupported("切换导入排序")
 
-    /** 打开已上架书籍阅读页 (对照 startRead / startReadBook); [scope] 是发起本请求的页面作用域 */
+    /**
+     * 打开已上架书籍阅读页 (对照 startRead / startReadBook)。
+     *
+     * [scope] 是发起本请求的页面作用域; [stages] 是**该页模型**持有的用户选择阶段
+     * (压缩包内选章/缺书确认/未知文件确认), 平台只按阶段挂起等真回执, 不自己弹宿主框。
+     */
     fun openImportedBookReader(
         item: ImportFileItem,
         scope: CoroutineScope,
+        stages: ImportStageHost,
     ) = unsupported("打开导入书籍")
 
     /** 进入子目录 (对照 onItemClick isDir 分支 / nextDoc) */
@@ -300,9 +306,17 @@ interface PlatformCapabilities {
     /** 上传书籍到远程 (对照 onUploadBook) */
     fun uploadBook(book: Book, success: (() -> Unit)? = null) = unsupported("上传书籍")
 
-    /** 下载到本地 (对照 onDownloadToLocal) */
-    fun downloadBookToLocal(book: Book, success: (() -> Unit)? = null) =
-        unsupported("下载书籍到本地")
+    /**
+     * 下载到本地 (对照 onDownloadToLocal)。
+     *
+     * [scope] 是发起本请求的页面作用域: 下载归本请求, 页面真退即随撤; 交付 (toast/回调)
+     * 由实现落在**当前**可呈现的 UI 上, 不捕获发起时的窗口。
+     */
+    fun downloadBookToLocal(
+        book: Book,
+        scope: CoroutineScope,
+        success: (() -> Unit)? = null,
+    ) = unsupported("下载书籍到本地")
 
     /** 源变量弹窗 (对照 onSetSourceVariable) */
     fun showSourceVariableDialog(book: Book) = unsupported("编辑书源变量")
@@ -640,6 +654,7 @@ interface PlatformCapabilities {
     fun startReadRemoteArchive(
         fileName: String,
         scope: CoroutineScope,
+        stages: ImportStageHost,
         onNeedDownload: () -> Unit,
     ) = unsupported("阅读压缩包内的书")
 

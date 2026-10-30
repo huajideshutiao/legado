@@ -246,6 +246,18 @@ class AndroidReaderPlatformProvider(
      * 并清掉 activeMenuState 里的旧状态 —— 否则旧状态在 `init` 里起的订阅不停,
      * 同一 screenModel 会有两份回调 (不只多一个对象), 且旧状态仍指向已销毁的 Activity。
      */
+    override fun activateMenuController(
+        screenModel: ReaderScreenModel,
+        controller: ReadMenuController,
+    ) {
+        val state = (controller as? AndroidReaderMenuController)?.state as? AndroidReaderMenuState
+            ?: return
+        // 本窗口的当前菜单: 平台动作 (自动翻页停止/朗读速率/电量) 按它定位
+        activeMenuState = screenModel to state
+        // 页面变化订阅: 与 releaseMenuController 成对启停
+        state.startPageChangedWatch()
+    }
+
     override fun releaseMenuController(
         screenModel: ReaderScreenModel,
         controller: ReadMenuController,
@@ -425,9 +437,8 @@ private class AndroidReaderMenuState(
     // 只挂 activity.lifecycleScope 时同一 Activity 内反复进出阅读页会累积常驻订阅者
     private var pageChangedJob: Job? = null
 
-    init {
-        startPageChangedWatch()
-    }
+    // 页面变化订阅不在这里起: 控制器构造可能发生在组合期 (甚至被放弃的组合),
+    // 订阅改由 provider.activateMenuController 在组合提交后成对启停 (见 ReaderRoute)
 
     /**
      * 起/重起页面变化订阅 → aloudPageChanged (对照原版 ReadBook.CallBack.pageChanged;

@@ -36,8 +36,13 @@ class HandleFileSession(private val activity: AppCompatActivity) {
     /** 所属宿主: 会话随宿主存亡, 构造后不再更换。 */
     val hostActivity: AppCompatActivity get() = activity
 
-    /** 本宿主进行中的文件请求: 每次 launch 一个, 收口即移除。 */
-    private val requests = mutableSetOf<Request>()
+    /**
+     * 本宿主进行中的文件请求: 每次 launch 一个, 收口即移除。
+     *
+     * 用并发快照集合: 撤销 (撤消费资格) 可能来自任意线程 (Job.invokeOnCompletion 的回调线程),
+     * 必须能在不持主线程的情况下安全遍历; 收口/登记仍只在主线程发生。
+     */
+    private val requests = java.util.concurrent.CopyOnWriteArrayList<Request>()
 
     /** 重建后等待同 key 入口重新绑定的请求 (同一 key 可对应多个独立未完请求)。 */
     private val keyedRequests = mutableMapOf<String, MutableList<Request>>()
@@ -151,7 +156,11 @@ class HandleFileSession(private val activity: AppCompatActivity) {
      */
     fun restoreFrom(state: Bundle?) {
         if (state == null) return
-        val count = state.getInt(KEY_REQ_COUNT, 0)
+        // 恢复资格: 同一进程内的重建, 请求的 Owner (Job/VM) 还在, 请求照常恢复并等重绑;
+        // 进程重建后原 Owner 已不存在 —— 恢复出来的请求没有消费者, 只会让回执永久挂着,
+        // 故只接回在途通道占用, 让系统回传被真实排空。
+        val sameProcess = state.getLong(KEY_PROCESS_TAG, 0L) == processTag
+        val count = if (sameProcess) state.getInt(KEY_REQ_COUNT, 0) else 0
         for (i in 0 until count) {
             val key = state.getString(reqKey(KEY_REQ_KEY, i)) ?: continue
             val param = HandleFileContract.HandleFileParam(
@@ -228,9 +237,11 @@ class HandleFileSession(private val activity: AppCompatActivity) {
 
     /** 保存带 key 的未完成请求与各通道在途占用, 供重建后重绑/排空。 */
     fun saveTo(state: Bundle) {
-        // 只保存宿主级稳定入口的请求: 绑定业务 Job 的请求进程重建后没有消费者,
-        // 恢复出来只会让回执一直挂着 (撤销/终结的归属也没了)
-        val pending = requests.filter { it.key != null && it.persistAcrossProcess && !it.finished }
+        // 保存资格: 只要入口有稳定 key 就保存 —— 普通配置重建时业务 Owner (Job/VM) 还活着,
+        // 必须能按同 key 重绑回原请求, 否则"重建即挂死"。
+        // 恢复资格另判: 进程重建后原 Owner 已死, 由 restoreFrom 按进程标记排空 (见下)。
+        state.putLong(KEY_PROCESS_TAG, processTag)
+        val pending = requests.filter { it.key != null && !it.finished }
         state.putInt(KEY_REQ_COUNT, pending.size)
         pending.forEachIndexed { i, request ->
             state.putString(reqKey(KEY_REQ_KEY, i), request.key)
@@ -285,9 +296,23 @@ class HandleFileSession(private val activity: AppCompatActivity) {
         }
     }
 
+    /**
+     * 同步撤该入口名下请求的消费资格 (任意线程可调, 幂等)。
+     *
+     * 这一步才是"撤销"本身: 之后系统回传不再取持久授权、不再交付。UI 收口 (关弹窗/清登记)
+     * 由 [cancel] 在主线程做; 已起跑的系统调用占用保持到真实回传。
+     */
+    fun revokeConsumption(launcher: HandleFileLauncher) {
+        requests.forEach { request ->
+            if (request.launcher === launcher) request.revoked = true
+        }
+    }
+
     /** 取消该入口发起的未完成请求: 关弹窗、弃回调; 在途系统调用的通道占用保持到真实回传。 */
     fun cancel(launcher: HandleFileLauncher) {
-        requests.filter { it.launcher === launcher }.forEach { it.finish() }
+        requests.forEach { request ->
+            if (request.launcher === launcher) request.finish()
+        }
     }
 
     private fun releaseTree() {
@@ -317,8 +342,6 @@ class HandleFileSession(private val activity: AppCompatActivity) {
         private val callback: (HandleFileContract.Result) -> Unit,
         internal val key: String? = null,
         internal val bookUrl: String? = param.book?.bookUrl,
-        /** 跨进程恢复资格 (绑定业务 Job 的请求不恢复: 进程重建后没有消费者)。 */
-        internal val persistAcrossProcess: Boolean = launcher.persistAcrossProcess,
     ) {
 
         /** 重建后同 key 入口重新绑定的回调 (未绑定时用创建时的回调)。 */
@@ -337,8 +360,18 @@ class HandleFileSession(private val activity: AppCompatActivity) {
         @Volatile
         internal var finished = false
 
-        /** 可交付/可消费: 未收口, 且发起入口的消费资格未被同步撤销。 */
-        internal val isActive: Boolean get() = !finished && !launcher.revoked
+        /**
+         * 消费资格已同步撤销 (任意线程可置)。
+         *
+         * 挂在**请求自身**而不是入口上: 入口在重建时会被换成一个新的 launcher (bindKey),
+         * 若资格记在入口上, 换绑就把已撤销的资格复活了; 记在请求上则跨重绑保持。
+         * 后续的独立请求是另一个对象, 不会继承上一轮撤销。
+         */
+        @Volatile
+        internal var revoked = false
+
+        /** 可交付/可消费: 未收口, 且本请求的消费资格未被撤销。 */
+        internal val isActive: Boolean get() = !finished && !revoked
 
         /** 重建恢复后尚未绑定有效入口 (callback 是占位): 真实回执先到时暂存。 */
         internal var awaitingRebind = false
@@ -524,6 +557,9 @@ class HandleFileSession(private val activity: AppCompatActivity) {
         /** 本会话内请求唯一 id: 同入口 key 的多个独立请求各有自己的回执槽, 互不取用/删除。 */
         private val requestIdSeq = java.util.concurrent.atomic.AtomicLong()
 
+        /** 本进程的唯一标记: 区分"同进程重建"与"进程重建" (后者不恢复请求, 只排空在途通道)。 */
+        private val processTag = kotlin.random.Random.nextLong()
+
         /** 把发号器推进到至少 [restoredId] (进程恢复后新 id 不与已保存的旧 id 相撞)。 */
         private fun advanceRequestIdSeq(restoredId: Long) {
             var current = requestIdSeq.get()
@@ -543,6 +579,9 @@ class HandleFileSession(private val activity: AppCompatActivity) {
         const val KEY_IMAGE_HELD = "handleFile.sys.image.held"
 
         const val KEY_REQ_COUNT = "handleFile.req.count"
+
+        /** 保存时的进程标记: 与当前进程不同 = 进程重建 (原 Owner 已死, 请求不恢复)。 */
+        const val KEY_PROCESS_TAG = "handleFile.process.tag"
         const val KEY_REQ_KEY = "key"
         const val KEY_REQ_MODE = "mode"
         const val KEY_REQ_TITLE = "title"

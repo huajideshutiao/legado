@@ -1,10 +1,13 @@
 package io.legado.app.ui.book.import.local
 
 import io.legado.app.ui.book.import.ImportFileItem
+import io.legado.app.ui.root.ImportStageOwner
 import io.legado.app.ui.root.ScreenModel
+import io.legado.app.ui.root.screenModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.update
 
 /**
@@ -23,6 +26,18 @@ import kotlinx.coroutines.flow.update
  * 模式参考 [io.legado.app.ui.book.read.review.ReviewPostScreenModel]。
  */
 class ImportBookScreenModel : ScreenModel {
+
+    /**
+     * 本页请求作用域: 页面专属动作 (选目录/扫描/勾选上架/打开阅读) 归本页请求,
+     * [onCleared] 才取消 —— 原先这些动作挂组合期 rememberCoroutineScope, 配置重建即作废。
+     */
+    private val pageScope = screenModelScope("导入本地书")
+
+    /** 页面请求作用域 (路由取它发起本页动作)。 */
+    val scope get() = pageScope
+
+    /** 本页用户选择阶段 (候选/确认): 归本页请求, 由本页组合呈现。 */
+    val importStages = ImportStageOwner()
 
     private val _state = MutableStateFlow(
         ImportBookUiState<ImportFileItem>(
@@ -62,6 +77,11 @@ class ImportBookScreenModel : ScreenModel {
                 checkableCount = items.count { item -> !item.isUpDir && !item.isDir && !item.isOnBookShelf },
             )
         }
+    }
+
+    override fun onCleared() {
+        // 页面真退出: 本页请求与目录选择一起撤
+        pageScope.cancel()
     }
 
     fun dispatch(event: ImportBookUiEvent) {

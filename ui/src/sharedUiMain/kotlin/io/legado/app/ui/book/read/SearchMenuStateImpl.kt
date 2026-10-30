@@ -4,7 +4,11 @@ import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import io.legado.app.help.config.ReadBookConfigProviders
+import io.legado.app.help.config.ThemeConfigProviders
+import io.legado.app.ui.book.read.ReadMenuColors
 import io.legado.app.ui.book.searchContent.SearchResult
+import io.legado.app.utils.toColorInt
 
 /**
  * [SearchMenuState] 的 shared 实现（对照 app 端 `SearchMenu` View 的状态 + 桥接
@@ -35,10 +39,23 @@ class SearchMenuStateImpl(
     override var bgVisible by mutableStateOf(false)
     override var searchInfo by mutableStateOf("")
 
-    // 配色委托阅读菜单状态：搜索菜单与阅读菜单同层叠加，取色必须同源（零新增逻辑）
-    override val immersive: Boolean get() = model.menuState.immersive
-    override val bgColor: Int get() = model.menuState.bgColor
-    override val textColor: Int get() = model.menuState.textColor
+    // 配色与阅读菜单同源, 但这里是**普通 getter** (组合外也会被读): 不能碰 AppTheme Composable。
+    // 已接纳菜单在显时直接沿用它的真实取色 (同层叠加必须逐字一致); 无绑定时按当前阅读配置 +
+    // 当前主题底栏色 (非组合的窄取色接口) 计算, 不退回 0 之类的假色。
+    private val menuColors: ReadMenuColors
+        get() {
+            model.menuStateOrNull?.let { state ->
+                return ReadMenuColors(state.immersive, state.bgColor, state.textColor)
+            }
+            return createReadMenuColors(
+                ReadBookConfigProviders.get().config,
+                ThemeConfigProviders.get().bottomBackground.toColorInt(),
+            )
+        }
+
+    override val immersive: Boolean get() = menuColors.immersive
+    override val bgColor: Int get() = menuColors.bgColor
+    override val textColor: Int get() = menuColors.textColor
 
     /** 底部条滑出动画结束（[onTransitionIdle] false）后执行，对照 runMenuOut 的 onMenuOutEnd */
     private var onMenuOutEnd: (() -> Unit)? = null
@@ -163,7 +180,7 @@ class SearchMenuStateImpl(
         // 注意：只隐藏搜索菜单，不退出搜索态（isShowingSearchResult 保持 true）
         runMenuOut {
             model.selection.cancel()
-            model.menuController.showMenu()
+            model.acceptedController?.showMenu()
             hideRoot()
         }
     }

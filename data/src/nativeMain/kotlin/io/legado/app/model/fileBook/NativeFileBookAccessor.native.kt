@@ -327,9 +327,9 @@ class NativeFileBookAccessor : FileBookAccessor {
             }
         }
         try {
-            // 进入物化前核父资格: 已撤销的请求不再读整份字节
+            // 进入物化前核父资格, 并在读完每一块后继续核: 撤销不必等整份读完
             parent?.ensureActive()
-            val bytes = inputStream.readFully()
+            val bytes = inputStream.readFully(parent)
             // 进入正式提交 (替换正式名) 之前再核一次: 已撤销不得动正式件
             parent?.ensureActive()
             // 整份临时件就位后再替换正式名: 写途中失败保留旧完整内容
@@ -375,11 +375,16 @@ class NativeFileBookAccessor : FileBookAccessor {
 
 }
 
-/** 读尽 [InputStream] 全部字节 (expect InputStream 无 readBytes, 手写累积)。 */
-internal fun InputStream.readFully(): ByteArray {
+/**
+ * 读尽 [InputStream] 全部字节 (expect InputStream 无 readBytes, 手写累积)。
+ *
+ * [parent] 非空时每块前核资格: 真实父门贯通物化准备循环, 取消不必等整份读完。
+ */
+internal fun InputStream.readFully(parent: Job? = null): ByteArray {
     val chunks = mutableListOf<ByteArray>()
     val buf = ByteArray(8192)
     while (true) {
+        parent?.ensureActive()
         val n = read(buf, 0, buf.size)
         if (n <= 0) break
         chunks.add(buf.copyOf(n))

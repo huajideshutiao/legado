@@ -56,3 +56,13 @@ interface ImportStageHost {
         okText: String? = null,
     ): ImportConfirmAction
 }
+/**
+ * 未知文件确认 (对照各端 `confirmUnknownFileImport`): 是否按书籍文件尝试导入。
+ *
+ * 确认 = true; 取消/关闭 = false。文案由调用端给 (各端字符串表不同, 共享层不猜资源键)。
+ */
+suspend fun ImportStageHost.confirmUnknownFile(
+    title: String,
+    message: String,
+    okText: String,
+): Boolean = confirm(title = title, message = message, okText = okText) == ImportConfirmAction.Ok

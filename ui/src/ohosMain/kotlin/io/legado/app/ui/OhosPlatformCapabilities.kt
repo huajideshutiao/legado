@@ -53,7 +53,9 @@ import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.BookRef
+import io.legado.app.ui.root.ImportConfirmAction
 import io.legado.app.ui.root.ImportStageHost
+import io.legado.app.ui.root.confirmUnknownFile
 import io.legado.app.ui.root.PickedFile
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.ensureBookSaveDirSelected
@@ -100,10 +102,15 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
      * 队列而非"列表 + 全量执行": 每个任务只被取走一次, 后来的请求不会重做前面的任务,
      * 重新订阅也不会重放已消费的任务。投递早于首帧组合时先缓冲。
      */
-    internal val pendingAssociationFiles = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    internal val pendingAssociationFiles = Channel<suspend (ImportStageHost) -> Unit>(Channel.UNLIMITED)
 
-    /** 投递一个文件关联分发任务 (窗口组合前缓冲, 组合后按序逐个取走执行)。 */
-    internal fun offerAssociationFile(job: suspend () -> Unit) {
+    /**
+     * 投递一个文件关联分发任务 (窗口组合前缓冲, 组合后按序逐个取走执行)。
+     *
+     * 任务收 [ImportStageHost]: 未知文件确认走**本窗口**持有的阶段, 不再借系统确认桥
+     * (那个桥挂在能力面, 拿不到窗口生命周期)。
+     */
+    internal fun offerAssociationFile(job: suspend (ImportStageHost) -> Unit) {
         pendingAssociationFiles.trySend(job)
     }
 
@@ -351,6 +358,7 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     override fun startReadRemoteArchive(
         fileName: String,
         scope: CoroutineScope,
+        stages: ImportStageHost,
         onNeedDownload: () -> Unit,
     ) {
         // 请求作用域持有本次阅读: 页面/调用方真退即停止分发
@@ -367,17 +375,26 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
                     }.getOrNull()
                     if (authorizedPath != null) {
                         // 分发是挂起函数, 不能塞进 withLocalDirAccess 的非挂起块
-                        FileAssociationDispatch.dispatch(authorizedPath, onUnknownFile = { confirmUnknownFileImport(it) })
+                        FileAssociationDispatch.dispatch(
+                            authorizedPath,
+                            onUnknownFile = { name ->
+                                stages.confirmUnknownFile(
+                                    title = syncGetString("draw"),
+                                    message = "无法识别的文件: $name\n是否按书籍文件尝试导入？",
+                                    okText = syncGetString("ok"),
+                                )
+                            },
+                        )
                         return@withContext
                     }
                 }
-                val confirmed = confirm(
+                // 缺包确认: 阶段归本页请求 (挂起等真回执, 不用系统确认桥)
+                val action = stages.confirm(
                     title = syncGetString("draw"),
                     message = syncGetString("archive_not_found"),
-                    confirmText = syncGetString("ok"),
-                    cancelText = syncGetString("cancel"),
+                    okText = syncGetString("ok"),
                 )
-                if (confirmed) onNeedDownload()
+                if (action == ImportConfirmAction.Ok) onNeedDownload()
             }
         }
     }
@@ -769,14 +786,23 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     // 完整分发链 (压缩包/JSON 一键导入/书籍文件/未知文件确认) 见 FileAssociationDispatch, 四端共用;
     // 任务投主窗口队列随窗口存亡, 不挂平台单例 scope
     override fun openImportFile(filePath: String) {
-        offerAssociationFile {
+        offerAssociationFile { stages ->
             withContext(IoDispatcher) {
                 // 系统投递进来的是文档授权体 URI (`file://docs/...`): 共享转换按 RFC 8089 把 `docs`
                 // 当网络主机段, 得出 `//docs/storage/...` 这种设备上不存在的形态 —— 先折回存储挂载点
                 // 真实路径再交分发链 (与 ArkTS 媒体桥折回视频地址同一规则)
                 val mountPath = filePath.docsUriToMountPath()
                 if (mountPath == filePath) {
-                    FileAssociationDispatch.dispatch(filePath, onUnknownFile = { confirmUnknownFileImport(it) })
+                    FileAssociationDispatch.dispatch(
+                        filePath,
+                        onUnknownFile = { name ->
+                            stages.confirmUnknownFile(
+                                title = syncGetString("draw"),
+                                message = "无法识别的文件: $name\n是否按书籍文件尝试导入？",
+                                okText = syncGetString("ok"),
+                            )
+                        },
+                    )
                     return@withContext
                 }
                 // 系统投递的文件只有临时读许可 (未持久化, 无法 activatePermission): 按本次导入登记成
@@ -786,13 +812,31 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
                 if (isVideo) {
                     // 视频体积大且播放链直接使用地址: 不执行 K 侧字节读取, 无需登记
                     // OhosTransientFileAccess (该表只服务 FileBookAccessor 的授权旁路)
-                    FileAssociationDispatch.dispatch(mountPath, onUnknownFile = { confirmUnknownFileImport(it) })
+                    FileAssociationDispatch.dispatch(
+                        mountPath,
+                        onUnknownFile = { name ->
+                            stages.confirmUnknownFile(
+                                title = syncGetString("draw"),
+                                message = "无法识别的文件: $name\n是否按书籍文件尝试导入？",
+                                okText = syncGetString("ok"),
+                            )
+                        },
+                    )
                 } else {
                     // 仅普通书在复制/分发期间需要 K 侧临时读取旁路; 本批次结束即注销
                     OhosTransientFileAccess.remember(mountPath)
                     try {
                         val durable = TempBookPersistence.persist(mountPath, fileName)
-                        FileAssociationDispatch.dispatch(durable, onUnknownFile = { confirmUnknownFileImport(it) })
+                        FileAssociationDispatch.dispatch(
+                            durable,
+                            onUnknownFile = { name ->
+                                stages.confirmUnknownFile(
+                                    title = syncGetString("draw"),
+                                    message = "无法识别的文件: $name\n是否按书籍文件尝试导入？",
+                                    okText = syncGetString("ok"),
+                                )
+                            },
+                        )
                     } finally {
                         OhosTransientFileAccess.forget(mountPath)
                     }
@@ -800,18 +844,6 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
             }
         }
     }
-
-    /**
-     * 未知文件导入确认 (复用既有同步确认框桥; 调用点均在 IO 作用域, 阻塞等待与 startReadRemoteArchive 同口):
-     * 确认返回 true 按书籍文件尝试导入, 取消/弹框失败返回 false。
-     */
-    private suspend fun confirmUnknownFileImport(fileName: String): Boolean =
-        confirm(
-            title = syncGetString("draw"),
-            message = "无法识别的文件: $fileName\n是否按书籍文件尝试导入？",
-            confirmText = syncGetString("ok"),
-            cancelText = syncGetString("cancel"),
-        )
 
     // ===== 导入本地书 (状态与扫描见 NativeImportBook, 与 iOS 共用) =====
 
@@ -881,9 +913,22 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
 
     override fun updateImportBookSort(sort: Int) = NativeImportBook.updateSort(sort)
 
-    override fun openImportedBookReader(item: ImportFileItem, scope: CoroutineScope) {
+    override fun openImportedBookReader(
+        item: ImportFileItem,
+        scope: CoroutineScope,
+        stages: ImportStageHost,
+    ) {
         NativeImportBook.openReader(
-            item, { confirmUnknownFileImport(it) }, scope,
+            item,
+            { name ->
+                // 未知文件确认走本页阶段 (阶段归请求, 不在能力面弹系统确认桥)
+                stages.confirmUnknownFile(
+                    title = syncGetString("draw"),
+                    message = "无法识别的文件: $name\n是否按书籍文件尝试导入？",
+                    okText = syncGetString("ok"),
+                )
+            },
+            scope,
         )
     }
 

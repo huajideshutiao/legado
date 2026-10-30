@@ -6,6 +6,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -52,6 +54,9 @@ import io.legado.app.ui.reader.ReaderImageActionMenu
 import io.legado.app.ui.root.AppFontScaleScope
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.AppForegroundState
+import io.legado.app.ui.root.ImportStageDialog
+import io.legado.app.ui.root.ImportStageOwner
 import io.legado.app.ui.root.LegadoApp
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
@@ -221,10 +226,14 @@ fun MainOhos() {
                     // 文件关联分发: 冷启动直投先入队, 首帧组合完成 (授权面/导航面就绪) 后逐个取走执行;
                     // 本 effect 在主窗口组合内 —— 分发任务随窗口存亡 (窗口操作寿命)。
                     // 每个任务只取一次: 后来的请求不会重做前面的任务, 重组也不会重放已消费的任务。
-                    LaunchedEffect(Unit) {
+                    // 本窗口持有的用户选择阶段: 队列任务用它等真回执 (不建全局 owner 表)
+                    val associationStages = remember { ImportStageOwner() }
+                    val frameVisible by AppForegroundState.isForeground.collectAsState()
+                    ImportStageDialog(associationStages, visible = frameVisible)
+                    LaunchedEffect(associationStages) {
                         for (job in OhosPlatformCapabilities.pendingAssociationFiles) {
                             try {
-                                job()
+                                job(associationStages)
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (e: Exception) {

@@ -28,11 +28,13 @@ import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.reselectBookSaveDir
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.SharedPlatformCapabilities
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okio.FileSystem
@@ -116,31 +118,45 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
     }
 
     // 对照 BookInfoViewModel.downloadToLocal
-    override fun downloadBookToLocal(book: Book, success: (() -> Unit)?) {
-        capabilityScope.launch {
-            runCatching { withContext(IoDispatcher) { FileBook.downloadRemoteBook(book) } }
-                .onSuccess {
+    override fun downloadBookToLocal(
+        book: Book,
+        scope: CoroutineScope,
+        success: (() -> Unit)?,
+    ) {
+        // 归本页请求 (原先挂能力作用域: 页面真退仍在跑)
+        scope.launch {
+            try {
+                withContext(IoDispatcher) { FileBook.downloadRemoteBook(book) }
+                withContext(mainDispatcher) {
+                    Toasters.get().toast("下载成功")
+                    success?.invoke()
+                }
+            } catch (e: CancellationException) {
+                // 真实取消原样传播, 不记假失败
+                throw e
+            } catch (e: Throwable) {
+                if (e !is InvalidBooksDirException) {
+                    AppLog.put("下载远程书籍<${book.name}>失败", e, true)
+                    return@launch
+                }
+                // 保存位置未设置: 挂起等用户真选定
+                if (!reselectBookSaveDir(currentCoroutineContext()[Job])) {
+                    // 用户在选目录时取消 = 本次正常终结 (不是失败, 不记日志)
+                    return@launch
+                }
+                // 已选定: 重试一次; 每一层取消都原样抛出, 真失败照旧记一次
+                try {
+                    withContext(IoDispatcher) { FileBook.downloadRemoteBook(book) }
                     withContext(mainDispatcher) {
                         Toasters.get().toast("下载成功")
                         success?.invoke()
                     }
+                } catch (retryCancel: CancellationException) {
+                    throw retryCancel
+                } catch (retry: Throwable) {
+                    AppLog.put("下载远程书籍<${book.name}>失败", retry, true)
                 }
-                .onFailure { error ->
-                    // 保存位置未设置时走既有的"去设置目录"出口 (与书籍详情的 web 文件导入同一
-                    // 入口与偏好键); 用户取消 (uri == null) 时不动既有配置
-                    if (error is InvalidBooksDirException) {
-                        withContext(mainDispatcher) {
-                            PlatformCapabilityProviders.get().pickBookTreeUri { uri, err ->
-                                if (err == null && uri != null) {
-                                    PreferenceProviders.get().putString(
-                                        PreferKey.defaultBookTreeUri, uri
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    AppLog.put("下载远程书籍<${book.name}>失败", error, true)
-                }
+            }
         }
     }
 

@@ -39,7 +39,7 @@ fun ReaderSystemBarAppearanceEffect(screenModel: ReaderScreenModel) {
     }
     val dialogEvent = screenModel.dialogSlot.collectAsState().value?.event
     val bottomSheetVisible = dialogEvent != null && dialogEvent in readerBottomSheetDialogs
-    val menuLayoutVisible = screenModel.menuState.isVisible ||
+    val menuLayoutVisible = screenModel.menuStateOrNull?.isVisible == true ||
         (
             screenModel.searchMenuState.rootVisible &&
                 screenModel.searchMenuState.bottomVisibleState.currentState

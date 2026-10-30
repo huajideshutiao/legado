@@ -108,6 +108,7 @@ import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.DialogTransitionSpec
+import io.legado.app.ui.root.ImportConfirmAction
 import io.legado.app.ui.root.ImportStageHost
 import io.legado.app.ui.root.PickedFile
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -815,8 +816,12 @@ class AndroidPlatformCapabilities(
     }
 
     // 对照 ImportBookActivity.onItemClick isDir 分支 / startRead
-    override fun openImportedBookReader(item: ImportFileItem, scope: CoroutineScope) {
-        (item as? ImportBook)?.let { startRead(it.file, scope) }
+    override fun openImportedBookReader(
+        item: ImportFileItem,
+        scope: CoroutineScope,
+        stages: ImportStageHost,
+    ) {
+        (item as? ImportBook)?.let { startRead(it.file, scope, stages) }
     }
 
     // 对照 ImportBookActivity.onItemClick isDir 分支 / nextDoc
@@ -1046,15 +1051,25 @@ class AndroidPlatformCapabilities(
     }
 
     // 对照 BookInfoViewModel.downloadToLocal
-    override fun downloadBookToLocal(book: Book, success: (() -> Unit)?) {
-        activity.lifecycleScope.launch(IO) {
+    override fun downloadBookToLocal(
+        book: Book,
+        scope: CoroutineScope,
+        success: (() -> Unit)?,
+    ) {
+        // 归本页请求 (原先挂 activity.lifecycleScope: 页面真退仍在跑, 交付也认发起时的 Activity)
+        scope.launch(IO) {
             try {
                 // 保存位置未设: 挂起等用户真选定并重试一次; 用户取消 = 本次正常终结
                 if (!downloadRemoteBookEnsuringSaveDir(book)) return@launch
-                activity.runOnUiThread {
-                    activity.toastOnUi("下载成功")
+                // 交付落在当前可呈现的窗口: 配置重建后由新宿主承接, 重建间隙挂起等待
+                val host = awaitPresentableActivity()
+                withContext(Dispatchers.Main) {
+                    host.toastOnUi("下载成功")
                     success?.invoke()
                 }
+            } catch (e: CancellationException) {
+                // 真实取消 (页面退出/请求撤销) 原样传播, 不记假失败
+                throw e
             } catch (e: Throwable) {
                 AppLog.put("下载远程书籍<${book.name}>失败", e, true)
             }
@@ -1524,8 +1539,6 @@ class AndroidPlatformCapabilities(
                 registered.launcher = act.registerHandleFile(
                     key = key,
                     callback = bookTreeCallback(act, onSelected) { clearBookTreePick(pickId) },
-                    // 等待方是请求 Job: 进程被杀后没有消费者, 恢复出来只会让回执一直挂着
-                    persistAcrossProcess = false,
                 )
             }
             registerBookTreePick(pickId, registered)
@@ -1647,7 +1660,7 @@ class AndroidPlatformCapabilities(
         selected.await()
     }
 
-    private fun startRead(fileDoc: FileDoc, scope: CoroutineScope) {
+    private fun startRead(fileDoc: FileDoc, scope: CoroutineScope, stages: ImportStageHost) {
         // 原版 ImportBookActivity.startRead 在主线程直查 Room (allowMainThreadQueries);
         // 迁移后 DAO 是挂起函数, 用 runBlocking 会真把主线程卡在 Room 执行器上,
         // 改为协程内挂起查询, 后续 toast/selector/push 仍按原顺序在主线程执行
@@ -1670,18 +1683,13 @@ class AndroidPlatformCapabilities(
                     fileNames.isEmpty() ->
                         Toasters.get().toast(androidAppString("unsupport_archivefile_entry"))
 
-                    fileNames.size == 1 -> openArchiveBook(fileDoc, fileNames.first(), scope)
+                    fileNames.size == 1 -> openArchiveBook(fileDoc, fileNames.first(), scope, stages)
                     else -> {
-                        // 双击/重复点选只结算第一次
-                        val selected = java.util.concurrent.atomic.AtomicBoolean(false)
-                        activity.selector(
-                            androidAppString("start_read"),
-                            fileNames
-                        ) { _, name, _ ->
-                            if (selected.compareAndSet(false, true)) {
-                                openArchiveBook(fileDoc, name, scope)
-                            }
-                        }
+                        // 压缩包内选章: 阶段归本页请求, 平台挂起等真回执 (不用宿主 selector)
+                        val index = stages.choose(androidAppString("start_read"), fileNames)
+                            ?: return@launch
+                        val name = fileNames.getOrNull(index) ?: return@launch
+                        openArchiveBook(fileDoc, name, scope, stages)
                     }
                 }
                 return@launch
@@ -1702,21 +1710,32 @@ class AndroidPlatformCapabilities(
     override fun startReadRemoteArchive(
         fileName: String,
         scope: CoroutineScope,
+        stages: ImportStageHost,
         onNeedDownload: () -> Unit,
     ) {
         val treeUri = AppConfig.defaultBookTreeUri
         val archiveDoc = treeUri?.let { FileDoc.fromUri(it.toUri(), true).find(fileName) }
         if (archiveDoc == null) {
-            activity.alert(androidAppString("draw"), androidAppString("archive_not_found")) {
-                okButton { onNeedDownload() }
-                noButton()
+            // 缺包确认: 阶段归本页请求 (与 openArchiveBook 同一机制)
+            scope.launch {
+                val action = stages.confirm(
+                    title = androidAppString("draw"),
+                    message = androidAppString("archive_not_found"),
+                    okText = androidAppString("ok"),
+                )
+                if (action == ImportConfirmAction.Ok) onNeedDownload()
             }
         } else {
-            startRead(archiveDoc, scope)
+            startRead(archiveDoc, scope, stages)
         }
     }
 
-    private fun openArchiveBook(fileDoc: FileDoc, fileName: String, scope: CoroutineScope) {
+    private fun openArchiveBook(
+        fileDoc: FileDoc,
+        fileName: String,
+        scope: CoroutineScope,
+        stages: ImportStageHost,
+    ) {
         // 同 startRead: 查库走协程挂起, 不用 runBlocking 卡主线程; 导入与导航都挂调用方请求 scope
         scope.launch {
             val cached = withContext(IO) { appDb.bookDao.getBookByFileName(fileName) }
@@ -1724,41 +1743,39 @@ class AndroidPlatformCapabilities(
                 AppNavigatorProviders.get().push(cached.toReadRoute())
                 return@launch
             }
-            activity.alert(androidAppString("draw"), androidAppString("no_book_found_bookshelf")) {
-                // 双击只结算第一次
-                val confirmed = java.util.concurrent.atomic.AtomicBoolean(false)
-                okButton {
-                    // 框可能留在旧宿主上: 请求已结束就不再推进
-                    if (!scope.isActive) return@okButton
-                    if (!confirmed.compareAndSet(false, true)) return@okButton
-                    scope.launch(IO) {
-                        try {
-                            suspend fun importFromArchive() = FileBook.importFromArchiveWithParent(
-                                fileDoc.uri, fileName,
-                                currentCoroutineContext()[Job],
-                                { it.contains(fileName) },
-                            )
-                            // 压缩包解压产物落"书籍保存位置": 未设置时经既有选择器选定后继续导入
-                            val books = try {
-                                importFromArchive()
-                            } catch (e: InvalidBooksDirException) {
-                                if (!ensureBookSaveDirSelected(currentCoroutineContext()[Job])) {
-                                    return@launch
-                                }
-                                importFromArchive()
+            // 未上架确认: 阶段归本页请求 (挂起等真回执, 与请求同生灭)
+            val action = stages.confirm(
+                title = androidAppString("draw"),
+                message = androidAppString("no_book_found_bookshelf"),
+                okText = androidAppString("ok"),
+            )
+            if (action == ImportConfirmAction.Ok) {
+                scope.launch(IO) {
+                    try {
+                        suspend fun importFromArchive() = FileBook.importFromArchiveWithParent(
+                            fileDoc.uri, fileName,
+                            currentCoroutineContext()[Job],
+                            { it.contains(fileName) },
+                        )
+                        // 压缩包解压产物落"书籍保存位置": 未设置时经既有选择器选定后继续导入
+                        val books = try {
+                            importFromArchive()
+                        } catch (e: InvalidBooksDirException) {
+                            if (!ensureBookSaveDirSelected(currentCoroutineContext()[Job])) {
+                                return@launch
                             }
-                            val book = books.first()
-                            withContext(Dispatchers.Main) {
-                                AppNavigatorProviders.get().push(book.toReadRoute())
-                            }
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Throwable) {
-                            AppLog.put("导入压缩包书籍失败\n${e.localizedMessage}", e, true)
+                            importFromArchive()
                         }
+                        val book = books.first()
+                        withContext(Dispatchers.Main) {
+                            AppNavigatorProviders.get().push(book.toReadRoute())
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        AppLog.put("导入压缩包书籍失败\n${e.localizedMessage}", e, true)
                     }
                 }
-                noButton()
             }
         }
     }

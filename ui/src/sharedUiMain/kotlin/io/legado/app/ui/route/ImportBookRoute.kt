@@ -5,7 +5,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import io.legado.app.constant.AppPattern
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
@@ -18,6 +17,7 @@ import io.legado.app.ui.book.import.local.ImportBookUiEvent
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.FileFilter
+import io.legado.app.ui.root.ImportStageDialog
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
@@ -70,7 +70,11 @@ fun ImportBookRoute(
     }
 
     val state by screenModel.state.collectAsState()
-    val scope = rememberCoroutineScope()
+    // 本页动作挂页面请求 scope (模型持有, 真退出才撤), 不用组合期 rememberCoroutineScope
+    val scope = screenModel.scope
+
+    // 本页用户选择阶段: 阶段归模型, 本组合只呈现
+    ImportStageDialog(screenModel.importStages)
 
     val actions = object : ImportBookUiActions<ImportFileItem> {
         override fun onBack() {
@@ -165,14 +169,14 @@ fun ImportBookRoute(
                 }
 
                 !item.isOnBookShelf -> screenModel.dispatch(ImportBookUiEvent.Toggle(item))
-                else -> platform.openImportedBookReader(item, scope)
+                else -> platform.openImportedBookReader(item, scope, screenModel.importStages)
             }
         }
 
         // 对照 onItemLongClick: 可勾选条目长按打开阅读页
         override fun onItemLongClick(item: ImportFileItem) {
             if (!item.isUpDir && !item.isDir && !item.isOnBookShelf) {
-                platform.openImportedBookReader(item, scope)
+                platform.openImportedBookReader(item, scope, screenModel.importStages)
             }
         }
     }

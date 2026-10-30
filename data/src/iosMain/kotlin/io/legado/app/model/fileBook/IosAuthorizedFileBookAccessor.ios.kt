@@ -217,13 +217,14 @@ class IosAuthorizedFileBookAccessor(
         fileName: String,
         parent: Job?,
     ): String {
-        // 进入物化前核父资格; 读完整份后再核一次 (正式提交前), 已撤销不得动正式件
-        parent?.ensureActive()
+        // 父门与关闭都放进同一个保护范围: 已创建输入时也必须按保存入口的原契约关闭它
         val bytes = try {
-            inputStream.readFully()
+            parent?.ensureActive()
+            inputStream.readFully(parent)
         } finally {
             inputStream.close()
         }
+        // 进入正式提交 (协调替换) 之前核真实父资格
         parent?.ensureActive()
         return "file://" + writeSaveFile(fileName, bytes)
     }
@@ -239,11 +240,14 @@ class IosAuthorizedFileBookAccessor(
                 WebDav.fromPath(str.substring(BookType.webDavTag.length)), fileName
             )
         }
-        // 网络准备在协调之外完成, 拿到整份字节后才进入协调写入
+        // 网络准备在协调之外完成, 拿到整份字节后才进入协调写入。
+        // 本请求 Job 是父门: 取字节后、落盘前核资格, 已撤销不得动正式件
+        val parent = currentCoroutineContext()[Job]
         val bytes = AnalyzeUrlCore(
             str, source = source, callTimeout = 0,
             coroutineContext = currentCoroutineContext(),
         ).getByteArrayAwait()
+        parent?.ensureActive()
         return "file://" + writeSaveFile(fileName, bytes)
     }
 
@@ -251,6 +255,8 @@ class IosAuthorizedFileBookAccessor(
         val dir = requireBookSaveDir()
         val target = "$dir/$fileName"
         val tempPath = atomicWriteTempPath(target)
+        // 本请求 Job 是父门: 下载前与最终协调落位前各核一次, 已撤销不得动正式件
+        val parent = currentCoroutineContext()[Job]
         // 下载/最终协调落位/清理都归本次准备件所有权; 下载成功后切 dispatcher 被取消也不能漏清
         return try {
             // 下载持授权租约但不持协调 (不跨协调等网络), 完成后才协调落位
@@ -260,6 +266,7 @@ class IosAuthorizedFileBookAccessor(
             } finally {
                 lease.close()
             }
+            parent?.ensureActive()
             val landed = if (saveTargetExists(dir, fileName)) {
                 IosSecurityScopedStorage.withAccess(
                     target, DirUsage.BookTree, write = true,

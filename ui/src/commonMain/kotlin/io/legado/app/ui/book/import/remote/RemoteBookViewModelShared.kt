@@ -19,6 +19,7 @@ import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavFile
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.remote.RemoteBook
+import io.legado.app.ui.root.ImportStageHost
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.isSecurityException
@@ -60,6 +61,11 @@ class RemoteBookViewModelShared(
     private val connectionProvider: RemoteBookConnectionProvider = DefaultRemoteBookConnectionProvider(),
     private val operations: RemoteBookOperations = DefaultRemoteBookOperations(),
     private val onPermissionDenied: () -> Unit = {},
+    /**
+     * 本页的用户选择阶段 (压缩包缺包确认等): 只依赖 commonMain 的 [ImportStageHost] 接口,
+     * 具体持有者是页面模型 ([io.legado.app.ui.book.import.remote.RemoteBookScreenModel])。
+     */
+    private val stages: ImportStageHost,
 ) {
 
     /** DAO 容器 (宿主启动时由 app 端注册 AppDbAccessorImpl)。 */
@@ -240,7 +246,7 @@ class RemoteBookViewModelShared(
     fun startRead(remoteBook: RemoteBook) {
         val filename = remoteBook.filename
         if (archiveFileRegex.matches(filename)) {
-            PlatformCapabilityProviders.get().startReadRemoteArchive(filename, scope) {
+            PlatformCapabilityProviders.get().startReadRemoteArchive(filename, scope, stages) {
                 // 对照原版 showRemoteBookDownloadAlert 的 okButton: 下载完成后重试阅读
                 addSelectionToBookshelf(setOf(remoteBook)) { startRead(remoteBook) }
             }

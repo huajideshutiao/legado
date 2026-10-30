@@ -7,7 +7,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import io.legado.app.constant.AppConst.DEFAULT_WEBDAV_ID
 import io.legado.app.constant.PreferKey
@@ -20,14 +19,13 @@ import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.LocalConfigProviders
 import io.legado.app.help.config.LocalConfigShared
 import io.legado.app.help.config.PreferenceProviders
-import io.legado.app.help.toast.Toasters
 import io.legado.app.model.remote.RemoteBook
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.import.remote.RemoteBookScreen
 import io.legado.app.ui.book.import.remote.RemoteBookSort
 import io.legado.app.ui.book.import.remote.RemoteBookUiActions
 import io.legado.app.ui.book.import.remote.RemoteBookUiState
-import io.legado.app.ui.book.import.remote.RemoteBookViewModelShared
+import io.legado.app.ui.book.import.remote.RemoteBookScreenModel
 import io.legado.app.ui.book.import.remote.ServerConfigDialog
 import io.legado.app.ui.book.import.remote.ServerConfigViewModelShared
 import io.legado.app.ui.book.import.remote.ServersDialog
@@ -37,13 +35,12 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
-import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.ImportStageDialog
+import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.dialog.HelpDialog
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.no
 import legado.ui.generated.resources.ok
@@ -63,32 +60,24 @@ fun RemoteBookRoute(
     navigator: AppNavigator,
     screenModelStore: ScreenModelStore,
 ) {
-    val scope = rememberCoroutineScope()
-    // 已上架书籍点击阅读: 切到 Reader 路由
-    val onStartRead: (Book) -> Unit = { book -> navigator.push(AppRoute.Reader(book.toRouteRef())) }
-    val shared = remember(scope) {
-        RemoteBookViewModelShared(
-            scope = scope,
-            onStartRead = onStartRead,
-            // 上架时要落盘 (图书保存位置): 未设置或写入被拒时复用各端既有的选目录入口
-            // (PlatformCapabilities.pickBookTreeUri, 与"其它设置 → 书籍保存位置"同一入口)
-            // 与既有偏好键, 用户取消 (uri == null) 时不动既有配置、不报错
-            onPermissionDenied = {
-                scope.launch {
-                    // 接本页请求 scope 的 Job: 选择随请求真退出而撤
-                    PlatformCapabilityProviders.get().pickBookTreeUri(
-                        scope.coroutineContext[Job],
-                    ) { uri, err ->
-                        if (err != null) {
-                            Toasters.get().toast(err.message ?: "选择书籍目录失败")
-                        } else if (uri != null) {
-                            PreferenceProviders.get().putString(PreferKey.defaultBookTreeUri, uri)
-                        }
-                    }
-                }
-            },
-        )
+    // 页面持有者: 业务 scope / 现有 RemoteBookViewModelShared / 选择阶段都挂在模型上 (随 entry 存活),
+    // 不在组合期 remember —— 配置重建不再作废业务请求, 也不再保存旧 navigator 闭包
+    val screenModel = screenModelStore.getOrCreateTyped(entry) { RemoteBookScreenModel() }
+    val shared = screenModel.shared
+    val scope = screenModel.scope
+
+    // 待交导航: 由**当前**路由组合消费 (模型只放目标, 不存 navigator)
+    val pendingNavs by screenModel.pendingNavigation.collectAsState()
+    LaunchedEffect(pendingNavs) {
+        pendingNavs.forEach { (navId, navRoute) ->
+            navigator.push(navRoute, RouteResults.READER)
+            screenModel.consumeNavigation(navId)
+        }
     }
+
+    // 本页用户选择阶段 (压缩包缺包确认/候选): 阶段归模型, 本组合只呈现
+    ImportStageDialog(screenModel.importStages)
+
     val items by shared.items.collectAsState()
     val path by shared.currentPath.collectAsState()
     val loading by shared.isLoading.collectAsState()
