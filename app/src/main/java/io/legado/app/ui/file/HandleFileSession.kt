@@ -174,7 +174,11 @@ class HandleFileSession(private val activity: AppCompatActivity) {
             )
             request.awaitingChannel = channel
             // 重建必须沿用原请求 id: 否则暂存回执按新 id 找不到, 等于丢失
-            state.getLong(reqKey(KEY_REQ_ID, i), 0L).takeIf { it > 0 }?.let { request.requestId = it }
+            state.getLong(reqKey(KEY_REQ_ID, i), 0L).takeIf { it > 0 }?.let { restoredId ->
+                request.requestId = restoredId
+                // 推进发号器: 进程恢复后新请求不得复用已保存的 id (否则会互删 heldResults 条目)
+                advanceRequestIdSeq(restoredId)
+            }
             // 占位 callback 是空的: 真实回执 (ON_START 补投早于组合) 先到必须暂存,
             // 留到同 key 有效入口 bindKey 时交付, 否则原等待协程永挂
             request.awaitingRebind = true
@@ -224,7 +228,9 @@ class HandleFileSession(private val activity: AppCompatActivity) {
 
     /** 保存带 key 的未完成请求与各通道在途占用, 供重建后重绑/排空。 */
     fun saveTo(state: Bundle) {
-        val pending = requests.filter { it.key != null && !it.finished }
+        // 只保存宿主级稳定入口的请求: 绑定业务 Job 的请求进程重建后没有消费者,
+        // 恢复出来只会让回执一直挂着 (撤销/终结的归属也没了)
+        val pending = requests.filter { it.key != null && it.persistAcrossProcess && !it.finished }
         state.putInt(KEY_REQ_COUNT, pending.size)
         pending.forEachIndexed { i, request ->
             state.putString(reqKey(KEY_REQ_KEY, i), request.key)
@@ -311,6 +317,8 @@ class HandleFileSession(private val activity: AppCompatActivity) {
         private val callback: (HandleFileContract.Result) -> Unit,
         internal val key: String? = null,
         internal val bookUrl: String? = param.book?.bookUrl,
+        /** 跨进程恢复资格 (绑定业务 Job 的请求不恢复: 进程重建后没有消费者)。 */
+        internal val persistAcrossProcess: Boolean = launcher.persistAcrossProcess,
     ) {
 
         /** 重建后同 key 入口重新绑定的回调 (未绑定时用创建时的回调)。 */
@@ -326,8 +334,11 @@ class HandleFileSession(private val activity: AppCompatActivity) {
         internal var awaitingChannel: String? = null
 
         /** 已收口 (交付/取消/宿主销毁), 之后的系统回传按取消处置。 */
+        @Volatile
         internal var finished = false
-        internal val isActive: Boolean get() = !finished
+
+        /** 可交付/可消费: 未收口, 且发起入口的消费资格未被同步撤销。 */
+        internal val isActive: Boolean get() = !finished && !launcher.revoked
 
         /** 重建恢复后尚未绑定有效入口 (callback 是占位): 真实回执先到时暂存。 */
         internal var awaitingRebind = false
@@ -364,6 +375,11 @@ class HandleFileSession(private val activity: AppCompatActivity) {
 
         /** 收口并把结果交给本请求回调 (回调允许合法发起下一次请求)。 */
         internal fun deliver(uri: Uri?) {
+            if (!isActive) {
+                // 消费资格已撤 (发起方请求没了/被撤销): 结果只排空, 不交付
+                finish()
+                return
+            }
             finish()
             val target = boundCallback ?: callback
             target(HandleFileContract.Result(uri, param.requestCode, param.value, param.book, bookUrl))
@@ -371,6 +387,10 @@ class HandleFileSession(private val activity: AppCompatActivity) {
 
         /** 交付已构造好的回执 (重建暂存回执在 bindKey 后走这里)。 */
         internal fun deliverResult(result: HandleFileContract.Result) {
+            if (!isActive) {
+                finish()
+                return
+            }
             finish()
             val target = boundCallback ?: callback
             target(result)
@@ -408,6 +428,10 @@ class HandleFileSession(private val activity: AppCompatActivity) {
 
         /** 真实失败 (权限启动/系统授权持久化): 本请求一次终结, 不冒充用户取消。 */
         internal fun deliverError(error: Throwable) {
+            if (!isActive) {
+                finish()
+                return
+            }
             finish()
             val target = boundCallback ?: callback
             target(
@@ -499,6 +523,16 @@ class HandleFileSession(private val activity: AppCompatActivity) {
 
         /** 本会话内请求唯一 id: 同入口 key 的多个独立请求各有自己的回执槽, 互不取用/删除。 */
         private val requestIdSeq = java.util.concurrent.atomic.AtomicLong()
+
+        /** 把发号器推进到至少 [restoredId] (进程恢复后新 id 不与已保存的旧 id 相撞)。 */
+        private fun advanceRequestIdSeq(restoredId: Long) {
+            var current = requestIdSeq.get()
+            while (current < restoredId &&
+                !requestIdSeq.compareAndSet(current, restoredId)
+            ) {
+                current = requestIdSeq.get()
+            }
+        }
 
         const val SYS_TREE_KEY = "handleFile.sys.tree"
         const val SYS_DOC_KEY = "handleFile.sys.doc"

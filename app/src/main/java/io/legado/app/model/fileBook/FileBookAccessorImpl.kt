@@ -43,6 +43,7 @@ import io.legado.app.utils.inputStream
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.openOutputStream
 import io.legado.app.utils.parseToUri
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
@@ -171,7 +172,7 @@ object FileBookAccessorImpl : FileBookAccessor {
         }
         return files.map {
             parent?.ensureActive()
-            saveBookFile(FileInputStream(it), saveFileName ?: it.name).let { uriStr ->
+            saveBookFile(FileInputStream(it), saveFileName ?: it.name, parent).let { uriStr ->
                 importLocalFile(uriStr, parent).apply {
                     //附加压缩包名称 以便解压文件被删后再解压
                     origin = "${BookType.localTag}::${archiveFileDoc.name}"
@@ -309,7 +310,8 @@ object FileBookAccessorImpl : FileBookAccessor {
             str, source = source, callTimeout = 0, coroutineContext = currentCoroutineContext()
         ).getInputStreamAwait()
         else WebDav.fromPath(str.substring(BookType.webDavTag.length)).downloadInputStream()
-        return saveBookFile(inputStream, fileName)
+        // 物化归本请求: 进入正式提交前核父资格, 取消不再把整份字节搬进正式目标
+        return saveBookFile(inputStream, fileName, currentCoroutineContext()[Job])
     }
 
     /**
@@ -319,7 +321,8 @@ object FileBookAccessorImpl : FileBookAccessor {
     @Throws(SecurityException::class)
     override fun saveBookFile(
         inputStream: InputStream,
-        fileName: String
+        fileName: String,
+        parent: Job?
     ): String {
         inputStream.use { input ->
             val treeUri = AppConfig.defaultBookTreeUri?.toUri() ?: throw InvalidBooksDirException(
@@ -331,10 +334,21 @@ object FileBookAccessorImpl : FileBookAccessor {
                 atomicWriteTempPath(File(File(App.instance.cacheDir, "bookSaveStage").apply { mkdirs() }, fileName).absolutePath)
             )
             try {
-                // 先真实完整物化输入到暂存件, 再触碰正式目标
+                // 先真实完整物化输入到暂存件, 再触碰正式目标。
+                // 分块拷贝并在每块前核父资格: 请求撤销时不再继续搬字节 (不必等整份拷完)
+                parent?.ensureActive()
                 FileOutputStream(staged).use { output ->
-                    input.copyTo(output)
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        parent?.ensureActive()
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        output.write(buffer, 0, read)
+                    }
                 }
+                // 进入正式提交 (创建/覆盖正式目标) 之前最后核一次资格:
+                // 已撤销的请求不得再动正式件 (暂存件随后在 finally 里删掉)
+                parent?.ensureActive()
                 return if (treeUri.isContentScheme()) {
                     val doc = kotlin.runCatching {
                         FileDoc.fromDir(treeUri).createFileIfNotExist(
@@ -438,7 +452,7 @@ object FileBookAccessorImpl : FileBookAccessor {
         )
         try {
             webDav.downloadTo(tempFile.absolutePath, true)
-            return saveBookFile(tempFile.inputStream(), fileName)
+            return saveBookFile(tempFile.inputStream(), fileName, currentCoroutineContext()[Job])
         } finally {
             kotlin.runCatching { tempFile.delete() }
         }

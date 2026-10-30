@@ -38,7 +38,6 @@ import io.legado.app.model.ExportBookUtils
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.info.WebFileFlowTexts
-import io.legado.app.ui.book.info.WebFileImportShared
 import io.legado.app.ui.book.info.runWebFileReadFlow
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
@@ -673,8 +672,8 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     // 已下沉: 流程与呈现都归共享层 (WebFileReadFlow + ImportStageHost), 本端只保留
     // "下载 / 取压缩包条目 / 导入 / 交其它应用打开" 四个叶子。
 
-    // 对照 BookInfoActivity.onReadClick isWebFile 分支: 候选/压缩包条目/不支持格式确认交给共享阶段
-    // (四端同一套 Compose 呈现, 阶段归发起页面), 本端只给叶子: 下载 / 取条目 / 导入 / 交其它应用打开
+    // 对照 BookInfoActivity.onReadClick isWebFile 分支: 整条链 (候选/下载/条目/导入/打开) 都在
+    // 本请求里顺序执行 (见 runWebFileReadFlow), 阶段与失败/取消回执归本请求
     override fun handleWebFileRead(
         book: Book,
         scope: CoroutineScope,
@@ -683,36 +682,19 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
         onSuccess: ((Book) -> Unit)?,
     ) {
         scope.launch {
-            // 对照 BaseReadViewModel.loadWebFile: 本地书无书源, 其余按 origin 查源
-            val source = if (book.origin != BookType.localTag) {
-                appDb.bookSourceDao.getBookSource(book.origin)
-            } else null
-            val webFiles = WebFileImportShared.buildWebFiles(book, source)
-            if (webFiles.isEmpty()) {
-                Toasters.get().toast("Unexpected webFileData")
-                return@launch
-            }
-            runWebFileReadFlow(
+            val merged = runWebFileReadFlow(
                 book = book,
-                scope = scope,
                 stages = stages,
                 onWaitDialog = onWaitDialog,
-                webFiles = webFiles,
                 texts = iosWebFileTexts(),
-                // iOS 无"交系统程序打开"的本地文件通道 (UIApplication.openURL 打不开本地文件),
-                // 用系统分享面板把文件交给其它 app (与导出书籍同款出口)
-                openDownloadedFile = { path ->
-                    presentShareSheet(
-                        listOf(NSURL.fileURLWithPath(path.removePrefix("file://")))
-                    )
-                },
-                onSuccess = onSuccess,
             )
+            if (merged != null) withContext(Dispatchers.Main) { onSuccess?.invoke(merged) }
         }
     }
 
     /** 共享流程的本端文案 (沿用 compose 资源键)。 */
     private fun iosWebFileTexts() = WebFileFlowTexts(
+        noWebFile = "Unexpected webFileData",
         selectDownloadItem = syncGetString("download_and_import_file"),
         selectArchiveEntry = syncGetString("import_select_book"),
         unsupportedTitle = syncGetString("draw"),
@@ -720,6 +702,18 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
         openWithSystem = syncGetString("open_fun"),
         unsupportedArchiveEntry = syncGetString("unsupport_archivefile_entry"),
     )
+
+    /**
+     * 不支持的格式: 下载后交其它应用打开。
+     *
+     * iOS 无"按扩展名交系统程序打开本地文件"的通道 (UIApplication.openURL 打不开本地文件),
+     * 用系统分享面板把文件交给其它 app (与导出书籍同款出口)。
+     */
+    override suspend fun openLocalFileWithSystem(path: String) {
+        withContext(Dispatchers.Main) {
+            presentShareSheet(listOf(NSURL.fileURLWithPath(path.removePrefix("file://"))))
+        }
+    }
 
     // 对照 RemoteBookActivity.startRead 的 archive 分支: 在书籍保存目录里找已下载的压缩包,
     // 找到就交文件关联分发链, 没找到就弹确认框由调用方重新下载后重试。

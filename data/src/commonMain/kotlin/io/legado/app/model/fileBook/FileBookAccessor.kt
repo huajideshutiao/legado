@@ -96,8 +96,17 @@ interface FileBookAccessor {
     /**
      * 保存输入流到文件 (对应 `FileBook.saveBookFile(inputStream, fileName)`)。
      * 原 Uri 返回值改为 String (uri.toString())。
+     *
+     * [parent] 是发起这次保存的请求 Job: 实现必须在**进入正式提交前**核它的资格
+     * (取消即抛 [kotlinx.coroutines.CancellationException]), 已开始的原语级短提交按平台实际能力
+     * 保终态 (不改 SAF documentId、不夺调用方流所有权)。传 null = 调用方没有可归属的请求
+     * (如 web API 的单次上传通道)。
      */
-    fun saveBookFile(inputStream: InputStream, fileName: String): String
+    fun saveBookFile(
+        inputStream: InputStream,
+        fileName: String,
+        parent: kotlinx.coroutines.Job? = null,
+    ): String
 
     /**
      * 保存引用 → 书籍存储引用 (book.bookUrl) 的归一化。

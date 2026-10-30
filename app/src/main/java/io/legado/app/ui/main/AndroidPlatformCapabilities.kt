@@ -51,7 +51,6 @@ import io.legado.app.help.CrashHandler
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.LauncherIconHelp
-import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.delBookCore
 import io.legado.app.help.book.bookshelfJson
@@ -85,7 +84,6 @@ import io.legado.app.ui.book.import.local.ImportBook
 import io.legado.app.ui.book.import.local.ImportBookShared
 import io.legado.app.ui.book.import.local.ImportBookViewModel
 import io.legado.app.ui.book.info.WebFileFlowTexts
-import io.legado.app.ui.book.info.WebFileImportShared
 import io.legado.app.ui.book.info.runWebFileReadFlow
 import io.legado.app.ui.book.manage.reportLocalBookSourceFileDeleteFailure
 import io.legado.app.ui.book.read.config.FontItem
@@ -125,7 +123,6 @@ import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.root.pushExportSectionConfig
 import io.legado.app.ui.widget.dialog.WaitDialogHandle
-import io.legado.app.ui.widget.dialog.awaitWaitDialogDismissed
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
@@ -205,21 +202,6 @@ class AndroidPlatformCapabilities(
      * 本请求所属窗口的当前宿主界面: 只取同一 windowId 的当前能力面实例 (Activity 重建后
      * 就是新实例, 仍是同一窗口); 没有同窗口实例 = 请求所属页面已退出, 不把结果投到别窗。
      */
-    /**
-     * 取当前可呈现的宿主窗口。
-     *
-     * 同窗编号 (windowId) 只说明"注册表现在指的是同一个窗口", 不等于那个 Activity 还能呈现:
-     * 配置重建的缝隙里旧实例可能已 finish/destroy, 而注册表尚未被新实例替换。把已收尾的
-     * Activity 交给界面动作, 会在错误窗口上弹框/取资源; 真没有可呈现实例时如实失败
-     * (调用方按"页面已退出"收口), 不拿旧 Activity 冒充, 也不吞成静默成功。
-     */
-    private fun host(): MainActivity {
-        val current = PlatformCapabilityProviders.get() as? AndroidPlatformCapabilities
-        val activity = current?.takeIf { it.windowId == windowId }?.activity
-        if (activity != null && !activity.isFinishing && !activity.isDestroyed) return activity
-        throw NoStackTraceException("书籍详情页已退出")
-    }
-
     // 导入书籍: 目录状态机在 data/commonMain ImportBookShared (四端一份),
     // 本类只注入 FileDoc/SAF 列举能力; 上架仍走 ImportBookViewModel (需要 Context toast)
     private val importViewModel by lazy {
@@ -419,6 +401,15 @@ class AndroidPlatformCapabilities(
         private val pendingBookTreePicks = LinkedHashMap<Long, PendingBookTreePick>()
         private val bookTreePickSeq = java.util.concurrent.atomic.AtomicLong()
 
+        /**
+         * 本进程的随机前缀: 选目录入口的稳定 key 由它拼出。
+         *
+         * 该 key 只用于**同进程**配置重建后的重绑 (等待方是可跨重建的 Job)。进程被杀后 Job 已不存在,
+         * 旧 Bundle 里保存的 key 用上一进程的 nonce 拼成, 因此新请求永远不会与它相同 ——
+         * 不会出现"新等待者凭同 key 复活旧回执"。
+         */
+        private val bookTreeProcessNonce = kotlin.random.Random.nextLong()
+
         fun nextBookTreePickId(): Long = bookTreePickSeq.incrementAndGet()
 
         fun registerBookTreePick(id: Long, pick: PendingBookTreePick) =
@@ -428,14 +419,19 @@ class AndroidPlatformCapabilities(
             synchronized(bookTreePickLock) { pendingBookTreePicks.values.toList() }
                 .forEach { it.rebind?.invoke(activity) }
 
-        /** 撤本次选择消费 (取消阶段/真实终态): 只撤这一条并清登记, 已起跑 SDK 占用保真实排空。 */
+        /**
+         * 撤本次选择消费 (取消阶段/真实终态): 只撤这一条并清登记, 已起跑 SDK 占用保真实排空。
+         *
+         * 两步各有其位:
+         * 1. **同步**撤真实消费资格 ([HandleFileLauncher.revoke]): 之后系统回传不再取持久授权、
+         *    不再交付 —— SDK 回执可能已排在主线程清理之前, 只排清理等于撤销没到消费点。
+         * 2. **主线程**收口 (关弹窗/清集合登记): 这些是主线程结构; 排到当前主线程工作之后执行,
+         *    启动若已发生, 这次收口就关掉刚建的那个请求, 不留"已撤未收"的空档。
+         */
         fun cancelBookTreePick(id: Long) {
             val pick = synchronized(bookTreePickLock) { pendingBookTreePicks.remove(id) } ?: return
-            // 回调跑在"取消发生的线程" (Job.invokeOnCompletion 的既定语义, 不保证主线程),
-            // 而入口的弹窗/请求集合都是主线程结构: 这里只置撤销标记, 收口一律回主线程。
-            // 排到当前主线程工作之后执行: 若本次选择已启动, 收口就关掉刚建的那个请求
-            // (撤销与启动之间不再有"已撤未收"的空档); 若根本没拉起就只清登记。
             pick.revoked = true
+            pick.launcher?.revoke()
             mainHandler.post {
                 val launcher = pick.launcher
                 if (launcher != null) launcher.cancel() else clearBookTreePick(id)
@@ -1053,31 +1049,40 @@ class AndroidPlatformCapabilities(
     override fun downloadBookToLocal(book: Book, success: (() -> Unit)?) {
         activity.lifecycleScope.launch(IO) {
             try {
-                FileBook.downloadRemoteBook(book)
+                // 保存位置未设: 挂起等用户真选定并重试一次; 用户取消 = 本次正常终结
+                if (!downloadRemoteBookEnsuringSaveDir(book)) return@launch
                 activity.runOnUiThread {
                     activity.toastOnUi("下载成功")
                     success?.invoke()
                 }
             } catch (e: Throwable) {
-                // 保存位置未设置时走既有的"去设置目录"出口 (与其它三端同一入口/同一偏好键)
-                if (e is InvalidBooksDirException) selectBookSaveDir()
                 AppLog.put("下载远程书籍<${book.name}>失败", e, true)
             }
         }
     }
 
     /**
-     * 拉起既有的 SAF"书籍保存位置"选择器并记住选定目录 (与"其它设置 → 书籍保存位置"
-     * 同一入口/同一偏好键); 用户取消时不动既有配置。
+     * 下载远程书, 保存位置未设时挂起等用户选定并重试一次。
+     *
+     * 原先只拉起选择器就返回/上抛: 用户之后真选了目录, 本次下载也早已结束。
+     *
+     * @return false = 用户在选目录时取消 (本次正常终结, 不是失败)
      */
-    private fun selectBookSaveDir() {
-        activity.runOnUiThread {
-            pickBookTreeUri { uri, err -> if (err == null && uri != null) AppConfig.defaultBookTreeUri = uri }
+    private suspend fun downloadRemoteBookEnsuringSaveDir(book: Book): Boolean = try {
+        FileBook.downloadRemoteBook(book)
+        true
+    } catch (e: InvalidBooksDirException) {
+        if (!reselectBookSaveDir(currentCoroutineContext()[Job])) {
+            false
+        } else {
+            FileBook.downloadRemoteBook(book)
+            true
         }
     }
 
-    // 对照 BookInfoActivity.onReadClick isWebFile 分支: 候选/压缩包条目/不支持格式确认交给共享阶段
-    // (四端同一套 Compose 呈现, 阶段归发起页面), 本端只给叶子: 下载 / 取条目 / 导入 / 交系统打开
+    // 对照 BookInfoActivity.onReadClick isWebFile 分支: 整条链 (候选/下载/条目/导入/打开) 都在
+    // 本请求里顺序执行 (见 runWebFileReadFlow), 阶段与失败/取消回执归本请求; 本端只给文案与
+    // "交系统打开"叶子 (真正实现见 openLocalFileWithSystem)
     override fun handleWebFileRead(
         book: Book,
         scope: CoroutineScope,
@@ -1085,35 +1090,20 @@ class AndroidPlatformCapabilities(
         stages: ImportStageHost,
         onSuccess: ((Book) -> Unit)?,
     ) {
-        scope.launch(IO) {
-            // 对照 BaseReadViewModel.loadWebFile: 本地书无书源, 其余按 origin 查源
-            val source = if (book.origin != BookType.localTag) {
-                appDb.bookSourceDao.getBookSource(book.origin)
-            } else null
-            // 构建 webFile 列表的平台无关段已下沉 WebFileImportShared (同 BaseReadViewModel.loadWebFile)
-            val webFiles = WebFileImportShared.buildWebFiles(book, source)
-            withContext(Dispatchers.Main) {
-                if (webFiles.isEmpty()) {
-                    Toasters.get().toast("Unexpected webFileData")
-                    return@withContext
-                }
-                runWebFileReadFlow(
-                    book = book,
-                    scope = scope,
-                    stages = stages,
-                    onWaitDialog = onWaitDialog,
-                    webFiles = webFiles,
-                    texts = androidWebFileTexts(),
-                    // 不支持格式: 下载后交系统打开 (原版 open_fun 分支)
-                    openDownloadedFile = { path -> activity.openFileUri(path.toUri(), "*/*") },
-                    onSuccess = onSuccess,
-                )
-            }
+        scope.launch {
+            val merged = runWebFileReadFlow(
+                book = book,
+                stages = stages,
+                onWaitDialog = onWaitDialog,
+                texts = androidWebFileTexts(),
+            )
+            if (merged != null) withContext(Dispatchers.Main) { onSuccess?.invoke(merged) }
         }
     }
 
     /** 共享流程的本端文案 (沿用 app 端字符串键)。 */
     private fun androidWebFileTexts() = WebFileFlowTexts(
+        noWebFile = "Unexpected webFileData",
         selectDownloadItem = androidAppString("download_and_import_file"),
         selectArchiveEntry = androidAppString("import_select_book"),
         unsupportedTitle = androidAppString("draw"),
@@ -1122,150 +1112,32 @@ class AndroidPlatformCapabilities(
         unsupportedArchiveEntry = androidAppString("unsupport_archivefile_entry"),
     )
 
-    // 对照 BookInfoViewModel.importWebFile
-    override fun importWebFile(
-        book: Book,
-        webFile: FileBook.WebFile,
-        scope: CoroutineScope,
-        onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
-        success: ((Book) -> Unit)?,
-    ) {
-        // 原版走 execute{}, 其 executeContext 默认 Dispatchers.Main, 故等待框/动作/成功
-        // 三类回调都在主线程; 这里统一回主线程与原版对齐
-        scope.launch(IO) {
-            val handle = WaitDialogHandle()
-            try {
-                withContext(Dispatchers.Main) { onWaitDialog(true, handle) }
-                // 平台无关段 (取源 / 下载保存 / 导入本地 / 合并) 已下沉 WebFileImportShared;
-                // 目录落库统一走 BookChapterLoader.fetchFromSource (与阅读页同一条链),
-                // 不再另写一份"取目录 + 落库"
-                // 保存位置未设: 挂起等用户真选定并重试一次 (原先只发一个 selectBooksDir 动作就收口,
-                // 用户选定后本次导入早没了)
-                val merged = try {
-                    importMergedBook(book, webFile)
-                } catch (e: InvalidBooksDirException) {
-                    if (!ensureBookSaveDirSelected(currentCoroutineContext()[Job])) throw e
-                    importMergedBook(book, webFile)
-                }
-                // 先收加载框、等它确实离开界面, 再交成功回调 (回调里会发起页面跳转): 框与跳转
-                // 落在同一主线程消息时, 合成出的第一帧仍是框还在的画面, 整段转场都会带着它
-                // (原版是 "关框 → 打开页面" 的顺序)
-                awaitWaitDialogDismissed(
-                    { withContext(Dispatchers.Main) { onWaitDialog(false, handle) } },
-                    handle,
-                )
-                withContext(Dispatchers.Main) { success?.invoke(merged) }
-            } catch (e: CancellationException) {
-                // 真实取消原样传播, 不记假失败
-                throw e
-            } catch (e: Throwable) {
-                AppLog.put("ImportWebFileError\n${e.localizedMessage}", e, true)
-            } finally {
-                withContext(NonCancellable + Dispatchers.Main) { onWaitDialog(false, handle) }
-            }
-        }
+    /**
+     * 用系统程序打开已下载文件 (不支持格式的 open_fun 出口)。
+     *
+     * 不捕获发起时的 Activity: 配置重建后由新宿主承接; 重建间隙挂起等一个可呈现的宿主,
+     * 真退出时随请求取消 (页 scope), 不在这里扔"页面已退出"、也不丢回执。
+     */
+    override suspend fun openLocalFileWithSystem(path: String) {
+        val target = awaitPresentableActivity()
+        withContext(Dispatchers.Main) { target.openFileUri(path.toUri(), "*/*") }
     }
 
-    /** 导入并落目录 (importWebFile 的实体; 保存位置未设时可整体重试一次)。 */
-    private suspend fun importMergedBook(book: Book, webFile: FileBook.WebFile): Book {
-        val merged = WebFileImportShared.importWebFile(book, webFile)
-        BookChapterLoader.fetchFromSource(
-            merged,
-            WebFileImportShared.bookSourceOf(merged),
-        )
-        return merged
-    }
-
-    // 对照 BookInfoViewModel.downloadWebFile
-    override fun downloadWebFile(
-        book: Book,
-        webFile: FileBook.WebFile,
-        scope: CoroutineScope,
-        onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
-        success: ((String) -> Unit)?,
-    ) {
-        scope.launch(IO) {
-            val handle = WaitDialogHandle()
-            try {
-                withContext(Dispatchers.Main) { onWaitDialog(true, handle) }
-                // 平台无关段 (取源 / 下载保存) 已下沉 WebFileImportShared
-                // 保存位置未设: 挂起等用户真选定并重试一次 (同 importWebFile)
-                val path = try {
-                    WebFileImportShared.downloadWebFile(book, webFile)
-                } catch (e: InvalidBooksDirException) {
-                    if (!ensureBookSaveDirSelected(currentCoroutineContext()[Job])) throw e
-                    WebFileImportShared.downloadWebFile(book, webFile)
-                }
-                awaitWaitDialogDismissed(
-                    { withContext(Dispatchers.Main) { onWaitDialog(false, handle) } },
-                    handle,
-                )
-                withContext(Dispatchers.Main) { success?.invoke(path) }
-            } catch (e: CancellationException) {
-                // 真实取消原样传播, 不记假失败
-                throw e
-            } catch (e: Throwable) {
-                AppLog.put("DownloadWebFileError\n${e.localizedMessage}", e, true)
-            } finally {
-                withContext(NonCancellable + Dispatchers.Main) { onWaitDialog(false, handle) }
-            }
-        }
-    }
-
-    // 对照 BookInfoViewModel.getArchiveFilesName
-    override fun getArchiveFilesName(archiveFilePath: String, scope: CoroutineScope, onSuccess: (List<String>) -> Unit) {
-        scope.launch(IO) {
-            try {
-                // 后缀校验 + 书籍条目过滤 + 读失败返空列表的平台无关段已下沉 WebFileImportShared
-                val names = WebFileImportShared.getArchiveFilesName(archiveFilePath)
-                withContext(Dispatchers.Main) { onSuccess.invoke(names) }
-            } catch (e: CancellationException) {
-                // 真实取消原样传播, 不记假失败
-                throw e
-            } catch (e: Throwable) {
-                AppLog.put("getArchiveEntriesName Error:\n${e.localizedMessage}", e, true)
-            }
-        }
-    }
-
-    // 对照 BookInfoViewModel.importBookFromArchive
-    override fun importBookFromArchive(
-        archiveFilePath: String,
-        archiveEntryName: String,
-        book: Book,
-        scope: CoroutineScope,
-        onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
-        success: ((Book) -> Unit)?,
-    ) {
-        scope.launch(IO) {
-            val handle = WaitDialogHandle()
-            try {
-                withContext(Dispatchers.Main) { onWaitDialog(true, handle) }
-                // 平台无关段 (按条目名导入 + 合并) 已下沉 WebFileImportShared;
-                // 目录落库统一走 BookChapterLoader.fetchFromSource (与阅读页同一条链)
-                val merged = WebFileImportShared.importBookFromArchive(
-                    archiveFilePath,
-                    archiveEntryName,
-                    book,
-                )
-                BookChapterLoader.fetchFromSource(
-                    merged,
-                    WebFileImportShared.bookSourceOf(merged),
-                )
-                awaitWaitDialogDismissed(
-                    { withContext(Dispatchers.Main) { onWaitDialog(false, handle) } },
-                    handle,
-                )
-                withContext(Dispatchers.Main) { success?.invoke(merged) }
-            } catch (e: CancellationException) {
-                // 真实取消原样传播, 不记假失败
-                throw e
-            } catch (e: Throwable) {
-                AppLog.put("importArchiveBook Error\n${e.localizedMessage}", e, true)
-            } finally {
-                withContext(NonCancellable + Dispatchers.Main) { onWaitDialog(false, handle) }
-            }
-        }
+    /**
+     * 等一个仍可呈现的宿主窗口。
+     *
+     * 同一个 windowId 只说明注册表现在指的是同一窗口, 不等于那个 Activity 还能用; 配置重建的
+     * 缝隙里注册表可能还是已收尾的旧实例。这里等注册表发出满足条件的新实例 (新宿主 onCreate
+     * 即注册), 因此既不把旧 Activity 交给界面动作, 也不把重建间隙误判成"已退出"。
+     */
+    private suspend fun awaitPresentableActivity(): MainActivity {
+        // first 直接挂起到"存在可呈现实例"再取用 (StateFlow 当前值已满足时立即返回)
+        val host = PlatformCapabilityProviders.current.first { candidate ->
+            candidate is AndroidPlatformCapabilities &&
+                !candidate.activity.isFinishing &&
+                !candidate.activity.isDestroyed
+        } as AndroidPlatformCapabilities
+        return host.activity
     }
 
     // 对照 BookInfoViewModel.refreshWebDavBook
@@ -1282,10 +1154,10 @@ class AndroidPlatformCapabilities(
             val uri = try {
                 bookWebDav.downloadRemoteBook(remoteBook)
             } catch (e: InvalidBooksDirException) {
-                // 保存位置未设置: 走既有"去设置目录"出口 (与其它三端同一入口/同一偏好键),
-                // 异常照旧上抛 (调用方仍记日志), 只是多了一次用户可见的出口
-                selectBookSaveDir()
-                throw e
+                // 保存位置未设: 挂起等用户真选定并重试一次; 用户取消 = 本次正常终结 (不报假失败),
+                // 选择器真实失败的原异常由 reselectBookSaveDir 原样抛回
+                if (!reselectBookSaveDir(currentCoroutineContext()[Job])) return
+                bookWebDav.downloadRemoteBook(remoteBook)
             }.toUri()
             book.bookUrl = if (uri.isContentScheme()) uri.toString() else uri.path!!
             book.lastCheckTime = remoteBook.lastModify
@@ -1645,12 +1517,15 @@ class AndroidPlatformCapabilities(
         } else {
             // 每次选择一个唯一 id (同一 parent 可多次选择, Job 身份不是请求 id)
             val pickId = nextBookTreePickId()
-            val key = "book-tree-$pickId"
+            // 进程内唯一 + 进程间不可能相撞 (见 bookTreeProcessNonce)
+            val key = "book-tree-$bookTreeProcessNonce-$pickId"
             val registered = PendingBookTreePick()
             registered.rebind = { act ->
                 registered.launcher = act.registerHandleFile(
                     key = key,
                     callback = bookTreeCallback(act, onSelected) { clearBookTreePick(pickId) },
+                    // 等待方是请求 Job: 进程被杀后没有消费者, 恢复出来只会让回执一直挂着
+                    persistAcrossProcess = false,
                 )
             }
             registerBookTreePick(pickId, registered)

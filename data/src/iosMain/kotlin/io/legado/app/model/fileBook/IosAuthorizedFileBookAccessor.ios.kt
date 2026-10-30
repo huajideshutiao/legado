@@ -18,6 +18,8 @@ import io.legado.app.utils.InputStream
 import io.legado.app.utils.IosSecurityScopeLease
 import io.legado.app.utils.IosSecurityScopedStorage
 import io.legado.app.utils.atomicWriteTempPath
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.currentCoroutineContext
 import okio.FileSystem
 import okio.Path.Companion.toPath
@@ -210,12 +212,19 @@ class IosAuthorizedFileBookAccessor(
      * `saveBookFileFromPath` (web 上传落盘) 不覆写: iOS 没有网页服务, 入口不可达; 该端保持
      * [FileBookAccessor] 的 default 实现 (抛 UnsupportedOperationException), 不产生无授权的写入点。
      */
-    override fun saveBookFile(inputStream: InputStream, fileName: String): String {
+    override fun saveBookFile(
+        inputStream: InputStream,
+        fileName: String,
+        parent: Job?,
+    ): String {
+        // 进入物化前核父资格; 读完整份后再核一次 (正式提交前), 已撤销不得动正式件
+        parent?.ensureActive()
         val bytes = try {
             inputStream.readFully()
         } finally {
             inputStream.close()
         }
+        parent?.ensureActive()
         return "file://" + writeSaveFile(fileName, bytes)
     }
 

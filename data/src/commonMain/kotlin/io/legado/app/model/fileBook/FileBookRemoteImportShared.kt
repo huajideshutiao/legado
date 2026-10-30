@@ -12,6 +12,8 @@ import io.legado.app.help.book.isArchive
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.model.fileBook.FileBook.isBookFile
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 
 /**
  * 远程书籍导入编排 (四端共用的唯一一份):
@@ -102,7 +104,10 @@ object FileBookRemoteImportShared {
                     try {
                         val entry = remoteZip.entries().asSequence()
                             .first { !it.isDirectory && isBookFile(it.name) }
-                        val uriStr = accessor.saveBookFile(remoteZip.getInputStream(entry), entry.name)
+                        val uriStr = accessor.saveBookFile(
+                            remoteZip.getInputStream(entry), entry.name,
+                            currentCoroutineContext()[Job],
+                        )
                         accessor.importLocalFile(uriStr).apply {
                             this.origin = origin
                             addType(BookType.archive)

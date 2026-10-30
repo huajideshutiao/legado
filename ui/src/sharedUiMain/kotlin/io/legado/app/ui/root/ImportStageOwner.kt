@@ -1,21 +1,19 @@
 package io.legado.app.ui.root
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.platform.syncGetString
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
@@ -49,17 +47,24 @@ class ImportStageOwner : ImportStageHost {
 
     override suspend fun choose(title: String, items: List<String>): Int? = gate.withLock {
         val answer = CompletableDeferred<Int?>()
-        val shown = withContext(mainDispatcher) {
-            val next = ImportStage.Choice(++stageSeq, title, items)
-            choiceAnswer = answer
-            stage = next
-            next
-        }
+        // 编号先分配再发布: 发布这一步本身可能被丢弃, 凭编号仍能准确清理自己那一个阶段
+        val next = ImportStage.Choice(++stageSeq, title, items)
         try {
+            // 发布放在保护范围内: 从 Default 切到 Main 再返回时, 返回点可被 prompt cancellation
+            // 丢弃 —— 发布若在 try 外, 清理根本不会执行, 阶段与 answer 引用就留在外面
+            withContext(mainDispatcher) {
+                choiceAnswer = answer
+                stage = next
+            }
             answer.await()
         } finally {
-            // 请求撤销/异常: 只收本阶段; 已在 resolve 里结算过的清空是幂等的
-            withContext(NonCancellable + mainDispatcher) { clearStage(shown.stageId) }
+            // 只终结自己: 阶段按编号清, answer 引用按身份清 (别人的阶段/答案一概不动)
+            withContext(NonCancellable + mainDispatcher) {
+                clearStage(next.stageId)
+                if (choiceAnswer === answer) choiceAnswer = null
+            }
+            // 已取消的 Deferred 不能留活: 迟到的点击/结算不得再成功
+            answer.cancel()
         }
     }
 
@@ -70,16 +75,19 @@ class ImportStageOwner : ImportStageHost {
         okText: String?,
     ): ImportConfirmAction = gate.withLock {
         val answer = CompletableDeferred<ImportConfirmAction>()
-        val shown = withContext(mainDispatcher) {
-            val next = ImportStage.Confirm(++stageSeq, title, message, neutralText, okText)
-            confirmAnswer = answer
-            stage = next
-            next
-        }
+        val next = ImportStage.Confirm(++stageSeq, title, message, neutralText, okText)
         try {
+            withContext(mainDispatcher) {
+                confirmAnswer = answer
+                stage = next
+            }
             answer.await()
         } finally {
-            withContext(NonCancellable + mainDispatcher) { clearStage(shown.stageId) }
+            withContext(NonCancellable + mainDispatcher) {
+                clearStage(next.stageId)
+                if (confirmAnswer === answer) confirmAnswer = null
+            }
+            answer.cancel()
         }
     }
 
@@ -99,6 +107,7 @@ class ImportStageOwner : ImportStageHost {
         confirmAnswer = null
     }
 
+    /** 只清指定编号的阶段 (别的请求在显的那一份不动)。 */
     private fun clearStage(stageId: Long) {
         if (stage?.stageId == stageId) stage = null
     }
@@ -107,52 +116,73 @@ class ImportStageOwner : ImportStageHost {
 /**
  * 阶段呈现 (四端同一套 Compose 对话框): 只读 [ImportStageOwner.stage], 点击经 owner 结算。
  *
- * 放在页面组合里而不是平台能力面里, 是为了让显示对象随当前宿主组合存亡: 重建即重新读阶段,
- * 不需要平台去"找回"一个已消失的 Dialog, 也不会把旧 Activity 交给仍在飞的请求。
+ * - **身份**: 按阶段编号 `key(stageId)` 呈现, 同类阶段连续接续时是新的一份对话框,
+ *   不继承上一份的 dismissing/progress/滚动位置。
+ * - **可见性**: 复用 Route 生命周期 —— 本页被另一页盖住或退到后台 (非 RESUMED) 时只隐藏,
+ *   不结算: 阶段仍归请求, 回到本页继续呈现。
+ * - **按钮语义**: 确认阶段只在给了确定文案时排确定键; 不支持格式那种"只有打开方式 + 取消"
+ *   的原版出口不额外多一个只关闭不打开的键。
  */
 @Composable
 fun ImportStageDialog(owner: ImportStageOwner) {
+    if (!routeResumed()) return
     when (val current = owner.stage) {
         null -> Unit
 
-        is ImportStage.Choice -> AppAlertDialog(
-            onDismissRequest = { owner.onChoiceSelected(current.stageId, null) },
-            title = current.title,
-            content = {
-                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
-                    current.items.forEachIndexed { index, item ->
-                        Text(
-                            text = item,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { owner.onChoiceSelected(current.stageId, index) }
-                                .padding(horizontal = 20.dp, vertical = 14.dp),
-                        )
-                    }
-                }
-            },
-            cancelButton = AlertButton(syncGetString("cancel")) {
-                owner.onChoiceSelected(current.stageId, null)
-            },
-        )
+        is ImportStage.Choice -> key(current.stageId) {
+            // 复用既有列表选择对话框 (虚拟列表 + 统一的取消/点外部关闭语义), 不自绘一份
+            AppSelectorDialog(
+                onDismissRequest = { owner.onChoiceSelected(current.stageId, null) },
+                title = current.title,
+                items = current.items,
+                onItemSelected = { index -> owner.onChoiceSelected(current.stageId, index) },
+            )
+        }
 
-        is ImportStage.Confirm -> AppAlertDialog(
-            onDismissRequest = {
-                owner.onConfirmResolved(current.stageId, ImportConfirmAction.Cancel)
-            },
-            title = current.title,
-            message = current.message,
-            neutralButton = current.neutralText?.let { text ->
-                AlertButton(text) {
-                    owner.onConfirmResolved(current.stageId, ImportConfirmAction.Neutral)
-                }
-            },
-            cancelButton = AlertButton(syncGetString("cancel")) {
-                owner.onConfirmResolved(current.stageId, ImportConfirmAction.Cancel)
-            },
-            okButton = AlertButton(current.okText ?: syncGetString("ok")) {
-                owner.onConfirmResolved(current.stageId, ImportConfirmAction.Ok)
-            },
-        )
+        is ImportStage.Confirm -> key(current.stageId) {
+            AppAlertDialog(
+                onDismissRequest = {
+                    owner.onConfirmResolved(current.stageId, ImportConfirmAction.Cancel)
+                },
+                title = current.title,
+                message = current.message,
+                neutralButton = current.neutralText?.let { text ->
+                    AlertButton(text) {
+                        owner.onConfirmResolved(current.stageId, ImportConfirmAction.Neutral)
+                    }
+                },
+                cancelButton = AlertButton(syncGetString("cancel")) {
+                    owner.onConfirmResolved(current.stageId, ImportConfirmAction.Cancel)
+                },
+                okButton = current.okText?.let { text ->
+                    AlertButton(text) {
+                        owner.onConfirmResolved(current.stageId, ImportConfirmAction.Ok)
+                    }
+                },
+            )
+        }
     }
+}
+
+/**
+ * 本页是否处于"可以呈现弹层"的状态 (栈顶且前台)。
+ *
+ * 直接读 Route 生命周期 ([LocalLifecycleOwner] 由 LegadoApp 的 RouteLifecycleOwner 提供):
+ * 被压栈/退后台时页面组合可能仍在 (转场离场页、被盖住的页), 但用户看不见它 —— 此时隐藏弹层,
+ * 与"取消本次选择"不是一件事。
+ */
+@Composable
+private fun routeResumed(): Boolean {
+    val owner = LocalLifecycleOwner.current
+    var resumed by remember(owner) {
+        mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    }
+    DisposableEffect(owner) {
+        val observer = LifecycleEventObserver { _, _ ->
+            resumed = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
+    }
+    return resumed
 }

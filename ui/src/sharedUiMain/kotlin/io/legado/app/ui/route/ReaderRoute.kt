@@ -11,6 +11,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -180,7 +181,6 @@ fun ReaderRoute(
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) {
         ReaderScreenModel(
-            menuControllerFactory = menuControllerFactory,
             getBatteryLevel = getBatteryLevel,
             onOpenSearch = onOpenSearch,
         )
@@ -195,6 +195,8 @@ fun ReaderRoute(
         getBatteryLevel = getBatteryLevel,
         onOpenSearch = onOpenSearch,
     )
+    // 组合成功提交后才释放被取代的旧绑定: 组合可能被放弃, 不能提前销毁仍在用的绑定
+    SideEffect { screenModel.releaseSupersededControllers() }
 
     // 页面级副作用统一挂本页 Lifecycle, 不再挂组合存亡 (两者在单 Activity 架构下不是同一件事):
     //
@@ -309,11 +311,12 @@ fun ReaderRoute(
         screenModel.openChapter(index, target.second.second)
     }
 
-    // 界面状态按当前菜单控制器建立 (bindHost 已在组合期完成, 读到的就是当前宿主那份)
-    val state = remember(screenModel) {
+    // 界面状态按**当前菜单控制器实例**建立: 绑定换了就是新的一份, 不回用旧宿主的菜单状态
+    val menuController = screenModel.menuController
+    val state = remember(screenModel, menuController) {
         ReaderUiState(
             viewModel = screenModel.viewModel,
-            menuState = screenModel.menuState,
+            menuState = menuController.state,
             searchMenuState = screenModel.searchMenuState,
             selection = screenModel.selection,
             batteryLevel = screenModel.batteryLevel,

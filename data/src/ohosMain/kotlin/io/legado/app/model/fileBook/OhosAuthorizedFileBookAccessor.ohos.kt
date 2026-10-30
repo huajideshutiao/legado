@@ -13,6 +13,7 @@ import io.legado.app.utils.File
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.inputStream
 import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.coroutines.Job
 import kotlinx.atomicfu.locks.synchronized
 
 /**
@@ -137,9 +138,14 @@ class OhosAuthorizedFileBookAccessor(
      * 的原因: `by delegate` 只转发未被覆写的方法, delegate 内部再调 `saveBookFile` 不会回到本类,
      * 故每个能触达落盘的入口都要单独包一层。
      */
-    override fun saveBookFile(inputStream: InputStream, fileName: String): String {
+    override fun saveBookFile(
+        inputStream: InputStream,
+        fileName: String,
+        parent: Job?,
+    ): String {
         OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir(), DirUsage.BookTree)
-        return delegate.saveBookFile(inputStream, fileName)
+        // 父门继续往下传: 进入正式提交前由实际写盘方核资格
+        return delegate.saveBookFile(inputStream, fileName, parent)
     }
 
     override suspend fun saveBookFile(

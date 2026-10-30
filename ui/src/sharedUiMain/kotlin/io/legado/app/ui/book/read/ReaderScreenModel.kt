@@ -325,7 +325,6 @@ object ReaderPlatformProviders {
  *   携带当前书/索引/结果列表，供 SearchMenuState "结果"按钮使用）
  */
 class ReaderScreenModel(
-    private var menuControllerFactory: (ReaderScreenModel) -> ReadMenuController,
     private var getBatteryLevel: () -> Int,
     layoutConfig: ReadBookViewModelShared.LayoutConfig = ReadBookViewModelShared.LayoutConfig.DEFAULT,
     private var onOpenSearch: (ReaderScreenModel, Book, String?) -> Unit = { _, _, _ -> },
@@ -336,24 +335,56 @@ class ReaderScreenModel(
 
     private val readBook = ReadBookShared()
 
-    /** 平台菜单控制器: 首次访问时按当前绑定创建; 宿主重绑时只作废旧实例并按新绑定重建。 */
-    private var menuControllerCache: ReadMenuController? = null
-    val menuController: ReadMenuController
-        get() = menuControllerCache ?: menuControllerFactory(this).also { menuControllerCache = it }
+    /** 一次宿主绑定: 平台入口 + 菜单控制器工厂 + 电量来源 + 全文搜索入口。 */
+    private class HostBinding(
+        val provider: ReaderPlatformProvider,
+        val navigator: AppNavigator,
+        val factory: (ReaderScreenModel) -> ReadMenuController,
+        val battery: () -> Int,
+        val openSearch: (ReaderScreenModel, Book, String?) -> Unit,
+    )
 
-    /** 当前生效的宿主绑定; 两个实例都没变就不重绑 (重绑 = 作废旧控制器 + 重建菜单状态)。 */
-    private var boundProvider: ReaderPlatformProvider? = null
-    private var boundNavigator: AppNavigator? = null
+    /** 当前绑定 (组合期由 [bindHost] 记录; null = 尚未绑定)。 */
+    private var binding: HostBinding? = null
+
+    /** 当前缓存控制器所属的那次绑定 (身份比较用, 不靠布尔位推断)。 */
+    private var controllerBinding: HostBinding? = null
+    private var menuControllerCache: ReadMenuController? = null
+
+    /** 已被新绑定取代、等本次组合提交后再释放的旧控制器 (组合可能被放弃, 不能提前销毁)。 */
+    private val supersededControllers = mutableListOf<Pair<HostBinding, ReadMenuController>>()
 
     /**
-     * 绑定当前宿主 (组合期、任何菜单状态读取之前调用)。
+     * 平台菜单控制器: 按**当前绑定身份**创建/复用。
      *
-     * - 身份相同: 直接返回。原先无条件作废控制器, 同一宿主里组合再跑就会再造一份菜单状态,
-     *   而 Android 菜单状态的 `init` 就起了页面变化订阅 —— 旧订阅不停就是双份回调, 不只是多一个对象。
-     * - 身份不同: 先让旧 provider 成对释放旧控制器的 UI 绑定/订阅 (菜单显隐、自动翻页、页面变化订阅),
-     *   再清缓存等下一次访问按新绑定创建; 业务状态 (ReadBookShared/阅读进度/在途请求) 全留在本模型。
+     * 只在组合主线程调用 (组合期读状态、页面生命周期回调), 不做跨线程手工缓存, 也就不存在
+     * UI 与 Default 并发建控制器的问题。
+     */
+    val menuController: ReadMenuController
+        get() {
+            val current = binding ?: error("阅读页宿主尚未绑定, 不应读取菜单控制器")
+            val cached = menuControllerCache
+            if (cached != null && controllerBinding === current) return cached
+            // 旧绑定的控制器不在这里销毁 (组合可能被放弃, 且它可能仍被页面使用):
+            // 排队等本次组合提交后统一释放
+            val previous = menuControllerCache
+            val previousBinding = controllerBinding
+            if (previous != null && previousBinding != null) {
+                supersededControllers += previousBinding to previous
+            }
+            val created = current.factory(this)
+            controllerBinding = current
+            menuControllerCache = created
+            return created
+        }
+
+    /**
+     * 绑定当前宿主 (组合期、任何菜单状态读取之前调用): 只记录绑定身份, **不销毁**任何在用的绑定。
      *
-     * 放在组合期而不是 effect 里: 重建后任何菜单读取都必须先拿到新绑定, 不能先喂回旧 Activity。
+     * 身份 (provider 与 navigator 实例) 相同即不换绑 —— 同一宿主里组合重跑不会再造一份菜单状态
+     * (Android 菜单状态的 `init` 就起页面变化订阅, 旧订阅不停是双份回调)。
+     * 身份不同: 之后读取菜单控制器时按新绑定创建, 旧控制器排队到 [releaseSupersededControllers]
+     * (由组合提交后的 effect 调用) 才成对释放 —— 组合被放弃时旧绑定仍可用, 不会提前失效。
      */
     fun bindHost(
         provider: ReaderPlatformProvider,
@@ -362,17 +393,27 @@ class ReaderScreenModel(
         getBatteryLevel: () -> Int,
         onOpenSearch: (ReaderScreenModel, Book, String?) -> Unit,
     ) {
-        if (boundProvider === provider && boundNavigator === navigator) return
-        val previousProvider = boundProvider
-        val previousController = menuControllerCache
-        boundProvider = provider
-        boundNavigator = navigator
-        this.menuControllerFactory = menuControllerFactory
-        this.getBatteryLevel = getBatteryLevel
-        this.onOpenSearch = onOpenSearch
-        menuControllerCache = null
-        if (previousController != null) {
-            previousProvider?.releaseMenuController(this, previousController)
+        val current = binding
+        if (current != null && current.provider === provider && current.navigator === navigator) return
+        binding = HostBinding(
+            provider = provider,
+            navigator = navigator,
+            factory = menuControllerFactory,
+            battery = getBatteryLevel,
+            openSearch = onOpenSearch,
+        )
+    }
+
+    /**
+     * 释放已被取代的旧控制器 (成对: 由旧 provider 收回它建的那份 UI 绑定/订阅)。
+     * 由组合在**成功提交后**调用 (SideEffect), 因此不会销毁本次组合仍在使用的绑定。
+     */
+    fun releaseSupersededControllers() {
+        if (supersededControllers.isEmpty()) return
+        val pending = supersededControllers.toList()
+        supersededControllers.clear()
+        pending.forEach { (hostBinding, controller) ->
+            hostBinding.provider.releaseMenuController(this, controller)
         }
     }
 
@@ -1008,6 +1049,17 @@ class ReaderScreenModel(
     }
 
     override fun onCleared() {
+        // 本页最后一份 UI 绑定随模型一起收: 成对交回旧 provider (停订阅/自动翻页),
+        // 业务状态随模型一同消失, 不在这里复位别的页面
+        releaseSupersededControllers()
+        val controller = menuControllerCache
+        val hostBinding = controllerBinding
+        menuControllerCache = null
+        controllerBinding = null
+        binding = null
+        if (controller != null && hostBinding != null) {
+            hostBinding.provider.releaseMenuController(this, controller)
+        }
         // 对照原版 ReadBookActivity.onDestroy: 立即结束阅读计时 (不等待 end 的延迟结算)。
         // 阅读计时与朗读计时独立 (朗读期由朗读侧另记 READ_ALOUD), 朗读豁免期同样立即结束,
         // 避免页面退出后阅读时长虚增

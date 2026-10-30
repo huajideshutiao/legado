@@ -32,7 +32,6 @@ import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.FileAssociationDispatch
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.info.WebFileFlowTexts
-import io.legado.app.ui.book.info.WebFileImportShared
 import io.legado.app.ui.book.info.runWebFileReadFlow
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.source.BookSourceSort
@@ -580,8 +579,8 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         }
     }
 
-    // 对照 BookInfoActivity.onReadClick isWebFile 分支: 候选/压缩包条目/不支持格式确认交给共享阶段
-    // (四端同一套 Compose 呈现, 阶段归发起页面), 本端只给叶子: 下载 / 取条目 / 导入 / 交系统打开
+    // 对照 BookInfoActivity.onReadClick isWebFile 分支: 整条链 (候选/下载/条目/导入/打开) 都在
+    // 本请求里顺序执行 (见 runWebFileReadFlow), 阶段与失败/取消回执归本请求
     override fun handleWebFileRead(
         book: Book,
         scope: CoroutineScope,
@@ -590,37 +589,30 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         onSuccess: ((Book) -> Unit)?,
     ) {
         scope.launch {
-            // 对照 BaseReadViewModel.loadWebFile: 本地书无书源, 其余按 origin 查源
-            val source = if (book.origin != BookType.localTag) {
-                appDb.bookSourceDao.getBookSource(book.origin)
-            } else null
-            // 构建 webFile 列表的平台无关段已下沉 WebFileImportShared (同 BaseReadViewModel.loadWebFile)
-            val webFiles = WebFileImportShared.buildWebFiles(book, source)
-            withContext(Dispatchers.Main) {
-                if (webFiles.isEmpty()) {
-                    Toasters.get().toast("Unexpected webFileData")
-                    return@withContext
-                }
-                runWebFileReadFlow(
-                    book = book,
-                    scope = scope,
-                    stages = stages,
-                    onWaitDialog = onWaitDialog,
-                    webFiles = webFiles,
-                    texts = WebFileFlowTexts(
-                        selectDownloadItem = syncGetString("download_and_import_file"),
-                        selectArchiveEntry = syncGetString("import_select_book"),
-                        unsupportedTitle = syncGetString("draw"),
-                        unsupportedMessage = { name -> syncGetString("file_not_supported", name) },
-                        openWithSystem = syncGetString("open_fun"),
-                        unsupportedArchiveEntry = syncGetString("unsupport_archivefile_entry"),
-                    ),
-                    // 不支持格式: 下载后交系统程序打开 (openFileUri 通道)
-                    openDownloadedFile = { path -> openFileWithSystem(path) },
-                    onSuccess = onSuccess,
-                )
-            }
+            val merged = runWebFileReadFlow(
+                book = book,
+                stages = stages,
+                onWaitDialog = onWaitDialog,
+                texts = desktopWebFileTexts(),
+            )
+            if (merged != null) withContext(Dispatchers.Main) { onSuccess?.invoke(merged) }
         }
+    }
+
+    /** 共享流程的本端文案 (沿用 compose 资源键)。 */
+    private fun desktopWebFileTexts() = WebFileFlowTexts(
+        noWebFile = "Unexpected webFileData",
+        selectDownloadItem = syncGetString("download_and_import_file"),
+        selectArchiveEntry = syncGetString("import_select_book"),
+        unsupportedTitle = syncGetString("draw"),
+        unsupportedMessage = { name -> syncGetString("file_not_supported", name) },
+        openWithSystem = syncGetString("open_fun"),
+        unsupportedArchiveEntry = syncGetString("unsupport_archivefile_entry"),
+    )
+
+    /** 不支持的格式: 下载后交系统程序打开 (桌面等价通道 openFileWithSystem)。 */
+    override suspend fun openLocalFileWithSystem(path: String) {
+        withContext(Dispatchers.Main) { openFileWithSystem(path) }
     }
 
     // 对照 RemoteBookActivity.startRead 的 archive 分支: 在书籍保存目录里找已下载的压缩包,

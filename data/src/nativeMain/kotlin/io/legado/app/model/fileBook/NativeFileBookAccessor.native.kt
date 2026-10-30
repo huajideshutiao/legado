@@ -30,6 +30,7 @@ import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.atomicWriteTempPath
 import io.legado.app.utils.inputStream
 import io.legado.app.utils.toInputStream
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
@@ -140,7 +141,9 @@ class NativeFileBookAccessor : FileBookAccessor {
                 val entryName = saveFileName ?: entry.name.substringAfterLast('/')
                 if (!FileBook.isBookFile(entryName) && !AppPattern.archiveFileRegex.matches(entryName)) continue
                 parent?.ensureActive()
-                val savedUri = saveBookFile(zip.readDecompressed(meta).toInputStream(), entryName)
+                val savedUri = saveBookFile(
+                    zip.readDecompressed(meta).toInputStream(), entryName, parent,
+                )
                 val imported = importLocalFile(savedUri, parent).apply {
                     origin = "${BookType.localTag}::${archiveFile.name}"
                     addType(BookType.archive)
@@ -244,7 +247,7 @@ class NativeFileBookAccessor : FileBookAccessor {
             str, source = source, callTimeout = 0,
             coroutineContext = currentCoroutineContext()
         ).getByteArrayAwait()
-        return saveBookFile(bytes.toInputStream(), fileName)
+        return saveBookFile(bytes.toInputStream(), fileName, currentCoroutineContext()[Job])
     }
 
     /**
@@ -299,7 +302,11 @@ class NativeFileBookAccessor : FileBookAccessor {
         return "file://" + file.absolutePath
     }
 
-    override fun saveBookFile(inputStream: InputStream, fileName: String): String {
+    override fun saveBookFile(
+        inputStream: InputStream,
+        fileName: String,
+        parent: Job?,
+    ): String {
         // native 端无 SAF, 写入有效书籍保存目录 (用户在"书籍保存位置"选定;
         // app 端走 defaultBookTreeUri + DocumentFile; 未设置时 requireBookSaveDir 抛异常,
         // 由调用链既有的"去设置目录"出口拉起目录选择器)
@@ -320,7 +327,11 @@ class NativeFileBookAccessor : FileBookAccessor {
             }
         }
         try {
+            // 进入物化前核父资格: 已撤销的请求不再读整份字节
+            parent?.ensureActive()
             val bytes = inputStream.readFully()
+            // 进入正式提交 (替换正式名) 之前再核一次: 已撤销不得动正式件
+            parent?.ensureActive()
             // 整份临时件就位后再替换正式名: 写途中失败保留旧完整内容
             if (!writeBytesAtomically(file.path, bytes)) {
                 throw NoStackTraceException("写入书籍文件失败: ${file.path}")

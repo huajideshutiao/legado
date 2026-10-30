@@ -1,22 +1,30 @@
 package io.legado.app.ui.book.info
 
+import io.legado.app.constant.BookType
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
+import io.legado.app.help.book.BookChapterLoader
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.help.toast.Toasters
+import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.root.ImportConfirmAction
 import io.legado.app.ui.root.ImportStageHost
+import io.legado.app.ui.root.ensureBookSaveDirSelected
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.widget.dialog.WaitDialogHandle
-import kotlinx.coroutines.CoroutineScope
+import io.legado.app.ui.widget.dialog.awaitWaitDialogDismissed
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.resume
-import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
- * 下载项对话框与压缩包选条目的文案 (各端用自己的字符串表构造, 共享层不猜资源键)。
+ * 共享流程的文案 (各端用自己的字符串表构造, 共享层不猜资源键)。
  */
 data class WebFileFlowTexts(
+    val noWebFile: String,
     val selectDownloadItem: String,
     val selectArchiveEntry: String,
     val unsupportedTitle: String,
@@ -26,114 +34,159 @@ data class WebFileFlowTexts(
 )
 
 /**
- * webFile 下载导入流程的共享实现 (对照 app 端 `showWebFileDownloadAlert` +
+ * webFile 下载导入链的共享实现 (对照 app 端 `showWebFileDownloadAlert` +
  * `showDecompressFileImportAlert` + 不支持格式的 `open_fun` 分支)。
  *
- * 之前四端各写一份同样的分支与各自的对话框 (安卓 `activity.selector`、桌面
- * `DesktopDialogRequest.SelectList`、iOS/鸿蒙 `presentSelectList` / `UIAlertController`): 框挂在
- * 各端宿主上, 宿主重建就消失, 而等待方 (页面请求) 还在飞 —— 请求再也拿不到回执。现在选择与确认
- * 都经 [ImportStageHost] 挂起到真回执, 框由共享 Compose 层从页面模型读阶段来画; 平台只剩
- * "下载"/"取压缩包条目"/"导入"/"交系统打开"四个叶子 (仍由各端能力实现)。
+ * 三条硬性质:
+ * 1. **全链挂本请求**: 下载/列举/导入/打开都在调用方这条 Job 上顺序执行, 不起兄弟任务后提前返回;
+ *    请求真撤时整条链随撤 (底层 accessor 已有父门, 见 `importBookFromArchive` 的 parent 传参)。
+ * 2. **真回执**: 下载/列举/导入直接复用现成挂起实现 ([WebFileImportShared]), 失败与取消以原异常
+ *    抛回原等待者, 不再用"只成功回调"的适配层 (那种适配在失败时永不结束)。
+ * 3. **阶段归请求**: 候选/条目/确认经 [ImportStageHost] 挂起等真回执; 关闭与返回也是一次真回执。
  *
- * @param openDownloadedFile 不支持格式时把已下载文件交系统打开 (各端叶子)
+ * 打开已下载文件走 [PlatformCapabilityProviders] 的当前实现 (不捕获发起时的 Activity),
+ * 配置重建由新宿主承接, 重建间隙挂起等待 —— 见各端 `openLocalFileWithSystem`。
+ *
+ * @return 导入成功的书; 用户取消或没有可导入项时 null
  */
 suspend fun runWebFileReadFlow(
     book: Book,
-    scope: CoroutineScope,
     stages: ImportStageHost,
     onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
-    webFiles: List<FileBook.WebFile>,
     texts: WebFileFlowTexts,
-    openDownloadedFile: (String) -> Unit,
-    onSuccess: ((Book) -> Unit)?,
-) {
-    val platform = PlatformCapabilityProviders.get()
-    val index = stages.choose(
-        title = texts.selectDownloadItem,
-        items = webFiles.map { it.name },
-    ) ?: return
-    val webFile = webFiles.getOrNull(index) ?: return
-    when {
-        webFile.isSupported -> platform.importWebFile(
-            book = book,
-            webFile = webFile,
-            scope = scope,
-            onWaitDialog = onWaitDialog,
-            success = { onSuccess?.invoke(it) },
-        )
+): Book? {
+    // 对照 BaseReadViewModel.loadWebFile: 本地书无书源, 其余按 origin 查源
+    val source = if (book.origin != BookType.localTag) {
+        withContext(IoDispatcher) { AppDbProviders.get().bookSourceDao.getBookSource(book.origin) }
+    } else null
+    // 构建 webFile 列表的平台无关段已下沉 WebFileImportShared (同 BaseReadViewModel.loadWebFile)
+    val webFiles = withContext(IoDispatcher) { WebFileImportShared.buildWebFiles(book, source) }
+    if (webFiles.isEmpty()) {
+        Toasters.get().toast(texts.noWebFile)
+        return null
+    }
+    val index = stages.choose(texts.selectDownloadItem, webFiles.map { it.name }) ?: return null
+    val webFile = webFiles.getOrNull(index) ?: return null
+    return when {
+        webFile.isSupported -> importWebFile(book, webFile, onWaitDialog)
 
         webFile.isSupportDecompress -> {
-            val path = downloadWebFile(book, webFile, scope, onWaitDialog) ?: return
-            val names = archiveEntryNames(path, scope) ?: return
+            val path = downloadWebFile(book, webFile, onWaitDialog) ?: return null
+            val names = withContext(IoDispatcher) { WebFileImportShared.getArchiveFilesName(path) }
             when {
-                names.isEmpty() -> Toasters.get().toast(texts.unsupportedArchiveEntry)
+                // 后缀/内容不是可导入压缩包: 如实提示并收口 (原版同文案)
+                names.isEmpty() -> {
+                    Toasters.get().toast(texts.unsupportedArchiveEntry)
+                    null
+                }
                 // 只有一个条目: 没有可选项, 直接导入 (对照原版 size == 1 分支)
-                names.size == 1 -> platform.importBookFromArchive(
-                    archiveFilePath = path,
-                    archiveEntryName = names[0],
-                    book = book,
-                    scope = scope,
-                    onWaitDialog = onWaitDialog,
-                    success = { onSuccess?.invoke(it) },
-                )
+                names.size == 1 -> importFromArchive(path, names[0], book, onWaitDialog)
 
                 else -> {
-                    val entry = stages.choose(
-                        title = texts.selectArchiveEntry,
-                        items = names,
-                    ) ?: return
-                    val name = names.getOrNull(entry) ?: return
-                    platform.importBookFromArchive(
-                        archiveFilePath = path,
-                        archiveEntryName = name,
-                        book = book,
-                        scope = scope,
-                        onWaitDialog = onWaitDialog,
-                        success = { onSuccess?.invoke(it) },
-                    )
+                    val entry = stages.choose(texts.selectArchiveEntry, names) ?: return null
+                    val name = names.getOrNull(entry) ?: return null
+                    importFromArchive(path, name, book, onWaitDialog)
                 }
             }
         }
 
         else -> {
+            // 原版 alert 只有"打开方式"(neutral) 与"取消"(negative) 两个出口, 没有确定键:
+            // 多给一个只关闭而不打开的确定键会改变用户可做的选择
             val action = stages.confirm(
                 title = texts.unsupportedTitle,
                 message = texts.unsupportedMessage(webFile.name),
                 neutralText = texts.openWithSystem,
             )
-            if (action != ImportConfirmAction.Neutral) return
-            val path = downloadWebFile(book, webFile, scope, onWaitDialog) ?: return
-            withContext(mainDispatcher) { openDownloadedFile(path) }
+            if (action != ImportConfirmAction.Neutral) return null
+            val path = downloadWebFile(book, webFile, onWaitDialog) ?: return null
+            withContext(mainDispatcher) {
+                PlatformCapabilityProviders.get().openLocalFileWithSystem(path)
+            }
+            null
         }
     }
 }
 
 /**
- * 下载叶子适配: 平台下载是回调式 (`success: (String) -> Unit`) 且失败只记日志、不回调,
- * 故这里按请求 scope 挂起等这一次成功回执; 请求撤销时随 scope 取消, 不再等一个不会到的回调。
+ * 保存位置未设时挂起等用户选定, 选定即重试一次 (原先只发一个单向动作就收口)。
+ *
+ * 用户取消选目录 **是正常终结** (返回 null), 不是失败: 不再拿 [InvalidBooksDirException]
+ * 冒充失败上抛; 选择器真实失败的原异常由 [ensureBookSaveDirSelected] 原样抛回原等待者。
  */
-private suspend fun downloadWebFile(
-    book: Book,
-    webFile: FileBook.WebFile,
-    scope: CoroutineScope,
+private suspend fun <T> withBookSaveDir(block: suspend () -> T): T? = try {
+    block()
+} catch (e: InvalidBooksDirException) {
+    if (!ensureBookSaveDirSelected(currentCoroutineContext()[Job])) null else block()
+}
+
+/**
+ * 本请求的等待框: 开框 → 执行 → 等框确实离开界面再返回。
+ * 收框放 [NonCancellable]: 请求被撤时框也必须收掉 (本就属于本请求的显示对象)。
+ */
+private suspend fun <T> withWaitDialog(
     onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
-): String? = suspendCancellableCoroutine { cont ->
-    PlatformCapabilityProviders.get().downloadWebFile(
-        book = book,
-        webFile = webFile,
-        scope = scope,
-        onWaitDialog = onWaitDialog,
-    ) { path ->
-        if (cont.isActive) cont.resume(path)
+    block: suspend () -> T,
+): T {
+    val handle = WaitDialogHandle()
+    withContext(mainDispatcher) { onWaitDialog(true, handle) }
+    try {
+        return block()
+    } finally {
+        withContext(NonCancellable) {
+            awaitWaitDialogDismissed(
+                { withContext(mainDispatcher) { onWaitDialog(false, handle) } },
+                handle,
+            )
+        }
     }
 }
 
-/** 压缩包条目列举适配 (同上: 回调式叶子, 挂起等这一次结果)。 */
-private suspend fun archiveEntryNames(
-    archiveFilePath: String,
-    scope: CoroutineScope,
-): List<String>? = suspendCancellableCoroutine { cont ->
-    PlatformCapabilityProviders.get().getArchiveFilesName(archiveFilePath, scope) { names ->
-        if (cont.isActive) cont.resume(names)
+/**
+ * 导入 webFile 并落目录 (对照 app 端 `BookInfoViewModel.importWebFile`)。
+ *
+ * 目录落库统一走 [BookChapterLoader.fetchFromSource] (与阅读页同一条链),
+ * 不另写一份"取目录 + 落库"。
+ */
+private suspend fun importWebFile(
+    book: Book,
+    webFile: FileBook.WebFile,
+    onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
+): Book? = withWaitDialog(onWaitDialog) {
+    withBookSaveDir {
+        val merged = withContext(IoDispatcher) { WebFileImportShared.importWebFile(book, webFile) }
+        withContext(IoDispatcher) {
+            BookChapterLoader.fetchFromSource(merged, WebFileImportShared.bookSourceOf(merged))
+        }
+        merged
+    }
+}
+
+/** 仅下载 webFile 并返回保存引用 (对照 app 端 `BookInfoViewModel.downloadWebFile`)。 */
+private suspend fun downloadWebFile(
+    book: Book,
+    webFile: FileBook.WebFile,
+    onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
+): String? = withWaitDialog(onWaitDialog) {
+    withBookSaveDir {
+        withContext(IoDispatcher) { WebFileImportShared.downloadWebFile(book, webFile) }
+    }
+}
+
+/** 从压缩包条目导入并落目录 (对照 app 端 `importBookFromArchive`)。 */
+private suspend fun importFromArchive(
+    archivePath: String,
+    archiveEntryName: String,
+    book: Book,
+    onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
+): Book? = withWaitDialog(onWaitDialog) {
+    withBookSaveDir {
+        val imported = withContext(IoDispatcher) {
+            WebFileImportShared.importBookFromArchive(archivePath, archiveEntryName, book)
+        }
+        withContext(IoDispatcher) {
+            BookChapterLoader.fetchFromSource(imported, WebFileImportShared.bookSourceOf(imported))
+        }
+        imported
     }
 }

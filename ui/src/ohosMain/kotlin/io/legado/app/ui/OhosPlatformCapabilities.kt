@@ -46,7 +46,6 @@ import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.service.defaultTtsEngineConfig
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.info.WebFileFlowTexts
-import io.legado.app.ui.book.info.WebFileImportShared
 import io.legado.app.ui.book.info.runWebFileReadFlow
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.manage.selectedSourcesJson
@@ -301,8 +300,8 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     // "下载 / 取压缩包条目 / 导入 / 交其它应用打开" 四个叶子 (无系统应用打开通道,
     // 同 iOS 用系统分享面板把文件交给其它 app)。
 
-    // 对照 BookInfoActivity.onReadClick isWebFile 分支: 候选/压缩包条目/不支持格式确认交给共享阶段
-    // (四端同一套 Compose 呈现, 阶段归发起页面), 本端只给叶子: 下载 / 取条目 / 导入 / 交其它应用打开
+    // 对照 BookInfoActivity.onReadClick isWebFile 分支: 整条链 (候选/下载/条目/导入/打开) 都在
+    // 本请求里顺序执行 (见 runWebFileReadFlow), 阶段与失败/取消回执归本请求
     override fun handleWebFileRead(
         book: Book,
         scope: CoroutineScope,
@@ -311,36 +310,19 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
         onSuccess: ((Book) -> Unit)?,
     ) {
         scope.launch {
-            // 对照 BaseReadViewModel.loadWebFile: 本地书无书源, 其余按 origin 查源
-            val source = if (book.origin != BookType.localTag) {
-                appDb.bookSourceDao.getBookSource(book.origin)
-            } else null
-            val webFiles = WebFileImportShared.buildWebFiles(book, source)
-            if (webFiles.isEmpty()) {
-                Toasters.get().toast("Unexpected webFileData")
-                return@launch
-            }
-            runWebFileReadFlow(
+            val merged = runWebFileReadFlow(
                 book = book,
-                scope = scope,
                 stages = stages,
                 onWaitDialog = onWaitDialog,
-                webFiles = webFiles,
                 texts = ohosWebFileTexts(),
-                // 鸿蒙无"按扩展名把本地文件交系统应用打开"的通道 (安卓 openFileUri 那条),
-                // 用系统分享面板把文件交给其它 app (与 iOS presentShareSheet 同款出口);
-                // MIME 用 application/octet-stream: 鸿蒙侧按 UTD 反查, 认不出具体类型也照常
-                // 出现在候选应用里 (与 iOS 不带类型同口径), 不自行猜 MIME。
-                openDownloadedFile = { path ->
-                    services.sharing.shareFile(path, "application/octet-stream")
-                },
-                onSuccess = onSuccess,
             )
+            if (merged != null) withContext(Dispatchers.Main) { onSuccess?.invoke(merged) }
         }
     }
 
     /** 共享流程的本端文案 (沿用 compose 资源键)。 */
     private fun ohosWebFileTexts() = WebFileFlowTexts(
+        noWebFile = "Unexpected webFileData",
         selectDownloadItem = syncGetString("download_and_import_file"),
         selectArchiveEntry = syncGetString("import_select_book"),
         unsupportedTitle = syncGetString("draw"),
@@ -348,6 +330,19 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
         openWithSystem = syncGetString("open_fun"),
         unsupportedArchiveEntry = syncGetString("unsupport_archivefile_entry"),
     )
+
+    /**
+     * 不支持的格式: 下载后交其它应用打开。
+     *
+     * 鸿蒙无"按扩展名把本地文件交系统应用打开"的通道 (安卓 openFileUri 那条), 用系统分享面板
+     * 把文件交给其它 app (与 iOS 同款出口); MIME 用 application/octet-stream: 鸿蒙侧按 UTD 反查,
+     * 认不出具体类型也照常出现在候选应用里 (与 iOS 不带类型同口径), 不自行猜 MIME。
+     */
+    override suspend fun openLocalFileWithSystem(path: String) {
+        withContext(Dispatchers.Main) {
+            services.sharing.shareFile(path, "application/octet-stream")
+        }
+    }
 
     // 对照 RemoteBookActivity.startRead 的 archive 分支 + Android startReadRemoteArchive:
     // 在有效书籍保存目录里找已下载的压缩包 (目录与 NativeFileBookAccessor 同源),

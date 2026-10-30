@@ -31,6 +31,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -357,39 +358,6 @@ interface PlatformCapabilities {
         unsupported("下架书目")
     }
 
-    // webFile 下载导入相关 (对照 BookInfoViewModel.importWebFile 等方法)
-    /** 导入 webFile 到本地书籍 (对照 BookInfoViewModel.importWebFile) */
-    fun importWebFile(
-        book: Book,
-        webFile: FileBook.WebFile,
-        scope: CoroutineScope,
-        onWaitDialog: (Boolean, WaitDialogHandle) -> Unit = { _, _ -> },
-        success: ((Book) -> Unit)? = null,
-    ) = unsupported("导入 Web 文件")
-
-    /** 下载 webFile 返回文件路径 (对照 BookInfoViewModel.downloadWebFile) */
-    fun downloadWebFile(
-        book: Book,
-        webFile: FileBook.WebFile,
-        scope: CoroutineScope,
-        onWaitDialog: (Boolean, WaitDialogHandle) -> Unit = { _, _ -> },
-        success: ((String) -> Unit)? = null,
-    ) = unsupported("下载 Web 文件")
-
-    /** 获取压缩包内文件名列表 (对照 BookInfoViewModel.getArchiveFilesName) */
-    fun getArchiveFilesName(archiveFilePath: String, scope: CoroutineScope, onSuccess: (List<String>) -> Unit) =
-        unsupported("获取压缩包文件名")
-
-    /** 从压缩包导入书籍 (对照 BookInfoViewModel.importBookFromArchive) */
-    fun importBookFromArchive(
-        archiveFilePath: String,
-        archiveEntryName: String,
-        book: Book,
-        scope: CoroutineScope,
-        onWaitDialog: (Boolean, WaitDialogHandle) -> Unit = { _, _ -> },
-        success: ((Book) -> Unit)? = null,
-    ) = unsupported("从压缩包导入书籍")
-
     /**
      * 从 WebDav 拉本地书的远端更新 (对照 BookInfoViewModel.refreshWebDavBook)。
      * suspend 而非回调, 调用方需在拉完后才读 book.bookUrl; 无 WebDav 书能力的平台默认空实现。
@@ -409,6 +377,14 @@ interface PlatformCapabilities {
         stages: ImportStageHost,
         onSuccess: ((Book) -> Unit)? = null,
     ) = unsupported("下载并阅读 Web 文件")
+
+    /**
+     * 用系统程序打开已下载的本地文件 (对照 app 端 `activity.openFileUri(path, "*/*")`)。
+     *
+     * 由**当前注册实现**在调用时承接: 配置重建后是新宿主的实例, 重建间隙由实现自己
+     * 挂起等同窗可呈现的宿主 (真退出随请求撤销), 不在调用方捕获旧 Activity。
+     */
+    suspend fun openLocalFileWithSystem(path: String) = unsupported("用系统程序打开本地文件")
 
     /** 简介动作 JS 派发 (对照 onDispatchIntroAction / source.evalJS) */
     fun evalIntroAction(book: Book, js: String) = unsupported("执行简介动作")
@@ -852,8 +828,16 @@ interface PlatformCapabilities {
 object PlatformCapabilityProviders {
     private var provider: PlatformCapabilities? = null
 
+    /**
+     * 当前注册实例的变化流: 宿主重建时新实例注册会发出新值。
+     * 供"必须落在可呈现窗口上"的能力 (如交系统打开文件) 等在重建间隙接纳请求, 而不是误判退出。
+     */
+    private val _current = MutableStateFlow<PlatformCapabilities?>(null)
+    val current: StateFlow<PlatformCapabilities?> = _current.asStateFlow()
+
     fun register(value: PlatformCapabilities) {
         provider = value
+        _current.value = value
     }
 
     fun get(): PlatformCapabilities = provider

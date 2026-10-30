@@ -13,7 +13,6 @@ import io.legado.app.data.entities.Review
 import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.exception.LocalBookSourceFileDeleteException
 import io.legado.app.help.AppWebDavShared
-import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.delBookCore
 import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.config.LocalConfigKeys
@@ -23,14 +22,12 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.Toasters
-import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.info.WebFileImportShared
 import io.legado.app.ui.book.manage.reportLocalBookSourceFileDeleteFailure
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.read.config.importFontFileToInternalDir
 import io.legado.app.ui.route.encodeReviewListDialogPayload
 import io.legado.app.ui.widget.dialog.WaitDialogHandle
-import io.legado.app.ui.widget.dialog.awaitWaitDialogDismissed
 import io.legado.app.ui.withLocalDirAccess
 import io.legado.app.utils.FlowBus
 import io.legado.app.web.WebServerManager
@@ -192,155 +189,6 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
         }
     }
 
-    // ===== webFile 下载导入链路 (对照 app 端 BookInfoViewModel 同名方法) =====
-    //
-    // 平台无关编排全在 [WebFileImportShared] (构建 webFile 列表 / 下载 / 从压缩包导入),
-    // 目录落库统一经 [BookChapterLoader.fetchFromSource] (与阅读页同一条链),
-    // 不另写一份"取目录 + 落库"。
-    // 平台边界: 等待框 [onWaitDialog] 由调用方传入; 候选/确认框走共享阶段 (ImportStageHost),
-    // 只有"下载后交系统打开"留在各端 (四端通道不同)。
-    // 保存位置未设时不再是"发一个去设置目录动作就收口": 这里挂起等用户真选定并重试一次 ——
-    // 原先动作是单向的 (replay=0), 没有收集者或用户稍后才选, 本次请求就永久悬着。
-
-    /** 导入 webFile 为本地书 (对照 app 端 `BookInfoViewModel.importWebFile`)。 */
-    override fun importWebFile(
-        book: Book,
-        webFile: FileBook.WebFile,
-        scope: CoroutineScope,
-        onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
-        success: ((Book) -> Unit)?,
-    ) {
-        scope.launch {
-            val handle = WaitDialogHandle()
-            try {
-                withContext(mainDispatcher) { onWaitDialog(true, handle) }
-                // 保存位置未设: 挂起等用户真选定并重试一次 (取消/失败仍以原异常收口)
-                val merged = try {
-                    importMerged(book, webFile)
-                } catch (e: InvalidBooksDirException) {
-                    if (!ensureBookSaveDirSelected(currentCoroutineContext()[Job])) throw e
-                    importMerged(book, webFile)
-                }
-                // 先收加载框、等它确实离开界面, 再交成功回调 (回调里会发起页面跳转): 框与跳转
-                // 落在同一主线程消息时, 合成出的第一帧仍是框还在的画面, 整段转场都会带着它
-                // (原版是 "关框 → 打开页面" 的顺序)
-                awaitWaitDialogDismissed(
-                    { withContext(mainDispatcher) { onWaitDialog(false, handle) } },
-                    handle,
-                )
-                withContext(mainDispatcher) { success?.invoke(merged) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                AppLog.put("ImportWebFileError\n${e.message}", e, true)
-            } finally {
-                // 请求被撤销时也要把本请求的等待框收掉
-                withContext(NonCancellable + mainDispatcher) { onWaitDialog(false, handle) }
-            }
-        }
-    }
-
-    /** 导入并落目录 (importWebFile 的实体; 保存位置未设时可整体重试一次)。 */
-    private suspend fun importMerged(book: Book, webFile: FileBook.WebFile): Book =
-        withContext(IoDispatcher) {
-            val local = WebFileImportShared.importWebFile(book, webFile)
-            BookChapterLoader.fetchFromSource(
-                local,
-                WebFileImportShared.bookSourceOf(local),
-            )
-            local
-        }
-
-    /** 仅下载 webFile 并回传保存引用 (对照 app 端 `BookInfoViewModel.downloadWebFile`)。 */
-    override fun downloadWebFile(
-        book: Book,
-        webFile: FileBook.WebFile,
-        scope: CoroutineScope,
-        onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
-        success: ((String) -> Unit)?,
-    ) {
-        scope.launch {
-            val handle = WaitDialogHandle()
-            try {
-                withContext(mainDispatcher) { onWaitDialog(true, handle) }
-                // 保存位置未设: 挂起等用户真选定并重试一次 (同 importWebFile)
-                val path = try {
-                    withContext(IoDispatcher) { WebFileImportShared.downloadWebFile(book, webFile) }
-                } catch (e: InvalidBooksDirException) {
-                    if (!ensureBookSaveDirSelected(currentCoroutineContext()[Job])) throw e
-                    withContext(IoDispatcher) { WebFileImportShared.downloadWebFile(book, webFile) }
-                }
-                awaitWaitDialogDismissed(
-                    { withContext(mainDispatcher) { onWaitDialog(false, handle) } },
-                    handle,
-                )
-                withContext(mainDispatcher) { success?.invoke(path) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                AppLog.put("DownloadWebFileError\n${e.message}", e, true)
-            } finally {
-                // 请求被撤销时也要把本请求的等待框收掉
-                withContext(NonCancellable + mainDispatcher) { onWaitDialog(false, handle) }
-            }
-        }
-    }
-
-    /** 列出压缩包内可导入的条目名 (对照 app 端 `BookInfoViewModel.getArchiveFilesName`)。 */
-    override fun getArchiveFilesName(archiveFilePath: String, scope: CoroutineScope, onSuccess: (List<String>) -> Unit) {
-        scope.launch {
-            try {
-                val names = withContext(IoDispatcher) {
-                    WebFileImportShared.getArchiveFilesName(archiveFilePath)
-                }
-                withContext(mainDispatcher) { onSuccess(names) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                AppLog.put("getArchiveEntriesName Error:\n${e.message}", e, true)
-            }
-        }
-    }
-
-    /** 从压缩包内指定条目导入 (对照 app 端 `BookInfoViewModel.importBookFromArchive`)。 */
-    override fun importBookFromArchive(
-        archiveFilePath: String,
-        archiveEntryName: String,
-        book: Book,
-        scope: CoroutineScope,
-        onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
-        success: ((Book) -> Unit)?,
-    ) {
-        scope.launch {
-            val handle = WaitDialogHandle()
-            try {
-                withContext(mainDispatcher) { onWaitDialog(true, handle) }
-                val merged = withContext(IoDispatcher) {
-                    val imported = WebFileImportShared.importBookFromArchive(
-                        archiveFilePath, archiveEntryName, book,
-                    )
-                    BookChapterLoader.fetchFromSource(
-                        imported,
-                        WebFileImportShared.bookSourceOf(imported),
-                    )
-                    imported
-                }
-                awaitWaitDialogDismissed(
-                    { withContext(mainDispatcher) { onWaitDialog(false, handle) } },
-                    handle,
-                )
-                withContext(mainDispatcher) { success?.invoke(merged) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                AppLog.put("importArchiveBook Error\n${e.message}", e, true)
-            } finally {
-                // 请求被撤销时也要把本请求的等待框收掉
-                withContext(NonCancellable + mainDispatcher) { onWaitDialog(false, handle) }
-            }
-        }
-    }
-
     /**
      * 从 WebDav 拉本地书的远端更新 (对照 app 端 `BookInfoViewModel.refreshWebDavBook`)。
      *
@@ -351,10 +199,10 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
      * # 保存位置未设置时的行为
      * 共享层 [AppWebDavShared.checkBookSaveDir] 在 [io.legado.app.help.book.effectiveBookSaveDir]
      * 为 null 时抛 [InvalidBooksDirException] (文案 = 原版 `R.string.no_books_dir`);
-     * 下面的“去设置目录”出口把它转成目录选择器 —— 与
-     * `importWebFile`/`downloadWebFile` 的"保存位置未设"出口同一入口
+     * 下面的“去设置目录”出口把它转成目录选择器 —— 与 webFile 下载导入链的
+     * "保存位置未设"出口同一入口
      * ([PlatformCapabilities.pickBookTreeUri])、同一偏好键。
-     * 选目录是平台 UI, 归主线程; 用户取消时不动既有配置, 本阶段以原异常收口 (调用方照旧记日志).
+     * 选目录是平台 UI, 归主线程; 用户取消 = 本次正常终结 (不动既有配置, 不报假失败).
      * 选定后**先重试本次远端更新再返回** —— 本方法在这个阶段挂住等真回执:
      * 原先拉起选择器后立即上抛, 抛出的瞬间父 Job 就结了, 选择器随之被撤,
      * 用户真选了目录也等于白选 (而这里恰好是唯一能把目录设好的入口)。
@@ -367,18 +215,21 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
         } catch (e: InvalidBooksDirException) {
             // 取本 suspend 调用的真实宿主请求 Job (withContext 之内的临时 Job 会随块退出立即撤掉刚起的选择)
             val pickerParent = currentCoroutineContext()[Job]
-            // 选定 = true; 用户取消/真实失败 = false (此时既有目录不动, 本阶段以原异常收口)
+            // 选定 = true; 用户取消 = false (本次正常终结, 既有目录不动); 真实失败由下面的
+            // catch 把选择器原异常抛回原等待者
             val selected = try {
                 reselectBookSaveDir(pickerParent)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (pickerError: Throwable) {
-                // 选择器真实失败 (不是用户取消): 用户可见提示 + 如实记一次, 本阶段仍以原异常收口
+                // 选目录真实失败 (不是用户取消): 用户可见提示 + 如实记一次, 并把**选择器原异常**
+                // 交回原等待者 —— 不再拿旧的 InvalidBooksDirException 顶替它
                 Toasters.get().toast(pickerError.message ?: "选择书籍目录失败")
                 AppLog.put("选择书籍目录失败", pickerError)
-                throw e
+                throw pickerError
             }
-            if (!selected) throw e
+            // 用户取消选目录: 本次正常终结 (不是失败), 不再上抛
+            if (!selected) return
             // 目录已可用: 重试本次远端更新 (真失败照旧上抛)
             AppWebDavShared.refreshWebDavBook(book)
         }
