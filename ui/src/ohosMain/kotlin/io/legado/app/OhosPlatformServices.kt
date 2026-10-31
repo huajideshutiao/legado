@@ -560,33 +560,23 @@ private object OhosFilePickerService : FilePickerService {
     // Phone (path 为 null) 折回挂载点路径后同样记入授权表 (该设备无目录授权持久化能力,
     // 登记即该路径在本用途下的唯一授权, 不做可读性过滤)
     override suspend fun pickDirectory(usage: DirUsage): String? {
-        val picked = try {
-            pickDirectoryPolicy(parent = currentCoroutineContext()[Job])
-        } catch (e: OhosFilePickerException) {
-            val message = e.message ?: "选择目录失败"
-            AppLog.put(message, e)
-            Toasters.get().toast(message)
-            return null
-        } ?: return null
+        // 先取原始结果再核当前资格: 父取消在消费边界以真实取消终态上抛, 不被折成用户取消
+        val picked = pickDirectoryPolicy(parent = currentCoroutineContext()[Job])
+        currentCoroutineContext().ensureActive()
+        picked ?: return null
         val convertedPath = picked.path
         if (convertedPath == null) {
             val legacyPath = picked.uri.toLegacySandboxPath()
             // 禁止把单文件父目录/不可访问路径记成目录授权: 必须确为可访问目录才登记
             if (!File(legacyPath).isDirectory) {
-                val message = "选中目录不可访问: $legacyPath"
-                AppLog.put(message)
-                Toasters.get().toast(message)
-                return null
+                throw OhosFilePickerException("选中目录不可访问: $legacyPath")
             }
             OhosDirAuthorizations.remember(picked.uri, legacyPath, usage)
             return legacyPath
         }
         // 官方转换不校验可访问性: 此刻临时授权在, 目录仍不可读即真实失败, 不假成功
         if (!File(convertedPath).isDirectory) {
-            val message = "选中目录不可访问: $convertedPath"
-            AppLog.put(message)
-            Toasters.get().toast(message)
-            return null
+            throw OhosFilePickerException("选中目录不可访问: $convertedPath")
         }
         OhosDirAuthorizations.remember(picked.uri, convertedPath, usage)
         return convertedPath

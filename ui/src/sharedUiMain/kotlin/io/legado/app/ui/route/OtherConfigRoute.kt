@@ -11,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.UserAgentProviders
 import io.legado.app.help.config.AppConfigProviders
@@ -162,8 +163,10 @@ fun OtherConfigRoute(
             onLocalPassword = { showLocalPasswordDialog = true },
             onUserAgent = { showUserAgentDialog = true },
             onBookTreeUri = {
-                platform.pickBookTreeUri { uri ->
-                    if (uri != null) {
+                platform.pickBookTreeUri { uri, err ->
+                    if (err != null) {
+                        AppLog.put("书籍保存目录选择器打开失败", err)
+                    } else if (uri != null) {
                         pref.putString(PreferKey.defaultBookTreeUri, uri)
                         screenModel.updateBookTreeUriSummary(uri)
                     }

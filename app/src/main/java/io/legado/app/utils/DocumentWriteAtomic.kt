@@ -5,6 +5,9 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import io.legado.app.constant.AppLog
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import java.io.InputStream
 import java.io.OutputStream
 
@@ -37,6 +40,8 @@ import java.io.OutputStream
  * 它的名字被它自己占着, 同目录就位改不掉它的名字; 且它的父目录通常没有写授权 (官方文档:
  * ACTION_CREATE_DOCUMENT 选出的文件只带该文件自身的读写授权, 建同级文档需要父目录的写权限)。
  *
+ * [parent] 的资格核验点与 [copyToDocumentAtomically] 相同 (字节整份无分块, 核在写入前与正式提交前)。
+ *
  * 用户选定目录没有孤儿件清点方 (见 [ATOMIC_WRITE_TEMP_SUFFIX] 的回收边界说明), 每条退出路径都
  * 自行清掉中间件, 只有进程被强杀会残留契约名可识别的临时件/过渡件。
  *
@@ -48,7 +53,8 @@ fun writeDocumentBytesAtomically(
     target: Uri,
     fileName: String,
     data: ByteArray,
-): Boolean = writeDocumentAtomically(context, target, fileName) { it.write(data) }
+    parent: Job? = null,
+): Boolean = writeDocumentAtomically(context, target, fileName, { it.write(data) }, parent)
 
 /**
  * 流式整份写入用户选定的 SAF 目录 (content:// 树 URI), 返回是否写入成功。
@@ -57,6 +63,10 @@ fun writeDocumentBytesAtomically(
  * 写: 大体积内容 (堆转储) 不该有整份内存峰值。内容只读一次 —— 没建出可用临时文档时内容还没被
  * 读出, 回落直写目标名; 内容已写进临时文档时就位不成立时把那份内容搬进目标名, 不再从流重读。
  *
+ * [parent] 是本次写入所属请求的资格: 临时文档写入每块前、正式提交 (挪旧件/改名就位) 前
+ * 都核一次, 已撤销的请求不再搬字节、更不得动正式件; 取消原样抛 [CancellationException],
+ * 不折成写入失败。
+ *
  * @param input 内容来源, 只在写临时文档或回落直写时读取一次, 由调用方负责关闭
  */
 fun copyToDocumentAtomically(
@@ -64,26 +74,43 @@ fun copyToDocumentAtomically(
     target: Uri,
     fileName: String,
     input: InputStream,
-): Boolean = writeDocumentAtomically(context, target, fileName) { input.copyTo(it) }
+    parent: Job? = null,
+): Boolean = writeDocumentAtomically(context, target, fileName, { output -> copyGatedTo(input, output, parent) }, parent)
+
+/**
+ * 按块把 [input] 复制进 [output], 每块前核 [parent] 资格 (与 FileUtilsCommon.copyToFile 同一做法):
+ * 撤销不必等整份复制完, 已撤销的请求不再继续搬字节。
+ */
+internal fun copyGatedTo(input: InputStream, output: OutputStream, parent: Job?) {
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    while (true) {
+        parent?.ensureActive()
+        val read = input.read(buffer)
+        if (read < 0) break
+        output.write(buffer, 0, read)
+    }
+}
 
 /**
  * 整份写入 [target] 下的 [fileName]: 同目录就位优先, 就位不成立时按直写回落。
  *
- * [writeContent] 最多执行一次。
+ * [writeContent] 最多执行一次。 [parent] 的资格核验点: 临时文档写入前、正式提交前;
+ * 直写回落时每块前 (写入即提交)。
  */
 private fun writeDocumentAtomically(
     context: Context,
     target: Uri,
     fileName: String,
     writeContent: (OutputStream) -> Unit,
+    parent: Job?,
 ): Boolean {
     if (!DocumentsContract.isTreeUri(target)) return target.writeContent(context, writeContent)
-    val parent = directoryDocumentUri(target)
-    return when (placeDocumentAtomically(context, parent, fileName, writeContent)) {
+    val parentDir = directoryDocumentUri(target)
+    return when (placeDocumentAtomically(context, parentDir, fileName, writeContent, parent)) {
         PlacementResult.Placed -> true
         PlacementResult.Failed -> false
         // 内容还没被读出: 直写目标名 (与不做就位处理时同一落点)
-        PlacementResult.Unsupported -> writeChildContent(context, parent, fileName, writeContent)
+        PlacementResult.Unsupported -> writeChildContent(context, parentDir, fileName, writeContent)
     }
 }
 
@@ -111,21 +138,31 @@ private fun placeDocumentAtomically(
     parentUri: Uri,
     fileName: String,
     writeContent: (OutputStream) -> Unit,
+    parent: Job?,
 ): PlacementResult {
     val resolver = context.contentResolver
     val tempName = "$fileName.${randomUUIDString()}$ATOMIC_WRITE_TEMP_SUFFIX"
     val tempUri = createTempDocument(resolver, parentUri, fileName, tempName)
         ?: return PlacementResult.Unsupported
 
-    val written = runCatching {
+    // 写入临时文档前核父: 已撤销的请求不建内容; 取消原样上抛 (临时文档在此清理), 不折成写入失败
+    parent?.ensureActive()
+    val written = try {
         resolver.openOutputStream(tempUri)?.use(writeContent) != null
-    }.getOrDefault(false)
+    } catch (e: CancellationException) {
+        deleteDocument(resolver, tempUri)
+        throw e
+    } catch (t: Throwable) {
+        false
+    }
     if (!written) {
         deleteDocument(resolver, tempUri)
         AppLog.put("SAF 临时文档写入失败, 目标保持原内容: $fileName")
         return PlacementResult.Failed
     }
 
+    // 进入正式提交 (挪旧件/改名就位) 之前最后核一次: 已撤销不得动正式件
+    parent?.ensureActive()
     // 改名不能顶替已有名字: 目标名上已有旧文档时先挪成过渡名, 目标名空出来
     val parkedUri = parkExistingDocument(resolver, parentUri, fileName)
     val renamed = runCatching {
@@ -139,7 +176,7 @@ private fun placeDocumentAtomically(
 
     AppLog.put("SAF 就位未落在目标名上: $fileName")
     val contentUri = renamed ?: tempUri
-    if (moveContentToChild(context, parentUri, contentUri, fileName)) {
+    if (moveContentToChild(context, parentUri, contentUri, fileName, parent)) {
         parkedUri?.let { deleteDocument(resolver, it) }
         return PlacementResult.Placed
     }
@@ -343,15 +380,23 @@ private fun moveContentToChild(
     parentUri: Uri,
     contentUri: Uri,
     fileName: String,
+    parent: Job?,
 ): Boolean {
     val resolver = context.contentResolver
     val existing = findChildDocument(resolver, parentUri, fileName)
     val childUri = existing ?: createChildDocument(resolver, parentUri, fileName) ?: return false
-    val copied = runCatching {
+    // 搬运是正式提交的一部分: 每块前核父, 取消不写半截目标 (新建的目标文档在此删除)
+    parent?.ensureActive()
+    val copied = try {
         resolver.openInputStream(contentUri)?.use { input ->
-            childUri.writeContent(context) { input.copyTo(it) }
+            childUri.writeContent(context) { copyGatedTo(input, it, parent) }
         } ?: false
-    }.getOrDefault(false)
+    } catch (e: CancellationException) {
+        if (existing == null) deleteDocument(resolver, childUri)
+        throw e
+    } catch (t: Throwable) {
+        false
+    }
     if (copied) {
         deleteDocument(resolver, contentUri)
         return true

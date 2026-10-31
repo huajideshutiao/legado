@@ -35,6 +35,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okio.FileSystem
@@ -213,13 +214,18 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
         // 有 parent 时选择工作挂原等待 Job (真退出随撤); 无 parent 的一次性入口用能力 scope
         val launchScope = parent?.let { CoroutineScope(it + mainDispatcher) } ?: capabilityScope
         launchScope.launch {
-            try {
-                onSelected(PlatformServiceProviders.get().files.pickDirectory(DirUsage.BookTree), null)
+            // 阻塞桥把父取消折成 null: 消费点核当前请求资格, 已取消不交付 (null 只留给真实用户取消);
+            // 平台结果/失败先确定, onSelected 只交一次, 其自身异常不属于平台失败
+            val selection = try {
+                val dir = PlatformServiceProviders.get().files.pickDirectory(DirUsage.BookTree)
+                currentCoroutineContext().ensureActive()
+                dir to null
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                onSelected(null, e)
+                null to e
             }
+            onSelected(selection.first, selection.second)
         }
     }
 

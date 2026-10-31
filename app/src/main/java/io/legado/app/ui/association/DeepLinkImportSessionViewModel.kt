@@ -111,8 +111,8 @@ class DeepLinkImportSessionViewModel : ViewModel(), ImportSessionHolder, ImportU
         if (changed) notifyWorkChanged()
     }
 
-    override fun put(value: ImportRetained) {
-        retained[value.session.request.id] = value
+    override fun put(retained: ImportRetained) {
+        this.retained[retained.session.request.id] = retained
         notifyWorkChanged()
     }
 

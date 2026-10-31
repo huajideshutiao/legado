@@ -90,6 +90,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -1016,13 +1017,18 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         // 有 parent 时选择工作挂原等待 Job (真退出随撤); 无 parent 的一次性入口用平台 scope
         val launchScope = parent?.let { CoroutineScope(it + Dispatchers.Main) } ?: scope
         launchScope.launch {
-            try {
-                onSelected(FileDialogs.pickDirectory("选择书籍目录")?.absolutePath, null)
+            // 平台结果/失败先确定; onSelected 只交一次, 其自身异常不属于平台失败。
+            // 受控选择能力 (withDialogCancel): 页面取消即关当次面板, 取消后不交结果
+            val selection = try {
+                withDialogCancel { handle ->
+                    FileDialogs.pickDirectory(title = "选择书籍目录", handle = handle)?.absolutePath
+                } to null
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                onSelected(null, e)
+                null to e
             }
+            onSelected(selection.first, selection.second)
         }
     }
 
@@ -1105,7 +1111,12 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     override fun importBookHasParentDir(): StateFlow<Boolean> = DesktopImportBook.hasParentDir
 
     override fun pickImportFolder() {
-        scope.launch { FileDialogs.pickDirectory("选择导入目录")?.let { DesktopImportBook.setRoot(it) } }
+        scope.launch {
+            val dir = withDialogCancel { handle ->
+                FileDialogs.pickDirectory(title = "选择导入目录", handle = handle)
+            }
+            dir?.let { DesktopImportBook.setRoot(it) }
+        }
     }
 
     override fun scanImportFolder() = DesktopImportBook.scan()

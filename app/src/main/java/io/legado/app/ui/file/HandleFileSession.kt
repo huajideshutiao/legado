@@ -9,10 +9,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.constant.AppLog
 import io.legado.app.utils.SelectImageContract
 import io.legado.app.utils.isContentScheme
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 
@@ -20,27 +22,34 @@ import kotlinx.coroutines.sync.Mutex
  * 一个宿主 Activity 内的文件选择会话: 承载「选择方式弹窗」([HandleFileDialog]) 与三个系统
  * 选择器通道, 由宿主 Activity 的字段持有, 随宿主存亡。
  *
- * 每次 [launch][HandleFileLauncher.launch] 是一个独立请求: 参数、弹窗与结果回调都归属该次请求,
- * 并发请求的结果互不串。同一系统通道一次只有一个在途系统调用, 新请求排队等旧调用真实回传
- * (Mutex 在宿主主线程上锁定/启动/释放)。
+ * 请求的消费资格/业务终态/真实SDK占用/暂存回执的权威在 [HandleFileRequestHost] (宿主
+ * ViewModel 持有的纯状态, 配置重建保留同一实例); 本会话只做 UI 执行 —— 弹窗、入口绑定、
+ * 通道占用与交付。每个会话在宿主作用域收集各请求的资格状态, 终结即关闭本会话的 UI,
+ * 权威与界面之间只有 StateFlow 一条通道, 权威不持任何界面引用。每次
+ * [launch][HandleFileLauncher.launch] 是一个独立请求, 并发请求的结果互不串; 同一系统通道
+ * 一次只有一个在途系统调用, 新请求排队等旧调用真实回传 (Mutex 在宿主主线程上锁定/启动/释放)。
  *
  * # 配置重建
- * - 带稳定 [key] 的请求 (发起方在重建后仍是同一个宿主, 如主界面的导入/图片目录选择)
- *   写入宿主状态并在新宿主重建后**重新绑定**: 未启动的弹窗重新展示, 已启动的系统结果交给
- *   同 key 的新回调;
- * - 无 key 的请求发起方已随页面/协程消亡, 重建后只作废: 系统旧结果只排空, 不交给新请求。
+ * - 带稳定 [key] 的请求 (发起方在重建后仍是同一个宿主) 凭 ViewModel 记录在重建后的新会话
+ *   **重新绑定**: 未启动的弹窗重新展示, 已启动的系统结果交给同 key 的新回调;
+ * - 无 key 的请求发起方已随页面/协程消亡, 重建后只作废: 系统旧结果只排空, 不交给新请求;
+ * - 本宿主销毁只解绑本会话的 UI (关弹窗/弃回调绑定/撤权限消费), 业务记录与真实SDK占用
+ *   不经此改动, 新宿主凭记录接回;
+ * - 进程重建后 ViewModel 记录不存在, 旧 Bundle 只剩各通道占用标志: 在途系统回执一律排空,
+ *   不凭保存状态生造消费资格。
  * - 不会释放一个当前调用未持有的锁。
  */
 class HandleFileSession(private val activity: AppCompatActivity) {
 
-    /** 所属宿主: 会话随宿主存亡, 构造后不再更换。 */
-    val hostActivity: AppCompatActivity get() = activity
+    /** 请求纯状态的宿主权威: 与宿主同 ViewModelStore, 随宿主存亡。 */
+    private val requestHost: HandleFileRequestHost =
+        ViewModelProvider(activity)[HandleFileRequestHost::class.java]
 
     /**
-     * 本宿主进行中的文件请求: 每次 launch 一个, 收口即移除。
+     * 本宿主进行中的文件请求: 每次 launch 一个, 关闭即移除。
      *
-     * 用并发快照集合: 撤销 (撤消费资格) 可能来自任意线程 (Job.invokeOnCompletion 的回调线程),
-     * 必须能在不持主线程的情况下安全遍历; 收口/登记仍只在主线程发生。
+     * 用并发快照集合: 撤销 (终结消费资格) 可能来自任意线程 (Job.invokeOnCompletion 的回调
+     * 线程), 必须能在不持主线程的情况下安全遍历; 登记/关闭仍只在主线程发生。
      */
     private val requests = java.util.concurrent.CopyOnWriteArrayList<Request>()
 
@@ -77,6 +86,8 @@ class HandleFileSession(private val activity: AppCompatActivity) {
                 drainTree = false
                 return@register
             }
+            // 真实SDK回执先终结真实在途事实, 再判交付/排空
+            request?.let { it.record.receiptSettled() }
             if (request != null && request.isActive) {
                 if (uri != null && uri.isContentScheme()) {
                     val modeFlags =
@@ -91,7 +102,7 @@ class HandleFileSession(private val activity: AppCompatActivity) {
                 }
                 request.holdOrDeliver(uri)
             } else {
-                // 已收口/已撤销: 真实回执只排空, 请求收口出集合 (不取持久授权、不交付)
+                // 已撤销/已解绑: 真实回执只排空, 不取持久授权、不交付
                 request?.finish()
             }
         }
@@ -107,6 +118,8 @@ class HandleFileSession(private val activity: AppCompatActivity) {
                 drainDoc = false
                 return@register
             }
+            // 真实SDK回执先终结真实在途事实, 再判交付/排空
+            request?.let { it.record.receiptSettled() }
             if (request != null && request.isActive) {
                 if (uri != null && uri.isContentScheme()) {
                     val modeFlags =
@@ -121,7 +134,7 @@ class HandleFileSession(private val activity: AppCompatActivity) {
                 }
                 request.holdOrDeliver(uri)
             } else {
-                // 已收口/已撤销: 真实回执只排空, 请求收口出集合 (不取持久授权、不交付)
+                // 已撤销/已解绑: 真实回执只排空, 不取持久授权、不交付
                 request?.finish()
             }
         }
@@ -137,82 +150,51 @@ class HandleFileSession(private val activity: AppCompatActivity) {
                 drainImage = false
                 return@register
             }
+            // 真实SDK回执先终结真实在途事实, 再判交付/排空
+            request?.let { it.record.receiptSettled() }
             if (request != null && request.isActive) {
                 request.holdOrDeliver(result.uri)
             } else {
-                // 已收口/已撤销: 真实回执只排空, 请求收口出集合 (不交付)
+                // 已撤销/已解绑: 真实回执只排空, 不交付
                 request?.finish()
             }
         }
 
     init {
-        // 宿主销毁: 取消全部等待 (等待协程挂在宿主 lifecycleScope, ON_DESTROY 自行取消),
-        // 关闭本宿主创建的全部文件请求弹窗; 正常后台/系统选择器覆盖期间不关
+        // 宿主销毁: 本会话全部 UI 执行体解绑关闭 (旧宿主不得再起新权限/子窗、不得再接回执);
+        // 业务记录与真实SDK占用随 ViewModel 权威存续, 配置重建后由新宿主凭记录接回
         activity.lifecycle.addObserver(LifecycleEventObserver { _, event ->
-            // 配置重建不是真退出: 请求与暂存回执随 Bundle/进程级登记交给新宿主,
-            // 这里不能 finish (否则"跨重建保留"的回执会被自己删掉)
-            if (event == Lifecycle.Event.ON_DESTROY && !activity.isChangingConfigurations) {
+            if (event == Lifecycle.Event.ON_DESTROY) {
                 requests.toList().forEach { it.finish() }
             }
         })
     }
 
     /**
-     * 恢复重建前带 key 的请求: 未启动的重新展示弹窗, 已启动的系统结果交给同 key 回调;
-     * 无 key 的旧通道占用只排空 (原发起方已随旧宿主消亡)。
+     * 恢复重建前的在途文件请求: 带 key 的请求凭宿主 ViewModel 记录接回 —— 未启动的重新展示
+     * 弹窗, 已启动的系统结果交给同 key 回调; 无 key 的记录 (发起方已随旧宿主消亡) 只作废。
+     *
+     * 撤销资格以记录为准: 已终结且非在途的记录不会出现在这里 (终结时已即时回收);
+     * 已终结但SDK仍在途的记录同样接回, 真实回执到达时终结在途事实并回收。
+     * 各通道的进程死亡占用由 Bundle 占用标志排空。
      *
      * 由宿主在 onCreate 内、系统结果补投 (ON_START) 之前调用。
      */
     fun restoreFrom(state: Bundle?) {
         if (state == null) return
-        // 恢复资格: sameProcess 只证进程存活, 不证业务 Owner 活 —— Owner 是否仍活由同 key
-        // 重新登记 (bindKey) 证明; 撤销资格按快照里的真实撤销 + 重建窗口内的撤销记录判,
-        // 不随恢复复活。进程重建后原 Owner 已不存在 —— 恢复出来的请求没有消费者,
-        // 只会让回执永久挂着, 故只接回在途通道占用, 让系统回传被真实排空。
-        val sameProcess = state.getLong(KEY_PROCESS_TAG, 0L) == processTag
-        val count = if (sameProcess) state.getInt(KEY_REQ_COUNT, 0) else 0
-        for (i in 0 until count) {
-            val key = state.getString(reqKey(KEY_REQ_KEY, i)) ?: continue
-            val param = HandleFileContract.HandleFileParam(
-                mode = state.getInt(reqKey(KEY_REQ_MODE, i), HandleFileContract.DIR),
-                title = state.getString(reqKey(KEY_REQ_TITLE, i)),
-                allowExtensions = state.getStringArray(reqKey(KEY_REQ_EXT, i)) ?: arrayOf(),
-                requestCode = state.getInt(reqKey(KEY_REQ_CODE, i), 0),
-                value = state.getString(reqKey(KEY_REQ_VALUE, i)),
-            )
-            val bookUrl = state.getString(reqKey(KEY_REQ_BOOK, i))
-            val awaiting = state.getBoolean(reqKey(KEY_REQ_AWAITING, i), false)
-            val channel = state.getString(reqKey(KEY_REQ_CHANNEL, i))
-            val placeholder = HandleFileLauncher(this, {}, key)
-            val request = Request(
-                launcher = placeholder,
-                param = param,
-                callback = {},
-                key = key,
-                bookUrl = bookUrl,
-            )
-            request.awaitingChannel = channel
-            // 重建必须沿用原请求 id: 否则暂存回执按新 id 找不到, 等于丢失
-            state.getLong(reqKey(KEY_REQ_ID, i), 0L).takeIf { it > 0 }?.let { restoredId ->
-                request.requestId = restoredId
-                // 推进发号器: 进程恢复后新请求不得复用已保存的 id (否则会互删 heldResults 条目)
-                advanceRequestIdSeq(restoredId)
+        requestHost.requestRecords().forEach { record ->
+            if (record.key == null) {
+                // 无 key 记录的发起方已随旧宿主消亡: 只作废; 其通道占用由 Bundle 占用标志排空
+                requestHost.removeRequest(record.requestId)
+                return@forEach
             }
-            // 撤销资格: 快照里保存的真实撤销 + 快照之后落在重建窗口内的撤销记录
-            // (父取消/入口撤销发生时旧宿主已停, 快照来不及反映), 两者都不可被重绑复活
-            request.revoked = state.getBoolean(reqKey(KEY_REQ_REVOKED, i), false) ||
-                revokedRequestIds.contains(request.requestId)
             // 占位 callback 是空的: 真实回执 (ON_START 补投早于组合) 先到必须暂存,
             // 留到同 key 有效入口 bindKey 时交付, 否则原等待协程永挂
+            val request = attach(record, HandleFileLauncher(this, {}, record.key), {})
             request.awaitingRebind = true
-            // 上一次重建期间已暂存的真实回执: 原样取回 (原异常对象/取消终态都保真)
-            request.pendingResult = heldResults[request.requestId]
-            requests.add(request)
-            keyedRequests.getOrPut(key) { mutableListOf() }.add(request)
-            if (awaiting) {
+            if (record.awaitingSys) {
                 // 系统调用仍在途: 结果交给本请求, 同通道新请求继续排队; 不标排空
-                request.awaitingSys = true
-                when (channel) {
+                when (record.awaitingChannel) {
                     CHANNEL_TREE -> {
                         treeInFlight = request
                         treeHeld = treeMutex.tryLock()
@@ -228,19 +210,14 @@ class HandleFileSession(private val activity: AppCompatActivity) {
                         imageHeld = imageMutex.tryLock()
                     }
                 }
-            } else if (request.pendingResult == null) {
-                if (request.revoked) {
-                    // 已撤销: 没有可交付的消费者, 只收口排空, 不再弹选择方式弹窗
-                    // (弹窗里的后续动作对撤销请求全是空转)
-                    request.finish()
-                } else {
-                    // 只弹了选择方式弹窗: 重建后继续展示, 用户无需重来;
-                    // 已有真实回执的请求不再显示, 只等有效入口 bindKey 交付
-                    HandleFileDialog(activity, request).show()
-                }
+            } else if (record.pendingResult == null && request.isActive) {
+                // 只弹了选择方式弹窗: 重建后继续展示, 用户无需重来;
+                // 已有真实回执的请求不再显示, 只等有效入口 bindKey 交付;
+                // 呈现是消费点: 撤销落在登记与呈现之间时不再弹选择方式弹窗
+                HandleFileDialog(activity, request).show()
             }
         }
-        // 未被带 key 请求认领的旧通道占用 (原发起方已消亡): 只排空
+        // 未被带 key 请求认领的通道占用 (进程重建后原发起方已消亡): 只排空
         if (state.getBoolean(KEY_TREE_HELD) && !treeHeld) {
             drainTree = true
             treeHeld = treeMutex.tryLock()
@@ -255,28 +232,8 @@ class HandleFileSession(private val activity: AppCompatActivity) {
         }
     }
 
-    /** 保存带 key 的未完成请求与各通道在途占用, 供重建后重绑/排空。 */
+    /** 保存各通道在途占用, 供进程重建后的宿主排空旧结果 (请求本身凭 ViewModel 记录接回)。 */
     fun saveTo(state: Bundle) {
-        // 保存资格: 只要入口有稳定 key 就保存 —— 普通配置重建时业务 Owner (Job/VM) 还活着,
-        // 必须能按同 key 重绑回原请求, 否则"重建即挂死"; 真实撤销资格 (revoked) 一并保存,
-        // 恢复侧不得复活。
-        // 恢复资格另判: 进程重建后原 Owner 已死, 由 restoreFrom 按进程标记排空 (见下)。
-        state.putLong(KEY_PROCESS_TAG, processTag)
-        val pending = requests.filter { it.key != null && !it.finished }
-        state.putInt(KEY_REQ_COUNT, pending.size)
-        pending.forEachIndexed { i, request ->
-            state.putString(reqKey(KEY_REQ_KEY, i), request.key)
-            state.putLong(reqKey(KEY_REQ_ID, i), request.requestId)
-            state.putInt(reqKey(KEY_REQ_MODE, i), request.param.mode)
-            state.putString(reqKey(KEY_REQ_TITLE, i), request.param.title)
-            state.putStringArray(reqKey(KEY_REQ_EXT, i), request.param.allowExtensions)
-            state.putInt(reqKey(KEY_REQ_CODE, i), request.param.requestCode)
-            state.putString(reqKey(KEY_REQ_VALUE, i), request.param.value)
-            state.putString(reqKey(KEY_REQ_BOOK, i), request.bookUrl)
-            state.putBoolean(reqKey(KEY_REQ_AWAITING, i), request.awaitingSys)
-            state.putString(reqKey(KEY_REQ_CHANNEL, i), request.awaitingChannel)
-            state.putBoolean(reqKey(KEY_REQ_REVOKED, i), request.revoked)
-        }
         state.putBoolean(KEY_TREE_HELD, treeHeld)
         state.putBoolean(KEY_DOC_HELD, docHeld)
         state.putBoolean(KEY_IMAGE_HELD, imageHeld)
@@ -285,36 +242,43 @@ class HandleFileSession(private val activity: AppCompatActivity) {
     /** 同 key 入口在新宿主注册: 重新绑定回调, 结果交给新入口。 */
     internal fun bindKey(key: String, launcher: HandleFileLauncher) {
         // 同一稳定 key 可对应多个独立未完请求 (每次 launch 一个): 全部重绑, 不能单槽覆盖
-        // 快照遍历: 补交 pendingResult → deliverResult → finish 会从本 list 移除,
+        // 快照遍历: 补交 pendingResult → deliverResult → 关闭会从本 list 移除,
         // 回调也可能合法再发请求加入本 list —— 边遍历边结构修改不可依赖
         keyedRequests[key]?.toList()?.forEach { request ->
-            if (request.finished) return@forEach
-            // 接纳前核真实撤销记录: 撤销自取消瞬间起跨重绑不可逆, 重绑不得复活消费资格
-            // (已撤销时置位后走原路径: 暂存回执按 isActive 只排空)
-            if (revokedRequestIds.contains(request.requestId)) request.revoked = true
+            if (request.closed) return@forEach
+            // 资格在记录上实时生效: 已终结时绑定后走原路径, 暂存回执按 isActive 只排空
             request.launcher = launcher
             request.boundCallback = launcher.callback
             // 有效入口已绑定: 重建期间暂存的真实回执现在交付
             request.awaitingRebind = false
-            request.pendingResult?.let { result ->
-                request.pendingResult = null
+            request.record.pendingResult?.let { result ->
+                request.record.pendingResult = null
                 request.deliverResult(result)
             }
         }
     }
 
-    /** 开始一次请求: 建请求并弹出选择方式弹窗。显示失败则收口本请求并回原异常。 */
+    /** 开始一次请求: 建请求并弹出选择方式弹窗。显示失败则关闭本请求并回原异常。 */
     fun begin(
         launcher: HandleFileLauncher,
         param: HandleFileContract.HandleFileParam,
         callback: (HandleFileContract.Result) -> Unit,
     ) {
-        val request = Request(launcher, param, callback, launcher.key)
-        requests.add(request)
+        // 入口预绑定的业务记录 ("书籍保存位置"发起时已建立): launch 只认领这份资格,
+        // 不再生造新资格; 未预绑定的入口在此建立自己的记录
+        val record = launcher.attachedRecord ?: requestHost.RequestRecord(
+            requestId = requestHost.nextRequestId(),
+            key = launcher.key,
+            param = param,
+            bookUrl = param.book?.bookUrl,
+        ).also { requestHost.addRequest(it) }
+        if (!record.isConsumable) return
+        val request = attach(record, launcher, callback)
         try {
-            HandleFileDialog(activity, request).show()
+            // 呈现是消费点: 撤销落在登记与呈现之间时不再弹选择方式弹窗
+            if (request.isActive) HandleFileDialog(activity, request).show()
         } catch (e: Throwable) {
-            // 弹窗没立起来: 本请求的资源 (集合登记/可能的部分弹窗) 必须收口,
+            // 弹窗没立起来: 本请求的资源 (集合登记/可能的部分弹窗) 必须关闭,
             // 不把请求留在集合里等一个不会发生的回执
             request.finish()
             throw e
@@ -322,27 +286,42 @@ class HandleFileSession(private val activity: AppCompatActivity) {
     }
 
     /**
-     * 同步撤该入口名下请求的消费资格 (任意线程可调, 幂等)。
+     * 同步终结该入口名下请求的消费资格 (任意线程可调, 幂等)。
      *
-     * 这一步才是"撤销"本身: 之后系统回传不再取持久授权、不再交付。UI 收口 (关弹窗/清登记)
-     * 由 [cancel] 在主线程做; 已起跑的系统调用占用保持到真实回传。
+     * 资格终结写在宿主 ViewModel 的请求记录上: 之后系统回传不再取持久授权、不再交付,
+     * 持有该请求的每个会话 (含重建后的新宿主) 经资格收集自行关闭UI。已起跑的系统调用
+     * 占用保持到真实回传。
      */
     fun revokeConsumption(launcher: HandleFileLauncher) {
         requests.forEach { request ->
-            if (request.launcher === launcher) {
-                request.revoked = true
-                // 跨重建撤销记录 (进程级, 与 heldResults 同一保留机制): 撤销落在重建窗口内时,
-                // 恢复/重绑按它判资格。不是 Owner 表 —— Owner 是否仍活由同 key 重新登记证明。
-                if (request.key != null) revokedRequestIds.add(request.requestId)
-            }
+            if (request.launcher === launcher) request.record.terminate()
         }
     }
 
-    /** 取消该入口发起的未完成请求: 关弹窗、弃回调; 在途系统调用的通道占用保持到真实回传。 */
+    /** 取消该入口发起的未完成请求: 终结资格 + 关弹窗弃回调; 在途系统调用的通道占用保持到真实回传。 */
     fun cancel(launcher: HandleFileLauncher) {
+        revokeConsumption(launcher)
         requests.forEach { request ->
             if (request.launcher === launcher) request.finish()
         }
+    }
+
+    /** 建会话请求并挂到记录上: 本会话在宿主作用域收集资格状态, 终结即关闭自己的UI。 */
+    private fun attach(
+        record: HandleFileRequestHost.RequestRecord,
+        launcher: HandleFileLauncher,
+        callback: (HandleFileContract.Result) -> Unit,
+    ): Request {
+        val request = Request(launcher, record, callback)
+        requests.add(request)
+        record.key?.let { key ->
+            keyedRequests.getOrPut(key) { mutableListOf() }.add(request)
+        }
+        // 收集器活在宿主作用域: 权威不持任何界面引用, 宿主销毁随作用域取消
+        request.watchJob = activity.lifecycleScope.launch {
+            record.consumable.collect { consumable -> if (!consumable) request.finish() }
+        }
+        return request
     }
 
     private fun releaseTree() {
@@ -368,107 +347,88 @@ class HandleFileSession(private val activity: AppCompatActivity) {
 
     internal inner class Request internal constructor(
         internal var launcher: HandleFileLauncher,
-        internal val param: HandleFileContract.HandleFileParam,
+        internal val record: HandleFileRequestHost.RequestRecord,
         private val callback: (HandleFileContract.Result) -> Unit,
-        internal val key: String? = null,
-        internal val bookUrl: String? = param.book?.bookUrl,
     ) {
 
-        /** 重建后同 key 入口重新绑定的回调 (未绑定时用创建时的回调)。 */
+        /** 重建后同 key 入口重新绑定的回调 (未绑定时用创建时的回调); 本UI解绑后弃用。 */
         internal var boundCallback: ((HandleFileContract.Result) -> Unit)? = null
 
-        /** 本请求创建的全部弹窗 (选择方式/应用内选择器/手工输入/建目录), 收口时一并关闭。 */
+        /** 本请求创建的全部弹窗 (选择方式/应用内选择器/手工输入/建目录), 关闭时一并关闭。 */
         internal val dialogs = mutableListOf<Dialog>()
 
-        /** 系统选择器在途 (已实际 launch, 未真实回传)。 */
-        internal var awaitingSys = false
+        /** 本会话对记录资格状态的收集 (宿主作用域), 关闭时取消。 */
+        internal var watchJob: Job? = null
 
-        /** 在途系统调用所属通道 (重建时按它把请求接回原通道)。 */
-        internal var awaitingChannel: String? = null
+        internal val key: String? get() = record.key
+        internal val param: HandleFileContract.HandleFileParam get() = record.param
 
-        /** 已收口 (交付/取消/宿主销毁), 之后的系统回传按取消处置。 */
-        @Volatile
-        internal var finished = false
+        /** 系统选择器在途 (已实际 launch, 未真实回传): 真实事实在记录上。 */
+        internal val awaitingSys: Boolean get() = record.awaitingSys
 
-        /**
-         * 消费资格已同步撤销 (任意线程可置)。
-         *
-         * 挂在**请求自身**而不是入口上: 入口在重建时会被换成一个新的 launcher (bindKey),
-         * 若资格记在入口上, 换绑就把已撤销的资格复活了; 记在请求上则跨重绑保持。
-         * 后续的独立请求是另一个对象, 不会继承上一轮撤销。
-         */
-        @Volatile
-        internal var revoked = false
+        /** 本 UI 执行体已关闭 (解绑回调/关弹窗), 之后不再呈现、不再交付。主线程收口。 */
+        internal var closed = false
 
-        /** 可交付/可消费: 未收口, 且本请求的消费资格未被撤销。 */
-        internal val isActive: Boolean get() = !finished && !revoked
+        /** 可交付/可消费: 本 UI 未解绑, 且记录资格未终结 (实时读权威记录)。 */
+        internal val isActive: Boolean get() = !closed && record.isConsumable
 
         /** 重建恢复后尚未绑定有效入口 (callback 是占位): 真实回执先到时暂存。 */
         internal var awaitingRebind = false
 
-        /** 暂存的回执 (awaitingRebind 期间到达); bindKey 绑定后立即交付。 */
-        internal var pendingResult: HandleFileContract.Result? = null
-
-        /** 本请求唯一 id (跨重建持久化): 回执/暂存按它归属, 不依赖入口 key。 */
-        internal var requestId: Long = requestIdSeq.incrementAndGet()
-
-        /** 弹窗归属登记: 收口/宿主销毁时随请求关闭。 */
+        /** 弹窗归属登记: 关闭/宿主销毁时随请求关闭。 */
         internal fun own(dialog: Dialog) {
             dialogs.add(dialog)
         }
 
-        /** 收口: 清状态、关弹窗、解除引用, 之后回调不再发生。 */
+        /** 关闭本 UI 执行体: 解绑回调、关弹窗; 业务记录与真实SDK占用不经此改动。 */
         internal fun finish() {
-            if (finished) return
-            finished = true
-            awaitingSys = false
-            awaitingChannel = null
-            pendingResult = null
-            heldResults.remove(requestId)
+            if (closed) return
+            closed = true
+            watchJob?.cancel()
+            watchJob = null
+            boundCallback = null
             dialogs.forEach { it.dismiss() }
             dialogs.clear()
             requests.remove(this)
-            if (key != null) {
-                keyedRequests[key]?.let { list ->
+            key?.let { k ->
+                keyedRequests[k]?.let { list ->
                     list.remove(this)
-                    if (list.isEmpty()) keyedRequests.remove(key)
+                    if (list.isEmpty()) keyedRequests.remove(k)
                 }
             }
         }
 
-        /** 收口并把结果交给本请求回调 (回调允许合法发起下一次请求)。 */
+        /** 收口并把结果交给本请求回调 (回调允许合法发起下一次请求); 业务记录随交付终结。 */
         internal fun deliver(uri: Uri?) {
             if (!isActive) {
-                // 消费资格已撤 (发起方请求没了/被撤销): 结果只排空, 不交付
+                // 资格已终结/本UI已解绑: 结果只排空, 不交付
                 finish()
                 return
             }
-            finish()
             val target = boundCallback ?: callback
-            target(HandleFileContract.Result(uri, param.requestCode, param.value, param.book, bookUrl))
+            finish()
+            record.terminate()
+            target(HandleFileContract.Result(uri, param.requestCode, param.value, param.book, record.bookUrl))
         }
 
-        /** 交付已构造好的回执 (重建暂存回执在 bindKey 后走这里)。 */
+        /** 交付已构造好的回执 (重建暂存回执在 bindKey 后走这里); 业务记录随交付终结。 */
         internal fun deliverResult(result: HandleFileContract.Result) {
             if (!isActive) {
                 finish()
                 return
             }
-            finish()
             val target = boundCallback ?: callback
+            finish()
+            record.terminate()
             target(result)
         }
 
         /** 恢复未绑定时真实回执先到: 暂存到 bindKey 交付; 否则按正常交付。 */
         internal fun holdOrDeliver(uri: Uri?) {
-            // 真实回执已到手: 系统调用本身终结, 在途标记必须清除
-            // (否则再次重建会按"在途"恢复一枚已结束的系统调用并永占通道)
-            awaitingSys = false
-            awaitingChannel = null
             if (awaitingRebind) {
-                val held = HandleFileContract.Result(uri, param.requestCode, param.value, param.book, bookUrl)
-                pendingResult = held
-                heldResults[this.requestId] = held
+                record.pendingResult = HandleFileContract.Result(
+                    uri, param.requestCode, param.value, param.book, record.bookUrl,
+                )
             } else {
                 deliver(uri)
             }
@@ -476,14 +436,10 @@ class HandleFileSession(private val activity: AppCompatActivity) {
 
         /** 同 [holdOrDeliver], 真实失败出口。 */
         internal fun holdOrDeliverError(error: Throwable) {
-            awaitingSys = false
-            awaitingChannel = null
             if (awaitingRebind) {
-                val held = HandleFileContract.Result(
-                    null, param.requestCode, param.value, param.book, bookUrl, error,
+                record.pendingResult = HandleFileContract.Result(
+                    null, param.requestCode, param.value, param.book, record.bookUrl, error,
                 )
-                pendingResult = held
-                heldResults[this.requestId] = held
             } else {
                 deliverError(error)
             }
@@ -495,11 +451,12 @@ class HandleFileSession(private val activity: AppCompatActivity) {
                 finish()
                 return
             }
-            finish()
             val target = boundCallback ?: callback
+            finish()
+            record.terminate()
             target(
                 HandleFileContract.Result(
-                    null, param.requestCode, param.value, param.book, bookUrl, error,
+                    null, param.requestCode, param.value, param.book, record.bookUrl, error,
                 )
             )
         }
@@ -513,14 +470,14 @@ class HandleFileSession(private val activity: AppCompatActivity) {
                     return@launch
                 }
                 treeInFlight = this@Request
-                awaitingSys = true
-                awaitingChannel = CHANNEL_TREE
+                record.awaitingSys = true
+                record.awaitingChannel = CHANNEL_TREE
                 try {
                     selectDocTree.launch(null)
                 } catch (e: Throwable) {
                     treeInFlight = null
-                    awaitingSys = false
-                    awaitingChannel = null
+                    record.awaitingSys = false
+                    record.awaitingChannel = null
                     releaseTree()
                     onLaunchFailure(e)
                 }
@@ -536,14 +493,14 @@ class HandleFileSession(private val activity: AppCompatActivity) {
                     return@launch
                 }
                 docInFlight = this@Request
-                awaitingSys = true
-                awaitingChannel = CHANNEL_DOC
+                record.awaitingSys = true
+                record.awaitingChannel = CHANNEL_DOC
                 try {
                     selectDoc.launch(types)
                 } catch (e: Throwable) {
                     docInFlight = null
-                    awaitingSys = false
-                    awaitingChannel = null
+                    record.awaitingSys = false
+                    record.awaitingChannel = null
                     releaseDoc()
                     onLaunchFailure(e)
                 }
@@ -559,57 +516,23 @@ class HandleFileSession(private val activity: AppCompatActivity) {
                     return@launch
                 }
                 imageInFlight = this@Request
-                awaitingSys = true
-                awaitingChannel = CHANNEL_IMAGE
+                record.awaitingSys = true
+                record.awaitingChannel = CHANNEL_IMAGE
                 try {
                     selectImage.launch(null)
                 } catch (e: Throwable) {
                     imageInFlight = null
-                    awaitingSys = false
-                    awaitingChannel = null
+                    record.awaitingSys = false
+                    record.awaitingChannel = null
                     releaseImage()
                     AppLog.put("打开系统图片选择器出错", e, true)
-                    deliver(null)
+                    deliverError(e)
                 }
             }
         }
     }
 
     private companion object {
-
-        /**
-         * 暂存回执登记 (key → 回执): 真实回执先于有效入口绑定到达时放入,
-         * bindKey 交付/请求收口时移除。同进程跨有效重建保留 —— 原异常对象与
-         * "用户取消"终态 (Result(null, null)) 都不失真, 不经 Bundle 降级。
-         */
-        private val heldResults = LinkedHashMap<Long, HandleFileContract.Result>()
-
-        /**
-         * 已撤销请求的进程级记录 (按请求 id): 撤销落在"快照之后、恢复之前"的重建窗口内时,
-         * 快照里的撤销标志来不及反映, 恢复/重绑按这里判资格 —— 撤销自取消瞬间起跨重绑不可逆。
-         * 与 [heldResults] 同一进程级保留机制, 不是 Owner 表: Owner 是否仍活由同 key 重新
-         * 登记 (bindKey) 证明, 这里只记"消费资格已撤"。
-         */
-        private val revokedRequestIds =
-            java.util.Collections.newSetFromMap(
-                java.util.concurrent.ConcurrentHashMap<Long, Boolean>()
-            )
-
-        /** 本会话内请求唯一 id: 同入口 key 的多个独立请求各有自己的回执槽, 互不取用/删除。 */
-        private val requestIdSeq = java.util.concurrent.atomic.AtomicLong()
-
-        /** 本进程的唯一标记: 区分"同进程重建"与"进程重建" (后者不恢复请求, 只排空在途通道)。 */
-        private val processTag = kotlin.random.Random.nextLong()
-
-        /** 把发号器推进到至少 [restoredId] (进程恢复后新 id 不与已保存的旧 id 相撞)。 */
-        private fun advanceRequestIdSeq(restoredId: Long) {
-            var current = requestIdSeq.get()
-            while (current < restoredId &&
-                !requestIdSeq.compareAndSet(current, restoredId)
-            ) {
-                current = requestIdSeq.get()
-            }
-        }
 
         const val SYS_TREE_KEY = "handleFile.sys.tree"
         const val SYS_DOC_KEY = "handleFile.sys.doc"
@@ -619,27 +542,8 @@ class HandleFileSession(private val activity: AppCompatActivity) {
         const val KEY_DOC_HELD = "handleFile.sys.doc.held"
         const val KEY_IMAGE_HELD = "handleFile.sys.image.held"
 
-        const val KEY_REQ_COUNT = "handleFile.req.count"
-
-        /** 保存时的进程标记: 与当前进程不同 = 进程重建 (原 Owner 已死, 请求不恢复)。 */
-        const val KEY_PROCESS_TAG = "handleFile.process.tag"
-        const val KEY_REQ_KEY = "key"
-        const val KEY_REQ_MODE = "mode"
-        const val KEY_REQ_TITLE = "title"
-        const val KEY_REQ_EXT = "ext"
-        const val KEY_REQ_CODE = "code"
-        const val KEY_REQ_VALUE = "value"
-        const val KEY_REQ_BOOK = "book"
-        const val KEY_REQ_REVOKED = "revoked"
-        const val KEY_REQ_ID = "handleFile.req.id"
-
-        const val KEY_REQ_AWAITING = "awaiting"
-        const val KEY_REQ_CHANNEL = "channel"
-
         const val CHANNEL_TREE = "tree"
         const val CHANNEL_DOC = "doc"
         const val CHANNEL_IMAGE = "image"
-
-        fun reqKey(suffix: String, index: Int): String = "handleFile.req.$index.$suffix"
     }
 }

@@ -602,7 +602,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
 
     private fun initializePlatform() {
         // Content 在 BaseComposeActivity.onCreate 内首次组合，平台依赖必须先注册
-        capabilities = AndroidPlatformCapabilities(this, pageHost.windowId)
+        capabilities = AndroidPlatformCapabilities(this)
         services = AndroidPlatformServices(
             this, capabilities,
             openDocumentPicker, openDocumentsPicker, createDocumentPicker, openDocumentTreePicker,

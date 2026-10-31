@@ -4,6 +4,7 @@ import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.Job
 
 /**
  * 临时输入 (解压条目/请求暂存) 的长期化。
@@ -20,8 +21,11 @@ object TempBookPersistence {
      * 把 [tempPath] 复制为应用内长期文件，保留原文件名供展示，返回长期文件路径。
      *
      * 目标名带时间戳与进程内序号，不复用旧副本，也不影响对外显示名。
+     *
+     * [parent] 是本次导入等待的资格: 长期副本属于正式写入, 取消不得继续复制、
+     * 不得留下没人导入的孤儿副本 (复制与替换的资格核验在 [BackupFileOps.copyFile] 内)。
      */
-    fun persist(tempPath: String, fileName: String): String {
+    fun persist(tempPath: String, fileName: String, parent: Job? = null): String {
         val sep = BackupFileOps.separator
         val dir = AppFilesDirs.get().filesDir + sep + "books"
         BackupFileOps.createFolderIfNotExist(dir)
@@ -30,7 +34,7 @@ object TempBookPersistence {
             sequence.incrementAndGet()
         BackupFileOps.createFolderIfNotExist(requestDir)
         val target = requestDir + sep + fileName
-        BackupFileOps.copyFile(tempPath, target)
+        BackupFileOps.copyFile(tempPath, target, parent)
         return target
     }
 }

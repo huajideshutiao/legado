@@ -44,13 +44,15 @@ class HandleFileContract {
  * (参数/弹窗/回调归属该次), 取消经 [HandleFileLauncher.cancel]。
  *
  * 会话由宿主在 onCreate 内 (attach 后、STARTED 前) 随宿主建立, 系统选择器通道随之登记,
- * 注册不再创建会话, 可在任意时机调用。
+ * 注册不再创建会话, 可在任意时机调用。重建后仍有效的入口凭稳定 key 在新宿主重新绑定原请求
+ * (请求资格/业务终态/暂存回执的权威在宿主 ViewModel 的纯状态上)。
  */
 fun BaseComposeActivity.registerHandleFile(
     callback: (HandleFileContract.Result) -> Unit,
     key: String? = null,
+    request: HandleFileRequestHost.RequestRecord? = null,
 ): HandleFileLauncher {
-    val launcher = HandleFileLauncher(handleFileSession, callback, key)
+    val launcher = HandleFileLauncher(handleFileSession, callback, key, request)
     // 重建后仍有效的入口 (同一宿主上的回调) 凭稳定 key 重新绑定原请求
     if (key != null) handleFileSession.bindKey(key, launcher)
     return launcher
@@ -61,6 +63,8 @@ class HandleFileLauncher(
     internal val callback: (HandleFileContract.Result) -> Unit,
     /** 重建后仍有效的入口用稳定 key 重绑原请求; 页面级入口传 null (重建即作废)。 */
     val key: String? = null,
+    /** 发起时已建立的业务请求记录: launch 只认领这份资格, 参数以记录为准 (不再接受输入)。 */
+    internal val attachedRecord: HandleFileRequestHost.RequestRecord? = null,
 ) {
 
     fun launch(input: (HandleFileContract.HandleFileParam.() -> Unit)? = null) {
@@ -73,10 +77,10 @@ class HandleFileLauncher(
     }
 
     /**
-     * 同步撤本入口名下请求的消费资格 (任意线程; 幂等)。
+     * 同步终结本入口名下请求的消费资格 (任意线程; 幂等)。
      *
-     * 资格记在**请求**上, 不记在入口上: 重建时入口会被换成新实例 (bindKey 重绑), 记在入口上
-     * 会让撤销被换绑解除; 也避免同一入口的后续独立请求继承上一轮撤销。
+     * 资格终结写在宿主 ViewModel 的请求记录上 (入口与宿主都会随重建更换, 记录不随它们更换):
+     * 之后系统回传不再取持久授权、不再交付, 持有该请求的每个会话经资格收集自行关闭UI。
      * 已起跑的系统调用占用不因此提前释放, 仍保持到真实回传。
      */
     fun revoke() {

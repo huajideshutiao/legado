@@ -313,6 +313,8 @@ object FileUtils {
         }
         val dirPath = RealPathUtil.getPath(App.instance, dirUri) ?: return false
         return runCatching {
+            // 无可归属请求: 图片保存工具入口的调用方各异 (分享/换封面/网图保存),
+            // 本层拿不到统一的等待方资格, 传 null = 无父门, 行为与无撤销时逐字一致
             copyToFileAtomically(File(dirPath, name).path, input)
         }.onFailure {
             AppLog.put("图片写入失败: $name\n${it.localizedMessage}", it)

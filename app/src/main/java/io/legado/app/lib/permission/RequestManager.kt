@@ -12,18 +12,17 @@ internal object RequestManager : OnPermissionsResultCallback {
 
     private val handler = Handler(Looper.getMainLooper())
 
-    /** 启动一个已分配的请求: 已取消且未起跑的立即让出并推进, 已起跑才等真实回传。 */
+    /**
+     * 启动一个已分配的请求: 未实际发出调用的早退 (准入前已撤销) 按本请求身份解除当前分配并推进;
+     * 真正发出调用才保真实回传占用, 立即终态交付的分支已在调用内推进队列。
+     */
     private fun postStart(assigned: Request) {
         handler.post {
             if (request !== assigned) return@post
-            if (assigned.isCancelled) {
-                request = null
-                assigned.clear()
-                startNextRequest()
-                return@post
-            }
-            assigned.markStarted()
-            assigned.start()
+            if (assigned.start()) return@post
+            // 准入前已撤销: 未发出的调用等不到回执, 让出当前位并推进, 不堵死队列
+            request = null
+            startNextRequest()
         }
     }
 
@@ -59,23 +58,19 @@ internal object RequestManager : OnPermissionsResultCallback {
     }
 
     /**
-     * 撤销一条权限请求 (主线程): 未启动的排队项移除; 已进入权限页面的保持回传占用至真实返回,
+     * 撤销一条权限请求: 取消当下同步撤资格 (未起跑的不再拉权限页, 早于清理的真实回传不再投递);
+     * 队列结构 (出队/让位/推进) 仍在主线程。已起跑的保持回传占用至真实返回,
      * 仅弃其 granted/denied/error 回调。
      */
     fun cancelRequest(request: Request?) {
         if (request == null) return
+        request.clear()
         handler.post {
             requests?.remove(request)
-            if (this.request === request) {
-                if (request.isStarted) {
-                    // 已起跑: 只弃消费回调, 通道占用保留到真实回传
-                    request.clear()
-                } else {
-                    // 未起跑: 不会再有系统回传, 立即让出当前位并推进
-                    this.request = null
-                    request.clear()
-                    startNextRequest()
-                }
+            if (this.request === request && !request.isStarted) {
+                // 未起跑: 不会再有系统回传, 立即让出当前位并推进
+                this.request = null
+                startNextRequest()
             }
         }
     }

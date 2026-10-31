@@ -21,6 +21,7 @@ import java.awt.Window
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -55,7 +56,7 @@ internal object WindowsFileDialogs {
         val showStarted = CountDownLatch(1)
 
         /** 取消只启动一次 closer 线程. */
-        val closerStarted = AtomicReference(false)
+        val closerStarted = AtomicBoolean(false)
 
         @Volatile
         var closed = false

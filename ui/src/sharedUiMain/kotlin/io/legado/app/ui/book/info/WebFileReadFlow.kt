@@ -134,7 +134,7 @@ private suspend fun <T> withBookSaveDir(block: suspend () -> T): T? = try {
  * 收起发布放 [NonCancellable] (必须执行); 等待本身留在可取消上下文里, 本请求撤销即停止等待。
  */
 private suspend fun <T> withWaitDialog(
-    awaitDismissWhen: (T) -> Boolean,
+    awaitDismissWhen: (T?) -> Boolean,
     onWaitDialog: (Boolean, WaitDialogHandle) -> Unit,
     block: suspend () -> T,
 ): T {
@@ -150,7 +150,7 @@ private suspend fun <T> withWaitDialog(
     } finally {
         // 先保证收起被发布 (取消也不跳过)
         withContext(NonCancellable + mainDispatcher) { onWaitDialog(false, handle) }
-        if (finished && awaitDismissWhen(result as T)) {
+        if (finished && awaitDismissWhen(result)) {
             // 等框离开; hide 重复调用幂等, 本请求取消则不再继续等
             awaitWaitDialogDismissed(
                 { withContext(mainDispatcher) { onWaitDialog(false, handle) } },

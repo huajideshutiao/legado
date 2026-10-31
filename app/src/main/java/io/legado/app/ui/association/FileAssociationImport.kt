@@ -15,15 +15,17 @@ import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.copyToFileAtomically
+import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.file.AndroidDirAuthorizations
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.ui.root.LaunchRequest
 import io.legado.app.ui.root.toReadRoute
-import io.legado.app.utils.FileUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.ArchiveUtils
+import io.legado.app.utils.copyGatedTo
+import io.legado.app.utils.copyToDocumentAtomically
 import io.legado.app.utils.canRead
 import io.legado.app.utils.checkWrite
 import io.legado.app.utils.getFile
@@ -34,6 +36,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -235,7 +238,7 @@ class FileAssociationImport(
             if (isUnderWorkDir(bookUri)) {
                 val path = bookUri.path
                     ?: return viewModel.importBook(bookUri, parent)
-                val durable = TempBookPersistence.persist(path, fileDoc.name)
+                val durable = TempBookPersistence.persist(path, fileDoc.name, parent)
                 return viewModel.importBook(Uri.fromFile(File(durable)), parent)
             }
             return viewModel.importBook(bookUri, parent)
@@ -251,26 +254,31 @@ class FileAssociationImport(
             val name = fileDoc.name
             var doc = treeDoc.findFile(name)
             if (doc == null || fileDoc.lastModified > doc.lastModified()) {
-                // 源整份先物化到本请求独占的暂存件 (源读取中途失败不触碰正式目标,
-                // 也不会留下空正式件); 之后再建/取正式 doc 并做本地→SAF 短拷贝
-                // (SAF 无平台承诺的原子覆盖, 按真实能力处理), 拷贝失败原样抛原始 IO 错误
+                // 源整份先物化到本请求独占的暂存件 (每块前核父, 取消不再继续搬字节;
+                // 源读取中途失败不触碰正式目标, 也不会留下空正式件)
                 val staged = java.io.File(
                     io.legado.app.utils.atomicWriteTempPath(
                         java.io.File(java.io.File(App.instance.cacheDir, "bookSaveStage").apply { mkdirs() }, name).absolutePath
                     )
                 )
                 try {
-                    fileDoc.openInputStream().getOrThrow().use { input ->
-                        java.io.FileOutputStream(staged).use { output ->
-                            input.copyTo(output)
-                        }
-                    }
+                    parent?.ensureActive()
+                    FileUtilsCommon.copyToFile(staged.absolutePath, fileDoc.openInputStream().getOrThrow(), parent)
                     if (doc == null) {
-                        doc = treeDoc.createFile(FileUtils.getMimeType(name), name)
+                        // 新建目标: 整份写入原语同目录就位 (每块前核父 + 正式提交前核父),
+                        // 取消/失败不落半截正式件; 就位后按名取回正式 doc
+                        check(copyToDocumentAtomically(App.instance, treeUri, name, staged.inputStream(), parent)) {
+                            "写入书籍保存位置失败: $name"
+                        }
+                        doc = treeDoc.findFile(name)
                             ?: throw InvalidBooksDirException("请重新设置书籍保存位置")
-                    }
-                    App.instance.contentResolver.openOutputStream(doc.uri)!!.use { output ->
-                        staged.inputStream().use { it.copyTo(output) }
+                    } else {
+                        // 同名重存保留既有 documentId (rename 换 id 破坏既有书籍/阅读引用,
+                        // 与 FileBookAccessorImpl 的 SAF 语义一致): 本地→provider 短拷贝每块前核父,
+                        // 取消不写半截; 拷贝失败原样抛原始 IO 错误
+                        App.instance.contentResolver.openOutputStream(doc.uri)!!.use { output ->
+                            staged.inputStream().use { copyGatedTo(it, output, parent) }
+                        }
                     }
                 } finally {
                     staged.delete()
@@ -288,9 +296,10 @@ class FileAssociationImport(
         val file = treeFile.getFile(name)
         if (!file.exists() || fileDoc.lastModified > file.lastModified()) {
             // 同名重存的是书籍保存目录里的书文件, 阅读页可能正在整读它:
-            // 写同目录唯一临时件再原子改名, 读方只会拿到完整内容
+            // 写同目录唯一临时件再原子改名, 读方只会拿到完整内容; 资格核验在原语内
+            // (每块前 + 正式替换前), 取消不动正式件
             fileDoc.openInputStream().getOrThrow().use { input ->
-                copyToFileAtomically(file.path, input)
+                copyToFileAtomically(file.path, input, parent)
             }
         }
         return viewModel.importBook(Uri.fromFile(file), parent)

@@ -1,6 +1,7 @@
 package io.legado.app.ui
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import io.legado.app.constant.AppLog
@@ -97,10 +98,12 @@ object FileAssociationDispatch {
                     return null
                 }
                 for (extractedPath in books) {
-                    // 解压条目在暂存目录: 先落成应用内长期文件再导入, 后续清理不会删掉新书
+                    // 解压条目在暂存目录: 先落成应用内长期文件再导入, 后续清理不会删掉新书;
+                    // 资格取当前分发改路 coroutine (导入会话/窗口队列), 取消不留孤儿长期副本
                     val durable = TempBookPersistence.persist(
                         extractedPath,
                         extractedPath.fileName(),
+                        currentCoroutineContext()[Job],
                     )
                     val book = dispatchFile(durable, onUnknownFile, navigate = false)
                     // 当前包内批次按原合同: 任一失败即停批 (外部独立文件由 dispatchAll 各自继续)

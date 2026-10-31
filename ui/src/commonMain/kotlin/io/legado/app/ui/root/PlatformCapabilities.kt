@@ -393,7 +393,7 @@ interface PlatformCapabilities {
     ) = unsupported("下载并阅读 Web 文件")
 
     /**
-     * 用系统程序打开已下载的本地文件 (对照 app 端 `activity.openFileUri(path, "*/*")`)。
+     * 用系统程序打开已下载的本地文件 (对照 app 端 `activity.openFileUri(path, 任意 MIME)`)。
      *
      * 由**当前注册实现**在调用时承接: 配置重建后是新宿主的实例, 重建间隙由实现自己
      * 挂起等同窗可呈现的宿主 (真退出随请求撤销), 不在调用方捕获旧 Activity。

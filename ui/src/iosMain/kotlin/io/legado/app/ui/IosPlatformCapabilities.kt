@@ -439,6 +439,8 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     override fun pickImportFolder() {
         scope.launch {
             val url = pickDirectoryDocument() ?: return@launch
+            // 真实回执到手后的消费资格核验: 已取消不换根 (记授权在 setImportRoot 内完成)
+            currentCoroutineContext().ensureActive()
             // 授权表负责: 释放上一目录 scope → 起新 scope → 落 bookmark (换目录不留悬空授权)
             val path = IosSecurityScopedStorage.setImportRoot(url) ?: return@launch
             NativeImportBook.setRoot(path)
@@ -459,19 +461,22 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
         // 有 parent 时选择工作挂原等待 Job (真退出随撤); 无 parent 的一次性入口用平台 scope
         val launchScope = parent?.let { CoroutineScope(it + Dispatchers.Main) } ?: scope
         launchScope.launch {
-            try {
+            // 真实回执到手后的消费资格核验: 已取消不登记授权、不交付。
+            // 平台结果/失败先确定, onSelected 只交一次, 其自身异常不属于平台失败
+            val selection = try {
                 val url = pickDirectoryDocument()
+                currentCoroutineContext().ensureActive()
                 if (url == null) {
-                    onSelected(null, null)
-                    return@launch
+                    null to null
+                } else {
+                    IosSecurityScopedStorage.addDir(url, DirUsage.BookTree) to null
                 }
-                val path = IosSecurityScopedStorage.addDir(url, DirUsage.BookTree)
-                onSelected(path, null)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                onSelected(null, e)
+                null to e
             }
+            onSelected(selection.first, selection.second)
         }
     }
 

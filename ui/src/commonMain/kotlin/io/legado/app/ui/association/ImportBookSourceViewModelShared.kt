@@ -26,6 +26,7 @@ import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.parseToJsonElementLenient
 import io.legado.app.utils.splitNotBlank
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -184,7 +185,7 @@ class ImportBookSourceViewModelShared(
         val frozen = frozenSubmit
         val checkedList = frozen?.checked ?: checked
         val sources = frozen?.sources ?: allSources
-        val checkSources = frozen?.checkSources ?: this.checkSources
+        val checkSources = frozen?.checkSources ?: this@ImportBookSourceViewModelShared.checkSources
         val group = (if (frozen != null) frozen.groupName else groupName)?.trim()
         val keepName = if (frozen != null) frozen.keepName else AppConfigProviders.get().importKeepName
         val keepGroup = if (frozen != null) frozen.keepGroup else AppConfigProviders.get().importKeepGroup

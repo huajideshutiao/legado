@@ -1,5 +1,6 @@
 package io.legado.desktop.ui
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.awaitCancellation
@@ -85,34 +86,41 @@ class DesktopPlatformServices(
     override val crashLogs: CrashLogProvider = DesktopCrashLogProvider()
 }
 
-// Windows 走 COM IFileDialog 现代对话框, macOS/Linux 走 AWT (统一入口 FileDialogs)
-private class DesktopFilePickerService : FilePickerService {
-
-    /**
-     * 面板显示期间盯住调用方 Job: 页面退出 (取消) 时关闭原生面板并结束等待,
-     * 不把已取消页面的结果再交回去。
-     */
-    private suspend fun <T> withDialogCancel(block: (FileDialogs.DialogCancelHandle) -> T): T {
-        val handle = FileDialogs.newCancelHandle()
-        var completed = false
-        val job = currentCoroutineContext()[Job]
-        // 子协程挂在调用方 Job 上: 调用方取消时它立即进入 finally, 只关本请求的 handle
-        val closer = job?.let { parent ->
-            CoroutineScope(parent + Dispatchers.IO).launch(start = CoroutineStart.UNDISPATCHED) {
-                try {
-                    awaitCancellation()
-                } finally {
-                    if (!completed) FileDialogs.close(handle)
-                }
+/**
+ * 面板显示期间盯住调用方 Job: 页面退出 (取消) 时关闭原生面板并结束等待。
+ * 阻塞返回后面板与等待方同归一个资格判定: 面板被撤 (句柄取消, 含撤销关面板与
+ * 用户确认竞态下面板仍回出结果) 与等待方被撤都不交结果。
+ */
+internal suspend fun <T> withDialogCancel(block: suspend (FileDialogs.DialogCancelHandle) -> T): T {
+    val handle = FileDialogs.newCancelHandle()
+    var completed = false
+    val job = currentCoroutineContext()[Job]
+    // 子协程挂在调用方 Job 上: 调用方取消时它立即进入 finally, 只关本请求的 handle
+    val closer = job?.let { parent ->
+        CoroutineScope(parent + Dispatchers.IO).launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                awaitCancellation()
+            } finally {
+                if (!completed) FileDialogs.close(handle)
             }
         }
-        return try {
-            block(handle)
-        } finally {
-            completed = true
-            closer?.cancel()
-        }
     }
+    return try {
+        val result = block(handle)
+        if (handle.cancelled) {
+            // 面板已被撤: 阻塞返回值 (含确认/关闭竞态下回出的真实选择) 不交回等待方
+            throw CancellationException("文件选择面板已取消")
+        }
+        currentCoroutineContext().ensureActive()
+        result
+    } finally {
+        completed = true
+        closer?.cancel()
+    }
+}
+
+// Windows 走 COM IFileDialog 现代对话框, macOS/Linux 走 AWT (统一入口 FileDialogs)
+private class DesktopFilePickerService : FilePickerService {
 
     override suspend fun pickFile(filter: FileFilter): String? =
         withDialogCancel { handle ->

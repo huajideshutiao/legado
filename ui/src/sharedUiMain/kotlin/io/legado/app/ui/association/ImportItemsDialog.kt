@@ -253,7 +253,7 @@ fun ImportItemsDialog(
                 onDismissRequest = { onDismiss() },
                 okButton = AlertButton(
                     text = "重试",
-                    enabled = !cacheBusy && committedState?.cacheRunning != true,
+                    enabled = !cacheBusy && committedState.cacheRunning != true,
                     dismissOnClick = false,
                 ) {
                     val attempt = vm.markCacheRetrying()

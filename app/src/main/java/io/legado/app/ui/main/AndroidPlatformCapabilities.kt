@@ -8,8 +8,6 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.provider.Settings
 import android.view.RoundedCorner
 import android.view.ViewConfiguration
@@ -101,7 +99,7 @@ import io.legado.app.ui.config.MODE_EDIT_CONFIG
 import io.legado.app.ui.config.MODE_EDIT_PREFS
 import io.legado.app.ui.config.MODE_NEW_CONFIG
 import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.file.HandleFileLauncher
+import io.legado.app.ui.file.HandleFileRequestHost
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
@@ -164,6 +162,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.InternalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
@@ -183,8 +182,6 @@ private val MiuiActivityTransitionEasing =
 
 class AndroidPlatformCapabilities(
     private val activity: MainActivity,
-    /** 本次窗口宿主身份: Activity 重建不变, 另开窗口不同 (见 PageScreenModelHost)。 */
-    private val windowId: Long,
 ) : SharedPlatformCapabilities {
 
     /** 对照 app 端 Activity 的 lifecycleScope (随 Activity 销毁取消)。 */
@@ -192,19 +189,29 @@ class AndroidPlatformCapabilities(
         get() = activity.lifecycleScope
 
     /**
-     * 宿主 restoreFrom 之后调用: 在途"书籍保存位置"选择等待 (逐请求稳定 key 登记)
-     * 用同 key 在当前有效宿主重绑, 系统结果/暂存回执交回原等待方。
-     * 只认领**本窗口** ([windowId] 相同) 发起的等待; 别窗的等待留在登记里,
-     * 由它自己窗口的宿主重建时认领 (发起方等待已死则由取消阶段撤走登记)。
+     * 宿主 ViewModel 持有的文件请求纯状态 (单一权威): 撤销资格、暂存回执与选目录登记都在这里,
+     * 配置重建保留同一实例, 真实退出随 ViewModelStore 清空 (按窗口天然隔离)。
      */
-    fun rebindPendingBookTreePickers() {
-        rebindBookTreePicksTo(activity, windowId)
-    }
+    private val requestHost =
+        ViewModelProvider(activity)[HandleFileRequestHost::class.java]
 
     /**
-     * 本请求所属窗口的当前宿主界面: 只取同一 windowId 的当前能力面实例 (Activity 重建后
-     * 就是新实例, 仍是同一窗口); 没有同窗口实例 = 请求所属页面已退出, 不把结果投到别窗。
+     * 宿主 restoreFrom 之后调用: 在途"书籍保存位置"选择等待用同 key 在当前有效宿主重绑,
+     * 系统结果/暂存回执交回原等待方。登记随本窗口宿主的 ViewModelStore 存亡,
+     * 别窗发起的等待在它自己窗口的宿主重建时认领 (发起方等待已死则由取消阶段终结资格)。
      */
+    fun rebindPendingBookTreePickers() {
+        val host = requestHost
+        host.livePicks().forEach { pick ->
+            if (host.requestForKey(pick.key) == null) {
+                // 等待方已终结即回收 (资格终结时记录已移除): 登记即时释放, 不等不存在的重绑
+                host.removePick(pick.pickId)
+                return@forEach
+            }
+            bindBookTreePick(pick, launch = false)
+        }
+    }
+
     // 导入书籍: 目录状态机在 data/commonMain ImportBookShared (四端一份),
     // 本类只注入 FileDoc/SAF 列举能力; 上架仍走 ImportBookViewModel (需要 Context toast)
     private val importViewModel by lazy {
@@ -386,67 +393,10 @@ class AndroidPlatformCapabilities(
     private companion object {
 
         /**
-         * 一次"书籍保存位置"选择的登记: 每次选择一个唯一 id 一条登记, 持有当前有效入口
-         * (重建重绑后替换), 取消阶段撤的就是这个当前入口。
-         */
-        private class PendingBookTreePick(
-            /** 发起窗口: 重绑只认领同窗口宿主, 不把别窗发起的等待移到本窗。 */
-            val windowId: Long,
-        ) {
-            @Volatile
-            var rebind: ((MainActivity) -> Unit)? = null
-            @Volatile
-            var launcher: HandleFileLauncher? = null
-
-            /** 已撤销 (父 Job 取消阶段): 尚未起跑的启动分支不得拉起。 */
-            @Volatile
-            var revoked = false
-        }
-
-        private val bookTreePickLock = Any()
-        private val pendingBookTreePicks = LinkedHashMap<Long, PendingBookTreePick>()
-        private val bookTreePickSeq = java.util.concurrent.atomic.AtomicLong()
-
-        /**
-         * 本进程的随机前缀: 选目录入口的稳定 key 由它拼出。
-         *
-         * 该 key 只用于**同进程**配置重建后的重绑 (等待方是可跨重建的 Job)。进程被杀后 Job 已不存在,
-         * 旧 Bundle 里保存的 key 用上一进程的 nonce 拼成, 因此新请求永远不会与它相同 ——
-         * 不会出现"新等待者凭同 key 复活旧回执"。
+         * 本进程的随机前缀: 选目录入口的稳定 key 由它拼出。key 只在本窗口会话内认领
+         * (请求记录按窗口宿主的 ViewModelStore 隔离)。
          */
         private val bookTreeProcessNonce = kotlin.random.Random.nextLong()
-
-        fun nextBookTreePickId(): Long = bookTreePickSeq.incrementAndGet()
-
-        fun registerBookTreePick(id: Long, pick: PendingBookTreePick) =
-            synchronized(bookTreePickLock) { pendingBookTreePicks[id] = pick }
-
-        fun rebindBookTreePicksTo(activity: MainActivity, windowId: Long) =
-            synchronized(bookTreePickLock) { pendingBookTreePicks.values.toList() }
-                .forEach { pick ->
-                    // 只认领同窗口发起的等待: 不分窗口全部移过来会把别窗的等待绑到本窗宿主,
-                    // 回执/授权动作落到错误窗口 (发起方窗口重建时自会认领自己的)
-                    if (pick.windowId == windowId) pick.rebind?.invoke(activity)
-                }
-
-        /**
-         * 撤本次选择消费 (取消阶段/真实终态): 只撤这一条并清登记, 已起跑 SDK 占用保真实排空。
-         *
-         * 两步各有其位:
-         * 1. **同步**撤真实消费资格 ([HandleFileLauncher.revoke]): 之后系统回传不再取持久授权、
-         *    不再交付 —— SDK 回执可能已排在主线程清理之前, 只排清理等于撤销没到消费点。
-         * 2. **主线程**收口 (关弹窗/清集合登记): 这些是主线程结构; 排到当前主线程工作之后执行,
-         *    启动若已发生, 这次收口就关掉刚建的那个请求, 不留"已撤未收"的空档。
-         */
-        fun cancelBookTreePick(id: Long) {
-            val pick = synchronized(bookTreePickLock) { pendingBookTreePicks.remove(id) } ?: return
-            pick.revoked = true
-            pick.launcher?.revoke()
-            mainHandler.post {
-                val launcher = pick.launcher
-                if (launcher != null) launcher.cancel() else clearBookTreePick(id)
-            }
-        }
 
         /**
          * 书籍目录选择回执: 真实失败原异常回原等待, 用户取消回 null, 不折成统一 null/false。
@@ -477,11 +427,6 @@ class AndroidPlatformCapabilities(
             }
         }
 
-        private val mainHandler = Handler(Looper.getMainLooper())
-
-        fun clearBookTreePick(id: Long) {
-            synchronized(bookTreePickLock) { pendingBookTreePicks.remove(id) }
-        }
         private const val EXIT_INTERVAL = 2000L
     }
 
@@ -1179,7 +1124,7 @@ class AndroidPlatformCapabilities(
     /**
      * 等一个仍可呈现的宿主窗口。
      *
-     * 同一个 windowId 只说明注册表现在指的是同一窗口, 不等于那个 Activity 还能用; 配置重建的
+     * 注册表里的实例只说明登记当时是有效宿主, 不等于那个 Activity 还能用; 配置重建的
      * 缝隙里注册表可能还是已收尾的旧实例。这里等注册表发出满足条件的新实例 (新宿主 onCreate
      * 即注册), 因此既不把旧 Activity 交给界面动作, 也不把重建间隙误判成"已退出"。
      */
@@ -1557,45 +1502,64 @@ class AndroidPlatformCapabilities(
 
     // 对照 OtherConfigHost.localBookTreeSelect.launch DIR_SYS: 每次发起绑定当次回调 ——
     // 请求独立归属 (取消只结束当次, 结果只回当次发起方), 不再用共享单槽存回调
+    @OptIn(InternalCoroutinesApi::class)
     override fun pickBookTreeUri(parent: Job?, onSelected: (String?, Throwable?) -> Unit) {
-        // 等待方 Job 跨重建存活 (ViewModel/ScreenModel scope) 时以其身份做稳定 key:
-        // 重建后由新实例 init 认领 pending 并同 key 重绑, 系统结果/暂存回执交回原等待方。
-        // 无 parent 的一次性 UI 入口维持原无 key 语义 (重建即作废、旧结果只排空)。
         // 起跑前核真实资格: 等待方已取消/完成则不再拉起, 也不登记
         if (parent != null && !parent.isActive) return
-        var pick: PendingBookTreePick? = null
-        val launcher = if (parent == null) {
-            // 纯 UI 一次性入口: 维持原合同 (无稳定 key, 重建即作废)
+        val host = requestHost
+        if (parent == null) {
+            // 纯 UI 一次性入口: 无稳定 key, 重建即作废、旧结果只排空
             activity.registerHandleFile(callback = bookTreeCallback(activity, onSelected) { })
-        } else {
-            // 每次选择一个唯一 id (同一 parent 可多次选择, Job 身份不是请求 id)
-            val pickId = nextBookTreePickId()
-            // 进程内唯一 + 进程间不可能相撞 (见 bookTreeProcessNonce)
-            val key = "book-tree-$bookTreeProcessNonce-$pickId"
-            val registered = PendingBookTreePick(windowId)
-            registered.rebind = { act ->
-                registered.launcher = act.registerHandleFile(
-                    key = key,
-                    callback = bookTreeCallback(act, onSelected) { clearBookTreePick(pickId) },
-                )
-            }
-            registerBookTreePick(pickId, registered)
-            // 先登记撤销再起跑: 取消阶段 (不是完成后的回调) 撤本消费, 已起跑 SDK 占用保真实排空
-            parent.invokeOnCompletion(onCancelling = true, invokeImmediately = true) {
-                cancelBookTreePick(pickId)
-            }
-            pick = registered
-            if (registered.revoked) return
-            registered.rebind!!.invoke(activity)
-            registered.launcher
+                .launch {
+                    title = androidAppString("select_book_folder")
+                    mode = HandleFileContract.DIR_SYS
+                }
+            return
         }
-        // 登记到启动之间被撤 (撤销在异步线程上到达): 不再拉起系统选择器
-        if (pick?.revoked == true) return
-        if (parent != null && !parent.isActive) return
-        launcher?.launch {
-            title = androidAppString("select_book_folder")
-            mode = HandleFileContract.DIR_SYS
+        // 每次选择一个唯一 id (同一 parent 可多次选择, Job 身份不是请求 id);
+        // 业务请求资格先于撤销登记建立: 尚未launch的登记与已launch的请求面对同一份资格,
+        // 取消/启动/重绑都不再生造资格状态
+        val pickId = host.nextPickId()
+        val key = "book-tree-$bookTreeProcessNonce-$pickId"
+        val record = host.RequestRecord(
+            requestId = host.nextRequestId(),
+            key = key,
+            param = HandleFileContract.HandleFileParam(
+                title = androidAppString("select_book_folder"),
+                mode = HandleFileContract.DIR_SYS,
+            ),
+            bookUrl = null,
+        )
+        host.addRequest(record)
+        val pick = host.PickRecord(pickId, key, onSelected)
+        host.addPick(pick)
+        // 先登记撤销再起跑: 取消阶段撤本消费, 已起跑 SDK 占用保真实排空;
+        // 订阅只捕纯宿主状态与本次请求身份, 请求终态后释放
+        pick.cancelHandle = parent.invokeOnCompletion(onCancelling = true, invokeImmediately = true) {
+            host.revokePick(pickId, key)
         }
+        // 登记到启动之间被撤 (撤销即时生效): 不再拉起系统选择器
+        if (!record.isConsumable) return
+        if (!parent.isActive) return
+        bindBookTreePick(pick, launch = true)
+    }
+
+    /**
+     * 把一次"书籍保存位置"选择绑定到当前有效宿主: 注册同 key 入口 (回执交回登记里的等待方);
+     * [launch] 为真时本次发起选择 (重建重绑只注册, 不重跑)。
+     */
+    private fun bindBookTreePick(pick: HandleFileRequestHost.PickRecord, launch: Boolean) {
+        val host = requestHost
+        val record = host.requestForKey(pick.key) ?: return
+        val launcher = activity.registerHandleFile(
+            key = pick.key,
+            request = record,
+            callback = bookTreeCallback(activity, pick.onSelected) {
+                pick.cancelHandle?.dispose()
+                host.removePick(pick.pickId)
+            },
+        )
+        if (launch) launcher.launch()
     }
 
     // 对照 app 端 BaseReadBookActivity 的 FileDoc.fromUri(uri, true).find(book.originName):
@@ -1767,7 +1731,7 @@ class AndroidPlatformCapabilities(
                 scope.launch(IO) {
                     try {
                         suspend fun importFromArchive() = FileBook.importFromArchiveWithParent(
-                            fileDoc.uri, fileName,
+                            fileDoc.uri.toString(), fileName,
                             currentCoroutineContext()[Job],
                             { it.contains(fileName) },
                         )
@@ -1850,9 +1814,12 @@ class AndroidPlatformCapabilities(
     private fun writeIntoDir(dirDoc: FileDoc, fileName: String, input: InputStream) {
         val dir = dirDoc.asFile()
         if (dir != null) {
+            // 无可归属请求: 日志/堆转储保存是关于页的一次性落盘动作, 无等待方可撤销,
+            // 传 null = 无父门, 行为与无撤销时逐字一致
             copyToFileAtomically(File(dir, fileName).path, input)
             return
         }
+        // 同上: 无可归属请求, 不传父门 (本原语的默认值)
         check(copyToDocumentAtomically(App.instance, dirDoc.uri, fileName, input)) {
             "写入书籍保存位置失败: $fileName"
         }

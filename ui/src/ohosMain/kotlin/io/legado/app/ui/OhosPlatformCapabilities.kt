@@ -826,7 +826,12 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
                     // 仅普通书在复制/分发期间需要 K 侧临时读取旁路; 本批次结束即注销
                     OhosTransientFileAccess.remember(mountPath)
                     try {
-                        val durable = TempBookPersistence.persist(mountPath, fileName)
+                        // 资格取当前分发 coroutine (任务投主窗口队列随窗口存亡), 取消不留孤儿长期副本
+                        val durable = TempBookPersistence.persist(
+                            mountPath,
+                            fileName,
+                            currentCoroutineContext()[Job],
+                        )
                         FileAssociationDispatch.dispatch(
                             durable,
                             onUnknownFile = { name ->
@@ -862,11 +867,13 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
 
     // 对照 Android onPickFolder / selectFolder.launch;
     // 复用 OhosPlatformServices.pickDirectory (DocumentViewPicker 选目录 + 授权持久化 +
-    // fileUri 官方转换, 记入授权表供重启后激活), 桥接未就绪/用户取消/目录不可访问时
-    // 返回 null 保持原目录不动; 目录按 [DirUsage.BookTree] 登记 (导入页浏览与导入的都是书籍文件)
+    // fileUri 官方转换, 记入授权表供重启后激活), 用户取消/桥接未就绪返回 null 保持原目录不动,
+    // 真实失败原异常上抛; 目录按 [DirUsage.BookTree] 登记 (导入页浏览与导入的都是书籍文件)
     override fun pickImportFolder() {
         scope.launch {
             val path = services.files.pickDirectory(DirUsage.BookTree) ?: return@launch
+            // 真实回执到手后的消费资格核验: 已取消不换根 (记授权已在选目录消费点拦截)
+            currentCoroutineContext().ensureActive()
             NativeImportBook.setRoot(path)
         }
     }

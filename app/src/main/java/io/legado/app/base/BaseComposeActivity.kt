@@ -74,7 +74,8 @@ abstract class BaseComposeActivity(
         // activityResultRegistry (带 lifecycleOwner 的重载禁止 STARTED 后登记),
         // 之后的动态入口 (含重建后) 只发起请求, 不再登记
         handleFileSession
-        // 重建后先登记各系统通道的在途占用: 旧结果只排空, 不交给新请求
+        // 重建后接回在途请求 (宿主 ViewModel 记录) 并登记各系统通道的进程死亡占用:
+        // 无主旧结果只排空, 不交给新请求
         handleFileSession.restoreFrom(savedInstanceState)
         setupSystemBar()
         upBackgroundImage()

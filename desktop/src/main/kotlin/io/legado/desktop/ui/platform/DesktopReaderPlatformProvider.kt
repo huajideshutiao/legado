@@ -55,6 +55,7 @@ import io.legado.desktop.help.tts.DesktopReadAloudHost
 import io.legado.desktop.ui.DesktopDialogRequest
 import io.legado.desktop.ui.DesktopDialogs
 import io.legado.desktop.ui.DesktopPlatformCapabilities
+import io.legado.desktop.ui.withDialogCancel
 import io.legado.desktop.ui.component.FileDialogs
 import io.legado.desktop.ui.readerWindowTint
 import kotlinx.coroutines.CoroutineScope
@@ -308,13 +309,17 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
     private fun saveImage(screenModel: ReaderScreenModel, src: String) {
         val book = screenModel.currentBook
         imageActionScope.launch {
+            // 受控选择能力 (withDialogCancel): 面板被撤后不写盘、不提示成功。
             // 阻塞式选择器必须切 IO (对照漫画阅读页 onSaveImage 的 withContext(IoDispatcher))
-            val destPath = withContext(Dispatchers.IO) {
-                FileDialogs.pickSaveFile(
-                    title = "保存图片",
-                    defaultName = "legado-${System.currentTimeMillis()}.jpg",
-                    initialDir = defaultImageSaveDir(),
-                )?.absolutePath
+            val destPath = withDialogCancel { handle ->
+                withContext(Dispatchers.IO) {
+                    FileDialogs.pickSaveFile(
+                        title = "保存图片",
+                        defaultName = "legado-${System.currentTimeMillis()}.jpg",
+                        initialDir = defaultImageSaveDir(),
+                        handle = handle,
+                    )?.absolutePath
+                }
             } ?: return@launch
             Toasters.get().toast("正在保存")
             val savedPath = withContext(Dispatchers.IO) {
@@ -333,8 +338,11 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
     private fun saveImageToSelectedDir(screenModel: ReaderScreenModel, src: String) {
         val book = screenModel.currentBook
         imageActionScope.launch {
-            val dir = withContext(Dispatchers.IO) {
-                FileDialogs.pickDirectory(title = "选择保存目录")
+            // 受控选择能力 (withDialogCancel): 面板被撤后不写盘、不提示成功、不交结果
+            val dir = withDialogCancel { handle ->
+                withContext(Dispatchers.IO) {
+                    FileDialogs.pickDirectory(title = "选择保存目录", handle = handle)
+                }
             } ?: return@launch
             Toasters.get().toast("正在保存")
             val savedPath = withContext(Dispatchers.IO) {

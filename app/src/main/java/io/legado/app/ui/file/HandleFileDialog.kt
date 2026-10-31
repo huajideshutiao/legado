@@ -210,6 +210,8 @@ internal class HandleFileDialog(
     }
 
     private fun checkPermissions(success: () -> Unit) {
+        // 请求已终结资格/本UI已解绑: 不再起新权限 (旧宿主解绑后同样不再起)
+        if (!request.isActive) return
         // 新权限请求前先撤销上一条未终结的请求, 避免同一弹窗叠加多个回调
         permissions?.cancel()
         permissions = PermissionsCompat.Builder().addPermissions(*Permissions.Group.STORAGE)
