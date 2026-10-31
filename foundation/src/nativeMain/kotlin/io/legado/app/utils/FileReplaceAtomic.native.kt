@@ -6,6 +6,7 @@ import okio.FileSystem
 import okio.IOException
 import okio.Path.Companion.toPath
 import okio.buffer
+import okio.use
 
 /**
  * 用 [src] 整份替换 [dst], 任一步失败都保持 [dst] 已有的内容可用
@@ -63,7 +64,7 @@ fun copyFileAtomically(src: File, dst: File, parent: Job? = null): File {
         // 撤销不必等整份复制完
         FileSystem.SYSTEM.source(src.path.toPath()).buffer().use { input ->
             FileSystem.SYSTEM.sink(temp.path.toPath()).buffer().use { output ->
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                val buffer = ByteArray(ATOMIC_COPY_BUFFER_SIZE)
                 while (true) {
                     parent?.ensureActive()
                     val read = input.read(buffer, 0, buffer.size)

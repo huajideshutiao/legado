@@ -122,7 +122,7 @@ object OhosPlatformServices : PlatformServices {
                 throw IllegalStateException("权限响应解析失败", e)
             }
             if (!resp.ok) {
-                throw IllegalStateException(resp.error ?: "权限$action失败")
+                throw IllegalStateException(resp.error ?: "权限${action}失败")
             }
             // 用户拒绝仍是成功回执 granted=false; 只有系统/通道/解析失败才上抛
             return resp.granted == true

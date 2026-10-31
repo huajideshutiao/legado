@@ -29,6 +29,11 @@ package io.legado.app.utils
 const val ATOMIC_WRITE_TEMP_SUFFIX = ".legado-tmp"
 
 /**
+ * 整份复制/替换的块大小 (各端同一值): 复制循环每块前核一次请求撤销。
+ */
+const val ATOMIC_COPY_BUFFER_SIZE = 8 * 1024
+
+/**
  * [targetPath] 的同目录临时件路径: 目标名 + 随机唯一串 + [ATOMIC_WRITE_TEMP_SUFFIX]。
  *
  * 随机唯一串 (§ [randomUUIDString]) 保证同目标的两次写入绝不共用一条路径 —— 时间戳/进程内序号类

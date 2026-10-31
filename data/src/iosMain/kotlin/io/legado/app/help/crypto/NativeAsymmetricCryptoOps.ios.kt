@@ -59,6 +59,7 @@ actual object NativeAsymmetricCryptoOps {
         val chunk = if (oaepMdLen != null) k - 2 * oaepMdLen - 2 else k - 11
         require(chunk > 0) { "iOS crypto: key too small (k=$k) for padding overhead" }
         val secKey = IosCryptoNative.secKeyFromDer(pkcs1, isPrivate = false, keyType = kSecAttrKeyTypeRSA)
+            ?: throw UnsupportedOperationException("iOS crypto: SecKeyCreateWithData returned null")
         return try {
             // 空输入仍产出一个完整块 (对齐 JCA RSA Cipher: doFinal(空) 输出 k 字节填充块)
             val blocks = if (data.isEmpty()) 1 else (data.size + chunk - 1) / chunk
@@ -102,6 +103,7 @@ actual object NativeAsymmetricCryptoOps {
             "ciphertext length ${data.size} not a positive multiple of key size $k"
         }
         val secKey = IosCryptoNative.secKeyFromDer(pkcs1, isPrivate = true, keyType = kSecAttrKeyTypeRSA)
+            ?: throw UnsupportedOperationException("iOS crypto: SecKeyCreateWithData returned null")
         return try {
             val parts = ArrayList<ByteArray>(data.size / k)
             var off = 0

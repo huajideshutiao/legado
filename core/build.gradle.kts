@@ -103,6 +103,12 @@ kotlin {
                     implementation(libs.ktor.client.darwin)
                     implementation(libs.coil3.network.ktor3)
                 }
+                // 非 mac: signalposix cinterop (需本机 Apple SDK) 无法生成, 信号标记通道
+                // 由 iosWindowsCheckMain 源根的同签名 stub 顶替 (与 :data 的 KVO 观察器同款处理)。
+                if (!isMacHost) {
+                    kotlin.exclude("io/legado/app/help/crash/IosSignalMarker.kt")
+                    kotlin.srcDir("src/iosWindowsCheckMain/kotlin")
+                }
             }
             // KGP 不会自动把 iosArm64Main/iosSimulatorArm64Main 连到自定义的 iosMain,
             // 必须显式 dependsOn (否则 nativeMain 的 actual 进不了 iOS 编译; 与 :data 同款连接)。

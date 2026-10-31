@@ -530,7 +530,7 @@ class IosSecurityScopeLease internal constructor(
 ) : AutoCloseable {
 
     /** 租约是否实际持有 security scope (空租约为 false)。 */
-    internal val holdsScope: Boolean get() = started
+    val holdsScope: Boolean get() = started
 
     private val closed = atomic(false)
 

@@ -27,7 +27,7 @@ fun copyFileAtomically(src: File, dst: File, parent: Job? = null): File {
         // 复制循环每块前核父: 撤销不必等整份复制完 (块大小与 input.copyTo 一致, 语义不变)
         FileInputStream(src).use { input ->
             FileOutputStream(temp).use { output ->
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                val buffer = ByteArray(ATOMIC_COPY_BUFFER_SIZE)
                 while (true) {
                     parent?.ensureActive()
                     val read = input.read(buffer)

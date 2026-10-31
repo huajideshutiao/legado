@@ -17,6 +17,7 @@ import androidx.compose.ui.viewinterop.UIKitView
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.DirUsage
 import io.legado.app.exception.SecurityException
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.media.AvPlayerBufferingObserver
 import io.legado.app.help.media.AvPlayerItemStatusObserver
@@ -481,7 +482,7 @@ class IosVideoPlayerController(
         prepareJob = prepareScope.launch {
             var copiedPath: String? = null
             try {
-                val localPath = withContext(Dispatchers.IO) {
+                val localPath = withContext(IoDispatcher) {
                     IosSecurityScopedStorage.withAccessAsync(sourcePath, DirUsage.BookTree) { scoped ->
                         val dir = NSTemporaryDirectory().trimEnd('/') + "/legado-video"
                         FileSystem.SYSTEM.createDirectories(dir.toPath())

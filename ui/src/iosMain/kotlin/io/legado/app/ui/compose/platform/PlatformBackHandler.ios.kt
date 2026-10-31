@@ -1,3 +1,8 @@
+// 该通道的非废弃替代品 (NavigationEventHandler) 需 navigationevent-compose 依赖, 而 CMP 1.11.1
+// 只把 navigationevent 核心件放进 classpath; 迁移随 CMP 升级一并做。
+// 抑制写在文件级: 弃用符号同时出现在 import 行, 函数级 @Suppress 盖不到。
+@file:Suppress("DEPRECATION")
+
 package io.legado.app.ui.compose.platform
 
 import androidx.compose.runtime.Composable
@@ -45,7 +50,6 @@ actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
 
 // 该通道的非废弃替代品 (NavigationEventHandler) 需 navigationevent-compose 依赖, 而 CMP 1.11.1
 // 只把 navigationevent 核心件放进 classpath; 迁移随 CMP 升级一并做。
-@Suppress("DEPRECATION")
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 actual fun PlatformPredictiveBackHandler(

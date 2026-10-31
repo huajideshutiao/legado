@@ -3,18 +3,21 @@
 package io.legado.app.help.crypto
 
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.UByteVar
+import kotlinx.cinterop.ULongVar
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
+import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
 import platform.CoreCrypto.CCCryptorCreateWithMode
 import platform.CoreCrypto.CCCryptorFinal
 import platform.CoreCrypto.CCCryptorRelease
 import platform.CoreCrypto.CCCryptorUpdate
-import platform.CoreCrypto.CCCryptorVar
+import platform.CoreCrypto.CCCryptorRefVar
 import platform.CoreCrypto.CC_MD5
 import platform.CoreCrypto.CC_SHA1
 import platform.CoreCrypto.CC_SHA224
@@ -71,7 +74,7 @@ internal object IosCommonCrypto {
         val ccMode = modeOf(mode)
         val realIv = if (mode == "ECB") null else iv
         memScoped {
-            val cryptorPtr = alloc<CCCryptorVar>()
+            val cryptorPtr = alloc<CCCryptorRefVar>()
             val status = if (realIv == null) {
                 key.usePinned { kp ->
                     CCCryptorCreateWithMode(
@@ -137,12 +140,12 @@ internal object IosCommonCrypto {
             out.usePinned { mp ->
                 data.usePinned { dp ->
                     val ret = when (algorithm) {
-                        "MD5" -> CC_MD5(dp.addressOf(0), data.size.convert(), mp.addressOf(0))
-                        "SHA1" -> CC_SHA1(dp.addressOf(0), data.size.convert(), mp.addressOf(0))
-                        "SHA224" -> CC_SHA224(dp.addressOf(0), data.size.convert(), mp.addressOf(0))
-                        "SHA256" -> CC_SHA256(dp.addressOf(0), data.size.convert(), mp.addressOf(0))
-                        "SHA384" -> CC_SHA384(dp.addressOf(0), data.size.convert(), mp.addressOf(0))
-                        else -> CC_SHA512(dp.addressOf(0), data.size.convert(), mp.addressOf(0))
+                        "MD5" -> CC_MD5(dp.addressOf(0), data.size.convert(), mp.addressOf(0).reinterpret<UByteVar>())
+                        "SHA1" -> CC_SHA1(dp.addressOf(0), data.size.convert(), mp.addressOf(0).reinterpret<UByteVar>())
+                        "SHA224" -> CC_SHA224(dp.addressOf(0), data.size.convert(), mp.addressOf(0).reinterpret<UByteVar>())
+                        "SHA256" -> CC_SHA256(dp.addressOf(0), data.size.convert(), mp.addressOf(0).reinterpret<UByteVar>())
+                        "SHA384" -> CC_SHA384(dp.addressOf(0), data.size.convert(), mp.addressOf(0).reinterpret<UByteVar>())
+                        else -> CC_SHA512(dp.addressOf(0), data.size.convert(), mp.addressOf(0).reinterpret<UByteVar>())
                     }
                     check(ret != null) { "IosCommonCrypto: $algorithm digest failed" }
                 }
@@ -192,7 +195,7 @@ internal object IosCommonCrypto {
         return out
     }
 
-    private fun modeOf(mode: String): Int = when (mode) {
+    private fun modeOf(mode: String): UInt = when (mode) {
         "ECB" -> kCCModeECB
         "CBC" -> kCCModeCBC
         "CFB" -> kCCModeCFB
@@ -203,14 +206,14 @@ internal object IosCommonCrypto {
         )
     }
 
-    private fun algorithmOf(algorithm: String): Int = when (algorithm) {
+    private fun algorithmOf(algorithm: String): UInt = when (algorithm) {
         "AES" -> kCCAlgorithmAES128
         "DES" -> kCCAlgorithmDES
         "DESEDE" -> kCCAlgorithm3DES
         else -> throw UnsupportedOperationException("IosCommonCrypto: unsupported algorithm '$algorithm'")
     }
 
-    private fun hmacAlg(algorithm: String): Int = when (algorithm) {
+    private fun hmacAlg(algorithm: String): UInt = when (algorithm) {
         "MD5" -> kCCHmacAlgMD5
         "SHA1" -> kCCHmacAlgSHA1
         "SHA224" -> kCCHmacAlgSHA224
