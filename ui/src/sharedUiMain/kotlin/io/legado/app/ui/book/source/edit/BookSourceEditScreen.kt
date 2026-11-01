@@ -31,7 +31,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -48,6 +47,7 @@ import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDropdownField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.component.code.CodeEditorSearchHighlightBinding
 import io.legado.app.ui.compose.component.code.CodeEditorSearchTarget
 import io.legado.app.ui.compose.component.code.CodeEditorState
 import io.legado.app.ui.compose.component.code.CodeSearchHighlightState
@@ -131,14 +131,23 @@ fun BookSourceEditScreen(
     // 焦点字段的编辑器状态 (对照 app 端 lastActiveCodeView): 辅助键插入/撤销/重做/查找替换的目标。
     // 以 State 引用下发到字段层, 字段内部用 derivedStateOf 做 === 判定 (见 CodeField),
     // 聚焦切换只重组新旧两个字段, 其余可见字段的调用点不读取本 State
-    val activeEditor = remember { mutableStateOf<CodeEditorState?>(null) }
-    val keyboardState = remember { KeyboardToolbarState() }
+    // activeEditor/查找/键盘状态按字段编辑器容器同代次重建 (sourceVersion 换代即换实例):
+    // 键盘辅助条/查找替换以激活编辑器为目标, 跨代次继续引用会把输入写进已被丢弃的字段;
+    // 列表项 key 含版本号, 旧代次控件随组合销毁, 新字段经焦点事件登记
+    val activeEditor = remember(state.sourceVersion) { mutableStateOf<CodeEditorState?>(null) }
+    val keyboardState = remember(state.sourceVersion) { KeyboardToolbarState() }
     // 查找高亮状态: 供聚焦字段的 CodeTextField 叠加全量黄底 + 当前命中强调色 (对齐原版 CodeView 查找高亮)
-    val searchHighlight = remember { CodeSearchHighlightState() }
+    val searchHighlight = remember(state.sourceVersion) { CodeSearchHighlightState() }
+    // 激活编辑器文本/查询参数变化 → 查找匹配区间自动刷新 (统一入口, 见绑定 KDoc)
+    CodeEditorSearchHighlightBinding(
+        remember(state.sourceVersion) { { activeEditor.value } },
+        searchHighlight,
+    )
     val focusManager = LocalFocusManager.current
     // 选词菜单的"查找替换"项 (对齐原版 CodeView.onCreateActionMode → onSearchReplaceAction):
-    // 菜单不带选中文本, 从聚焦编辑器的选区取; 顺序对齐原版 clearFocus → showFindReplace
-    val findReplaceAction = remember {
+    // 菜单不带选中文本, 从聚焦编辑器的选区取; 顺序对齐原版 clearFocus → showFindReplace;
+    // 闭包捕获的激活编辑器/键盘状态随容器代次换代, 必须与之一同换代重挂
+    val findReplaceAction = remember(state.sourceVersion) {
         {
             activeEditor.value?.let { editor ->
                 val tf = editor.value
@@ -208,7 +217,7 @@ fun BookSourceEditScreen(
         // onEditorActive 逻辑只依赖稳定引用 (remember 的 activeEditor/searchHighlight),
         // remember 固定 lambda 实例: 聚焦切换触发的整屏重组不再新建 lambda 引用,
         // EditFields 的 item 调用点可跳过重组 (对齐 onCodeViewFocus 语义)
-        val stableOnEditorActive: (CodeEditorState) -> Unit = remember {
+        val stableOnEditorActive: (CodeEditorState) -> Unit = remember(state.sourceVersion) {
             { editor ->
                 if (activeEditor.value != editor) {
                     // 对齐原版 onCodeViewFocus: 切换到别的字段时清空上一字段的查找高亮
@@ -559,11 +568,12 @@ private fun EditFields(
         state = listState,
         modifier = modifier.fillMaxWidth(),
     ) {
-        // item key = 字段 key: 对齐原 key(version, tab) 整体重建语义 —— 版本号变化时
-        // 列表内容整体替换, 编辑器状态由 fieldEditors 容器按版本重建承载 (见 Route);
-        // 同 key item 复用组合槽, 值同步走 editorOf 的 setText 检查
+        // item key = 容器代次 + tab 前缀 + 字段 key (与编辑器容器的 fieldId 同构):
+        // 同名 key 在多个 tab 重复出现 (如 name / bookList), 且页签/换代切换必须按
+        // 完整身份全量重建字段组合 — 缺任一维度时 Compose 会把旧组合槽复用给新数据,
+        // 旧控件状态跟着新文本串用
         val entities = stableEditEntities(tab)
-        items(entities, key = { it.key }) { entity ->
+        items(entities, key = { "$version/$tab/${it.key}" }) { entity ->
             when (entity.viewType) {
                 EditEntity.ViewType.spinner -> SpinnerField(entity)
                 else -> {
@@ -605,8 +615,6 @@ private fun CodeField(
     val isActive by remember(editor, activeState) {
         derivedStateOf { activeState.value === editor }
     }
-    // 查找面板防抖协程作用域: 防抖任务挂在字段 scope, 随字段离开组合自动取消
-    val searchRefreshScope = rememberCoroutineScope()
     // 字段最大行数 (对齐原版 BookSourceEditAdapter 的 editText.maxLines = sourceEditMaxLine):
     // 默认 Int.MAX_VALUE 不限制 (字段高度 = 内容高度); 用户设置后大字段按配置行数截断、
     // 超出部分字段内部滚动。进入页面时读取一次 (配置变化下次进入生效, 同原版)。
@@ -615,20 +623,17 @@ private fun CodeField(
     val latestOnEditorActive by rememberUpdatedState(onEditorActive)
     val latestOnFieldFocus by rememberUpdatedState(onFieldFocus)
     // 统一同步点 (对齐原版 CodeView 的 TextWatcher): 输入/undo/redo/辅助键插入/查找替换/
-    // 格式化等一切修改路径都经 editor.onChanged 回调, 此处单向同步 entity.value 与查找高亮
-    // 刷新, 不存在绕过路径 (旧实现只在 BasicTextField 输入回调里写 entity.value,
-    // undo/替换等直改 editor 的路径分叉 → 保存丢修改 + editorOf 回滚光标跳末尾)。
+    // 格式化等一切修改路径都经 editor.onChanged 回调, 此处单向同步 entity.value,
+    // 不存在绕过路径 (旧实现只在 BasicTextField 输入回调里写 entity.value,
+    // undo/替换等直改 editor 的路径分叉 → 保存丢修改 + editorOf 回滚光标跳末尾);
+    // 查找匹配刷新由屏幕层的绑定效应统一驱动, 不在此处
     editor.onChanged = { newValue ->
         entity.value = newValue.text
-        // 查找面板开着且本字段激活时, 防抖刷新匹配高亮 (对齐原版 afterTextChanged 的
-        // updateSearchHighlightIncremental; 替换等由面板触发的编辑走 target 内部重算)
-        if (isActive && searchHighlight.keyword.isNotEmpty()) {
-            searchHighlight.refreshDebounced(newValue.text, searchRefreshScope)
-        }
     }
     CodeTextField(
         value = editor.textFieldState,
         inputTransformation = editor.inputTransformation,
+        persistentState = editor.codeFieldState,
         syntax = syntax,
         label = rememberString(entity.hint),
         // 对照原版 CodeView: 书源编辑条目开行号 (isLineNumberEnabled=true)

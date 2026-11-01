@@ -106,8 +106,8 @@ private val CodeSpanOrder = Comparator<CodeSpan> { a, b ->
 /**
  * 全 pattern 匹配汇总, 按 (start 升序, end 降序) 排序, 再顺序保留 `end > 已覆盖最大 end` 的 span。
  *
- * 去重规则 1:1 复刻 CodeView.highlightSyntax; [CodeTextField] 的增量着色也复用本函数
- * (只对变更区间所在行调用, 再平移回全文坐标)。
+ * 去重规则 1:1 复刻 CodeView.highlightSyntax; [CodeTextField] 的着色基线在本函数上
+ * 对真实完整文本做全量计算 (匹配语义含 lookaround/锚点/跨行等通用正则行为)。
  */
 internal fun matchCodeSpans(text: String, rules: List<CodeSyntaxRule>): ArrayList<CodeSpan> {
     if (text.isEmpty() || rules.isEmpty()) return ArrayList()
@@ -150,7 +150,7 @@ internal fun buildHighlightedCode(text: String, rules: List<CodeSyntaxRule>): An
  * 相邻同色 span 合并 (prev.end == start 且颜色相同): AnnotatedString 相邻同 style 区间
  * 不自动合并, 大文本下 operator 等规则产生数千 span, 合并后布局/绘制按区间数线性下降。
  * 只合并连续同色区间, 不改变上色规则 (哪些文本上色、什么颜色均不变)。
- * 要求输入已按 start 升序 ([matchCodeSpans] 与增量路径的 kept 均满足)。
+ * 要求输入已按 start 升序 (经 [matchCodeSpans] 排序后的 span 集满足)。
  */
 internal fun mergeAdjacentSpans(spans: List<CodeSpan>): List<CodeSpan> {
     if (spans.size < 2) return spans

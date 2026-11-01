@@ -181,6 +181,8 @@ mediamp-mpv-runtime-macos-arm64 = { module = "org.openani.mediamp:mediamp-mpv-ru
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "coroutines" }
+# 测试专用: TestScope 虚拟时间驱动协程调度 (仅测试源集引用)
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 kotlinx-atomicfu = { module = "org.jetbrains.kotlinx:atomicfu", version.ref = "atomicfu" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 # 扩展按 compileOnly 引用 kotlinx.serialization.json.okio 包, 运行时委派宿主, 官方宿主 serialization bundle 同含此工件

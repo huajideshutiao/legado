@@ -27,7 +27,6 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +44,7 @@ import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppOutlinedButton
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.horizontalMouseWheel
+import io.legado.app.ui.compose.component.code.CodeEditorSearchHighlightBinding
 import io.legado.app.ui.compose.component.code.CodeEditorSearchTarget
 import io.legado.app.ui.compose.component.code.CodeEditorState
 import io.legado.app.ui.compose.component.code.CodeSearchHighlightState
@@ -112,6 +112,8 @@ fun SourceToolboxScreen(
     val keyboardState = remember { KeyboardToolbarState() }
     val searchHighlight = remember { CodeSearchHighlightState() }
     val activeEditor = remember { mutableStateOf<CodeEditorState?>(null) }
+    // 激活编辑器文本变化 → 查找匹配区间防抖刷新 (统一入口, 见绑定 KDoc)
+    CodeEditorSearchHighlightBinding(remember { { activeEditor.value } }, searchHighlight)
     val focusManager = LocalFocusManager.current
 
     Column(
@@ -250,14 +252,8 @@ private fun RequestPane(
     // 树类型判定与对话框共用 treeKindOf: 同一响应体在各处的树按钮显隐一致
     val resTreeKind = remember(state.resBody) { treeKindOf(state.resBody) }
     val editMaxLine = remember { AppConfigProviders.get().sourceEditMaxLine }
-    val searchRefreshScope = rememberCoroutineScope()
     val urlEditor = rememberCodeEditorState(state.urlText)
-    urlEditor.onChanged = { newValue ->
-        actions.onUrlChange(newValue.text)
-        if (activeEditor.value === urlEditor && searchHighlight.keyword.isNotEmpty()) {
-            searchHighlight.refreshDebounced(newValue.text, searchRefreshScope)
-        }
-    }
+    urlEditor.onChanged = { newValue -> actions.onUrlChange(newValue.text) }
     LaunchedEffect(state.urlText) { urlEditor.setText(state.urlText) }
     CodeTextField(
         value = urlEditor.textFieldState,
@@ -386,14 +382,8 @@ private fun InputSection(
 ) {
     val colors = AppTheme.colors
     val editMaxLine = remember { AppConfigProviders.get().sourceEditMaxLine }
-    val searchRefreshScope = rememberCoroutineScope()
     val inputEditor = rememberCodeEditorState(state.inputText)
-    inputEditor.onChanged = { newValue ->
-        actions.onInputChange(newValue.text)
-        if (activeEditor.value === inputEditor && searchHighlight.keyword.isNotEmpty()) {
-            searchHighlight.refreshDebounced(newValue.text, searchRefreshScope)
-        }
-    }
+    inputEditor.onChanged = { newValue -> actions.onInputChange(newValue.text) }
     LaunchedEffect(state.inputText) { inputEditor.setText(state.inputText) }
     CodeTextField(
         value = inputEditor.textFieldState,

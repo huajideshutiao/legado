@@ -33,6 +33,7 @@ import androidx.compose.material.Text
 import androidx.compose.material.TextFieldDefaults
 import androidx.compose.material.TextFieldDefaults.indicatorLine
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
@@ -41,7 +42,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -117,19 +117,19 @@ import io.legado.app.ui.compose.component.toKeyboardActionHandler
 import io.legado.app.ui.compose.platform.rememberImeAnimating
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlin.concurrent.Volatile
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-/** 后台着色前的等待, 对齐 CodeView 的 postDelayed(highlightRunnable, 150) */
-private const val AsyncHighlightDelayMs = 150L
+/** 着色重算与查找刷新共用的防抖等待, 对齐 CodeView 的 postDelayed(highlightRunnable, 150) */
+internal const val AsyncHighlightDelayMs = 150L
 
 /** 首帧着色挂载窗口的字符预算上界 (约 50 行 × 80 列): 布局就绪后由可见区域校正 */
 private const val InitialRenderChars = 4000
@@ -140,13 +140,21 @@ private val SearchMatchBackground = Color(0x80FFFF00)
 /** 行号分隔线 alpha, 对齐 CodeView `lineNumberTextColor and 0x00FFFFFF or 0x60000000` */
 private val LineDividerAlpha = 0x60 / 255f
 
-/** 查找面板开着时编辑器文本变化的即时刷新上限, 超长文本等下次面板操作再算 (原版为增量更新) */
-private const val SearchRefreshMaxLength = 20000
+/** 查找匹配的计算输入快照 (查询参数 + 文本), 与结果区间同源同写, 判效依据 */
+@Immutable
+internal data class SearchInput(
+    val keyword: String,
+    val useRegex: Boolean,
+    val matchCase: Boolean,
+    val wholeWord: Boolean,
+    val text: String,
+)
 
 /**
- * 查找高亮状态 (屏幕级共享): 匹配区间由宿主屏幕的查找目标计算写入,
- * [CodeTextField] 的 VisualTransformation 消费并叠加渲染 (对齐原版 CodeView 的
- * searchHighlightColor 全量黄底): 当前命中改用长按选择的半透明 accent 底强调。
+ * 查找高亮状态 (屏幕级共享): 匹配区间由宿主屏幕的查找目标 (find/update) 与文本刷新
+ * 绑定 ([CodeEditorSearchHighlightBinding]) 写入, [CodeTextField] 的 VisualTransformation
+ * 消费并叠加渲染 (对齐原版 CodeView 的 searchHighlightColor 全量黄底): 当前命中改用
+ * 长按选择的半透明 accent 底强调。
  * 属性全 State 委托, 标 @Stable: 宿主重组时含本对象的调用点可跳过。
  */
 @Stable
@@ -157,12 +165,17 @@ class CodeSearchHighlightState {
     var wholeWord by mutableStateOf(false)
     var ranges by mutableStateOf(emptyList<IntRange>())
     var currentIndex by mutableIntStateOf(-1)
+
+    /** 既有区间 [ranges] 的计算输入快照 (查询参数 + 文本), 判效依据 (非指纹) */
+    internal var matchedInput by mutableStateOf<SearchInput?>(null)
+        private set
     var version by mutableIntStateOf(0)
         private set
 
-    /** 输入防抖刷新任务: 见 [refreshDebounced], 聚焦切换时取消避免旧文本结果写入 */
-    private var refreshJob: Job? = null
-
+    /**
+     * 写入一次匹配结果; 输入快照 ([keyword]/[useRegex]/[matchCase]/[wholeWord]/[text])
+     * 与区间同源同写, 供自动刷新/查找判定既有结果是否仍按当前输入有效。
+     */
     fun update(
         keyword: String,
         useRegex: Boolean,
@@ -170,6 +183,7 @@ class CodeSearchHighlightState {
         wholeWord: Boolean,
         ranges: List<IntRange>,
         currentIndex: Int,
+        text: String,
     ) {
         this.keyword = keyword
         this.useRegex = useRegex
@@ -177,40 +191,18 @@ class CodeSearchHighlightState {
         this.wholeWord = wholeWord
         this.ranges = ranges
         this.currentIndex = currentIndex
+        matchedInput = SearchInput(keyword, useRegex, matchCase, wholeWord, text)
         version++
     }
 
-    /** 编辑器文本变化时刷新匹配区间, 显示跟随 (对齐原版 updateSearchHighlightIncremental) */
-    fun refresh(text: String) {
-        if (keyword.isEmpty() || text.length > SearchRefreshMaxLength) return
-        val ranges = buildSearchRanges(keyword, useRegex, matchCase, wholeWord, text)
-        val index = if (ranges.isEmpty()) -1 else currentIndex.coerceIn(0, ranges.size - 1)
-        if (ranges == this.ranges && index == currentIndex) return
-        update(keyword, useRegex, matchCase, wholeWord, ranges, index)
-    }
-
-    /** 编辑器文本变化时防抖刷新匹配区间 (对齐原版 updateSearchHighlightIncremental
-     * 的延迟语义): 输入停顿 [AsyncHighlightDelayMs] 才跑全文匹配, 快速输入不反复同步扫描;
-     * [refresh] 内部按内容比较去重, 结果无变化不 bump version */
-    fun refreshDebounced(text: String, scope: CoroutineScope) {
-        if (keyword.isEmpty() || text.length > SearchRefreshMaxLength) return
-        refreshJob?.cancel()
-        refreshJob = scope.launch {
-            delay(AsyncHighlightDelayMs)
-            refresh(text)
-        }
-    }
-
     fun clear() {
-        // 取消未决的防抖刷新: 聚焦切换到别的字段后, 旧字段的 pending 刷新不得写入
-        refreshJob?.cancel()
-        refreshJob = null
         keyword = ""
         useRegex = false
         matchCase = false
         wholeWord = false
         ranges = emptyList()
         currentIndex = -1
+        matchedInput = null
         version++
     }
 }
@@ -232,6 +224,26 @@ fun buildSearchRanges(
         return emptyList()
     }
     return regex.findAll(text).map { it.range }.toList()
+}
+
+/**
+ * [CodeTextField] 的跨组合持久槽: 由持有字段数据的编辑器状态创建并传入。字段控件因
+ * 虚拟化列表滚出视口 / 页签切换被销毁重建时, 有效全文着色基线不随组合丢失 ——
+ * 滚入/切回首帧按基线直接着色, 消除"先无色(或错位)后有色"的闪变。
+ * 只持久保存有效全文着色结果: 窗口切片与防抖临时结果随字段组合重建, 挂载窗口由
+ * 本次真实布局重新校正。
+ * 默认 (null) 时组件在组合内自持, 行为同旧版。
+ */
+@Stable
+class CodeTextFieldPersistentState internal constructor() {
+    /** 最近一次有效的全文着色结果 (规则/正文/span 基线/前缀索引同源快照) */
+    internal var snapshot: CodeHighlightSnapshot? = null
+
+    /**
+     * 同一字段持有者范围内的计算串行屏障: 跨重挂/规则换代的全部缓存实例共享,
+     * 被取消的计算段物理结束并释放屏障前, 新计算不进入 (协程标准能力 Mutex)
+     */
+    internal val computeLock = Mutex()
 }
 
 /**
@@ -286,12 +298,16 @@ fun CodeTextField(
     autoComplete: Boolean = true,
     /** 输入修正 (自动缩进等), 由调用方编辑器 (CodeEditorState) 提供; null = 不做修正 */
     inputTransformation: InputTransformation? = null,
+    /** 跨组合持久槽 (与字段数据同生命周期), 见 [CodeTextFieldPersistentState]; null = 组合内自持 */
+    persistentState: CodeTextFieldPersistentState? = null,
 ) {
     // 着色挂载窗口 (字符偏移区间, 对照原版 activeSyntaxSpans 的渲染窗口 ±20 行):
     // 全文 span 基线照旧维护, 但只有落在本窗口内的 span 会进 AnnotatedString ——
     // 万行文件下 span 从数千降到数十, 文本布局的样式处理成本随之线性下降。
-    // 初始值给首屏字符预算 (窗口只能在 layout 就绪后收窄, 若初始全区间则打开大文件时
-    // 会先挂一次全量 span 做全文布局); 短文本落在预算内, 行为与裁剪前一致。
+    // 初始值给首屏字符预算, 只约束无有效基线时的首挂; 有效基线命中且布局未就绪时
+    // 全文挂载已完成着色, 布局就绪后按真实视口收窄。
+    // 窗口不跨组合保留: 重挂 (滚入/切回) 后布局未就绪前不能拿旧视口限制新显示,
+    // 布局就绪后由 updateRenderRange 按本次真实布局的可见区校正。
     var renderRange by remember { mutableStateOf(0..InitialRenderChars) }
     // 键盘动画期间冻结挂载窗口更新 (见 onGloballyPositioned): IME 动画中视口逐帧收缩/
     // 扩张, 若跟随会触发数次全量 buildAnnotatedString —— 动画期 (rememberImeAnimating,
@@ -299,7 +315,36 @@ fun CodeTextField(
     // 不影响手动滚动 (滚动由宿主滚动容器驱动), 只延迟高亮/行号窗口的校正;
     // 短文本 (renderRange 默认全区间) 无感知。
     val imeAnimating = rememberImeAnimating()
-    val transformation = rememberCodeHighlightTransformation(syntax, searchHighlight, renderRange)
+    // 文本布局结果 (BasicTextField onTextLayout 回传): 光标行 rect / 补全弹层锚点 / 行号
+    // 逐行对齐 / 挂载窗口就绪信号全部取自它。声明在着色变换构造之前:
+    // 布局未就绪 (本次挂载尚无任何布局) 时基线命中直接全文挂载已完成着色。
+    var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    // 着色缓存: 本次组合自建, 基线从持久槽播种 (规则不一致的快照不采纳); 窗口切片与
+    // 防抖临时结果只存组合内, 重挂随新组合重建。计算串行屏障挂在持久槽 (字段持有者)
+    // 上, 跨重挂/规则换代共享; 重算由下方组合效应驱动, 显示路径不启动后台任务。
+    // 显式编辑器持久槽缺省时按字段文本状态自建默认槽: 同一字段全部规则缓存 (含换
+    // 主题换规则集后的新缓存) 共享屏障, 不新全局状态。
+    val fieldSlot = persistentState ?: remember(value) { CodeTextFieldPersistentState() }
+    val highlightCache = if (syntax.rules.isNotEmpty()) {
+        remember(syntax, fieldSlot) { CodeHighlightCache(syntax, fieldSlot) }
+    } else {
+        null
+    }
+    if (highlightCache != null) {
+        // 重算调度: 文本变化 (输入/程序化 edit/undo/redo) 防抖后重算全文基线;
+        // collectLatest 保证文本再变时上一轮在挂起点被取消, 过期结果不落盘;
+        // 重挂 (缓存随组合重建) 后首帧处理当前文本。
+        LaunchedEffect(highlightCache, value) {
+            snapshotFlow { value.text.toString() }
+                .collectLatest { text -> highlightCache.recompute(text) }
+        }
+    }
+    val transformation = rememberCodeHighlightTransformation(
+        highlightCache,
+        searchHighlight,
+        renderRange,
+        textLayout != null,
+    )
     // 呈现变换实例长期稳定: 变换本体由闭包内现读 (rememberUpdatedState), 着色版本/挂载窗口
     // 变化只让字段内部的呈现文本失效重算, 不换 OutputTransformation 实例 —— 换实例会让
     // BasicTextField 重建 TransformedTextFieldState/TextLayoutState, 布局缓存清零全文重排
@@ -489,12 +534,7 @@ fun CodeTextField(
     // anchorBounds 注释), 自动补全弹层要锚定光标, 组件内相对偏移必须换算成窗口坐标。
     // 常挂跟踪: 挂载即回调一次取最新值 (首次弹层可见时不再用 Zero 错位一帧),
     // 滚动/键盘时位置变化跟随更新; 写入同值不触发重组, 弹层不可见时 (popupOffset
-    // 分支短路无读取者) 滚动回调零重组成本
-    // 文本布局结果 (BasicTextField onTextLayout 回传): 光标行 rect / 补全弹层锚点 / 行号
-    // 逐行对齐全部取自它, 对齐原版 CodeView 一律用 layout.getLineForOffset /
-    // getPrimaryHorizontal / getLineBaseline 取几何。逻辑行号 × 固定行高的算法遇软换行
-    // (长行折行) 必然偏移, 是"点击内容上跑/光标被键盘挡/补全条跑屏幕底部"的共同根因。
-    var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    // 分支短路无读取者) 滚动回调零重组成本 (textLayout 已提前声明, 见着色变换构造处)
     /**
      * 只有与当前文本**同步**的布局才可用来按字符偏移取几何。
      *
@@ -1339,34 +1379,34 @@ fun CodeTextField(
 /**
  * 语法着色 [VisualTransformation] + 查找高亮叠加。
  *
- * VisualTransformation.filter 是同步 API, 无法 await 后台结果, 因此所有着色统一走
+ * VisualTransformation.filter 是同步 API, 无法 await 后台结果, 因此着色统一走
  * "先旧后新" (对齐原版 postDelayed(highlightRunnable, 150) 的延迟高亮):
- * 文本变化后先返回按变更偏移近似平移的旧 span, 后台 (Dispatchers.Default) 增量重算
- * 变更区间所在行, 完成后 bump version 触发重组拿到精确着色。
+ * 文本变化后先返回按变更偏移近似平移的旧 span (取自全文基线, 覆盖本次显示范围),
+ * 后台重算由字段组合的 LaunchedEffect 经缓存 recompute 驱动 (防抖/取消/串行由协程
+ * 机制管理), 完成后 bump version 触发重组拿到精确着色 —— 显示路径不启动任何后台任务。
  * 查找高亮 (半透明黄底 + 当前命中 accent 强调) 由 [searchHighlight] 在着色结果上叠加。
  */
 @Composable
 private fun rememberCodeHighlightTransformation(
-    syntax: CodeSyntaxScheme,
+    cache: CodeHighlightCache?,
     search: CodeSearchHighlightState?,
     renderRange: IntRange,
+    layoutReady: Boolean,
 ): VisualTransformation {
-    if (syntax.rules.isEmpty() && search == null) return VisualTransformation.None
-    val scope = rememberCoroutineScope()
-    val cache = remember(syntax) { CodeHighlightCache(syntax.rules) }
-    val version = cache.version
+    if (cache == null && search == null) return VisualTransformation.None
+    val version = cache?.version ?: 0
     val searchVersion = search?.version
     // 当前命中的强调底色对齐长按选择 (同一半透明 accent): 底色压在语法着色上,
     // 不透明底会把文字盖掉; 其余命中保持原版半透明黄
     val currentMatchBackground = appTextSelectionColors().backgroundColor
-    return remember(cache, version, search, searchVersion, currentMatchBackground, renderRange) {
-        // 搜索叠加结果缓存: 防抖窗口内 (同一 pendingText) 文本与搜索版本均未变时,
+    return remember(cache, version, search, searchVersion, currentMatchBackground, renderRange, layoutReady) {
+        // 搜索叠加结果缓存: 防抖窗口内 (同一待算文本) 文本与搜索版本均未变时,
         // 每次重组复用同一 AnnotatedString 实例, 不再重复 append(全文) + 遍历匹配区间
         var overlayText: String? = null
         var overlaySearchVersion: Int = -1
         var overlayResult: AnnotatedString? = null
         VisualTransformation { text ->
-            val base = cache.highlight(text.text, renderRange, scope)
+            val base = cache?.highlight(text.text, renderRange, layoutReady) ?: text
             val searchOverlay =
                 search?.takeIf { it.keyword.isNotEmpty() && it.ranges.isNotEmpty() }
             val result = if (searchOverlay == null) {
@@ -1405,204 +1445,152 @@ private fun rememberCodeHighlightTransformation(
     }
 }
 
-private class CodeHighlightCache(private val rules: List<CodeSyntaxRule>) {
+/**
+ * 全文着色基线快照 (不可变): 规则集、正文、排序合并后的 span 基线与 end 前缀最大值
+ * 四者同源同写 —— 窗口挂载/平移的二分索引只与本快照自带的 span 配对使用, 不凭数量
+ * 判同源。后台重算以快照为输入, 落盘以新快照整体替换, 计算与落盘无共享可变状态。
+ */
+internal class CodeHighlightSnapshot(
+    val rules: List<CodeSyntaxRule>,
+    val text: String,
+    val spans: List<CodeSpan>,
+    val spanMaxEndPrefix: IntArray,
+)
 
-    /** 后台着色完成后自增, 供 Compose 侧重建 VisualTransformation 触发重绘 */
+/**
+ * 单字段着色缓存: 有效全文基线 + 本次组合的显示派生 (窗口切片/防抖 stale 结果)。
+ *
+ * 显示路径 [highlight] 纯同步 (不落盘、不启动后台任务): 基线命中直接复用已完成结果,
+ * 布局未就绪 (挂载首帧) 时全文挂载、就绪后按本次视口裁剪; 未命中 (文本已变/无基线)
+ * 返回全文基线按变更偏移平移的 stale 结果, 挂载范围取本次请求的窗口。
+ * 重算由字段组合的 LaunchedEffect 经 [recompute] 驱动: 防抖 [AsyncHighlightDelayMs]
+ * (首算立即), 全文精确匹配在 [computeDispatcher] (生产为 Default) 执行。同一字段
+ * 持有者 (持久槽) 上的计算串行屏障 [persistent.computeLock] 跨重挂/规则换代共享:
+ * 被取消的计算段物理结束并释放屏障前, 新计算不进入; 等锁期间同输入已由其他缓存
+ * 实例算好则采纳不重算。落盘主线程单写, 过期结果 (取消/文本再变) 不写持久基线。
+ */
+internal class CodeHighlightCache internal constructor(
+    private val syntax: CodeSyntaxScheme,
+    private val persistent: CodeTextFieldPersistentState,
+    // 全文匹配计算段的执行调度器: 生产默认 Default; 测试注入 TestScheduler 管控的
+    // 调度器以确定取消/重挂/串行屏障的阶段 (标准抽象依赖注入, 非生产开关)
+    private val computeDispatcher: CoroutineDispatcher = Dispatchers.Default,
+) {
+
+    /** 着色结果落盘后自增, 供 Compose 侧重建 VisualTransformation 触发重绘 */
     var version by mutableIntStateOf(0)
         private set
 
-    // @Volatile 的字段: 主线程 (highlight/runHighlightLoop 落盘) 写, 后台 worker
-    // (compute/incremental 读 cachedText/spans) 读 —— 单 worker 已排除并发写, 缺的只是可见性,
-    // 故按字段 volatile 即可, 不给每键都走的热路径上锁
-    @Volatile
-    private var cachedText: String? = null
-    private var cachedRange: IntRange? = null
-    private var cached: AnnotatedString? = null
-    @Volatile
-    private var spans: List<CodeSpan> = emptyList()
-    /**
-     * spans 的 end 前缀最大值 (单调不减): 二分即可定出"首个可能与窗口相交的 span",
-     * 对照原版 updateVisibleSpans 的二分 + 回扫 actualStartIndex, 但为精确 O(log n)
-     * (原版回扫到 0 是 O(n))。跨窗口起点的长 span (块注释) 因此不会漏挂。
-     */
-    @Volatile
-    private var spanMaxEndPrefix: IntArray = IntArray(0)
-    /** 最近一次请求的挂载窗口: 后台着色完成时按它构建挂载结果 */
-    @Volatile
-    private var lastRange: IntRange = 0..Int.MAX_VALUE
-    @Volatile
-    private var pendingText: String? = null
-    /** 防抖窗口内的 stale 结果缓存: 同一 pendingText 期间多次 filter 调用复用同一实例 */
-    @Volatile
-    private var staleResult: AnnotatedString? = null
-    private var staleRange: IntRange? = null
-    private var job: Job? = null
+    /** 当前有效全文基线 (主线程读写); 持久槽里规则不一致的快照不采纳, 按无基线重算 */
+    private var snapshot: CodeHighlightSnapshot? =
+        persistent.snapshot?.takeIf { it.rules === syntax.rules }
 
-    fun highlight(text: String, range: IntRange, scope: CoroutineScope): AnnotatedString {
-        lastRange = range
-        // 先比文本再取快照, 取不到就重建: 不靠"比对上就一定非空"的隐式前提
-        val snapshotText = cachedText
-        if (snapshotText == text) {
-            val snapshot = cached
-            if (snapshot != null && cachedRange == range) return snapshot
-            // 文本未变 (滚动换窗口, 或快照尚未就绪): span 基线已是最新文本,
-            // 直接按新窗口重挂, 不重跑正则
-            // (对照原版 updateVisibleSpans 只增删挂载, 不重算 allSyntaxSpans)
-            val built = buildAnnotated(text, spans, range)
-            cached = built
-            cachedRange = range
+    /** 同一字段持有者范围内的计算串行屏障 (跨重挂/规则换代共享) */
+    private val computeLock: Mutex = persistent.computeLock
+
+    // 窗口切片缓存: 同一基线同一窗口的 filter 重复调用 (重组/选区变化) 复用同一实例
+    private var windowedSnapshot: CodeHighlightSnapshot? = null
+    private var windowedRange: IntRange? = null
+    private var windowedResult: AnnotatedString? = null
+
+    // 防抖窗口内的 stale 结果缓存: 同一待算文本期间多次 filter 调用复用同一实例
+    // (输入热路径每键 O(n+窗口 span) → O(1))
+    private var staleText: String? = null
+    private var staleRange: IntRange? = null
+    private var staleResult: AnnotatedString? = null
+
+    /**
+     * 显示路径: [text] 按 [range] 窗口挂载的着色结果 (纯同步)。基线命中且 [layoutReady]
+     * 为 false (本次挂载尚未布局) 时全文挂载已完成结果, 就绪后按真实视口裁剪重挂。
+     */
+    fun highlight(text: String, range: IntRange, layoutReady: Boolean): AnnotatedString {
+        val current = snapshot
+        if (current != null && current.text == text) {
+            val mountRange = if (layoutReady) range else fullMountRange
+            if (windowedSnapshot === current && windowedRange == mountRange) {
+                return windowedResult!!
+            }
+            val built = buildAnnotated(current, mountRange)
+            windowedSnapshot = current
+            windowedRange = mountRange
+            windowedResult = built
             return built
         }
-        if (pendingText == text) {
-            // 防抖窗口内: 复用上次构建的 stale 实例 (输入热路径每键 O(n+窗口 span) → O(1))
-            if (staleRange == range) staleResult?.let { return it }
-        } else {
-            pendingText = text
-            staleResult = null
-            staleRange = null
-            // 单 worker 串行: 任务在跑就不重启 (循环内会自检 pendingText 变化),
-            // 不再每次按键 cancel + 新协程 —— 已开始的同步 compute 无法被 cancel 中断,
-            // 旧实现串键时会在 Default 池堆积多个全量 diff
-            if (job?.isActive != true) {
-                job = scope.launch { runHighlightLoop() }
-            }
+        if (staleText == text && staleRange == range) {
+            return staleResult!!
         }
-        return staleOrPlain(text, range)
+        val built = buildStale(text, range)
+        staleText = text
+        staleRange = range
+        staleResult = built
+        return built
     }
 
     /**
-     * 单 worker 着色循环: 同一时刻至多一个 compute 在跑; 防抖窗口内又输入则放弃本轮,
-     * compute 期间又来新输入则丢弃过期结果重来 (提交前核对 pendingText), 过期任务不启动
-     * 计算 —— 串键时不再堆积任务, 只有最新文本最终落盘
+     * 重算 [text] 的全文基线并落盘 (由组合效应驱动, 见类 KDoc)。计算在
+     * [computeDispatcher] 上只读执行, 落盘回调用协程线程整体替换快照并写回持久槽。
      */
-    private suspend fun runHighlightLoop() {
-        while (true) {
-            val text = pendingText ?: return
-            // 首次加载不延迟 (对齐原版 setText → reHighlightSyntax 立即后台全量)
-            delay(if (cachedText == null) 0 else AsyncHighlightDelayMs)
-            if (pendingText != text) continue // 防抖窗口内又输入, 放弃本轮
-            // 后台只读计算, 字段统一在主线程落盘, 避免并发 compute 写坏增量基线
-            val range = lastRange
-            val result = withContext(Dispatchers.Default) {
-                val newSpans = compute(text)
-                Triple(newSpans, prefixMaxEnd(newSpans), buildAnnotated(text, newSpans, range))
+    suspend fun recompute(text: String) {
+        val current = snapshot
+        if (current != null && current.text == text) return
+        delay(if (current == null) 0L else AsyncHighlightDelayMs)
+        computeLock.withLock {
+            // 等锁期间同字段的其他缓存实例 (重挂/换代前的旧缓存) 已算好同一输入: 采纳不重算,
+            // 持久槽只由新算成功时写入
+            val latest = persistent.snapshot
+            if (latest != null && latest.rules === syntax.rules && latest.text == text) {
+                if (snapshot !== latest) adopt(latest)
+                return
             }
-            if (pendingText != text) continue // 计算期间又输入, 丢弃过期结果
-            spans = result.first
-            spanMaxEndPrefix = result.second
-            cached = result.third
-            cachedText = text
-            cachedRange = range
-            pendingText = null
-            staleResult = null
-            staleRange = null
-            version++
-            return
+            val computed = withContext(computeDispatcher) { computeFrom(text) }
+            commit(computed)
         }
     }
 
-    private fun compute(text: String): List<CodeSpan> {
-        val oldText = cachedText
-        val newSpans = if (oldText == null) {
-            matchCodeSpans(text, rules)
-        } else {
-            incremental(oldText, text)
-        }
+    /**
+     * 发布一份有效全文基线: 替换当前快照, 清空派生缓存并自增版本。
+     * 持久槽的写入仅发生在真实计算成功时 (见 [commit])。
+     */
+    private fun adopt(latest: CodeHighlightSnapshot) {
+        snapshot = latest
+        windowedSnapshot = null
+        windowedRange = null
+        windowedResult = null
+        staleText = null
+        staleRange = null
+        staleResult = null
+        version++
+    }
+
+    /** 新算成功: 先落持久槽, 再按同一发布路径采纳 */
+    private fun commit(newSnapshot: CodeHighlightSnapshot) {
+        persistent.snapshot = newSnapshot
+        adopt(newSnapshot)
+    }
+
+    /** 全文精确匹配 (复用 [matchCodeSpans]), 保证 lookaround/锚点/跨行等通用正则语义 */
+    private fun computeFrom(text: String): CodeHighlightSnapshot {
         // 相邻同色区间合并后再入基线: AnnotatedString 相邻同 style 不自动合并,
-        // 大文本下 operator 规则产生数千 span, 合并后布局/绘制与下次增量平移都按区间数线性下降
-        return mergeAdjacentSpans(newSpans)
-    }
-
-    /**
-     * 增量着色: 与旧文本 diff 出变更区间, 只重算该区间所在行的匹配
-     * (对齐原版 highlightSyntaxIncremental 的 dirty 行重算), 避免长文本每次按键全量正则。
-     */
-    private fun incremental(oldText: String, newText: String): ArrayList<CodeSpan> {
-        val minLen = minOf(oldText.length, newText.length)
-        var prefix = 0
-        while (prefix < minLen && oldText[prefix] == newText[prefix]) prefix++
-        var suffix = 0
-        while (suffix < minLen - prefix &&
-            oldText[oldText.length - 1 - suffix] == newText[newText.length - 1 - suffix]
-        ) suffix++
-        val offset = newText.length - oldText.length
-
-        // 1. 变更点之后的 span 整体平移, 跨变更点的 span 只拉伸/收缩 end (对齐原版 onTextChanged)
-        val shifted = ArrayList<CodeSpan>(spans.size + 8)
-        for (span in spans) {
-            if (span.start >= prefix) {
-                val s = max(prefix, span.start + offset)
-                val e = max(prefix, span.end + offset)
-                if (s < e) shifted.add(CodeSpan(s, e, span.color))
-            } else {
-                if (span.end <= prefix) {
-                    shifted.add(span)
-                } else {
-                    val e = max(prefix, span.end + offset)
-                    if (e > span.start) shifted.add(CodeSpan(span.start, e, span.color))
-                }
-            }
-        }
-
-        // 2. 变更区间所在行范围 (对齐原版 lineStart/lineEnd 计算)
-        val dEnd = prefix + (newText.length - suffix - prefix)
-        val lineStart = newText.lastIndexOf('\n', prefix - 1) + 1
-        val lineEndRaw = newText.indexOf('\n', dEnd)
-        val lineEnd = if (lineEndRaw == -1) newText.length else lineEndRaw
-
-        // 3. 移除区间内旧 span, 重算区间并归并 (对齐原版 removeAll + addAll + sort;
-        // 平移保持有序 + 区间新匹配有序 → 线性归并替代全量 sort, 大文本防抖后少 O(n log n))
-        val kept = ArrayList<CodeSpan>(shifted.size + 8)
-        for (span in shifted) {
-            if (span.start >= lineStart && span.end <= lineEnd) continue
-            kept.add(span)
-        }
-        val added = matchCodeSpans(newText.substring(lineStart, lineEnd), rules)
-        val merged = ArrayList<CodeSpan>(kept.size + added.size + 8)
-        var a = 0
-        var b = 0
-        while (a < kept.size && b < added.size) {
-            val sa = kept[a]
-            val sb = added[b]
-            // added 的偏移是子串相对坐标, 比较前必须换算到绝对坐标 (漏 +lineStart 会让
-            // 归并顺序错乱, 影响重叠 span 的着色优先级)
-            val sbStart = sb.start + lineStart
-            val sbEnd = sb.end + lineStart
-            val cmp = if (sa.start != sbStart) {
-                sa.start - sbStart
-            } else if (sa.end != sbEnd) {
-                sbEnd - sa.end
-            } else {
-                0
-            }
-            if (cmp <= 0) {
-                merged.add(sa); a++
-            } else {
-                merged.add(CodeSpan(sbStart, sbEnd, sb.color)); b++
-            }
-        }
-        while (a < kept.size) merged.add(kept[a++])
-        while (b < added.size) {
-            val sb = added[b++]
-            merged.add(CodeSpan(sb.start + lineStart, sb.end + lineStart, sb.color))
-        }
-        return merged
+        // 大文本下 operator 规则产生数千 span, 合并后布局/绘制与 stale 平移都按区间数线性下降
+        val merged = mergeAdjacentSpans(matchCodeSpans(text, syntax.rules))
+        return CodeHighlightSnapshot(syntax.rules, text, merged, prefixMaxEnd(merged))
     }
 
     /**
      * 只挂载与 [range] 相交的 span (对照原版 activeSyntaxSpans: 全文 span 基线照旧,
-     * 但只有渲染窗口内的才 attach 到 Editable)。起点用 [spanMaxEndPrefix] 二分定位,
-     * 跨窗口起点的长 span (块注释/多行字符串) 不会漏挂。
+     * 但只有渲染窗口内的才 attach 到 Editable)。起点用快照自带的 end 前缀最大值
+     * 二分定位, 跨窗口起点的长 span (块注释/多行字符串) 不会漏挂。
      */
     private fun buildAnnotated(
-        text: String,
-        spans: List<CodeSpan>,
+        snapshot: CodeHighlightSnapshot,
         range: IntRange,
     ): AnnotatedString {
+        val text = snapshot.text
+        val spans = snapshot.spans
         if (spans.isEmpty()) return AnnotatedString(text)
         return buildAnnotatedString {
             append(text)
-            var i = firstSpanIndexReaching(spans, range.first)
+            var i = firstSpanIndexReaching(snapshot.spanMaxEndPrefix, spans, range.first)
             while (i < spans.size) {
                 val span = spans[i]
                 if (span.start > range.last) break
@@ -1616,21 +1604,19 @@ private class CodeHighlightCache(private val rules: List<CodeSyntaxRule>) {
 
     /**
      * 首个 end > [from] 的 span 下标: 在 end 前缀最大值 (单调不减) 上二分。
-     * 前缀数组尚未就绪 (stale 路径的临时 span 集) 时退化为线性扫描。
+     * 前缀数组与 span 集同源同写 (见 [CodeHighlightSnapshot]), 不凭数量判同源。
      */
-    private fun firstSpanIndexReaching(spans: List<CodeSpan>, from: Int): Int {
-        val prefix = spanMaxEndPrefix
-        if (prefix.size != spans.size) {
-            var i = 0
-            while (i < spans.size && spans[i].end <= from) i++
-            return i
-        }
+    private fun firstSpanIndexReaching(
+        spanMaxEndPrefix: IntArray,
+        spans: List<CodeSpan>,
+        from: Int,
+    ): Int {
         var low = 0
         var high = spans.size - 1
         var result = spans.size
         while (low <= high) {
             val mid = (low + high) ushr 1
-            if (prefix[mid] > from) {
+            if (spanMaxEndPrefix[mid] > from) {
                 result = mid
                 high = mid - 1
             } else {
@@ -1641,32 +1627,29 @@ private class CodeHighlightCache(private val rules: List<CodeSyntaxRule>) {
     }
 
     /**
-     * 防抖窗口内沿用旧 span, 按变更偏移近似平移 (对齐原版: span 挂在 Editable 上随文本
-     * 自动偏移, 新增字符无色), 避免长文本每次按键闪回无色。只平移窗口内的 span:
-     * 上次挂载结果本身已是窗口切片, 故此处成本为 O(窗口 span) 而非全文。
-     * 结果缓存到 [staleResult]: 同一 pendingText 期间每次 filter 调用复用同一实例。
+     * 基线未命中 (文本已变) 的显示结果: 全文基线 span 按变更偏移近似平移 (对齐原版:
+     * span 挂在 Editable 上随文本自动偏移, 新增字符无色), 挂载范围取本次请求的窗口 ——
+     * 基线是全文结果, 新滚入窗口的区域照常着色, 不受旧窗口切片限制。
+     * 结果缓存到 [staleResult]: 同一待算文本期间每次 filter 调用复用同一实例。
      */
-    private fun staleOrPlain(text: String, range: IntRange): AnnotatedString {
-        val built = buildStale(text, range)
-        staleResult = built
-        staleRange = range
-        return built
-    }
-
     private fun buildStale(text: String, range: IntRange): AnnotatedString {
-        val old = cachedText ?: return AnnotatedString(text)
-        val stale = cached ?: return AnnotatedString(text)
-        if (stale.spanStyles.isEmpty()) return AnnotatedString(text)
+        val current = snapshot ?: return AnnotatedString(text)
+        val spans = current.spans
+        if (spans.isEmpty()) return AnnotatedString(text)
+        val old = current.text
         val minLen = minOf(old.length, text.length)
         var prefix = 0
         while (prefix < minLen && old[prefix] == text[prefix]) prefix++
         val offset = text.length - old.length
+        // 平移只增不减: 窗口起点按最大平移量回退后二分, 相交 span 不会漏
+        val searchFrom = (range.first - offset.coerceAtLeast(0)).coerceAtLeast(0)
         return buildAnnotatedString {
             append(text)
-            for (spanRange in stale.spanStyles) {
-                if (spanRange.start >= text.length) continue
-                var s = spanRange.start
-                var e = spanRange.end
+            var i = firstSpanIndexReaching(current.spanMaxEndPrefix, spans, searchFrom)
+            while (i < spans.size) {
+                val span = spans[i]
+                var s = span.start
+                var e = span.end
                 if (s >= prefix) {
                     s = max(prefix, s + offset)
                     e = max(prefix, e + offset)
@@ -1675,14 +1658,19 @@ private class CodeHighlightCache(private val rules: List<CodeSyntaxRule>) {
                 }
                 s = s.coerceIn(0, text.length)
                 e = e.coerceIn(0, text.length)
-                // 窗口外不挂 (窗口随滚动前移时旧切片可能已越界)
-                if (s < e && e > range.first && s <= range.last) {
-                    addStyle(spanRange.item, s, e)
+                // 平移后起点单调不减, 超出窗口右缘即可停
+                if (s > range.last) break
+                if (s < e && e > range.first) {
+                    addStyle(SpanStyle(color = span.color), s, e)
                 }
+                i++
             }
         }
     }
 }
+
+/** 全区间挂载窗口: 布局未就绪的基线命中首帧 / 无内部滚动字段 (maxLines 有限) */
+private val fullMountRange = 0..Int.MAX_VALUE
 
 /** span 的 end 前缀最大值 (单调不减), 供窗口起点二分 */
 private fun prefixMaxEnd(spans: List<CodeSpan>): IntArray {

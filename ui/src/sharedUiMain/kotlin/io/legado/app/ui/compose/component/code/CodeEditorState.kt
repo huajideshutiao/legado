@@ -33,6 +33,10 @@ class CodeEditorState(initial: String) {
     /** 单一数据源: 文本 + 选区 + 撤销历史 (用户输入由字段直接写入) */
     val textFieldState = TextFieldState(initial)
 
+    /** 着色持久槽 (传给 CodeTextField 的 persistentState): 与编辑器状态同生命周期,
+     *  字段控件滚出/切页签重建时有效全文着色基线不丢, 滚入首帧直接有色 */
+    internal val codeFieldState = CodeTextFieldPersistentState()
+
     /**
      * 输入修正, 对齐原版 CodeView 的 InputFilter + onKeyDown:
      * 1. 回车自动缩进 (autoIndent: 继承行首缩进, 遇开括号多加 4 空格, 闭合对自动换行/减缩进)

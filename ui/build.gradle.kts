@@ -302,6 +302,8 @@ kotlin {
                 implementation(libs.kotlin.reflect)
                 // HtmlTree/JsonPathChain 测试直接构造 JsonElement/JsonObject
                 implementation(libs.kotlinx.serialization.json)
+                // 着色缓存的重算/取消/串行语义用 TestScope 虚拟时间验证
+                implementation(libs.kotlinx.coroutines.test)
             }
         }
         matching { it.name == "androidHostTest" }.configureEach {

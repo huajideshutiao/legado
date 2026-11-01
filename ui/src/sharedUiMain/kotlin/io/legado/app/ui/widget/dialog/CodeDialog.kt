@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.SelectableText
 import io.legado.app.ui.compose.component.AppDialogScaffold
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.code.CodeEditorSearchHighlightBinding
 import io.legado.app.ui.compose.component.code.CodeEditorSearchTarget
 import io.legado.app.ui.compose.component.code.CodeSearchHighlightState
 import io.legado.app.ui.compose.component.code.CodeTextField
@@ -72,6 +73,9 @@ fun CodeDialog(
     val editor = rememberCodeEditorState(code, key = code)
     // 查找高亮状态: CodeTextField 叠加全量黄底 + 当前命中强调色 (对齐原版 CodeView 查找高亮)
     val searchHighlight = remember { CodeSearchHighlightState() }
+    // 编辑器文本变化 → 匹配区间防抖刷新 (统一入口, 见绑定 KDoc): 面板开着时输入/替换
+    // 后旧匹配区间不再残留
+    CodeEditorSearchHighlightBinding(remember(editor) { { editor } }, searchHighlight)
     val focusManager = LocalFocusManager.current
 
     AppDialogScaffold(
