@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.channels.Channel
 
 /**
@@ -161,3 +162,12 @@ private class AndroidTextMenuProvider : TextContextMenuProvider {
         }
     }
 }
+
+/**
+ * [textMenuPopupProperties] 的 Android actual。
+ *
+ * Android 的 PopupProperties (androidMain 1.11.2) 没有 skiko 的 usePlatformInsets 参数,
+ * 窗口坐标本就以应用窗口为基准, 保持既有属性集 (不抢焦点/选区、允许窗口越屏摆放)。
+ */
+internal actual fun textMenuPopupProperties(): PopupProperties =
+    PopupProperties(focusable = false, clippingEnabled = false)

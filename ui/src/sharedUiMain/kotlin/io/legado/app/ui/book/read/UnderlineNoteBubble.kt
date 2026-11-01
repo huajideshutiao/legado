@@ -80,8 +80,9 @@ private val BubbleShadowPadding = 6.dp
  * 批注气泡状态快照。
  *
  * @param bookmark 命中的批注实体 (type=1); 批注内容即 [Bookmark.content], 不渲染原文
- * @param anchor 气泡锚点矩形 (全窗坐标): 轻点命中 = 命中批注的投影并集, 长按菜单创建 =
- *   选区起点方区, 与浮动菜单同源
+ * @param anchor 气泡锚点矩形 (全窗坐标), 两条创建路径同口径 = 选区/命中的文字投影并集
+ *   (下沿即文字行底, 不含手柄): 轻点命中 = 命中批注的投影并集 (projectHighlightAnchorRect),
+ *   长按菜单创建 = 菜单请求定格的文字区域几何快照 (同帧定格, 不从已变化/清空的选区反算)
  */
 data class UnderlineBubbleState(
     val bookmark: Bookmark,

@@ -88,6 +88,7 @@ import io.legado.app.ui.book.read.config.ChineseConverterSelectorDialog
 import io.legado.app.ui.book.read.config.ClickRegionalConfigDialogHost
 import io.legado.app.ui.book.read.config.CustomPageKeyDialogHost
 import io.legado.app.ui.book.read.config.ReadAloudDialog
+import io.legado.app.ui.book.read.page.SelectionGeometry
 import io.legado.app.ui.book.read.page.TITLE_SIZE_EXTRA_SP
 import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegateCompose
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
@@ -347,8 +348,10 @@ fun ReaderRoute(
                 provider.onImageLongPress(screenModel, src, x, y)
             }
 
-            override fun onTextSelection(text: String, anchorX: Float, anchorY: Float) {
-                provider.onTextSelected(screenModel, text, anchorX, anchorY)
+            override fun onTextSelection(text: String, geometry: SelectionGeometry) {
+                // 弹菜单事件链内同帧直传几何快照, 平台侧构造菜单请求 (批注气泡锚定用
+                // 快照文字区域, 不从已变化/清空的选区反算)
+                provider.onTextSelected(screenModel, text, geometry)
             }
 
             override fun onUnderlineTap(bookmark: Bookmark, anchor: Rect) {

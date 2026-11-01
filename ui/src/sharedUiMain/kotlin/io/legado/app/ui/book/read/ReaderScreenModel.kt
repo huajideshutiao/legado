@@ -41,6 +41,7 @@ import io.legado.app.ui.book.read.ReaderPlatformProviders.getOrNull
 import io.legado.app.ui.book.read.ReaderPlatformProviders.register
 import io.legado.app.ui.book.read.page.PageSelPos
 import io.legado.app.ui.book.read.page.PageSelectionState
+import io.legado.app.ui.book.read.page.SelectionGeometry
 import io.legado.app.ui.book.read.page.detectClickArea
 import io.legado.app.ui.book.read.page.overlay.SearchHighlightOverlay
 import io.legado.app.ui.book.searchContent.SearchResult
@@ -138,17 +139,17 @@ interface ReaderPlatformProvider {
     fun onKeepLightChange(screenModel: ReaderScreenModel) {}
 
     /**
-     * 页内文字选择完成（长按选中文字后抬起）：携带选中文本与选区起点锚点（窗口坐标，
-     * 已折算滚动 + 页眉 + 状态栏），平台弹浮动文本操作菜单并跟随选区（对照旧
-     * ReadView.CallBack.showTextActionMenu → TextActionMenu 浮动菜单；四端统一走共享自绘弹层
-     * [io.legado.app.ui.reader.ReaderTextActionMenu]）。
+     * 页内文字选择完成（长按选中文字后抬起）：携带选中文本与选区几何快照（全窗坐标，
+     * 文字投影并集 + 两个手柄矩形同次定格，见 [SelectionGeometry]；几何失效时
+     * ReadViewComposable 不触发本回调），平台弹浮动文本操作菜单并跟随选区
+     * （对照旧 ReadView.CallBack.showTextActionMenu → TextActionMenu 浮动菜单；
+     * 四端统一走共享自绘弹层 [io.legado.app.ui.reader.ReaderTextActionMenu]）。
      * 默认空实现。
      */
     fun onTextSelected(
         screenModel: ReaderScreenModel,
         text: String,
-        anchorX: Float,
-        anchorY: Float
+        geometry: SelectionGeometry
     ) {
     }
 
@@ -1153,8 +1154,12 @@ class ReaderScreenModel(
     }
 
     /**
-     * 批注回调：以选区折算的章内区间存 Bookmark(type = 1)，成功后即弹批注气泡
-     * (锚点用浮动菜单自身的选区起点方区，全窗坐标)。
+     * 批注回调：以选区折算的章内区间存 Bookmark(type = 1)，成功后即弹批注气泡。
+     *
+     * 气泡锚点 = 菜单请求定格的文字区域快照 (全窗坐标，选区文字的完整投影并集，不含手柄)，
+     * 与轻点批注路径 (锚定批注投影并集，下沿即文字行底) 同口径同源；不从已变化/清空的
+     * 选区反算，也不退回含游标的菜单矩形 —— 几何失效的选区弹不出菜单，本回调拿到的
+     * 恒是弹菜单那一刻的文字几何。
      *
      * 偏移与原文同源 ([PageSelectionState.selectedChapterRange] 同一账本遍历), 口径同
      * TextLine.chapterPosition (净化/替换/简繁后的排版输入文本); 章号取区间自身所属章
@@ -1164,14 +1169,14 @@ class ReaderScreenModel(
      *
      * 跨章选区无单章区间可存, 折算返回 null, 此处提示用户后放弃本次批注。
      */
-    fun underlineTextCallback(): (text: String, anchor: Rect) -> Unit = onUnderline@{ _, anchor ->
+    fun underlineTextCallback(): (text: String, anchor: Rect) -> Unit = onUnderline@{ _, textArea ->
         val book = viewModel.book.value ?: return@onUnderline
         val range = selection.selectedChapterRange()
         if (range == null) {
             Toasters.get().toast(appString(AppStringKey.underline_cross_chapter_unsupported))
             return@onUnderline
         }
-        val bubbleAnchor = underlineBubbleAnchor(anchor)
+        val bubbleAnchor = textArea
         scope.launch {
             val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
                 chapterIndex = range.chapterIndex
@@ -1187,24 +1192,6 @@ class ReaderScreenModel(
                 }
                 .onFailure { AppLog.put("保存批注失败\n${it.message}", it) }
         }
-    }
-
-    /**
-     * 气泡锚点: 菜单锚点方区 (按 readerMenuAnchor 取的选区起点 ±20px 方区, 中心即起点行顶)
-     * 下沿补到选区末行行底 —— 只给 40px 方区时气泡会落在本行中间, 压住被选中的字。
-     * 选区几何是正文区坐标, 与窗口坐标同尺度只差一个平移 (方区中心即起点行顶的窗口 y),
-     * 故直接加高度差; 跨页选区 (末行不在起点页) 退化为起点行行底。
-     */
-    private fun underlineBubbleAnchor(menuAnchor: Rect): Rect {
-        val startLineTop = selection.selectionAnchor()?.y ?: return menuAnchor
-        val startLineBottom = selection.startHandleOffset()?.y ?: return menuAnchor
-        val bottom = if (selection.start.pagePos == selection.end.pagePos) {
-            selection.endHandleOffset()?.y ?: startLineBottom
-        } else {
-            startLineBottom
-        }
-        val offsetY = menuAnchor.center.y - startLineTop
-        return menuAnchor.copy(bottom = (offsetY + bottom).coerceAtLeast(menuAnchor.bottom))
     }
 
     /** 章号对应的目录标题 (目录未装载或越界时为空串, 与批注书签的章名落库口径一致) */

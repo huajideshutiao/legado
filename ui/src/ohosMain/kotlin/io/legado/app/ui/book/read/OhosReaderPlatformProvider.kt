@@ -29,6 +29,7 @@ import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.page.AutoPagerCompose
+import io.legado.app.ui.book.read.page.SelectionGeometry
 import io.legado.app.ui.book.read.ReaderDialogEvent
 import io.legado.app.ui.compose.platform.SharedThemeStoreProvider
 import io.legado.app.ui.reader.ReaderImageActionMenu
@@ -79,8 +80,7 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
     override fun onTextSelected(
         screenModel: ReaderScreenModel,
         text: String,
-        anchorX: Float,
-        anchorY: Float,
+        geometry: SelectionGeometry,
     ) {
         if (text.isBlank()) return
         textActions = ReaderTextActions(
@@ -90,7 +90,7 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
             onReadAloud = screenModel.readAloudTextCallback(),
             onSearchContent = screenModel.searchContentTextCallback(),
         )
-        textSelection = ReaderTextSelectionRequest(text, readerMenuAnchor(anchorX, anchorY))
+        textSelection = ReaderTextSelectionRequest(text = text, geometry = geometry)
     }
 
     /**

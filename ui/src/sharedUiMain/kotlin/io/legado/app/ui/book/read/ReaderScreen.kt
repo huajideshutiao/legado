@@ -17,6 +17,7 @@ import io.legado.app.data.entities.Bookmark
 import io.legado.app.ui.book.read.page.LocalReaderTextMeasurer
 import io.legado.app.ui.book.read.page.PageSelectionState
 import io.legado.app.ui.book.read.page.ReadViewComposable
+import io.legado.app.ui.book.read.page.SelectionGeometry
 import io.legado.app.ui.book.read.page.rememberReaderTextMeasurer
 import kotlinx.coroutines.flow.StateFlow
 
@@ -61,11 +62,12 @@ interface ReaderUiActions {
     fun onImageLongPress(src: String, x: Float, y: Float) {}
 
     /**
-     * 页内文字选择完成（长按选中文字后抬起）：携带选中文本与选区起点锚点
-     * （阅读页内坐标，含滚动折算），平台弹浮动文本操作菜单并跟随选区
-     * （对照旧 ReadView.CallBack.showTextActionMenu；默认空实现，未接入的平台忽略）
+     * 页内文字选择完成（长按选中文字后抬起）：携带选中文本与选区几何快照（全窗坐标，
+     * 同次定格：文字投影并集 + 两个手柄矩形，跨行/跨页/双栏真实覆盖；几何失效时
+     * 回调不触发）。菜单按锚（含两真实手柄）定位避让，快照中的文字区域供批注气泡
+     * 锚定，不从已变化/清空的选区反算。默认空实现，未接入的平台忽略。
      */
-    fun onTextSelection(text: String, anchorX: Float, anchorY: Float) {}
+    fun onTextSelection(text: String, geometry: SelectionGeometry) {}
 
     /**
      * 轻点命中已批注区域 (用户拍板: 短路默认单击行为弹气泡): 携带批注实体与
@@ -135,12 +137,8 @@ fun ReaderScreen(
                 onClick = { actions.onPageClick() },
                 onImageLongPress = { src, x, y -> actions.onImageLongPress(src, x, y) },
                 onAction = { action -> actions.onPageAction(action) },
-                onSelectionMenu = { text, anchor ->
-                    actions.onTextSelection(
-                        text,
-                        anchor?.x ?: 0f,
-                        anchor?.y ?: 0f,
-                    )
+                onSelectionMenu = { text, geometry ->
+                    actions.onTextSelection(text, geometry)
                 },
                 // 点按取消选择等手势分支：同步关平台浮动菜单（对照原版 ACTION_DOWN →
                 // textActionMenu.dismiss 同步语义，避免事件链异步延迟的"闪一下再消失"）

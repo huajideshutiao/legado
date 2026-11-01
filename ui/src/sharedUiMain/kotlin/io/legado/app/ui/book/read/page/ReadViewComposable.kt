@@ -136,8 +136,11 @@ private const val LONG_PRESS_TIMEOUT = 600L
  * @param onImageLongPress 图片长按回调（命中图片列，携带 src 与长按点窗口坐标；对照旧
  *   ContentTextView.longPress 的 ImageColumn 分支 → ReadBookActivity.onImageLongPress 图片菜单）
  * @param onAction 非翻页类点击动作（书签/目录/搜索等），对照 app 端 ReadView.click 的 callBack 分支
- * @param onSelectionMenu 页内文字选择完成回调（选中文本 + 选区起点锚点（窗口坐标：页内坐标 +
- *   滚动折算 + 状态栏高度，平台浮动菜单按窗口定位）；
+ * @param onSelectionMenu 页内文字选择完成回调（选中文本 + 选区几何快照，同次定格
+ *   （全窗坐标：正文区快照 + 滚动折算 + 页眉 + 状态栏；见
+ *   [PageSelectionState.geometrySnapshot]；菜单锚 = 文字投影并集 ∪ 两个真实手柄，
+ *   [SelectionGeometry.menuAnchor]）。文字区域供批注气泡锚定，不从已变化/清空的
+ *   选区反算；几何失效时本回调不被触发（不弹错位菜单））；
  *   对照旧 ReadView.CallBack.showTextActionMenu → 平台浮动菜单跟随选区）
  * @param onDismissSelectionMenu 同步关闭浮动文本操作菜单回调（点按取消选择等手势分支在
  *   选区清除的同帧同步直调，对照原版 ACTION_DOWN → textActionMenu.dismiss() 同步语义，
@@ -159,7 +162,7 @@ fun ReadViewComposable(
     onClick: (TextColumn?) -> Unit = {},
     onImageLongPress: (String, Float, Float) -> Unit = { _, _, _ -> },
     onAction: (Int) -> Unit = {},
-    onSelectionMenu: (String, Offset?) -> Unit = { _, _ -> },
+    onSelectionMenu: (String, SelectionGeometry) -> Unit = { _, _ -> },
     onDismissSelectionMenu: () -> Unit = {},
     onUnderlineTap: (Bookmark, Rect) -> Unit = { _, _ -> },
     menuVisible: () -> Boolean = { false },
@@ -506,7 +509,7 @@ fun ReadViewComposable(
         // 选区手柄覆盖层（对照原版 activity_book_read.xml 的 cursor_left/cursor_right
         // ImageView：24dp 半圆光标 + accentColor 着色）。绘制期读 selection.tick 建立
         // 快照订阅（同 PageContentCanvas 的 draw 阶段读法），拖拽热路径只重绘不重组；
-        // 坐标折算与 selectionMenuAnchor 同套（手柄锚点已含各自页的滚动折算 + 页眉 + 状态栏）
+        // 坐标折算与选区几何快照同套（手柄锚点已含各自页的滚动折算 + 页眉 + 状态栏）
         SelectionHandleOverlay(
             selection = selection,
             handleSizePx = handleSizePx,
@@ -519,14 +522,20 @@ fun ReadViewComposable(
         // 触摸手势全部由本层单一分发器处理（对照原版 ReadView.onTouchEvent 状态机），
         // delegate 不再挂任何手势；鼠标手势由 readerMouseGestures 全权接管。
         val latestOnSelectionMenu by rememberUpdatedState(onSelectionMenu)
-        // 弹菜单时的选区锚点（窗口坐标 = 选区锚点（已含起点页的滚动折算） + 页眉 + 状态栏高度；
-        // 滚动模式内容下移锚点同步下移，再加回 systemBarTopPx 供平台浮动菜单按窗口定位）。
-        // 锚点内部直接读 StateFlow.value 不订阅：避免滚动每帧触发重组（同上方 scrollOffset 说明）
-        val selectionMenuAnchor: () -> Offset? = {
-            selection.selectionAnchor()?.let {
-                Offset(
-                    it.x,
-                    it.y + latestHeaderTipPx + latestSystemBarTopPx
+        // 弹菜单时的选区几何快照（全窗坐标 = 正文区快照 + 页眉 + 状态栏；文字投影并集与
+        // 两个手柄矩形同次定格，滚动模式含各页滚动折算，再加回 systemBarTopPx 供平台浮动
+        // 菜单按窗口定位）。快照内部直接读 StateFlow.value 不订阅：避免滚动每帧触发重组
+        // （同上方 scrollOffset 说明）。几何定位不到（静默重排后手柄/行定位失效）就返回
+        // null：不弹菜单、不产生任何回退矩形，选区由上方页实例守卫清除 —— 重排后选区
+        // 几何已作废，不存在"选区保留可用"的中间态
+        val selectionGeometrySnapshot: () -> SelectionGeometry? = {
+            selection.geometrySnapshot(handleSizePx)?.let { g ->
+                val offsetY = latestHeaderTipPx + latestSystemBarTopPx
+                fun Rect.onWindow() = Rect(left, top + offsetY, right, bottom + offsetY)
+                SelectionGeometry(
+                    textArea = g.textArea.onWindow(),
+                    startHandle = g.startHandle.onWindow(),
+                    endHandle = g.endHandle.onWindow(),
                 )
             }
         }
@@ -575,14 +584,15 @@ fun ReadViewComposable(
             }
             selection.tick != tickBefore
         }
-        // 抬手弹选择菜单：空选区时取消而非弹空菜单（有意的 UX 修正，保留）
+        // 抬手弹选择菜单：空选区时取消而非弹空菜单（有意的 UX 修正，保留）；几何定位不到
+        // 就不弹菜单（快照为 null，不回退旧矩形），选区由页实例守卫清除
         val showSelectionMenu: () -> Unit = {
             val text = selection.selectedText()
             if (text.isBlank()) {
                 selection.cancel()
                 latestDelegate.autoPager?.resume()
             } else {
-                latestOnSelectionMenu(text, selectionMenuAnchor())
+                selectionGeometrySnapshot()?.let { latestOnSelectionMenu(text, it) }
             }
         }
         // 分发器长驻协程读最新回调/落点（同 latestDelegate 理由）
@@ -1244,7 +1254,7 @@ private fun AutoPageRevealOverlay(
  * 建立快照订阅（同 [PageContentCanvas] 的 draw 阶段读法）：拖拽热路径只重绘不重组。
  *
  * 手柄锚点已含各自所在页的滚动折算（[PageSelectionState.startHandleOffset]），本层只补
- * 页眉 + 状态栏，与 selectionMenuAnchor 同套。
+ * 页眉 + 状态栏，与选区几何快照同套。
  */
 @Composable
 private fun SelectionHandleOverlay(
@@ -1262,7 +1272,7 @@ private fun SelectionHandleOverlay(
         if (selection.tick < 0) return@Canvas
         val start = selection.startHandleOffset() ?: return@Canvas
         val end = selection.endHandleOffset() ?: return@Canvas
-        // 窗口坐标折算与 selectionMenuAnchor 同套（锚点含滚动折算 + 页眉 + 状态栏）
+        // 窗口坐标折算与选区几何快照同套（手柄锚点含滚动折算 + 页眉 + 状态栏）
         val offsetY = headerTipPx + systemBarTopPx
         val tint = ColorFilter.tint(accentColor)
         val handleSize = Size(handleSizePx, handleSizePx)

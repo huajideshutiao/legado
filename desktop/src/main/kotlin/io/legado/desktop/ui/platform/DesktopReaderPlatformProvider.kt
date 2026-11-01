@@ -35,6 +35,7 @@ import io.legado.app.ui.book.read.ReaderScreenModel
 import io.legado.app.ui.book.read.createReadMenuColors
 import io.legado.app.ui.book.read.hasBgImageByPath
 import io.legado.app.ui.book.read.page.AutoPagerCompose
+import io.legado.app.ui.book.read.page.SelectionGeometry
 import io.legado.app.ui.book.read.readerAutoPageActive
 import io.legado.app.ui.book.read.refreshReaderImage
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
@@ -225,8 +226,7 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
     override fun onTextSelected(
         screenModel: ReaderScreenModel,
         text: String,
-        anchorX: Float,
-        anchorY: Float,
+        geometry: SelectionGeometry,
     ) {
         if (text.isBlank()) return
         textActions = ReaderTextActions(
@@ -236,7 +236,7 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
             onReadAloud = screenModel.readAloudTextCallback(),
             onSearchContent = screenModel.searchContentTextCallback(),
         )
-        rawSelection = RawTextSelection(text, anchorX, anchorY)
+        rawSelection = RawTextSelection(text, geometry)
     }
 
     /**
@@ -402,10 +402,7 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         val selection = rawSelection
         val request = remember(selection) {
             selection?.let {
-                ReaderTextSelectionRequest(
-                    text = it.text,
-                    anchor = readerMenuAnchor(it.anchorX, it.anchorY),
-                )
+                ReaderTextSelectionRequest(text = it.text, geometry = it.geometry)
             }
         }
         if (actions != null) {
@@ -426,11 +423,10 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
     ): ReadAloudControls = DesktopReadAloudControls(navigator, screenModel)
 }
 
-/** 页内文字选择原始位置快照 (由 [DesktopReaderPlatformProvider.TextSelectionHost] 换算标题栏偏移后传递)。 */
+/** 页内文字选择快照 (选区几何与页面坐标系一致, 见 [TextSelectionHost])。 */
 private data class RawTextSelection(
     val text: String,
-    val anchorX: Float,
-    val anchorY: Float,
+    val geometry: SelectionGeometry,
 )
 
 /**

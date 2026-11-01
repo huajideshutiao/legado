@@ -27,6 +27,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.help.tts.IosReadAloudHost
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.page.AutoPagerCompose
+import io.legado.app.ui.book.read.page.SelectionGeometry
 import io.legado.app.ui.compose.platform.SharedThemeStoreProvider
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
@@ -144,8 +145,7 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
     override fun onTextSelected(
         screenModel: ReaderScreenModel,
         text: String,
-        anchorX: Float,
-        anchorY: Float,
+        geometry: SelectionGeometry,
     ) {
         if (text.isBlank()) return
         textActions = ReaderTextActions(
@@ -155,7 +155,7 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
             onReadAloud = screenModel.readAloudTextCallback(),
             onSearchContent = screenModel.searchContentTextCallback(),
         )
-        textSelection = ReaderTextSelectionRequest(text, readerMenuAnchor(anchorX, anchorY))
+        textSelection = ReaderTextSelectionRequest(text = text, geometry = geometry)
     }
 
     /**

@@ -40,6 +40,7 @@ import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.model.ReadAloud
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.page.AutoPagerCompose
+import io.legado.app.ui.book.read.page.SelectionGeometry
 import io.legado.app.ui.compose.component.AppAutoCompleteField
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.dialogs.selector
@@ -49,7 +50,6 @@ import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.reader.ReaderTextActionMenu
 import io.legado.app.ui.reader.ReaderTextActions
 import io.legado.app.ui.reader.ReaderTextSelectionRequest
-import io.legado.app.ui.reader.readerMenuAnchor
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.utils.openUrl
@@ -112,16 +112,13 @@ class AndroidReaderPlatformProvider(
      * 原本桥接 MainActivity 的 TextActionMenu（ActionMode.TYPE_FLOATING，系统样式），
      * 已换成与详情页/输入框同一套自绘弹层，app 端那份连同 CallBack 桥接一并删除。
      *
-     * 锚点：ReadViewComposable 上报的是窗口坐标（页内坐标已折算滚动 + 页眉 + 状态栏，
-     * 与同树内的 SelectionHandleOverlay 同源）；阅读页铺满窗口、宿主也在同一 Compose 根，
-     * 故 Popup 的 anchorBounds 即窗口原点，直接用不会重复叠加系统栏。
-     * 取锚点周围 40px 方块当选区矩形（对照原版 showReaderTextActionMenu 的 ±20px）。
+     * 选区几何（文字区域 + 两个手柄，全窗坐标）由弹菜单事件链同帧直传；
+     * 宿主与阅读页同在根组合，Popup 的 anchorBounds 即窗口原点，不重复叠加系统栏。
      */
     override fun onTextSelected(
         screenModel: ReaderScreenModel,
         text: String,
-        anchorX: Float,
-        anchorY: Float,
+        geometry: SelectionGeometry,
     ) {
         if (text.isBlank()) return
         textActions = ReaderTextActions(
@@ -131,10 +128,7 @@ class AndroidReaderPlatformProvider(
             onReadAloud = screenModel.readAloudTextCallback(),
             onSearchContent = screenModel.searchContentTextCallback(),
         )
-        textSelection = ReaderTextSelectionRequest(
-            text = text,
-            anchor = readerMenuAnchor(anchorX, anchorY),
-        )
+        textSelection = ReaderTextSelectionRequest(text = text, geometry = geometry)
     }
 
     /**

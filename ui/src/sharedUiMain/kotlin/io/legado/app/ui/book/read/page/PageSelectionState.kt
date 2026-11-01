@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
@@ -89,6 +90,35 @@ data class ChapterSelectionRange(
     val endExclusive: Int,
     val text: String,
 )
+
+/**
+ * 一次菜单请求的选区几何快照（纯值，由 [PageSelectionState.geometrySnapshot] 产出）。
+ *
+ * 产出侧坐标空间由调用方约定（阅读视图层产出正文区版后再平移出全窗版）。
+ *
+ * @param textArea 选区文字的完整投影并集：逐行真实范围，跨行/跨页/双栏均成立，
+ *   批注气泡锚定用（贴文字行底，不含手柄）
+ * @param startHandle 起点手柄矩形（手柄贴行底向下画，左手柄在锚点左侧）
+ * @param endHandle 终点手柄矩形（右手柄在锚点右侧）
+ */
+data class SelectionGeometry(
+    val textArea: Rect,
+    val startHandle: Rect,
+    val endHandle: Rect,
+) {
+    /**
+     * 菜单锚矩形 = 文字并集 ∪ 两个真实手柄：下沿落在更低的手柄底（对照旧
+     * TextActionMenu.show 的 contentRect，补齐了旧版漏掉的左手柄）。
+     * 菜单贴锚顶/锚底外侧落位，锚定分支能放下时与两手柄二维不相交；可用空隙不足
+     * （物理放不下）时菜单按剩余空间收高，可能与手柄重叠，由定位流程如实处理。
+     */
+    fun menuAnchor(): Rect = Rect(
+        minOf(textArea.left, startHandle.left, endHandle.left),
+        minOf(textArea.top, startHandle.top, endHandle.top),
+        maxOf(textArea.right, startHandle.right, endHandle.right),
+        maxOf(textArea.bottom, startHandle.bottom, endHandle.bottom),
+    )
+}
 
 /**
  * 页内文字选择状态机（Compose 阅读层版）。
@@ -561,38 +591,129 @@ class PageSelectionState {
     }
 
     /**
-     * 选区起点锚点（正文区坐标）：起点列中心 x + 起点行顶 y + 起点所在页的 relativeOffset。
-     * 对照旧 ReadBookActivity.upSelectedStart 的 textMenuPosition（x=选区起点 x,
-     * y=起点行 top + relativeOffset(relativePagePos)），供浮动文本操作菜单跟随选区定位。
+     * 一次菜单请求的选区几何快照（正文区坐标，全窗折算由阅读视图层加页眉 + 状态栏）。
+     *
+     * 文字区域走绘制期同一条投影（[PageOverlayProjector.projectSelection] 逐行真实范围）：
+     * 跨行、跨页（各页 relativeOffset 叠加）、双栏（两栏各自行序独立，不假设起止行 y 单调）
+     * 都得到真实覆盖；行尾之后的起点行无选中列（不为它投影文字），手柄仍贴末列 end，
+     * 与 selectedText/存档账本同口径；双栏反向跨度不再产生"上沿低于下沿"的错位矩形。
+     * 两个手柄矩形与绘制/命中（[startHandleOffset]/[endHandleOffset]，24dp 方区同式）同源，
+     * 菜单避让以两个真实手柄为准（不只看整体下沿）。
+     *
+     * 对照旧 TextActionMenu.show 的 contentRect（起点x, 起点行top, 右手柄x, 右手柄底）：
+     * 起止两行几何拼的单矩形在双栏（左栏末行起、右栏首行止，逻辑终点不是几何最低点）
+     * 会算出负高度，两栏缺口不复刻；快照按投影逐行并集根治。
+     *
+     * @param handleSizePx 手柄像素边长（对照旧 cursorWidth = 24dp）
+     * @return null = 几何失效：页流未装载或锚定页实例已被静默重排/相邻章装载换掉、
+     *   起止行号越出已捕获页（位置属于旧实例）、或投影全空（无文字可选）；
+     *   调用方放弃本次弹菜单，不产生任何回退矩形；选区随后由页实例守卫清除
      */
-    fun selectionAnchor(): Offset? {
+    fun geometrySnapshot(handleSizePx: Float): SelectionGeometry? {
         val s = start
-        if (!s.isValid) return null
-        val line = lineAt(s) ?: return null
-        val column = line.columns.getOrNull(s.columnIndex) ?: return null
-        return Offset((column.start + column.end) / 2f, line.lineTop + relativeOffset(s.pagePos))
+        val e = end
+        if (!s.isValid || !e.isValid) return null
+        // 起止顺序归正（手柄反转等路径会短暂出现 end 在 start 之前），投影按归正后区间
+        val forward = s.compareTo(e) <= 0
+        val a = if (forward) s else e
+        val b = if (forward) e else s
+        // 一次捕获：滚动基准 + 0..终点页的页引用与页高。前缀页高参与后页落点，故从 0 起
+        // 逐页与 anchorPages 核验同一批（不能只核验 a..b），任一不同批即失效；之后投影与
+        // 手柄只用这份快照，不再读活页流 —— 后台装载/静默重排可能在两次读取之间换页，
+        // 只读一次才能保证文字与两手柄同批。
+        val baseOffset = relativeOffset(0)
+        // 捕获即构建 0..终点页的非空页引用集合, 后面直取; 真正的失效来源只有两处:
+        // 页流返回 null (页未装载) 与实例不同批 (静默重排/相邻章装载换页)
+        val pages = ArrayList<TextPage>(b.pagePos + 1)
+        val pageHeights = ArrayList<Float>(b.pagePos + 1)
+        for (pagePos in 0..b.pagePos) {
+            val page = pageAt(pagePos) ?: return null
+            if (page !== anchorPages[pagePos]) return null
+            pages += page
+            pageHeights += page.height
+        }
+        fun pageOffset(pagePos: Int): Float = when (pagePos) {
+            0 -> baseOffset
+            1 -> baseOffset + pageHeights[0]
+            else -> baseOffset + pageHeights[0] + pageHeights[1]
+        }
+        // 行定位守卫: 行号越出已捕获页 = 位置属于旧实例
+        if (pages[a.pagePos].lines.getOrNull(a.lineIndex) == null) return null
+        if (pages[b.pagePos].lines.getOrNull(b.lineIndex) == null) return null
+        var bounds: Rect? = null
+        for (pagePos in a.pagePos..b.pagePos) {
+            // 各页投影是页局部坐标，按同一基准 + 已捕获前缀页高平移到正文区连排坐标再并集，
+            // 与手柄锚点同一基准
+            val offset = pageOffset(pagePos)
+            PageOverlayProjector.projectSelectionState(pages[pagePos], this, pagePos) { l, t, r, bt, _ ->
+                val cur = bounds
+                bounds = if (cur == null) {
+                    Rect(l, t + offset, r, bt + offset)
+                } else {
+                    Rect(
+                        minOf(cur.left, l),
+                        minOf(cur.top, t + offset),
+                        maxOf(cur.right, r),
+                        maxOf(cur.bottom, bt + offset),
+                    )
+                }
+            }
+        }
+        // 投影全空 (如起止都在行尾之后) = 无文字可选, 快照不成立
+        val textArea = bounds ?: return null
+        // 手柄用开头捕获的 s/e, 不再重读 start/end
+        val startHandle = handleAnchor(
+            pos = s,
+            page = pages[s.pagePos],
+            pageOffset = pageOffset(s.pagePos),
+            isStart = true,
+        )?.let {
+            Rect(it.x - handleSizePx, it.y, it.x, it.y + handleSizePx)
+        } ?: return null
+        val endHandle = handleAnchor(
+            pos = e,
+            page = pages[e.pagePos],
+            pageOffset = pageOffset(e.pagePos),
+            isStart = false,
+        )?.let {
+            Rect(it.x, it.y, it.x + handleSizePx, it.y + handleSizePx)
+        } ?: return null
+        return SelectionGeometry(textArea, startHandle, endHandle)
+    }
+
+    /**
+     * 手柄锚点纯计算（正文区坐标）：给定页引用与页偏移，不读活页流。
+     * 起点：列下标 start x，列下标 == columns.size（行尾之后）取末列 end；零列行无手柄。
+     * 终点：列 end x；列下标超出（行首之前）不成选区。y = 行底 + 页偏移。
+     */
+    private fun handleAnchor(
+        pos: PageSelPos,
+        page: TextPage,
+        pageOffset: Float,
+        isStart: Boolean,
+    ): Offset? {
+        val line = page.lines.getOrNull(pos.lineIndex) ?: return null
+        val columns = line.columns
+        val x = if (isStart) {
+            if (pos.columnIndex < columns.size) columns[pos.columnIndex].start
+            else columns.lastOrNull()?.end ?: return null
+        } else {
+            columns.getOrNull(pos.columnIndex)?.end ?: return null
+        }
+        return Offset(x, line.lineBottom + pageOffset)
     }
 
     /**
      * 起点手柄锚点（正文区坐标）：起点列 start x（起点在行尾之后时取末列 end）+ 起点行底 y
      * + 起点所在页的 relativeOffset。
-     * 对照旧 `selectStartMoveIndex` → upSelectedStart 的游标定位（y = 行底 lineBottom +
-     * relativeOffset，与菜单锚点 [selectionAnchor] 的 lineTop 口径不同：手柄贴行底，
-     * 菜单锚点用行顶）。
+     * 对照旧 `selectStartMoveIndex` → upSelectedStart 的游标定位：手柄贴行底，
+     * 选区文字投影并集 [geometrySnapshot] 的上沿用行顶口径。
      */
     fun startHandleOffset(): Offset? {
         val s = start
         if (!s.isValid) return null
-        val line = lineAt(s) ?: return null
-        val columns = line.columns
-        // columnIndex == columns.size 是选区模型有意编码的"行尾之后"（见 [selectedText]
-        // 的行尾换行分支），手柄贴末列右缘；零列行没有手柄可画
-        val x = if (s.columnIndex < columns.size) {
-            columns[s.columnIndex].start
-        } else {
-            columns.lastOrNull()?.end ?: return null
-        }
-        return Offset(x, line.lineBottom + relativeOffset(s.pagePos))
+        val page = pageAt(s.pagePos)?.takeIf { it === anchorPages[s.pagePos] } ?: return null
+        return handleAnchor(s, page, relativeOffset(s.pagePos), isStart = true)
     }
 
     /**
@@ -603,9 +724,8 @@ class PageSelectionState {
     fun endHandleOffset(): Offset? {
         val e = end
         if (!e.isValid) return null
-        val line = lineAt(e) ?: return null
-        val column = line.columns.getOrNull(e.columnIndex) ?: return null
-        return Offset(column.end, line.lineBottom + relativeOffset(e.pagePos))
+        val page = pageAt(e.pagePos)?.takeIf { it === anchorPages[e.pagePos] } ?: return null
+        return handleAnchor(e, page, relativeOffset(e.pagePos), isStart = false)
     }
 
     /**

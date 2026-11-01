@@ -1,6 +1,8 @@
 package io.legado.app.ui.book.read.page.overlay
 
+import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
+import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import androidx.compose.ui.geometry.Rect
 import kotlin.math.max
@@ -75,10 +77,68 @@ data class TTSHighlightOverlay(
 object PageOverlayProjector {
 
     /**
-     * 选区投影算法（行列索引维度）：起止行列之间逐行投影为一个矩形，起止顺序自动归正。
+     * 行内非空 [TextColumn] 连续命中段的公共收集/emit（选区、搜索高亮、批注回显共用）。
+     *
+     * 只有非空文字列计入命中段：图片等非文字列与空 TextColumn 一律断段（不投影），
+     * 与 [projectSearchResult]、[projectHighlight] 及选区账本（selectedText 仅累加
+     * TextColumn，对照原版 upSelectChars/getSelectedText）同口径。[isHit] 对每一列都会
+     * 调用（含非文字列），供调用方推进章内位置账本（非文字列按 1 计），不因类型筛选跳过推进。
+     *
+     * @param isHit 该列的区间命中判定（不含文字列/空列过滤）
+     */
+    @PublishedApi
+    internal inline fun emitTextRuns(
+        line: TextLine,
+        lineIndex: Int,
+        isHit: (colIdx: Int, column: BaseColumn) -> Boolean,
+        emit: (left: Float, top: Float, right: Float, bottom: Float, lineIndex: Int) -> Unit,
+    ) {
+        val columns = line.columns
+        var runStart = -1
+        var runEnd = -1
+        for (colIdx in columns.indices) {
+            val column = columns[colIdx]
+            val hit = isHit(colIdx, column) &&
+                column is TextColumn && column.charData.isNotEmpty()
+            if (hit) {
+                if (runStart < 0) runStart = colIdx
+                runEnd = colIdx
+            } else if (runStart >= 0) {
+                emit(
+                    columns[runStart].start,
+                    line.lineTop,
+                    columns[runEnd].end,
+                    line.lineBottom,
+                    lineIndex,
+                )
+                runStart = -1
+                runEnd = -1
+            }
+        }
+        if (runStart >= 0) {
+            emit(
+                columns[runStart].start,
+                line.lineTop,
+                columns[runEnd].end,
+                line.lineBottom,
+                lineIndex,
+            )
+        }
+    }
+
+    /**
+     * 选区投影算法（行列索引维度）：起止行列之间逐行逐列投影，起止顺序自动归正。
+     *
+     * 只投影非空 [TextColumn] 的连续命中段：图片等非文字列与空 TextColumn 断段不投影，
+     * 与文字选中/存档账本（仅累加 TextColumn）及 [projectSearchResult]/[projectHighlight]
+     * 的文字列过滤同源（共用 [emitTextRuns]）。
+     *
+     * 列区间口径：起点列为半开（startColIndex == columns.size 即"行尾之后"，
+     * 该行无选中列，不投影），终点列为闭（endColIndex == columns.size 表示选到末列右缘，
+     * 含末列；Int.MAX_VALUE 用于非终点页整行）。
      *
      * @param startLineIndex 起始行索引（0-based）
-     * @param startColIndex 起始列索引（0-based）
+     * @param startColIndex 起始列索引（0-based；== columns.size 为合法的行尾之后空起点）
      * @param endLineIndex 结束行索引（0-based）
      * @param endColIndex 结束列索引（0-based，含）
      */
@@ -105,18 +165,17 @@ object PageOverlayProjector {
             val columns = line.columns
             if (columns.isEmpty()) continue
 
-            val colStart = if (lineIndex == sLine) sCol.coerceIn(0, columns.lastIndex) else 0
-            val colEnd = if (lineIndex == eLine) eCol.coerceIn(0, columns.lastIndex) else columns.lastIndex
+            // 起点列半开到 columns.size（行尾之后 = 空起点），终点列闭到 columns.size（= 末列右缘）
+            val colStart = if (lineIndex == sLine) sCol.coerceIn(0, columns.size) else 0
+            val colEnd = if (lineIndex == eLine) eCol.coerceAtMost(columns.size) else columns.lastIndex
 
-            if (colStart <= colEnd) {
-                emit(
-                    columns[colStart].start,
-                    line.lineTop,
-                    columns[colEnd].end,
-                    line.lineBottom,
-                    lineIndex,
-                )
-            }
+            if (colStart >= columns.size || colStart > colEnd) continue
+            emitTextRuns(
+                line = line,
+                lineIndex = lineIndex,
+                isHit = { colIdx, _ -> colIdx in colStart..colEnd },
+                emit = emit,
+            )
         }
     }
 
@@ -213,41 +272,21 @@ object PageOverlayProjector {
         if (start >= pageEndExclusive || endExclusive <= pageStart) return
         for (lineIndex in lines.indices) {
             val line = lines[lineIndex]
-            val columns = line.columns
+            // 每列推进章内位置账本（非文字列按 1，空 TextColumn 按 0）；文字列/空列过滤
+            // 在 [emitTextRuns] 内统一执行，与本函数的上文行为一致
             var chapterPos = line.chapterPosition
-            var runStart = -1
-            var runEnd = -1
-            for (colIdx in columns.indices) {
-                val column = columns[colIdx]
-                val length = if (column is TextColumn) column.charData.length else 1
-                val columnEnd = chapterPos + length
-                val hit = column is TextColumn && columnEnd > chapterPos &&
-                    start < columnEnd && endExclusive > chapterPos
-                if (hit) {
-                    if (runStart < 0) runStart = colIdx
-                    runEnd = colIdx
-                } else if (runStart >= 0) {
-                    emit(
-                        columns[runStart].start,
-                        line.lineTop,
-                        columns[runEnd].end,
-                        line.lineBottom,
-                        lineIndex,
-                    )
-                    runStart = -1
-                    runEnd = -1
-                }
-                chapterPos = columnEnd
-            }
-            if (runStart >= 0) {
-                emit(
-                    columns[runStart].start,
-                    line.lineTop,
-                    columns[runEnd].end,
-                    line.lineBottom,
-                    lineIndex,
-                )
-            }
+            emitTextRuns(
+                line = line,
+                lineIndex = lineIndex,
+                isHit = { _, column ->
+                    val length = if (column is TextColumn) column.charData.length else 1
+                    val columnEnd = chapterPos + length
+                    val hit = start < columnEnd && endExclusive > chapterPos
+                    chapterPos = columnEnd
+                    hit
+                },
+                emit = emit,
+            )
         }
     }
 
