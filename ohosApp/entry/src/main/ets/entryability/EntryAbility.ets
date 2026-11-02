@@ -127,6 +127,12 @@ interface DialogChannelClosedPayload {
   pendingIds: number[];
 }
 
+/** showDialog 载荷内层的窗口代际标识 (与 Kotlin 侧 requestId/gen 字段对齐)。 */
+interface DialogShowRequestPayload {
+  requestId?: number;
+  gen?: number;
+}
+
 /** 文件选择通道失效回传 (与 Kotlin OhosNativeBridge 的 ok/error 字段对齐)。 */
 interface FilePickerChannelClosedPayload {
   ok: boolean;
@@ -1107,7 +1113,7 @@ export default class EntryAbility extends UIAbility {
               let requestId = 0;
               let requestGen = 0;
               try {
-                const inner = JSON.parse(cmd.payload ?? '{}') as { requestId?: number; gen?: number };
+                const inner = JSON.parse(cmd.payload ?? '{}') as DialogShowRequestPayload;
                 requestId = inner.requestId ?? 0;
                 requestGen = inner.gen ?? 0;
               } catch (e) {

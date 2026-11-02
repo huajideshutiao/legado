@@ -92,7 +92,7 @@ export async function ensurePermissionGranted(context: common.UIAbilityContext, 
   } catch (e) {
     // 12100009 等系统/窗口错误不是用户拒绝: 原 code/message 交现有 BridgeDispatch 失败链
     console.error('[PermissionBridge] ensurePermissionGranted failed: ' + JSON.stringify(e));
-    throw e;
+    throw e as Error;
   }
 }
 
