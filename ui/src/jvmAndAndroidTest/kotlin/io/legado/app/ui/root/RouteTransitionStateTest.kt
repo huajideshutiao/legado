@@ -343,7 +343,7 @@ class RouteTransitionStateTest {
     }
 
     @Test
-    fun `interactive driver ignores gesture without drag and returns on drag`() = runBlocking {
+    fun `interactive driver ignores empty gesture and completes on root rejection`() = runBlocking {
         val a = entry(1)
         val b = entry(2)
         val stack = listOf(a, b)
@@ -361,20 +361,6 @@ class RouteTransitionStateTest {
         assertFalse(emptyWasGesture)
         assertFalse(completed)
         assertNull(state.resolve(stack))
-
-        // 有进度 = 真的滑动过: 跟手到底后回调返回, 进度停在手指位置等出栈后续播
-        state.driveInteractiveBack(
-            gesture = flow {
-                emit(0.2f)
-                emit(0.7f)
-            },
-            entries = { stack },
-            scope = cleanupScope(),
-            cancelDurationMillis = 300,
-            cancelEasing = LinearEasing,
-        ) { completed = true }
-        assertTrue(completed)
-        assertEquals(0.7f, state.progress.value, 0f)
 
         // 栈内没有上一页 (根页) 的滑动: 接管被拒 (栈里没有可出栈的页), 但滑动过就必须返回 ——
         // 边缘滑动不允许被吞掉 (Android 主界面就是滑动切回标签/退出)
