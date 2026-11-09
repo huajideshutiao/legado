@@ -2,16 +2,18 @@ package io.legado.app.ui.main.home
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -108,18 +110,21 @@ fun SectionCoverRow(
     coverSlot: (@Composable (SearchBook, Modifier, CoverSlotRatio) -> Unit)? = null,
     inBookshelf: ((SearchBook) -> Boolean)? = null,
 ) {
-    val scrollState = rememberScrollState()
-    Row(
-        Modifier
+    val listState = rememberLazyListState()
+    val colors = AppTheme.colors
+    // 惰性横向列表: 一次只组合可见卡片。原 Row + horizontalScroll 会把整段结果
+    // (搜索结果单源可达上千条) 全部组合并逐条解码封面, 是进程位图内存暴涨的直接来源。
+    LazyRow(
+        state = listState,
+        modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(scrollState)
-            .horizontalMouseWheel(scrollState)
-            .padding(horizontal = DesignTokens.spacingDefault),
+            .horizontalMouseWheel(listState),
+        contentPadding = PaddingValues(horizontal = DesignTokens.spacingDefault),
     ) {
         if (isVideoStyle) {
             // 对照原 VideoCoverCardVH.bind: bindVideoCard(coverRatio=VIDEO); 封面走 LocalBookCoverSlot
             // (与书架/探索页一致); 书架标记由调用方提供 (null = 主页区块不显示)
-            books.forEach { book ->
+            items(books, key = { it.bookUrl }) { book ->
                 // 共享配对身份按条目下发 (被点的封面 = 出发端, token 由页面+区块+条目派生)
                 val binding = rememberSharedCoverSourceBinding(book.bookUrl, blockId)
                 CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
@@ -138,10 +143,9 @@ fun SectionCoverRow(
                 }
             }
         } else {
-            val colors = AppTheme.colors
             // 对照 item_home_cover_card.xml + CoverCardVH.bind: 封面 120×160dp (高 160dp 由
             // 封面组件按 NOVEL 3:4 反推宽 120dp), item 总宽 128 = 120 + 两侧 4dp padding
-            books.forEach { book ->
+            items(books, key = { it.bookUrl }) { book ->
                 // 共享配对身份按条目下发 (同上)
                 val binding = rememberSharedCoverSourceBinding(book.bookUrl, blockId)
                 CompositionLocalProvider(LocalSharedCoverBinding provides binding) {

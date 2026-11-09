@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.rememberScrollState
@@ -60,6 +61,41 @@ fun Modifier.horizontalMouseWheel(scrollState: ScrollState): Modifier {
                 if (delta > 0f && !scrollState.canScrollForward) continue
                 if (delta < 0f && !scrollState.canScrollBackward) continue
                 val viewportW = scrollState.viewportSize.toFloat()
+                if (viewportW > 0f) {
+                    scrollChannel.trySend(delta * viewportW / 20f * 3f)
+                } else {
+                    scrollChannel.trySend(delta * 120f)
+                }
+                change.consume()
+            }
+        }
+    }
+}
+
+/**
+ * [horizontalMouseWheel] 的 LazyRow 版: 倍率与"到头不吞事件"语义与 ScrollState 版一致。
+ * 惰性横向列表无法用 horizontalScroll, 滚轮平移只能走 LazyListState.scrollBy。
+ */
+@Composable
+fun Modifier.horizontalMouseWheel(listState: LazyListState): Modifier {
+    val scrollChannel = remember(listState) { Channel<Float>(Channel.UNLIMITED) }
+    LaunchedEffect(scrollChannel, listState) {
+        for (delta in scrollChannel) {
+            listState.scrollBy(delta)
+        }
+    }
+    return this.pointerInput(listState) {
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent()
+                if (event.type != PointerEventType.Scroll) continue
+                val change = event.changes.firstOrNull() ?: continue
+                val delta = if (change.scrollDelta.y != 0f) change.scrollDelta.y else change.scrollDelta.x
+                if (delta == 0f) continue
+                // 到头不吞事件, 放行给父级 (嵌在可竖滚页面里滚轮继续滚页面)
+                if (delta > 0f && !listState.canScrollForward) continue
+                if (delta < 0f && !listState.canScrollBackward) continue
+                val viewportW = listState.layoutInfo.viewportSize.width.toFloat()
                 if (viewportW > 0f) {
                     scrollChannel.trySend(delta * viewportW / 20f * 3f)
                 } else {
