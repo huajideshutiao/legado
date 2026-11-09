@@ -37,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -73,9 +74,12 @@ import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridS
 import io.legado.app.ui.main.home.SectionTitleRow
 import io.legado.app.ui.book.manga.extension.PluginSearchFilterRow
 import io.legado.app.ui.book.read.ReadMenuFab
+import io.legado.app.ui.bookshelf.CoverRatioLayoutState
 import io.legado.app.ui.bookshelf.CoverSlotRatio
 import io.legado.app.ui.bookshelf.KindLabels
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
+import io.legado.app.ui.bookshelf.LocalCoverRatioLayout
+import io.legado.app.ui.bookshelf.coverResourceKey
 import io.legado.app.ui.root.LocalSharedCoverBinding
 import io.legado.app.ui.root.rememberSharedCoverSourceBinding
 import io.legado.app.ui.bookshelf.ShelfExploreListItem
@@ -251,6 +255,22 @@ fun SearchScreen(
     val precisionSearch by viewModel.precisionSearch.collectAsState()
     val manualStopped by viewModel.manualStopped.collectAsState()
 
+    // 封面比例布局状态: 互斥的帮助区与结果区共用一份, 两者切换不丢已确定的 AUTO 比例。
+    // 活跃集合 = 搜索结果 ∪ 按源分类各组结果 ∪ 书架命中区, 随结果集增删收敛
+    // (新关键词重搜时搜索结果身份全部清出, 书架命中区仍在页内则保留);
+    // 持有者在页面组合内, 页面离开组合即整体丢弃
+    val coverRatioState = remember { CoverRatioLayoutState() }
+    val activeCoverResources = remember(resultBooks, searchGroups, bookshelfBooks, bookshelfVersion) {
+        buildSet {
+            resultBooks.forEach { add(it.coverResourceKey(viewModel.isInBookShelf(it))) }
+            searchGroups.forEach { group ->
+                group.books.forEach { add(it.coverResourceKey(viewModel.isInBookShelf(it))) }
+            }
+            bookshelfBooks.forEach { add(it.coverResourceKey()) }
+        }
+    }
+    SideEffect { coverRatioState.updateActiveResources(activeCoverResources) }
+
     // 输入帮助区两个列表的滚动状态: 滚动中失焦不收帮助区 (对照原版 isScrollingHelp)
     val shelfHelpGridState = rememberLazyGridState()
     val historyHelpScrollState = rememberScrollState()
@@ -351,23 +371,25 @@ fun SearchScreen(
             Column(Modifier.fillMaxSize()) {
                 // 输入帮助区与结果区互斥, 只由焦点规则驱动 (对照原版 visibleInputHelp)
                 if (inputHelpVisible) {
-                    InputHelp(
-                        viewModel = viewModel,
-                        navCallbacks = navCallbacks,
-                        bookshelfBooks = bookshelfBooks,
-                        historyKeys = historyKeys,
-                        spanCount = spanCount,
-                        styleIsVideo = styleIsVideo,
-                        styleCols = styleCols,
-                        bookshelfVersion = bookshelfVersion,
-                        shelfCoverSlot = resolvedShelfCoverSlot,
-                        shelfGridState = shelfHelpGridState,
-                        historyScrollState = historyHelpScrollState,
-                        onHistoryClick = { word ->
-                            focusManager.clearFocus()
-                            viewModel.searchHistory(word)
-                        },
-                    )
+                    CompositionLocalProvider(LocalCoverRatioLayout provides coverRatioState) {
+                        InputHelp(
+                            viewModel = viewModel,
+                            navCallbacks = navCallbacks,
+                            bookshelfBooks = bookshelfBooks,
+                            historyKeys = historyKeys,
+                            spanCount = spanCount,
+                            styleIsVideo = styleIsVideo,
+                            styleCols = styleCols,
+                            bookshelfVersion = bookshelfVersion,
+                            shelfCoverSlot = resolvedShelfCoverSlot,
+                            shelfGridState = shelfHelpGridState,
+                            historyScrollState = historyHelpScrollState,
+                            onHistoryClick = { word ->
+                                focusManager.clearFocus()
+                                viewModel.searchHistory(word)
+                            },
+                        )
+                    }
                 } else {
                     // 聚簇布局顶部选项行 (单源搜索): 按源分类布局下选项在各源区块内显示, 不重复
                     if (!isSourceGroupLayout) {
@@ -420,22 +442,24 @@ fun SearchScreen(
                             },
                         )
                     }
-                    ResultArea(
-                        viewModel = viewModel,
-                        navCallbacks = navCallbacks,
-                        books = resultBooks,
-                        groups = searchGroups,
-                        sourceOptions = sourceOptionsMap,
-                        searchSources = searchSources,
-                        getPluginFilterSession = viewModel::getPluginFilterSession,
-                        isSourceGroupLayout = isSourceGroupLayout,
-                        spanCount = spanCount,
-                        styleIsVideo = styleIsVideo,
-                        styleCols = styleCols,
-                        bookshelfVersion = bookshelfVersion,
-                        pluginFiltersVersion = pluginFiltersVersion,
-                        coverSlot = resolvedCoverSlot,
-                    )
+                    CompositionLocalProvider(LocalCoverRatioLayout provides coverRatioState) {
+                        ResultArea(
+                            viewModel = viewModel,
+                            navCallbacks = navCallbacks,
+                            books = resultBooks,
+                            groups = searchGroups,
+                            sourceOptions = sourceOptionsMap,
+                            searchSources = searchSources,
+                            getPluginFilterSession = viewModel::getPluginFilterSession,
+                            isSourceGroupLayout = isSourceGroupLayout,
+                            spanCount = spanCount,
+                            styleIsVideo = styleIsVideo,
+                            styleCols = styleCols,
+                            bookshelfVersion = bookshelfVersion,
+                            pluginFiltersVersion = pluginFiltersVersion,
+                            coverSlot = resolvedCoverSlot,
+                        )
+                    }
                 }
             }
             RefreshBar(isSearching, Modifier.align(Alignment.TopStart))

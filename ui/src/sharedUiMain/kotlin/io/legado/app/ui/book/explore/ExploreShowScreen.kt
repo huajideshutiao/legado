@@ -30,6 +30,7 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -49,8 +50,10 @@ import io.legado.app.model.webBook.PluginFilterSession
 import io.legado.app.ui.bookshelf.BookshelfBadge
 import io.legado.app.ui.bookshelf.CoverSlotRatio
 import io.legado.app.ui.bookshelf.KindLabels
+import io.legado.app.ui.bookshelf.LocalCoverRatioLayout
 import io.legado.app.ui.bookshelf.ShelfExploreListItem
 import io.legado.app.ui.bookshelf.ShelfGridItem
+import io.legado.app.ui.bookshelf.coverResourceKey
 import io.legado.app.ui.bookshelf.shelfCoverHeightDp
 import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -282,6 +285,13 @@ fun ExploreShowScreen(
         modifier: Modifier,
     ) -> Unit,
 ) {
+    // 封面比例布局状态: 持有者在路由层 (ScreenModel 内部状态, 与结果集同寿命),
+    // 活跃集合随发现结果增删在此层提交, 先于条目级生效
+    val coverRatioState = LocalCoverRatioLayout.current
+    val activeCoverResources = remember(state.books, state.bookshelfVersion) {
+        state.books.mapTo(HashSet()) { it.coverResourceKey(actions.isInBookshelf(it)) }
+    }
+    SideEffect { coverRatioState?.updateActiveResources(activeCoverResources) }
     Column(Modifier.fillMaxSize()) {
         AppTitleBar(
             title = state.title,

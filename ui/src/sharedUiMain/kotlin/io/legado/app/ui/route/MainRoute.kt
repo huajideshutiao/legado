@@ -82,7 +82,9 @@ import io.legado.app.ui.bookshelf.BookshelfActionsCallbacks
 import io.legado.app.ui.bookshelf.BookshelfAddViewModelShared
 import io.legado.app.ui.bookshelf.BookshelfScreen
 import io.legado.app.ui.bookshelf.BookshelfViewModel
+import io.legado.app.ui.bookshelf.CoverRatioLayoutState
 import io.legado.app.ui.bookshelf.CoverSlotRatio
+import io.legado.app.ui.bookshelf.LocalCoverRatioLayout
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.bookshelf.ShelfScrollState
 import io.legado.app.ui.bookshelf.ShelfVideoItem
@@ -373,14 +375,19 @@ fun MainRoute(
         },
         homeTab = { HomeTabContent(mainScreenModel.homeScreenModel, navigator, homeActive) },
         bookshelfTab = {
-            BookshelfTabContent(
-                mainScreenModel.bookshelfViewModel,
-                navigator,
-                bookshelfScrollState,
-                bookshelfGotoTopTick,
-                bookshelfTabSelected,
-                isRootTop = isMainTop,
-            )
+            // 封面比例布局状态: 只在书架内容处下发, 其余 tab 封面保持无持有者的原路径
+            CompositionLocalProvider(
+                LocalCoverRatioLayout provides mainScreenModel.coverRatioLayout,
+            ) {
+                BookshelfTabContent(
+                    mainScreenModel.bookshelfViewModel,
+                    navigator,
+                    bookshelfScrollState,
+                    bookshelfGotoTopTick,
+                    bookshelfTabSelected,
+                    isRootTop = isMainTop,
+                )
+            }
         },
         exploreTab = {
             ExploreTabContent(
@@ -405,6 +412,9 @@ private class MainScreenModel : ScreenModel {
     val homeScreenModel = HomeScreenModel()
     val bookshelfViewModel = BookshelfViewModel()
     val exploreScreenModel = ExploreScreenModel()
+
+    /** 已确定封面比例的布局状态: 与书架结果同寿命 (ScreenModelStore 保留, 配置重建不丢) */
+    val coverRatioLayout = CoverRatioLayoutState()
 
     override fun onCleared() {
         homeScreenModel.onCleared()

@@ -2,6 +2,7 @@ package io.legado.app.ui.book.explore
 
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.model.webBook.PluginFilterSession
+import io.legado.app.ui.bookshelf.CoverRatioLayoutState
 import io.legado.app.ui.root.ScreenModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +32,9 @@ class ExploreShowScreenModel : ScreenModel {
         )
     )
     val state: StateFlow<ExploreShowUiState> = _state.asStateFlow()
+
+    /** 已确定封面比例的布局状态: 与本页结果集同寿命 (ScreenModelStore 保留, 配置重建不丢) */
+    internal val coverRatioLayout = CoverRatioLayoutState()
 
     // footer 状态机内部字段 (不进 UiState, 供 Activity 点击逻辑读取)
     var footerHasMore: Boolean = true

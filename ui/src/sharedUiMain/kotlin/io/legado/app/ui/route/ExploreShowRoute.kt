@@ -1,6 +1,7 @@
 package io.legado.app.ui.route
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -24,6 +25,7 @@ import io.legado.app.ui.book.explore.ExploreShowUiEvent
 import io.legado.app.ui.book.explore.PluginFilterSource
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
+import io.legado.app.ui.bookshelf.LocalCoverRatioLayout
 import io.legado.app.ui.bookshelf.ShelfVideoItem
 import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.compose.component.ExploreOptionsRow
@@ -359,47 +361,52 @@ fun ExploreShowRoute(
         )
     }
 
-    ExploreShowScreen(
-        state = state,
-        actions = actions,
-        optionsRowSlot = {
-            val options by vm.optionsFlow.collectAsState()
-            ExploreOptionsRow(
-                options = options,
-                ownerKey = vm.optionsOwnerKey,
-                onSelect = { name, value ->
-                    if (vm.selectOption(name, value)) actions.onExploreOptionChanged()
-                },
-                onMultiSelect = { name, values ->
-                    if (vm.selectOptions(name, values)) actions.onExploreOptionChanged()
-                },
-                onReset = { name ->
-                    if (vm.resetOption(name)) actions.onExploreOptionChanged()
-                },
-            )
-        },
-        // 视频卡: 复用 ShelfVideoItem (item_explore_video 的 shared Compose 版), 封面走 LocalBookCoverSlot
-        videoItemSlot = { book, inBookshelf, onClick, onLongClick ->
-            ShelfVideoItem(
-                book = book.toCoverBook(inBookshelf),
-                coverReloadTick = state.bookshelfVersion,
-                onClick = onClick,
-                onLongClick = onLongClick,
-                inBookshelf = inBookshelf,
-                coverSlot = { b, modifier, coverRatio, coverReloadTick ->
-                    LocalBookCoverSlot.current(b, modifier, coverRatio, coverReloadTick)
-                },
-            )
-        },
-        // 封面: 复用 LocalBookCoverSlot (默认 SharedBookCover, 各端统一)
-        coverSlot = { book, inBookshelf, coverRatio, modifier ->
-            // toCoverBook 结果缓存一次, 避免每次重组新建 Book (对照 SearchScreen coverSlot 写法)
-            LocalBookCoverSlot.current(
-                remember(book, inBookshelf) { book.toCoverBook(inBookshelf) },
-                modifier,
-                coverRatio,
-                0,
-            )
-        },
-    )
+    // 封面比例布局状态: 与本页结果集同寿命 (由 ScreenModel 持有), 页面组合重建经此处取回
+    CompositionLocalProvider(
+        LocalCoverRatioLayout provides screenModel.coverRatioLayout,
+    ) {
+        ExploreShowScreen(
+            state = state,
+            actions = actions,
+            optionsRowSlot = {
+                val options by vm.optionsFlow.collectAsState()
+                ExploreOptionsRow(
+                    options = options,
+                    ownerKey = vm.optionsOwnerKey,
+                    onSelect = { name, value ->
+                        if (vm.selectOption(name, value)) actions.onExploreOptionChanged()
+                    },
+                    onMultiSelect = { name, values ->
+                        if (vm.selectOptions(name, values)) actions.onExploreOptionChanged()
+                    },
+                    onReset = { name ->
+                        if (vm.resetOption(name)) actions.onExploreOptionChanged()
+                    },
+                )
+            },
+            // 视频卡: 复用 ShelfVideoItem (item_explore_video 的 shared Compose 版), 封面走 LocalBookCoverSlot
+            videoItemSlot = { book, inBookshelf, onClick, onLongClick ->
+                ShelfVideoItem(
+                    book = book.toCoverBook(inBookshelf),
+                    coverReloadTick = state.bookshelfVersion,
+                    onClick = onClick,
+                    onLongClick = onLongClick,
+                    inBookshelf = inBookshelf,
+                    coverSlot = { b, modifier, coverRatio, coverReloadTick ->
+                        LocalBookCoverSlot.current(b, modifier, coverRatio, coverReloadTick)
+                    },
+                )
+            },
+            // 封面: 复用 LocalBookCoverSlot (默认 SharedBookCover, 各端统一)
+            coverSlot = { book, inBookshelf, coverRatio, modifier ->
+                // toCoverBook 结果缓存一次, 避免每次重组新建 Book (对照 SearchScreen coverSlot 写法)
+                LocalBookCoverSlot.current(
+                    remember(book, inBookshelf) { book.toCoverBook(inBookshelf) },
+                    modifier,
+                    coverRatio,
+                    0,
+                )
+            },
+        )
+    }
 }
