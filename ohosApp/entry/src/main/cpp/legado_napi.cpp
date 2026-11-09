@@ -1339,35 +1339,50 @@ static void CallJsWithBinary(napi_env env, napi_value js_cb, void *data) {
 
 // 通用 dispatch 入口: 深拷贝 JSON + 可选字节后投递给 tsfn (napi_call_threadsafe_function 异步,
 // 调用方指针生命周期不可控, 必须拷贝; 拷贝由 call-js 回调 / external ArrayBuffer finalize 释放)
-static void DispatchBinaryCommon(napi_threadsafe_function tsfn, const char *json,
+static bool DispatchBinaryCommon(napi_threadsafe_function tsfn, const char *json,
         const void *bytes, size_t bytes_len) {
-    if (tsfn == nullptr || json == nullptr) return;
+    if (tsfn == nullptr) {
+        OH_LOG_ERROR(LOG_APP, "dispatch binary: tsfn is null");
+        return false;
+    }
+    if (json == nullptr) {
+        OH_LOG_ERROR(LOG_APP, "dispatch binary: json is null");
+        return false;
+    }
     DispatchBinaryData *d = (DispatchBinaryData *) malloc(sizeof(DispatchBinaryData));
-    if (d == nullptr) return;
+    if (d == nullptr) {
+        OH_LOG_ERROR(LOG_APP, "dispatch binary: malloc data failed");
+        return false;
+    }
     d->bytes = nullptr;
     d->bytes_len = bytes_len;
     size_t json_len = strlen(json) + 1;
     d->json = (char *) malloc(json_len);
     if (d->json == nullptr) {
+        OH_LOG_ERROR(LOG_APP, "dispatch binary: malloc json failed");
         free(d);
-        return;
+        return false;
     }
     memcpy(d->json, json, json_len);
     if (bytes != nullptr && bytes_len > 0) {
         d->bytes = (uint8_t *) malloc(bytes_len);
         if (d->bytes == nullptr) {
+            OH_LOG_ERROR(LOG_APP, "dispatch binary: malloc bytes failed");
             free(d->json);
             free(d);
-            return;
+            return false;
         }
         memcpy(d->bytes, bytes, bytes_len);
     }
     napi_status status = napi_call_threadsafe_function(tsfn, d, napi_tsfn_nonblocking);
     if (status != napi_ok) {
+        OH_LOG_ERROR(LOG_APP, "dispatch binary: napi_call_threadsafe_function failed: %{public}d", status);
         free(d->json);
         free(d->bytes);
         free(d);
+        return false;
     }
+    return true;
 }
 
 // ============ Image/Media/TTS tsfn 接线 (KP8+ 新增, 同 Toast/Notification 模式) ============
@@ -1379,7 +1394,9 @@ static void DispatchBinaryCommon(napi_threadsafe_function tsfn, const char *json
 // C++ dispatch 入口: 由 Kotlin lambda (注入到 OhosNativeBridge.imageTsfn) 调用
 // 混合协议双参: 控制面 JSON + 数据面裸字节 (decode 的图片字节, 可为 null)
 extern "C" void ohos_image_dispatch(const char *json, const void *bytes, size_t bytes_len) {
-    DispatchBinaryCommon(g_image_tsfn, json, bytes, bytes_len);
+    if (!DispatchBinaryCommon(g_image_tsfn, json, bytes, bytes_len)) {
+        OH_LOG_ERROR(LOG_APP, "image dispatch failed: %{public}s", json != nullptr ? json : "null");
+    }
 }
 
 extern "C" void ohos_media_dispatch(const char* json) {

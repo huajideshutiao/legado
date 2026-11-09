@@ -56,7 +56,7 @@ import kotlinx.cinterop.cValue
  * - 语义对齐 JVM 端 JsApiDispatcher.getProperty(target, name): miss 返回 null
  *   (调用方转 undefined, 等价 NO_MATCH); 写 miss 静默 (与 JVM 端 setter 反射找不到时一致)。
  * - 嵌套对象 (AnalyzeRuleCore.chapter/ruleData): getter 返回 handle, JS 侧工厂函数包装
- *   (与 getSource/queryTTF 同模式; handle 不入 scope.handles, 泄漏量每次访问一个, 同已知取舍)。
+ *   (与 getSource/queryTTF 同模式; handle 登记到当前 scope.handles, 由 releaseNewHandles/scope close 回收)。
  *
  * # hot path
  * 一次属性读取: 1 次 handle 表 HashMap get + 1 次 when(propId) 整数跳转 +

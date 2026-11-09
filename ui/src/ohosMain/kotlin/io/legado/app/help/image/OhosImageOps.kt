@@ -25,7 +25,7 @@ import kotlin.native.ref.createCleaner
  * ## 句柄模型
  * [OhosImageRef] 持有原始 [ByteArray] + ArkTS 侧 PixelMap 句柄 ID (`pixelMapId`)。
  * - [decode]: 通过桥接调 `image.createImageSource(bytes).createPixelMap()`, ArkTS 侧存入
- *   `Map<pixelMapId, PixelMap>`, 返回 ID 给 Kotlin; 同时保留原始 bytes 供降级/encode 回退。
+ *   `Map<number, PixelMapEntry>`, 返回 ID 给 Kotlin; 同时保留原始 bytes 供降级/encode 回退。
  *   每个新建 PixelMap 由一个 [OhosImageRef] 的资源 token 拥有, ref 不可达后经 Cleaner
  *   向桥发送非阻塞 release 请求 (ArkTS 侧等该图在途 SDK 操作结束再完成 PixelMap.release(),
  *   失败保留资源条目); 降级/借用 ref 不拥有资源。

@@ -397,7 +397,7 @@ object OhosNativeBridge {
     //   → imageTsfn(requestJson, bytes)  (fire-and-forget, dispatch 到 ArkTS 主线程)
     //   → runBlocking { deferred.await() }  (阻塞 JS 引擎线程等待结果)
     //   → [ArkTS 主线程] image callback 收到 (requestJson, bytesArrayBuffer)
-    //   → image.createImageSource(bytes).createPixelMap() → 存入 pixelMaps Map<id, PixelMap>
+    //   → image.createImageSource(bytes).createPixelMap() → 存入 pixelMaps Map<id, PixelMapEntry>
     //   → legado.imageCallback(requestId, resultJson, packed?)  (napi → @CName legado_image_callback)
     //   → onImageResult(requestId, resultJson, bodyBytes) → 记录响应并唤醒等待方;
     //      等待方超时/异常未取走时, 由桥对响应里的新 PixelMap 发起非阻塞释放

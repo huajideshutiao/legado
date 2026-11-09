@@ -70,8 +70,14 @@ object NativeQuickJsSharedJsScopeProvider : SharedJsScopeProvider {
         val scope = NativeJsEngine.getRuntimeScope(JsBindings().apply {
             dangerousApi = enableDangerousApi
         }) as NativeJsScope
-        for (src in sourceEntry.sources) {
-            NativeJsEngine.eval(src, scope, coroutineContext)
+        try {
+            for (src in sourceEntry.sources) {
+                NativeJsEngine.eval(src, scope, coroutineContext)
+            }
+        } catch (t: Throwable) {
+            // 新 scope 尚未入 LRU, 源码失败时无其他持有者, 关闭自己并原样透传
+            scope.close()
+            throw t
         }
         perThread.put(key, CtxEntry(scope, sourceEntry.version))
         return scope

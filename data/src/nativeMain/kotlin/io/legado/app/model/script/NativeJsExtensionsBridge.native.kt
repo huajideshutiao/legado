@@ -96,7 +96,7 @@ import kotlinx.atomicfu.locks.synchronized
  * 且 cinterop 绑定 JSClassDef 结构体的 finalizer 函数指针类型映射容易出错。
  * 本方案用 handle 表 + JS 层闭包捕获 handle, 避免了 C 层面的上下文传递,
  * 只需 1 个 staticCFunction (C 函数不能捕获上下文), 所有方法分派在 Kotlin 层完成。
- * ImageOps 需要脚本跨语句真实持有图片对象, 由 [NativeImageBridge] 单独用
+ * ImageOps 需要脚本跨语句真实持有图片对象, 由 NativeImageBridge.native.kt 的顶层包装函数单独用
  * JSClassDef + opaque + func_data 承载, 不复用本桥的 eval 末尾数字 handle 协议。
  *
  * # handle 生命周期

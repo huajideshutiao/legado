@@ -107,25 +107,26 @@ function newPixelMapEntry(id: number, pixelMap: image.PixelMap): PixelMapEntry {
   };
 }
 
-/** 借用输入图: 在 SDK 操作终态（含失败）必须调用 [returnPixelMaps] 归还。 */
+/** 借用输入图: 释放已开始的图拒绝新操作; 在 SDK 操作终态 (含失败) 必须调用 [returnPixelMaps] 归还。 */
 function borrowPixelMap(id: number, borrowed: PixelMapEntry[]): PixelMapEntry | undefined {
   const entry = pixelMaps.get(id);
   if (entry == undefined) {
     return undefined;
+  }
+  if (entry.releasing) {
+    throw new Error('pixelMap releasing: ' + id);
   }
   entry.inUse += 1;
   borrowed.push(entry);
   return entry;
 }
 
-/** 归还借用；最后一个借用归还且已有释放请求时，开始真实 release。 */
+/** 归还借用；按登记次数成对递减，最后一个借用归还且已有释放请求时开始真实 release。 */
 function returnPixelMaps(borrowed: PixelMapEntry[]): void {
   for (const entry of borrowed) {
-    entry.inUse = Math.max(entry.inUse - 1, 0);
+    entry.inUse -= 1;
     if (entry.inUse === 0 && entry.releasePending) {
-      startRelease(entry).catch((e: Error): void => {
-        console.error('[ImageBridge] release task failed id=' + entry.id + ': ' + String(e.message ?? e));
-      });
+      startRelease(entry);
     }
   }
 }
@@ -139,9 +140,7 @@ async function startRelease(entry: PixelMapEntry): Promise<void> {
   let response: ImageResponse;
   try {
     await entry.pixelMap.release();
-    if (pixelMaps.get(entry.id) === entry) {
-      pixelMaps.delete(entry.id);
-    }
+    pixelMaps.delete(entry.id);
     response = { ok: true, release: true, pixelMapId: entry.id };
   } catch (e) {
     const err = e as BusinessError;
@@ -151,12 +150,10 @@ async function startRelease(entry: PixelMapEntry): Promise<void> {
   }
   entry.releasing = false;
   entry.releasePending = false;
-  const resolver = entry.releaseResolve;
+  const resolver = entry.releaseResolve!;
   entry.releasePromise = undefined;
   entry.releaseResolve = undefined;
-  if (resolver != undefined) {
-    resolver(response);
-  }
+  resolver(response);
 }
 
 /** 请求释放: 有借用未归还时等最后一个归还再 release；同一图共享同一回执 Promise。 */
@@ -173,9 +170,7 @@ function requestRelease(entry: PixelMapEntry): Promise<ImageResponse> {
   });
   entry.releasePromise = promise;
   if (entry.inUse === 0) {
-    startRelease(entry).catch((e: Error): void => {
-      console.error('[ImageBridge] release task failed id=' + entry.id + ': ' + String(e.message ?? e));
-    });
+    startRelease(entry);
   }
   return promise;
 }
@@ -265,7 +260,12 @@ async function handleEncode(payload: string): Promise<ImageActionResult> {
   const borrowed: PixelMapEntry[] = [];
   const packer = image.createImagePacker();
   try {
-    borrowPixelMap(p.pixelMapId, borrowed);
+    try {
+      borrowPixelMap(p.pixelMapId, borrowed);
+    } catch (e) {
+      // 借用失败 (如释放已开始) 是真实操作错误, 不带 packToData 前缀
+      return { resp: { ok: false, error: (e as Error).message ?? String(e) } };
+    }
     // format 规范: "jpeg" → "image/jpeg", "png" → "image/png"
     const formatStr = p.format.startsWith('image/') ? p.format : 'image/' + p.format;
     const packed = await packer.packToData(entry.pixelMap, { format: formatStr, quality: p.quality });

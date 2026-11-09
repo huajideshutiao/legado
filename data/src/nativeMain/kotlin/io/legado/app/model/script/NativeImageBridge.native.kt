@@ -9,14 +9,18 @@ import io.legado.app.napi.quickjs.JSRuntime
 import io.legado.app.napi.quickjs.JSValue
 import io.legado.app.napi.quickjs.JSClassDef
 import io.legado.app.napi.quickjs.JS_Call
+import io.legado.app.napi.quickjs.JS_DefinePropertyValueStr
 import io.legado.app.napi.quickjs.JS_DupValue
 import io.legado.app.napi.quickjs.JS_FreeValue
 import io.legado.app.napi.quickjs.JS_GetClassID
+import io.legado.app.napi.quickjs.JS_GetArrayBuffer
 import io.legado.app.napi.quickjs.JS_GetGlobalObject
 import io.legado.app.napi.quickjs.JS_GetLength
 import io.legado.app.napi.quickjs.JS_GetOpaque
 import io.legado.app.napi.quickjs.JS_GetPropertyStr
 import io.legado.app.napi.quickjs.JS_GetPropertyUint32
+import io.legado.app.napi.quickjs.JS_GetTypedArrayBuffer
+import io.legado.app.napi.quickjs.JS_GetTypedArrayType
 import io.legado.app.napi.quickjs.JS_IsArray
 import io.legado.app.napi.quickjs.JS_IsArrayBuffer
 import io.legado.app.napi.quickjs.JS_NewArray
@@ -25,33 +29,30 @@ import io.legado.app.napi.quickjs.JS_NewClass
 import io.legado.app.napi.quickjs.JS_NewClassID
 import io.legado.app.napi.quickjs.JS_NewObject
 import io.legado.app.napi.quickjs.JS_NewObjectClass
+import io.legado.app.napi.quickjs.JS_PROP_CONFIGURABLE
+import io.legado.app.napi.quickjs.JS_PROP_WRITABLE
 import io.legado.app.napi.quickjs.JS_SetOpaque
 import io.legado.app.napi.quickjs.JS_SetPropertyStr
 import io.legado.app.napi.quickjs.JS_SetPropertyUint32
-import io.legado.app.napi.quickjs.JS_TAG_UNDEFINED
+import io.legado.app.napi.quickjs.JS_TAG_EXCEPTION
 import io.legado.app.napi.quickjs.JS_ToFloat64
-import io.legado.app.napi.quickjs.JS_ToInt32
 import io.legado.app.napi.quickjs.qjs_ArrayBufferRead
-import io.legado.app.napi.quickjs.qjs_ArrayBufferSize
 import io.legado.app.napi.quickjs.qjs_FreeCString
 import io.legado.app.napi.quickjs.qjs_IsException
 import io.legado.app.napi.quickjs.qjs_IsNumber
 import io.legado.app.napi.quickjs.qjs_IsString
-import io.legado.app.napi.quickjs.qjs_IsUndefined
 import io.legado.app.napi.quickjs.qjs_NewBool
 import io.legado.app.napi.quickjs.qjs_NewCFunction
 import io.legado.app.napi.quickjs.qjs_NewInt32
 import io.legado.app.napi.quickjs.qjs_ToCString
-import io.legado.app.utils.Base64Lenient
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.DoubleVar
-import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.LongVar
 import kotlinx.cinterop.StableRef
 import kotlinx.cinterop.UIntVar
+import kotlinx.cinterop.ULongVar
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.asStableRef
@@ -65,32 +66,30 @@ import kotlinx.cinterop.readValue
 import kotlinx.cinterop.refTo
 import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.staticCFunction
+import kotlinx.cinterop.toKString
 import kotlinx.cinterop.useContents
+import kotlinx.cinterop.value
 import platform.posix.memcpy
 
 /**
  * native 端 (iOS/鸿蒙) `image` 绑定的 QuickJS 桥。
  *
- * # 与旧 __nativeDispatch 数字 handle 协议的区别
- * ImageRef 是被脚本真实持有的图片对象: 用 SDK 用户类 + opaque 托管 StableRef,
- * JSValue 存活期间 Kotlin 侧 ImageOps/ImageRef 强引用就存活; JSValue 回收后 finalizer
- * 只释放这一份 StableRef, 不执行 JS、不提前 close 仍在别处使用的图。
- * 旧桥的 numeric handle 在 eval 末尾统一注销, 无法表达脚本跨语句持有的图片, 故不复用。
+ * ImageRef 由 SDK 用户类 + opaque 托管 StableRef: JSValue 存活期间 Kotlin 侧 ImageOps/ImageRef
+ * 强引用存活; JSValue 回收后 finalizer 只释放这份 StableRef, 不执行 JS、不提前 close 仍在
+ * 别处使用的图。
  *
- * # 类注册
- * QuickJS 的类 ID 从 JSRuntime 的 js_class_id_alloc 分配 (JS_NewClassID), 每个 runtime
+ * QuickJS 类 ID 从 JSRuntime 的 js_class_id_alloc 分配 (JS_NewClassID), 每个 runtime
  * 初始化一次并记录在 [NativeImageBridgeState]; 该 state 挂在持有 rt/ctx 的 NativeJsScope 上,
- * 借用视图共享同一实例。每次 toJsValue 不再注册类。
+ * 借用视图共享同一实例。
  */
 internal class NativeImageBridgeState(
     val opsClassId: UInt,
     val refClassId: UInt,
 )
 
-/** func_data 携带的后端: 真实 ImageOps + 本 runtime 的两个类 ID (不持 scope/ctx/JSValue)。 */
+/** func_data 携带的后端: 真实 ImageOps + 本 runtime 的 ImageRef 类 ID (不持 scope/ctx/JSValue)。 */
 private class ImageOpsBackend(
     val ops: ImageOps,
-    val opsClassId: UInt,
     val refClassId: UInt,
 )
 
@@ -109,6 +108,9 @@ private const val MAGIC_CROP = 5
 private const val MAGIC_ROTATE = 6
 private const val MAGIC_FLIP = 7
 private const val MAGIC_SIZE = 8
+
+/** split 结果方法属性 flags: 可写/可配置, 不加 enumerable。 */
+private val IMAGE_METHOD_FLAGS: Int = (JS_PROP_WRITABLE or JS_PROP_CONFIGURABLE).toInt()
 
 /** JS 方法名/arity 与 ImageOps 现有签名一一对应。 */
 private class ImageMethodSpec(val name: String, val length: Int, val magic: Int)
@@ -139,14 +141,13 @@ private fun newClassId(rt: CPointer<JSRuntime>, className: String): UInt = memSc
     val idVar = alloc<UIntVar>()
     idVar.value = 0u
     val id = JS_NewClassID(rt, idVar.ptr)
-    check(id != 0u) { "QuickJS 图片桥类 ID 分配失败: $className" }
     val def = alloc<JSClassDef>()
     def.class_name = className.cstr.ptr
     def.finalizer = imageOpaqueFinalizer
     def.gc_mark = null
     def.call = null
     def.exotic = null
-    check(JS_NewClass(rt, id, def.ptr) == 0) { "QuickJS 图片桥类注册失败: $className" }
+    check(JS_NewClass(rt, id, def.ptr) == 0) { "QuickJS 图片桥类注册失败: $className" } // 类名原子/类表分配失败 (OOM)
     id
 }
 
@@ -156,17 +157,12 @@ private val imageOpaqueFinalizer = staticCFunction { _: CPointer<JSRuntime>?, va
 }
 
 /**
- * 通过对象自身 classID 取 opaque 并释放 StableRef (按运行期注册的类, 不依赖 ThreadLocal)。
- * finalizer 不允许 Kotlin 异常穿过 C 边界, 失败只放弃本次释放。
+ * 通过对象自身 classID 取 opaque 并释放 StableRef。
+ * 部分创建失败 (opaque 仍为空) 的对象 finalizer 会到此返回; 已设置的 opaque 必为本桥创建的 StableRef。
  */
 private fun disposeOpaque(value: CValue<JSValue>) {
-    try {
-        val opaque = JS_GetOpaque(value, JS_GetClassID(value)) ?: return
-        // 两个用户类的 opaque 都是 StableRef, 具体类型只在提取端区分; dispose 语义相同。
-        opaque.asStableRef<Any>().dispose()
-    } catch (_: Throwable) {
-        // finalizer 运行期无法向 JS 层报告; 不把异常抛穿 C 回调边界
-    }
+    val opaque = JS_GetOpaque(value, JS_GetClassID(value)) ?: return
+    opaque.asStableRef<Any>().dispose()
 }
 
 /** 把 ImageOps 包装为 JS 对象: 八个方法通过 func_data 共享同一个后端 token。 */
@@ -178,9 +174,9 @@ internal fun wrapImageOps(
     val obj = JS_NewObject(ctx)
     if (qjs_IsException(obj) != 0) {
         JS_FreeValue(ctx, obj)
-        throw IllegalStateException("创建 image 对象失败")
+        throw IllegalStateException("创建 image 对象失败") // SDK 对象分配失败 (OOM)
     }
-    val backend = ImageOpsBackend(ops, state.opsClassId, state.refClassId)
+    val backend = ImageOpsBackend(ops, state.refClassId)
     val backendRef = try {
         StableRef.create(backend)
     } catch (t: Throwable) {
@@ -192,14 +188,10 @@ internal fun wrapImageOps(
         JS_FreeValue(ctx, token)
         backendRef.dispose()
         JS_FreeValue(ctx, obj)
-        throw IllegalStateException("创建 image 后端 token 失败")
+        throw IllegalStateException("创建 image 后端 token 失败") // SDK 类对象分配失败 (OOM)
     }
-    if (JS_SetOpaque(token, backendRef.asCPointer()) != 0) {
-        JS_FreeValue(ctx, token)
-        backendRef.dispose()
-        JS_FreeValue(ctx, obj)
-        throw IllegalStateException("设置 image 后端 opaque 失败")
-    }
+    // opaque 由 SDK 对象持有, finalizer 负责释放 StableRef
+    JS_SetOpaque(token, backendRef.asCPointer())
     try {
         for (method in IMAGE_METHODS) {
             memScoped {
@@ -216,10 +208,10 @@ internal fun wrapImageOps(
                 )
                 if (qjs_IsException(fn) != 0) {
                     JS_FreeValue(ctx, fn)
-                    throw IllegalStateException("创建 image.${method.name} 失败")
+                    throw IllegalStateException("创建 image.${method.name} 失败") // SDK 函数/数据分配失败
                 }
-                // JS_SetPropertyStr 消费 fn (异常路径同样释放), 不能再 JS_FreeValue
-                if (JS_SetPropertyStr(ctx, obj, method.name, fn) != 0) {
+                // JS_SetPropertyStr 消费 fn; 返回值 <0 表示 SDK 异常
+                if (JS_SetPropertyStr(ctx, obj, method.name, fn) < 0) {
                     throw IllegalStateException("挂载 image.${method.name} 失败")
                 }
             }
@@ -251,22 +243,18 @@ internal fun wrapImageRef(
         JS_FreeValue(ctx, obj)
         throw t
     }
-    if (JS_SetOpaque(obj, holderRef.asCPointer()) != 0) {
-        holderRef.dispose()
-        JS_FreeValue(ctx, obj)
-        throw IllegalStateException("设置 ImageRef opaque 失败")
-    }
+    // opaque 由 SDK 对象持有, finalizer 负责释放 StableRef
+    JS_SetOpaque(obj, holderRef.asCPointer())
     return obj
 }
 
 /** 从新 ImageRef 类对象解回 Kotlin 图片引用; 其他对象返回 null。 */
 internal fun unwrapImageRef(
-    ctx: CPointer<JSContext>,
     value: CValue<JSValue>,
     state: NativeImageBridgeState,
 ): ImageRef? {
     if (JS_GetClassID(value) != state.refClassId) return null
-    val opaque = JS_GetOpaque(value, state.refClassId) ?: return null
+    val opaque = JS_GetOpaque(value, state.refClassId)!!
     return opaque.asStableRef<ImageRefHolder>().get().ref
 }
 
@@ -282,21 +270,17 @@ internal val imageMethodFn = staticCFunction {
 }
 
 private fun imageMethodImpl(
-    ctx: CPointer<JSContext>?,
+    ctxOrNull: CPointer<JSContext>?,
     @Suppress("UNUSED_PARAMETER") thisVal: CValue<JSValue>,
     argc: Int,
     argv: CPointer<JSValue>?,
     magic: Int,
     funcData: CPointer<JSValue>?,
 ): CValue<JSValue> {
-    ctx ?: return jsUndefined()
-    if (funcData == null) {
-        return NativeJsExtensionsBridge.jsThrowError(ctx, "image 后端 token 缺失")
-    }
+    val ctx = ctxOrNull!!
     return try {
-        val token = funcData[0L].readValue()
-        val opaque = JS_GetOpaque(token, JS_GetClassID(token))
-            ?: return NativeJsExtensionsBridge.jsThrowError(ctx, "image 后端 token 失效")
+        val token = funcData!![0L].readValue()
+        val opaque = JS_GetOpaque(token, JS_GetClassID(token))!!
         val backend = opaque.asStableRef<ImageOpsBackend>().get()
         dispatchImageMethod(ctx, backend, magic, argc, argv)
     } catch (t: Throwable) {
@@ -314,17 +298,23 @@ private fun dispatchImageMethod(
     when (magic) {
         MAGIC_DECODE -> {
             requireArgc("decode", argc, 1)
-            val bytes = readBytesArg(ctx, argv!![0L].readValue())
-            return wrapImageRef(ctx, backend.ops.decode(bytes), backend.refClassId)
+            val arg = argv!![0L].readValue()
+            val image = if (qjs_IsString(arg) != 0) {
+                backend.ops.decode(readStringArg(ctx, arg))
+            } else {
+                val bytes = readBytesArg(ctx, arg) ?: return jsException()
+                backend.ops.decode(bytes)
+            }
+            return wrapImageRef(ctx, image, backend.refClassId)
         }
 
         MAGIC_ENCODE -> {
             requireArgc("encode", argc, 3)
             val imgVal = argv!![0L].readValue()
-            val img = readRefArg(ctx, imgVal, backend, "encode 第一个参数")
+            val img = readRefArg(imgVal, backend, "encode 第一个参数")
             val format = readStringArg(ctx, argv[1L].readValue())
             val quality = readIntArg(ctx, argv[2L].readValue())
-            return NativeJsEngine.byteArrayToJsUint8Array(
+            return NativeJsEngine.newUint8ArrayCopy(
                 ctx, backend.ops.encode(img, format, quality)
             )
         }
@@ -332,7 +322,7 @@ private fun dispatchImageMethod(
         MAGIC_SPLIT -> {
             requireArgc("split", argc, 3)
             val imgVal = argv!![0L].readValue()
-            val img = readRefArg(ctx, imgVal, backend, "split 第一个参数")
+            val img = readRefArg(imgVal, backend, "split 第一个参数")
             val rows = readIntArg(ctx, argv[1L].readValue())
             val cols = readIntArg(ctx, argv[2L].readValue())
             return wrapImageRefArray(
@@ -348,7 +338,7 @@ private fun dispatchImageMethod(
                 throw IllegalArgumentException("image.stitch 第一个参数需为 ImageRef 数组")
             }
             val (refs, refVals) = readRefArrayArg(ctx, listVal, backend, "stitch 第一个参数")
-            try {
+            return try {
                 val direction = readStringArg(ctx, argv[1L].readValue())
                 val result = backend.ops.stitch(refs, direction)
                 val sameIndex = refs.indexOfFirst { it === result }
@@ -365,7 +355,7 @@ private fun dispatchImageMethod(
         MAGIC_CROP -> {
             requireArgc("crop", argc, 5)
             val imgVal = argv!![0L].readValue()
-            val img = readRefArg(ctx, imgVal, backend, "crop 第一个参数")
+            val img = readRefArg(imgVal, backend, "crop 第一个参数")
             val x = readIntArg(ctx, argv[1L].readValue())
             val y = readIntArg(ctx, argv[2L].readValue())
             val w = readIntArg(ctx, argv[3L].readValue())
@@ -381,7 +371,7 @@ private fun dispatchImageMethod(
         MAGIC_ROTATE -> {
             requireArgc("rotate", argc, 2)
             val imgVal = argv!![0L].readValue()
-            val img = readRefArg(ctx, imgVal, backend, "rotate 第一个参数")
+            val img = readRefArg(imgVal, backend, "rotate 第一个参数")
             val deg = readIntArg(ctx, argv[1L].readValue())
             val result = backend.ops.rotate(img, deg)
             return if (result === img) {
@@ -394,7 +384,7 @@ private fun dispatchImageMethod(
         MAGIC_FLIP -> {
             requireArgc("flip", argc, 2)
             val imgVal = argv!![0L].readValue()
-            val img = readRefArg(ctx, imgVal, backend, "flip 第一个参数")
+            val img = readRefArg(imgVal, backend, "flip 第一个参数")
             val direction = readStringArg(ctx, argv[1L].readValue())
             val result = backend.ops.flip(img, direction)
             return if (result === img) {
@@ -407,7 +397,7 @@ private fun dispatchImageMethod(
         MAGIC_SIZE -> {
             requireArgc("size", argc, 1)
             val imgVal = argv!![0L].readValue()
-            val img = readRefArg(ctx, imgVal, backend, "size 参数")
+            val img = readRefArg(imgVal, backend, "size 参数")
             return wrapSizeMap(ctx, backend.ops.size(img))
         }
 
@@ -423,7 +413,6 @@ private fun requireArgc(name: String, actual: Int, expected: Int) {
 
 /** ImageRef 参数只接受本桥注册类 + opaque 的真实对象, 拒绝数字/Map/字符串冒充。 */
 private fun readRefArg(
-    ctx: CPointer<JSContext>,
     value: CValue<JSValue>,
     backend: ImageOpsBackend,
     argName: String,
@@ -431,8 +420,7 @@ private fun readRefArg(
     if (JS_GetClassID(value) != backend.refClassId) {
         throw IllegalArgumentException("$argName 需为 image 方法返回的 ImageRef 对象")
     }
-    val opaque = JS_GetOpaque(value, backend.refClassId)
-        ?: throw IllegalStateException("$argName 的 ImageRef opaque 丢失")
+    val opaque = JS_GetOpaque(value, backend.refClassId)!!
     return opaque.asStableRef<ImageRefHolder>().get().ref
 }
 
@@ -442,13 +430,8 @@ private fun readRefArrayArg(
     arrayValue: CValue<JSValue>,
     backend: ImageOpsBackend,
     argName: String,
-): Pair<List<ImageRef>, List<CValue<JSValue>>> = memScoped {
-    val pLen = alloc<LongVar>()
-    if (JS_GetLength(ctx, arrayValue, pLen.ptr) != 0) {
-        throw IllegalArgumentException("$argName 长度读取失败")
-    }
-    val len = pLen.value.toInt()
-    if (len < 0) throw IllegalArgumentException("$argName 长度无效: $len")
+): Pair<List<ImageRef>, List<CValue<JSValue>>> {
+    val len = readJsLength(ctx, arrayValue, argName)
     val refs = ArrayList<ImageRef>(len)
     val vals = ArrayList<CValue<JSValue>>(len)
     try {
@@ -458,7 +441,7 @@ private fun readRefArrayArg(
                 if (qjs_IsException(elem) != 0) {
                     throw IllegalArgumentException("$argName[$i] 读取失败")
                 }
-                refs.add(readRefArg(ctx, elem, backend, "$argName[$i]"))
+                refs.add(readRefArg(elem, backend, "$argName[$i]"))
                 vals.add(elem)
             } catch (t: Throwable) {
                 JS_FreeValue(ctx, elem)
@@ -491,7 +474,8 @@ private fun wrapImageRefArray(
             } else {
                 wrapImageRef(ctx, ref, refClassId)
             }
-            if (JS_SetPropertyUint32(ctx, array, index.toUInt(), elem) != 0) {
+            // JS_SetPropertyUint32 消费 elem; 返回值 <0 表示 SDK 异常
+            if (JS_SetPropertyUint32(ctx, array, index.toUInt(), elem) < 0) {
                 throw IllegalStateException("写入 ImageRef 数组第 $index 项失败")
             }
         }
@@ -505,9 +489,9 @@ private fun wrapImageRefArray(
 
 /** 给 split 结果补通用 List 读面 (get/size/isEmpty), 方法通过 this 读数组, 不捕获数组。 */
 private fun setArrayMethods(ctx: CPointer<JSContext>, array: CValue<JSValue>) {
-    attachArrayMethod(ctx, array, "get", 1, qjs_NewCFunction(ctx, arrayGetFn, "get", 1))
-    attachArrayMethod(ctx, array, "size", 0, qjs_NewCFunction(ctx, arraySizeFn, "size", 0))
-    attachArrayMethod(ctx, array, "isEmpty", 0, qjs_NewCFunction(ctx, arrayIsEmptyFn, "isEmpty", 0))
+    attachArrayMethod(ctx, array, "get", qjs_NewCFunction(ctx, arrayGetFn, "get", 1))
+    attachArrayMethod(ctx, array, "size", qjs_NewCFunction(ctx, arraySizeFn, "size", 0))
+    attachArrayMethod(ctx, array, "isEmpty", qjs_NewCFunction(ctx, arrayIsEmptyFn, "isEmpty", 0))
 }
 
 private fun attachArrayMethod(
@@ -520,8 +504,9 @@ private fun attachArrayMethod(
         JS_FreeValue(ctx, method)
         throw IllegalStateException("创建数组 $name 方法失败")
     }
-    // JS_SetPropertyStr 消费 method (异常路径同样释放), 不能再 JS_FreeValue
-    if (JS_SetPropertyStr(ctx, array, name, method) != 0) {
+    // 只去掉 enumerable, 保留可写/可配置; SDK flags: JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE
+    // JS_DefinePropertyValueStr 消费 method; 返回值 <0 表示 SDK 异常
+    if (JS_DefinePropertyValueStr(ctx, array, name, method, IMAGE_METHOD_FLAGS) < 0) {
         throw IllegalStateException("挂载数组 $name 方法失败")
     }
 }
@@ -535,17 +520,17 @@ private val arrayGetFn = staticCFunction {
 }
 
 private fun arrayGetImpl(
-    ctx: CPointer<JSContext>?,
+    ctxOrNull: CPointer<JSContext>?,
     thisVal: CValue<JSValue>,
     argc: Int,
     argv: CPointer<JSValue>?,
 ): CValue<JSValue> {
-    ctx ?: return jsUndefined()
+    val ctx = ctxOrNull!!
     return try {
-        if (argc != 1 || argv == null) {
+        if (argc != 1) {
             throw IllegalArgumentException("get(index) 需要 1 个参数")
         }
-        val index = readIndexArg(ctx, argv[0L].readValue())
+        val index = readIndexArg(ctx, argv!![0L].readValue())
         val len = readArrayLength(ctx, thisVal)
         if (index !in 0 until len) {
             throw IllegalArgumentException("IndexOutOfBoundsException: Index: $index, Size: $len")
@@ -557,15 +542,7 @@ private fun arrayGetImpl(
 }
 
 private fun readIndexArg(ctx: CPointer<JSContext>, value: CValue<JSValue>): Int {
-    if (qjs_IsNumber(value) != 0) {
-        return memScoped {
-            val pres = alloc<IntVar>()
-            if (JS_ToInt32(ctx, pres.ptr, value) != 0) {
-                throw IllegalArgumentException("索引不是整数")
-            }
-            pres.value
-        }
-    }
+    if (qjs_IsNumber(value) != 0) return readNumberAsInt(ctx, value)
     if (qjs_IsString(value) != 0) {
         return readStringArg(ctx, value).toIntOrNull()
             ?: throw IllegalArgumentException("索引不是数字字符串")
@@ -582,16 +559,16 @@ private val arraySizeFn = staticCFunction {
 }
 
 private fun arraySizeImpl(
-    ctx: CPointer<JSContext>?,
+    ctxOrNull: CPointer<JSContext>?,
     thisVal: CValue<JSValue>,
     @Suppress("UNUSED_PARAMETER") argc: Int,
     @Suppress("UNUSED_PARAMETER") argv: CPointer<JSValue>?,
 ): CValue<JSValue> {
-    val ctxNotNull = ctx ?: return jsUndefined()
+    val ctx = ctxOrNull!!
     return try {
-        qjs_NewInt32(ctxNotNull, readArrayLength(ctxNotNull, thisVal))
+        qjs_NewInt32(ctx, readArrayLength(ctx, thisVal))
     } catch (t: Throwable) {
-        NativeJsExtensionsBridge.jsThrowError(ctxNotNull, t.message ?: "size() 失败")
+        NativeJsExtensionsBridge.jsThrowError(ctx, t.message ?: "size() 失败")
     }
 }
 
@@ -604,16 +581,16 @@ private val arrayIsEmptyFn = staticCFunction {
 }
 
 private fun arrayIsEmptyImpl(
-    ctx: CPointer<JSContext>?,
+    ctxOrNull: CPointer<JSContext>?,
     thisVal: CValue<JSValue>,
     @Suppress("UNUSED_PARAMETER") argc: Int,
     @Suppress("UNUSED_PARAMETER") argv: CPointer<JSValue>?,
 ): CValue<JSValue> {
-    val ctxNotNull = ctx ?: return jsUndefined()
+    val ctx = ctxOrNull!!
     return try {
-        qjs_NewBool(ctxNotNull, if (readArrayLength(ctxNotNull, thisVal) == 0) 1 else 0)
+        qjs_NewBool(ctx, if (readArrayLength(ctx, thisVal) == 0) 1 else 0)
     } catch (t: Throwable) {
-        NativeJsExtensionsBridge.jsThrowError(ctxNotNull, t.message ?: "isEmpty() 失败")
+        NativeJsExtensionsBridge.jsThrowError(ctx, t.message ?: "isEmpty() 失败")
     }
 }
 
@@ -621,14 +598,20 @@ private fun readArrayLength(ctx: CPointer<JSContext>, value: CValue<JSValue>): I
     if (!JS_IsArray(value)) {
         throw IllegalArgumentException("方法需以 split 返回的图片数组为 this")
     }
-    return memScoped {
-        val pLen = alloc<LongVar>()
-        if (JS_GetLength(ctx, value, pLen.ptr) != 0) {
-            throw IllegalArgumentException("数组长度读取失败")
-        }
-        pLen.value.toInt().coerceAtLeast(0)
-    }
+    return readJsLength(ctx, value, "数组")
 }
+
+/** JS Array 的 int64 长度先检查可表示范围, 再转 Kotlin Int; 不伪造空数组。 */
+private fun readJsLength(ctx: CPointer<JSContext>, value: CValue<JSValue>, argName: String): Int =
+    memScoped {
+        val pLen = alloc<LongVar>()
+        JS_GetLength(ctx, value, pLen.ptr)
+        val len = pLen.value
+        if (len < 0 || len > Int.MAX_VALUE.toLong()) {
+            throw IllegalArgumentException("$argName 长度无效: $len")
+        }
+        len.toInt()
+    }
 
 /** size 返回新建 Map: 普通 JS 数据 + 既有 __wrapJsonMap 门面 (不进 JSON/不注册 handle)。 */
 private fun wrapSizeMap(ctx: CPointer<JSContext>, size: Map<String, Int>): CValue<JSValue> {
@@ -639,7 +622,8 @@ private fun wrapSizeMap(ctx: CPointer<JSContext>, size: Map<String, Int>): CValu
     }
     try {
         size.forEach { (key, value) ->
-            if (JS_SetPropertyStr(ctx, data, key, qjs_NewInt32(ctx, value)) != 0) {
+            // JS_SetPropertyStr 消费 value; 返回值 <0 表示 SDK 异常
+            if (JS_SetPropertyStr(ctx, data, key, qjs_NewInt32(ctx, value)) < 0) {
                 throw IllegalStateException("写入 size.$key 失败")
             }
         }
@@ -648,10 +632,7 @@ private fun wrapSizeMap(ctx: CPointer<JSContext>, size: Map<String, Int>): CValu
             val wrapper = JS_GetPropertyStr(ctx, global, "__wrapJsonMap")
             try {
                 if (qjs_IsException(wrapper) != 0) {
-                    throw IllegalStateException("读取 __wrapJsonMap 失败")
-                }
-                if (qjs_IsUndefined(wrapper) != 0) {
-                    throw IllegalStateException("__wrapJsonMap 未定义")
+                    throw IllegalStateException("读取 __wrapJsonMap 失败") // SDK 全局属性读取异常
                 }
                 return memScoped {
                     val argv = allocArray<JSValue>(1)
@@ -675,13 +656,12 @@ private fun wrapSizeMap(ctx: CPointer<JSContext>, size: Map<String, Int>): CValu
     }
 }
 
-/** 参数: Uint8Array/TypedArray、ArrayBuffer、与 ByteArray 兼容的 JS Array、Base64 字符串。 */
-private fun readBytesArg(ctx: CPointer<JSContext>, value: CValue<JSValue>): ByteArray {
-    if (qjs_IsString(value) != 0) {
-        return Base64Lenient.decode(readStringArg(ctx, value))
-    }
-    NativeJsEngine.tryGetUint8ArrayBytes(ctx, value)?.let { return it }
-    readEmptyTypedArrayBytes(ctx, value)?.let { return it }
+/**
+ * 字节参数: TypedArray 视图、ArrayBuffer 或与 ByteArray 兼容的 JS Array。
+ * ArrayBuffer 的 SDK 异常以 null 上抛, 由调用方返回 JS_EXCEPTION。
+ */
+private fun readBytesArg(ctx: CPointer<JSContext>, value: CValue<JSValue>): ByteArray? {
+    readTypedArrayBytes(ctx, value)?.let { return it }
     if (JS_IsArrayBuffer(value)) {
         return readArrayBufferBytes(ctx, value)
     }
@@ -689,55 +669,67 @@ private fun readBytesArg(ctx: CPointer<JSContext>, value: CValue<JSValue>): Byte
         return readJsArrayBytes(ctx, value)
     }
     throw IllegalArgumentException(
-        "image.decode 参数需为 Uint8Array、ArrayBuffer、字节数组或 Base64 字符串"
+        "image.decode 参数需为 TypedArray、ArrayBuffer 或字节数组"
     )
 }
 
-/** 零长度 TypedArray (如 subarray(i,i)) 是合法空字节; 共用 helper 对空视图返回 null。 */
-private fun readEmptyTypedArrayBytes(
+/**
+ * 按 SDK 的 TypedArray 类型读取自身视图字节; 非 TypedArray 返回 null。
+ * 空视图返回空 ByteArray; 读取 SDK 失败抛错, 不用属性探测或静默 null。
+ */
+private fun readTypedArrayBytes(
     ctx: CPointer<JSContext>,
     value: CValue<JSValue>,
 ): ByteArray? {
-    val buffer = JS_GetPropertyStr(ctx, value, "buffer")
-    try {
-        if (qjs_IsException(buffer) != 0 || !JS_IsArrayBuffer(buffer)) return null
-        val byteLength = JS_GetPropertyStr(ctx, value, "byteLength")
-        try {
-            if (qjs_IsException(byteLength) != 0 || qjs_IsNumber(byteLength) == 0) return null
-            val len = memScoped {
-                val pres = alloc<IntVar>()
-                if (JS_ToInt32(ctx, pres.ptr, byteLength) != 0) -1 else pres.value
-            }
-            return if (len == 0) ByteArray(0) else null
-        } finally {
-            JS_FreeValue(ctx, byteLength)
+    if (JS_GetTypedArrayType(value) < 0) return null
+    return memScoped {
+        val offset = alloc<ULongVar>()
+        val length = alloc<ULongVar>()
+        val buffer = JS_GetTypedArrayBuffer(
+            ctx, value, offset.ptr, length.ptr, null
+        )
+        if (qjs_IsException(buffer) != 0) {
+            JS_FreeValue(ctx, buffer)
+            throw IllegalArgumentException("TypedArray 视图读取失败")
         }
-    } finally {
-        JS_FreeValue(ctx, buffer)
+        try {
+            val byteOffset = offset.value
+            val byteLength = length.value
+            val len = byteLength.toInt()
+            val out = ByteArray(len)
+            if (len > 0) {
+                val read = qjs_ArrayBufferRead(ctx, buffer, byteOffset, out.refTo(0), len.toULong())
+                if (read.toInt() != len) throw IllegalArgumentException("TypedArray 读取不完整")
+            }
+            out
+        } finally {
+            JS_FreeValue(ctx, buffer)
+        }
     }
 }
 
-private fun readArrayBufferBytes(ctx: CPointer<JSContext>, value: CValue<JSValue>): ByteArray =
+/**
+ * 读取 ArrayBuffer 字节; JS_GetArrayBuffer 返回 NULL 表示 SDK 真实失败 (如 detached),
+ * 此时保留 SDK 异常并返回 null, 不把失败当空字节。
+ */
+private fun readArrayBufferBytes(ctx: CPointer<JSContext>, value: CValue<JSValue>): ByteArray? =
     memScoped {
-        val size = qjs_ArrayBufferSize(ctx, value).toInt()
-        if (size < 0) throw IllegalArgumentException("ArrayBuffer 长度无效")
-        val out = ByteArray(size)
-        if (size > 0) {
-            val read = qjs_ArrayBufferRead(ctx, value, 0uL, out.refTo(0), size.toULong())
-            if (read.toInt() != size) throw IllegalArgumentException("ArrayBuffer 读取不完整")
+        val pSize = alloc<ULongVar>()
+        val data = JS_GetArrayBuffer(ctx, pSize.ptr, value)
+        if (data == null) return@memScoped null
+        val len = pSize.value.toInt()
+        val out = ByteArray(len)
+        if (len > 0) {
+            val read = qjs_ArrayBufferRead(ctx, value, 0uL, out.refTo(0), len.toULong())
+            if (read.toInt() != len) throw IllegalArgumentException("ArrayBuffer 读取不完整")
         }
         out
     }
 
-/** JS Array 按 ByteArray 兼容语义读取: 每个元素必须是 0..255 数字, 非法元素不默认 0。 */
+/** JS Array 按 ByteArray 兼容语义读取: 有限数字按 Number.toInt().toByte() 转换, 非法元素不默认 0。 */
 private fun readJsArrayBytes(ctx: CPointer<JSContext>, value: CValue<JSValue>): ByteArray =
     memScoped {
-        val pLen = alloc<LongVar>()
-        if (JS_GetLength(ctx, value, pLen.ptr) != 0) {
-            throw IllegalArgumentException("字节数组长度读取失败")
-        }
-        val len = pLen.value.toInt()
-        if (len < 0) throw IllegalArgumentException("字节数组长度无效: $len")
+        val len = readJsLength(ctx, value, "字节数组")
         val out = ByteArray(len)
         for (i in 0 until len) {
             val elem = JS_GetPropertyUint32(ctx, value, i.toUInt())
@@ -748,22 +740,16 @@ private fun readJsArrayBytes(ctx: CPointer<JSContext>, value: CValue<JSValue>): 
                 if (qjs_IsNumber(elem) == 0) {
                     throw IllegalArgumentException("字节数组[$i] 不是数字")
                 }
-                // 用 SDK 数值转换并拒绝 NaN/小数, 不把非法元素默认成 0
                 val d = memScoped {
                     val pres = alloc<DoubleVar>()
-                    if (JS_ToFloat64(ctx, pres.ptr, elem) != 0) {
-                        throw IllegalArgumentException("字节数组[$i] 不是有效数字")
-                    }
+                    JS_ToFloat64(ctx, pres.ptr, elem)
                     pres.value
                 }
-                if (!d.isFinite() || d % 1.0 != 0.0) {
-                    throw IllegalArgumentException("字节数组[$i]=$d 不是整数")
+                if (!d.isFinite()) {
+                    throw IllegalArgumentException("字节数组[$i]=$d 不是有限数字")
                 }
-                val byte = d.toInt()
-                if (byte !in 0..255) {
-                    throw IllegalArgumentException("字节数组[$i]=$byte 超出 0..255")
-                }
-                out[i] = byte.toByte()
+                // 与既有 Kotlin ByteArray 数值转换一致: Number.toInt().toByte()
+                out[i] = d.toInt().toByte()
             } finally {
                 JS_FreeValue(ctx, elem)
             }
@@ -771,16 +757,19 @@ private fun readJsArrayBytes(ctx: CPointer<JSContext>, value: CValue<JSValue>): 
         out
     }
 
-private fun readIntArg(ctx: CPointer<JSContext>, value: CValue<JSValue>): Int =
+private fun readIntArg(ctx: CPointer<JSContext>, value: CValue<JSValue>): Int {
+    if (qjs_IsNumber(value) == 0) {
+        throw IllegalArgumentException("参数不是数字")
+    }
+    return readNumberAsInt(ctx, value)
+}
+
+/** JS Number 经 SDK 读成 double, 再按既有 Number.toInt() 语义转换 (不经 JS_ToInt32 模转换)。 */
+private fun readNumberAsInt(ctx: CPointer<JSContext>, value: CValue<JSValue>): Int =
     memScoped {
-        if (qjs_IsNumber(value) == 0) {
-            throw IllegalArgumentException("参数不是数字")
-        }
-        val pres = alloc<IntVar>()
-        if (JS_ToInt32(ctx, pres.ptr, value) != 0) {
-            throw IllegalArgumentException("参数不是整数")
-        }
-        pres.value
+        val pres = alloc<DoubleVar>()
+        JS_ToFloat64(ctx, pres.ptr, value)
+        pres.value.toInt()
     }
 
 private fun readStringArg(ctx: CPointer<JSContext>, value: CValue<JSValue>): String {
@@ -796,6 +785,6 @@ private fun readStringArg(ctx: CPointer<JSContext>, value: CValue<JSValue>): Str
     }
 }
 
-private fun jsUndefined(): CValue<JSValue> = cValue {
-    tag = JS_TAG_UNDEFINED.toLong()
+private fun jsException(): CValue<JSValue> = cValue {
+    tag = JS_TAG_EXCEPTION.toLong()
 }
