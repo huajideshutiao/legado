@@ -166,7 +166,7 @@ object ReaderImageCache {
         bitmaps.remove(src)?.let { cachedBytes -= it.byteSize() }
         bitmaps[src] = bitmap
         cachedBytes += bitmap.byteSize()
-        val limit = bitmapCacheMaxBytes
+        val limit = readerImageCacheMaxBytes
         val iterator = bitmaps.entries.iterator()
         // 单张图超预算时保留自身（原版 ensureLruCacheSize 同样扩容而非丢弃当前图）
         while (cachedBytes > limit && bitmaps.size > 1 && iterator.hasNext()) {

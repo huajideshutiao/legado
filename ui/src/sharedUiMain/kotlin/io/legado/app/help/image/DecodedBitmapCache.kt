@@ -99,7 +99,7 @@ object DecodedBitmapCache {
             bitmaps.remove(key)?.let { cachedBytes -= it.byteSize() }
             bitmaps[key] = bitmap
             cachedBytes += bitmap.byteSize()
-            val limit = bitmapCacheMaxBytes
+            val limit = decodedBitmapCacheMaxBytes
             val iterator = bitmaps.entries.iterator()
             // 单张图超预算时保留自身 (对齐 ReaderImageCache/原版 ensureLruCacheSize 语义)
             while (cachedBytes > limit && bitmaps.size > 1 && iterator.hasNext()) {
@@ -130,7 +130,7 @@ object DecodedBitmapCache {
             val keep = if (old != null && old.width.toLong() * old.height > bitmap.width.toLong() * bitmap.height) old else bitmap
             coversByUrl[url] = keep
             coverBytes += keep.byteSize()
-            val limit = bitmapCacheMaxBytes / 8
+            val limit = decodedBitmapCacheMaxBytes / 8
             val iterator = coversByUrl.entries.iterator()
             while (coverBytes > limit && coversByUrl.size > 1 && iterator.hasNext()) {
                 val entry = iterator.next()
@@ -160,9 +160,27 @@ object DecodedBitmapCache {
     }
 }
 
-/** 解码位图 LRU 预算 (`AppConfig.bitmapCacheSize` MB → 字节), 本缓存与 [ReaderImageCache] 共用。 */
+/**
+ * 各消费者在 [bitmapCacheMaxBytes] 里的预算份额。
+ *
+ * 用户设置项 `bitmapCacheSize` 的含义是"图片缓存总预算"(原版只有 `ImageProvider` 一份消费者)。
+ * 本进程另有三个生命周期不同的消费者, 若各自按该值吃满, 总量会成倍超出用户预期 (设置 50MB
+ * 实际可达 4 份)。按份额切分后, 总占用才与设置值一致。
+ *
+ * - 阅读页内嵌图: 单本书作用域 (换书即清), 容许吃满
+ * - 解码大图/阅读背景/漫画: 进程级常驻, 且已有按编号的二级淘汰, 取 1/4
+ * - 封面复用小表: 主表的 1/8 (即总量的 1/32)
+ */
 internal val bitmapCacheMaxBytes: Long
     get() = AppConfigProviders.get().bitmapCacheSize.coerceIn(1, 1024) * 1024L * 1024L
+
+/** 阅读页内嵌图预算: 单本书作用域, 吃满总预算。 */
+internal val readerImageCacheMaxBytes: Long
+    get() = bitmapCacheMaxBytes
+
+/** 进程级解码位图主表预算: 总量的 1/4。 */
+internal val decodedBitmapCacheMaxBytes: Long
+    get() = bitmapCacheMaxBytes / 4
 
 /** 位图占用字节 (ARGB_8888 口径, 对照原版 ensureLruCacheSize 的 byteCount)。 */
 internal fun ImageBitmap.byteSize(): Long = width.toLong() * height.toLong() * 4L

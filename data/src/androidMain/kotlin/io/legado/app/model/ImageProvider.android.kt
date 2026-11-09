@@ -44,8 +44,14 @@ actual class ImageProviderLruCache actual constructor() :
 
     private var removeCount = 0
 
+    /**
+     * 当前条目数。
+     *
+     * 不能用 LruCache 的累计统计推算 (putCount + createCount - evictionCount - removeCount):
+     * 同一 key 覆盖写入会令 putCount 增长而条目数不变, 该式只增不减, 与"条目数"无关。
+     */
     val count: Int
-        get() = putCount() + createCount() - evictionCount() - removeCount
+        get() = snapshot().size
 
     override fun sizeOf(key: String, value: Bitmap): Int {
         return value.byteCount
@@ -138,17 +144,18 @@ actual object ImageProvider {
     }
 
     private fun ensureLruCacheSize(bitmap: Bitmap) {
+        val configured = cacheSize
         val lruMaxSize = bitmapLruCache.maxSize()
         val lruSize = bitmapLruCache.size()
         val byteCount = bitmap.byteCount
-        val size = if (byteCount > lruMaxSize) {
-            min(256 * M, (byteCount * 1.3).toInt())
+        val size = if (byteCount > configured) {
+            min(256 * M, max(configured, (byteCount * 1.3).toInt()))
         } else if (lruSize + byteCount > lruMaxSize && bitmapLruCache.count < 5) {
-            min(256 * M, (lruSize + byteCount * 1.3).toInt())
+            min(256 * M, max(configured, (lruSize + byteCount * 1.3).toInt()))
         } else {
-            lruMaxSize
+            configured
         }
-        if (size > lruMaxSize) {
+        if (size != lruMaxSize) {
             bitmapLruCache.resize(size)
         }
     }
