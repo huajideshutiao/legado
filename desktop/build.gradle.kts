@@ -1,6 +1,6 @@
-import io.legado.buildlogic.NativeJarStripper
 import io.legado.buildlogic.NativePlatformOs
 import io.legado.buildlogic.NativeToolchainValueSource
+import io.legado.buildlogic.ReleaseJarRewriter
 import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import java.time.LocalDate
@@ -761,22 +761,25 @@ tasks.matching { it.name.startsWith("proguard") && it.name.endsWith("Jars") }.co
 }
 
 // ============================================================
-// 打包期剔除 jar 内非构建平台的 native
+// 打包期重写 release jar: 剔非构建平台的 native + 剥离签名文件
 // ============================================================
-// 实现 (判定口径/已知平台名单/失败策略) 见 build-logic 的 NativeJarStripper: 配置缓存下任务动作
-// 不得引用脚本级对象, 故逻辑不在本文件内。做法是在官方 ProGuard 输出目录上就地重写 jar, 只留
-// 构建平台自己的 native 目录; 下游 createReleaseDistributable / packageRelease* 全部从该目录取件,
-// 一个钩子同时覆盖 MSI / deb / rpm / dmg / 便携 zip 五条链 (CI 矩阵下构建平台即目标平台)。
+// 实现 (判定口径/已知平台名单/体积策略/失败策略) 见 build-logic 的 ReleaseJarRewriter:
+// 配置缓存下任务动作不得引用脚本级对象, 故逻辑不在本文件内。做法是在官方 ProGuard 输出目录上
+// 就地重写 jar, 只留构建平台自己的 native 目录, 并丢掉 META-INF 直接子层的 .SF/.DSA/.RSA/.EC
+// (ProGuard 只重写 class 字节、资源原样复制, 带签名的依赖出来就是「签名文件 + 上游摘要 +
+// 被改写的 class」, JVM 加载即抛 SHA-256 digest error, 桌面三端启动必崩);
+// 下游 createReleaseDistributable / packageRelease* 全部从该目录取件, 一个钩子同时覆盖
+// MSI / deb / rpm / dmg / 便携 zip 五条链 (CI 矩阵下构建平台即目标平台)。
 
 tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
     val proguardOutDir = layout.buildDirectory.dir("compose/tmp/main-release/proguard").get().asFile
-    val keepTokens = NativeJarStripper.tokensToKeep(
+    val keepTokens = ReleaseJarRewriter.tokensToKeep(
         currentNativePlatformOs(),
         System.getProperty("os.arch").orEmpty()
             .let { it.contains("aarch64") || it.contains("arm64") },
     )
     doLast {
-        NativeJarStripper.strip(proguardOutDir, keepTokens) { logger.lifecycle(it) }
+        ReleaseJarRewriter.rewrite(proguardOutDir, keepTokens) { logger.lifecycle(it) }
     }
 }
 

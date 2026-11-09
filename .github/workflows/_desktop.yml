@@ -112,8 +112,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Verify final app image quickjs library
+      - name: Verify final app image (quickjs library + jar signatures)
         # 校验 jpackage 最终 app-image（安装器和便携包的共同输入），不接受仅资源输入目录有库。
+        # jar 签名文件一并查: 产物里每个 jar 都被 ProGuard 重写过, 残留 META-INF/*.SF 就会让 JVM
+        # 按签名 jar 逐条校验被改写的 class 摘要, 加载即抛 SecurityException (2026-11-02 beta 桌面
+        # 三端启动必崩即此); 只在最终产物上查才拦得住新增打包链绕过重写钩子的情况。
         run: |
           case "$RUNNER_OS" in
             Windows) lib=legado_quickjs.dll ;;
@@ -129,6 +132,31 @@ jobs:
             exit 1
           fi
           printf 'Verified packaged QuickJS library: %s\n' "${matches[@]}"
+
+          # 判定口径与 JVM 一致 (SignatureFileVerifier.isSigningRelated): META-INF 直接子层、
+          # 扩展名 SF/DSA/RSA/EC、大小写不敏感。
+          jars=0
+          signed=()
+          while IFS= read -r -d '' jar; do
+            jars=$((jars + 1))
+            if ! listing=$(jar tf "$jar" 2>&1); then
+              printf '::error::cannot read jar entries: %s\n%s\n' "$jar" "$listing"
+              exit 1
+            fi
+            hits=$(printf '%s\n' "$listing" | tr -d '\r' | grep -iE '^META-INF/[^/]+\.(SF|DSA|RSA|EC)$' || true)
+            if [ -n "$hits" ]; then
+              signed+=("$jar: $(echo "$hits" | tr '\n' ' ')")
+            fi
+          done < <(find "$app_images" -type f -name '*.jar' -print0)
+          if [ "$jars" -eq 0 ]; then
+            echo "::error::no jar found under final app image tree: $app_images"
+            exit 1
+          fi
+          if [ "${#signed[@]}" -ne 0 ]; then
+            printf '::error::%s\n' "jar in final app image still carries signature files (JVM will verify rewritten classes and throw SecurityException):" "${signed[@]}"
+            exit 1
+          fi
+          printf 'Verified %d packaged jars carry no signature files\n' "$jars"
 
       - name: Collect packages
         # 统一命名: 平台_架构[_特殊版本].扩展名, 不带版本号; 包内 packageVersion 仍是实际版本,
