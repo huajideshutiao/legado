@@ -833,9 +833,10 @@ compose.desktop {
         // legado.quickjs.lib 系统属性 + Platform.kt 候选1 System.load 加载。
         // 开发期 :desktop:run 通过 legado.quickjs.lib 指向按 os-arch 分层的 native 输出。
         jvmArgs += listOf(
-            "-Xmx768m",                          // 提升堆上限避免大书架 OOM (原 512m 偏小)
-            "-Xms384m",                          // 启动期堆底提到 384m: 实测 -Xms128m 下启动头 1.1s 内跳 4 次
-                                                // young GC 且堆反复顶在 128M 上限扩张 (G1 扩容+迁移是白送成本)
+            // 堆上限护栏: Xmx 只是上限不预占, 零常驻代价, 作用是防止长时运行堆无界膨胀
+            "-Xmx768m",
+            // 不设 -Xms: 初始堆走 JVM 默认 (物理内存 1/64)。写死固定初始堆会在启动时把整份堆
+            // 提交为常驻内存, 实测多占约 400MB 工作集, 而 young GC 次数与总停顿无可见收益
             "-XX:+UseG1GC",                      // JDK 17 默认即 G1, 显式声明更稳定
             "-XX:MaxGCPauseMillis=200",          // G1 目标停顿
             // -XX:TieredStopAtLevel=1 / -XX:CompileThreshold 已删除 (2026-09 复盘):
