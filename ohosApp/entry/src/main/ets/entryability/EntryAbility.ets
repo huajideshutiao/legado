@@ -49,6 +49,8 @@ import { initShareBridge, handleShareRequest } from '../bridge/SystemShareBridge
 import { pendingDialogRequestIds, handleDialogRequest } from '../bridge/SysDialogBridgeHandler';
 import { installSystemEventSources } from '../bridge/SystemEventSources';
 import { systemShare } from '@kit.ShareKit';
+import uniformTypeDescriptor from '@ohos.data.uniformTypeDescriptor';
+import type { UIContext } from '@ohos.arkui.UIContext';
 import { handleKeyboardCommand } from '../bridge/KeyboardBridgeHandler';
 import { initPermissionBridge, handlePermissionRequest, pendingPermissionRequestIds } from '../bridge/PermissionBridgeHandler';
 // 系统崩溃事件订阅 (hiAppEvent): 系统同时覆盖 ArkTS 崩溃 (JsError) 与原生崩溃 (NativeCrash),
@@ -176,34 +178,120 @@ const SHARE_TEXT_PREFIX: string = 'text:';
 const SHARE_ACTION: string = 'ohos.want.action.sendData';
 
 /**
- * 按 UTD 判定为"文本类"的记录 (字面量取自 module.json5 share skill 声明的同一组 UTD,
- * 即本机 SDK @ohos.data.uniformTypeDescriptor.d.ts 的 TEXT/PLAIN_TEXT/HTML/HYPERLINK)。
+ * 文本族基类型 (SDK @ohos.data.uniformTypeDescriptor: TEXT/PLAIN_TEXT/HTML/HYPERLINK
+ * 均归属其下, 子类型经描述符层级判定, 不用精确字符串冒充完整覆盖)。
  */
-const SHARE_TEXT_UTDS: string[] = ['general.text', 'general.plain-text', 'general.html', 'general.hyperlink'];
+const SHARE_TEXT_BASE_UTD: string = 'general.text';
+
+/**
+ * 申报的可接收分享 UTD (与 module.json5 share skill 同一组字面量): 文件记录按 SDK 类型
+ * 关系核对其归属, 不在能力范围内的记录如实告知不支持。
+ */
+const SHARE_SUPPORTED_UTDS: string[] = [
+  'general.text', 'general.plain-text', 'general.html', 'general.hyperlink',
+  'general.epub',
+  'general.zip-archive', 'general.tar-archive', 'org.gnu.gnu-zip-archive', 'org.gnu.gnu-zip-tar-archive',
+  'general.mpeg-4', 'org.matroska.mkv', 'general.ts',
+];
+
+/** 单条分享记录的转投结果 (request 为空串 = 不可投, error 为用户可读原因)。 */
+interface ShareRecordDispatch {
+  request: string;
+  error: string;
+}
+
+/**
+ * 查 UTD 描述符。SDK 契约: typeId 不存在时返回 null (返回值标注非可选, 文档明写
+ * "or null if the uniform data type does not exist"); 非法参数仅限空/非 string,
+ * 传入的 utd 恒为 string。
+ */
+function typeDescriptorOf(utd: string): uniformTypeDescriptor.TypeDescriptor | null {
+  return uniformTypeDescriptor.getTypeDescriptor(utd) as uniformTypeDescriptor.TypeDescriptor | null;
+}
+
+/** 文本族判定 (SDK 层级归属, 含基类型自身; 入参为非空常量, 不涉及 401 路径)。 */
+function isTextShareUtd(utd: string): boolean {
+  if (utd === SHARE_TEXT_BASE_UTD) {
+    return true;
+  }
+  const descriptor = typeDescriptorOf(utd);
+  if (descriptor === null) {
+    return false;
+  }
+  return descriptor.belongsTo(SHARE_TEXT_BASE_UTD);
+}
+
+/** 申报能力范围核对 (含申报类型自身与其下子类型; 入参为非空常量)。 */
+function isSupportedShareUtd(utd: string): boolean {
+  if (SHARE_SUPPORTED_UTDS.includes(utd)) {
+    return true;
+  }
+  const descriptor = typeDescriptorOf(utd);
+  if (descriptor === null) {
+    return false;
+  }
+  for (const declared of SHARE_SUPPORTED_UTDS) {
+    if (descriptor.belongsTo(declared)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * UTD 的首个 MIME (mimeTypes 自 @since 12, 与模块 compatibleSdkVersion 同级)。
+ * 官方预置表确认申报类型均有 MIME; 取首项原样使用, 不做格式校验。
+ */
+function mimeOfShareUtd(utd: string): string {
+  const descriptor = typeDescriptorOf(utd);
+  if (descriptor === null) {
+    return '';
+  }
+  const mimes: Array<string> = descriptor.mimeTypes;
+  return mimes.length > 0 ? mimes[0] : '';
+}
 
 /**
  * 分享记录 → 外部启动请求串 (交 legado.handleLaunchRequest → OhosLaunchRequests.parse)。
  *
- * **只处理文本类 UTD** —— 与 module.json5 里 share skill 的声明面 (只申报 general.text /
- * plain-text / html / hyperlink) 以及原版 Android 的注册范围 (AndroidManifest 的
- * ProcessTextActivity alias 只挂 `SEND` + `text/plain`, 文件分享走的是 `ACTION_VIEW` 文件关联)
- * 严格对齐: 非文本类型 (图片/视频/压缩包…) 系统根本不会投给本 Ability 的 share skill,
- * 写一条"非文本取 uri → 导入"的分支等于给声明不到的路径留代码 (旧代码就是这样)。
+ * - 文件记录 (官方契约: uri 载荷 = 应用/用户文件 URI, 链接与文本走 content):
+ *   文件附件优先于附带文字 (对照 Android SEND 的 EXTRA_STREAM 优先), 不因
+ *   description/content 改投文本搜索; 能力范围外的 UTD 如实报不支持。类型随 uri 捎带
+ *   (既有 `mime:<type>|<uri>` 约定): 媒体库地址末段是数字 id 无扩展名, 视频直投只有
+ *   MIME 能认; 描述符查不到/未带 MIME 时投裸 uri, 由 KMP 按扩展名/内容判定。
+ * - 无文件载荷的文本族记录: content (纯文本) 或链接地址加 `text:` 前缀进既有搜索/网页分流。
+ * - title 是记录标题非文件名 (SDK 未保证), 不参与投递。
  *
- * 文本类记录里 content 为空的情况退回 uri: 那是"文本类 UTD 但载的是一个文件" (如从文件管理器
- * 分享 .txt), 对应 Android 同一条注册下的 `ACTION_SEND` + `EXTRA_STREAM` → `ImportFile` 分支。
- *
- * @returns 空串 = 该记录不可用 (调用方跳过)
+ * @param allowFile 本次投递是否允许处理文件记录 (跨记录单文件约束, 超限时调用方已提示)
  */
-function toLaunchRequestFromSharedRecord(record: systemShare.SharedRecord): string {
-  if (!SHARE_TEXT_UTDS.includes(record.utd)) {
-    return '';
+function toLaunchRequestFromSharedRecord(record: systemShare.SharedRecord, allowFile: boolean): ShareRecordDispatch {
+  const uri: string = record.uri ?? '';
+  if (uri.startsWith('file://')) {
+    if (!allowFile) {
+      return { request: '', error: '' };
+    }
+    if (!isSupportedShareUtd(record.utd)) {
+      return { request: '', error: '暂不支持该类型的文件: ' + record.utd };
+    }
+    const mime = mimeOfShareUtd(record.utd);
+    if (mime.length === 0) {
+      console.error('[Legado] shared record without MIME mapping: utd=' + record.utd + ', uri=' + uri);
+      return { request: uri, error: '' };
+    }
+    return { request: LAUNCH_MIME_PREFIX + mime + LAUNCH_MIME_SEPARATOR + uri, error: '' };
   }
   const content: string = record.content ?? '';
-  if (content.length > 0) {
-    return SHARE_TEXT_PREFIX + content;
+  if (uri.length > 0) {
+    // 非 file:// 的 uri (官方契约下不属文件载荷): 链接地址按文本分流, 网页去向不变
+    if (isTextShareUtd(record.utd)) {
+      return { request: SHARE_TEXT_PREFIX + uri, error: '' };
+    }
+    return { request: '', error: '未能取得分享的文件' };
   }
-  return record.uri ?? '';
+  if (content.length > 0 && isTextShareUtd(record.utd)) {
+    return { request: SHARE_TEXT_PREFIX + content, error: '' };
+  }
+  return { request: '', error: '未能取得分享的文件' };
 }
 
 /**
@@ -495,6 +583,10 @@ export default class EntryAbility extends UIAbility {
   // 对话框源资格: 注册返回真实代次; JS 后置阶段仍须拒绝旧源 showDialog
   private dialogMinGen: number = 0;
   private dialogMaxGen: number = 0;
+  // 分享失败 toast 的 UIContext (loadContent 成功后注入) 与内容就绪前的待交付缓冲:
+  // 冷启动时 getSharedData 回调可先于窗口内容就绪, 失败原因缓冲待内容就绪后交付
+  private shareToastContext: UIContext | undefined = undefined;
+  private sharePendingFailures: string[] = [];
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     console.info('[Legado] EntryAbility.onCreate');
@@ -934,6 +1026,9 @@ export default class EntryAbility extends UIAbility {
    * 投递外部启动请求给 KMP 侧 (onCreate 冷启动 / onNewWant 热启动共用)。
    *
    * # 分流 (与 Kotlin LegadoNativeExports.handleDeepLink / handleLaunchRequest 分工对应)
+   * - 系统分享投递 (action = ohos.want.action.sendData) → handleSharedData
+   *   (systemShare.getSharedData → 逐条记录投 OhosLaunchRequests; 按 action 判定,
+   *   不依赖分享 want 的 uri 形态, 也不与下方 uri/parameters 分支重复处理)
    * - 通知按钮点击 (want.uri 为空, notificationId + action 在 want.parameters) →
    *   emitPlatformEvent (Kotlin OhosPlatformEventChannel 的 type="notificationAction")
    * - legado:// / yuedu:// 一键导入链接 → legado.handleDeepLink
@@ -952,6 +1047,13 @@ export default class EntryAbility extends UIAbility {
    * 不带 MIME 的普通启动串依旧原样透传, 旧链路行为零变化。
    */
   private handleDeepLink(want: Want): void {
+    // 系统分享投递按 action 进入 (SDK getSharedData 的入参契约是"分享能力 Ability 收到的
+    // want", 分享数据只能从它解析, 不假定分享 want 的 uri 必空/必有): 分享 want 不到下方
+    // uri/parameters 分支 (数据只在 SharedData 记录里, 先走那两条会重复处理)。
+    if (want.action === SHARE_ACTION) {
+      this.handleSharedData(want);
+      return;
+    }
     const uri: string = want.uri ?? '';
     if (uri.length === 0) {
       // 通知按钮点击: 参数在 want.parameters (notificationId + action), 不在 want.uri ——
@@ -971,12 +1073,7 @@ export default class EntryAbility extends UIAbility {
         } catch (e) {
           console.error('[Legado] shortcut route dispatch failed: ' + JSON.stringify(e) + ', route=' + shortcutRoute);
         }
-        return;
       }
-      // 系统分享投递的数据不在 want.uri 里 (纯文本分享根本没有 uri, 文件分享的数据在
-      // systemShare 的 SharedData 中), 故此处补解析 (对照 iOS 宿主回调 handleIosLaunchRequest
-      // 的入口位置; 鸿蒙侧对应入口 = OhosLaunchRequests)。非分享 want 由 action 判定直接返回。
-      this.handleSharedData(want);
       return;
     }
     if (uri.startsWith('legado://') || uri.startsWith('yuedu://')) {
@@ -999,44 +1096,98 @@ export default class EntryAbility extends UIAbility {
   }
 
   /**
-   * 解析系统分享投递过来的数据 (文件/文本) 并交给既有外部启动请求链。
+   * 解析系统分享投递的数据 (文件/文本) 并交给既有外部启动请求链。
    *
-   * # 为什么需要单独一条路
-   * module.json5 的 share skill 只负责"声明可接分享", 而分享投递的载荷不在 want.uri 里 ——
-   * 文本分享根本无 uri, 文件分享的数据在 systemShare.getSharedData 的 SharedData 记录中。
-   * 宿主入口侧不解析就毫无反应 (之前的状态), 故在此把每条记录转成既有投递串,
-   * 交 legado.handleLaunchRequest (@CName legado_handle_launch_request →
-   * OhosLaunchRequests.parse → LaunchRequestBus), 使分享进来的文件走既有导入分发
-   * (对照 iOS 宿主调 handleIosLaunchRequest 的位置与分工)。
+   * 分享投递的载荷不在 want.uri 里, 在 systemShare.getSharedData 解出的 SharedData
+   * 记录中 (SDK 契约: 入参是"分享能力 Ability 收到的 want"); 逐条转成既有投递串交
+   * legado.handleLaunchRequest → OhosLaunchRequests.parse → LaunchRequestBus。
    *
-   * # 与 want.uri 链的分工
-   * 只在 want.uri 为空时调用 (handleDeepLink 的空 uri 分支): 带 uri 的 want (文件关联) 已由
-   * 原链路投递, 此处再解一次会对同一文件重复投递。
+   * 跨全部记录执行单文件约束: 文件记录 (uri 非空) 多于一件时告知仅支持单文件,
+   * 不做部分导入 (maxFileSupported 是面板侧入口过滤, 不是全局数量保证);
+   * 文字/网页记录与单文件组合不受影响。
    *
-   * @param want 本次启动/热启动的 Want (action 非分享时直接返回, 不调 getSharedData)
+   * 调用方契约: 仅 action 为分享投递的 want 进入 (handleDeepLink 已按 SHARE_ACTION 分流)。
+   *
+   * @param want 本次启动/热启动的分享投递 Want
    */
   private handleSharedData(want: Want): void {
-    if (want.action !== SHARE_ACTION) {
-      return;
-    }
     systemShare.getSharedData(want).then((data: systemShare.SharedData): void => {
       const records: systemShare.SharedRecord[] = data.getRecords();
+      let fileCount = 0;
       for (const record of records) {
-        const request: string = toLaunchRequestFromSharedRecord(record);
-        if (request.length === 0) {
+        if ((record.uri ?? '').startsWith('file://')) {
+          fileCount++;
+        }
+      }
+      // 文件记录多于一件: 整批文件不处理 (避免先导入一部分), 原因对用户可见
+      let failure: string = fileCount > 1 ? '一次仅支持分享一个文件' : '';
+      for (const record of records) {
+        const dispatch: ShareRecordDispatch =
+          toLaunchRequestFromSharedRecord(record, fileCount <= 1);
+        if (dispatch.error.length > 0) {
+          if (failure.length === 0) {
+            failure = dispatch.error;
+          }
+          console.error('[Legado] share record rejected: ' + dispatch.error + ', utd=' + record.utd);
+          continue;
+        }
+        if (dispatch.request.length === 0) {
           continue;
         }
         try {
-          const handled: boolean = legado.handleLaunchRequest(request);
-          console.info('[Legado] share data dispatched: handled=' + handled + ', request=' + request);
+          const handled: boolean = legado.handleLaunchRequest(dispatch.request);
+          if (!handled && failure.length === 0) {
+            failure = '分享内容投递失败';
+          }
+          console.info('[Legado] share data dispatched: handled=' + handled + ', request=' + dispatch.request);
         } catch (e) {
-          console.error('[Legado] handleLaunchRequest (share) failed: ' + JSON.stringify(e) + ', request=' + request);
+          if (failure.length === 0) {
+            failure = '分享内容投递失败';
+          }
+          console.error('[Legado] handleLaunchRequest (share) failed: ' + JSON.stringify(e) + ', request=' + dispatch.request);
         }
       }
+      if (failure.length > 0) {
+        this.showShareFailure(failure);
+      }
     }).catch((err: Error): void => {
-      // 非分享 want 或解析失败 (BusinessError 1003703001) 走到这里: 不影响其它启动路径
+      // 解析失败 (BusinessError 401 / 1003703001): 对用户可见, 不影响其它启动路径
       console.error('[Legado] getSharedData failed: ' + JSON.stringify(err));
+      this.showShareFailure('读取分享数据失败: ' + (err.message ?? JSON.stringify(err)));
     });
+  }
+
+  /**
+   * 分享接收失败的用户可见反馈 (系统 toast, 与 SystemBridgeHandler 同一 UIContext 原语)。
+   * 冷启动时 getSharedData 回调可先于窗口就绪: 此时段失败先缓冲, 窗口就绪后立即交付。
+   */
+  private showShareFailure(message: string): void {
+    const ctx = this.shareToastContext;
+    if (ctx === undefined) {
+      this.sharePendingFailures.push(message);
+      console.error('[Legado] share failure pending (window not ready): ' + message);
+      return;
+    }
+    try {
+      ctx.getPromptAction().showToast({ message: message });
+    } catch (e) {
+      console.error('[Legado] share failure toast failed: ' + JSON.stringify(e));
+    }
+  }
+
+  /** 交付窗口就绪前缓冲的分享失败提示 (合并一条 toast, 全部原因可见)。 */
+  private flushShareFailures(): void {
+    const ctx = this.shareToastContext;
+    if (ctx === undefined || this.sharePendingFailures.length === 0) {
+      return;
+    }
+    const message: string = this.sharePendingFailures.join('\n');
+    this.sharePendingFailures = [];
+    try {
+      ctx.getPromptAction().showToast({ message: message });
+    } catch (e) {
+      console.error('[Legado] share failure toast failed: ' + JSON.stringify(e));
+    }
   }
 
   onConfigurationUpdate(newConfig: Configuration): void {
@@ -1078,9 +1229,24 @@ export default class EntryAbility extends UIAbility {
         // 主窗口没内容层: 该窗口上的对话框不可能再回传结果, 结束等待中的对话框请求
         this.closeDialogChannel('主窗口加载失败: ' + (err.message ?? String(err.code)));
         this.closeFilePickerChannel('主窗口加载失败: ' + (err.message ?? String(err.code)));
+        // 内容层未建成: 分享失败的缓冲提示无处显示, 日志留痕 (不丢原因)
+        if (this.sharePendingFailures.length > 0) {
+          console.error('[Legado] share failure notices undelivered (no content): ' +
+            this.sharePendingFailures.join(' | '));
+        }
         return;
       }
       console.info('[Legado] loadContent pages/Index succeed');
+
+      // 分享失败 toast 的 UIContext (window.getMainWindowSync().getUIContext(),
+      // 官方契约 "Get the UIContext associate with the window content" —— 内容就绪后取得),
+      // 并交付冷启动窗口就绪前缓冲的失败提示
+      try {
+        this.shareToastContext = windowStage.getMainWindowSync().getUIContext();
+      } catch (e) {
+        console.error('[Legado] get UIContext for share toast failed: ' + JSON.stringify(e));
+      }
+      this.flushShareFailures();
 
       // 沉浸式布局恒开: 内容铺满整个窗口 (含状态栏与导航区域), 避让由 Compose 侧按
       // 避让区域自行 padding —— 对照 Android 15+ 强制边到边与 iOS 安全区模型, 三端统一为

@@ -47,6 +47,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.ByteArrayDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
@@ -695,7 +696,12 @@ internal class AndroidVideoPlayerController(
             if (analyzeUrl.url.startsWith("content://", ignoreCase = true)) {
                 ExternalVideoHandle.hold(activity, analyzeUrl.url)
             }
-            setPlayableMedia(analyzeUrl.url, analyzeUrl.headerMap, currentResolutionMime())
+            // 直投态无章节清晰度声明: 取外部投递声明的格式线索 (Direct.mime)
+            setPlayableMedia(
+                analyzeUrl.url,
+                analyzeUrl.headerMap,
+                currentResolutionMime() ?: screenModel.shared.directTarget?.mime,
+            )
         } else {
             // 内存 m3u8 清单文本不是可播 URI: 标记为 null, 格式重试不得拿清单文本重建媒体
             playableUrl = null
@@ -742,18 +748,77 @@ internal class AndroidVideoPlayerController(
     }
 
     /**
-     * 装载可播地址: 外部 content:// 视频走持有句柄的数据源, 其余走默认路径。
+     * 装载可播地址: 声明为 HLS 清单的媒体走 [HlsMediaSource] (media3 按声明格式选真实媒体源,
+     * 不靠 progressive 嗅探失败再重试); 其余外部 content:// 视频走持有句柄的数据源;
+     * 再其余走默认路径 (默认媒体源工厂按 MediaItem 的 MIME 与地址形态选源)。
      */
     private fun setPlayableMedia(url: String, headers: Map<String, String>, mime: String?) {
         val item = ExoPlayerHelper.createMediaItem(url, headers, mime)
         if (ExternalVideoHandle.holds(url)) {
             player.setMediaSource(
-                ProgressiveMediaSource.Factory(
-                    DataSource.Factory { ExternalVideoDataSource(url) }
-                ).createMediaSource(item)
+                if (item.localConfiguration?.mimeType == MimeTypes.APPLICATION_M3U8) {
+                    HlsMediaSource.Factory(heldHlsDataSourceFactory(url)).createMediaSource(item)
+                } else {
+                    ProgressiveMediaSource.Factory(
+                        DataSource.Factory { ExternalVideoDataSource(url) }
+                    ).createMediaSource(item)
+                }
             )
         } else {
             player.setMediaItem(item)
+        }
+    }
+
+    /**
+     * 持有句柄的 HLS 清单数据源路由: 清单本体读持有的 dup FD ([ExternalVideoDataSource]
+     * 恒读构造地址那一份文件, 正好只配清单本体); 其余请求 (清单内相对分段按清单 URI 解析成
+     * content:// 子路径, 绝对 http(s) 分段) 走 media3 默认数据源 (content → ContentResolver,
+     * http(s) → OkHttp 上游)。分段不能也走 ExternalVideoDataSource, 否则所有请求都读同一份
+     * 清单 FD。
+     */
+    private fun heldHlsDataSourceFactory(manifestUrl: String): DataSource.Factory {
+        val defaultFactory = DefaultDataSource.Factory(activity, ExoPlayerHelper.okhttpDataFactory)
+        return DataSource.Factory {
+            object : DataSource {
+                private var delegate: DataSource? = null
+                private val listeners = mutableListOf<TransferListener>()
+
+                override fun addTransferListener(transferListener: TransferListener) {
+                    listeners += transferListener
+                    delegate?.addTransferListener(transferListener)
+                }
+
+                override fun open(dataSpec: DataSpec): Long {
+                    close()
+                    val created = if (dataSpec.uri.toString() == manifestUrl) {
+                        ExternalVideoDataSource(manifestUrl)
+                    } else {
+                        defaultFactory.createDataSource()
+                    }
+                    listeners.forEach(created::addTransferListener)
+                    delegate = created
+                    return created.open(dataSpec)
+                }
+
+                override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                    checkNotNull(delegate).read(buffer, offset, length)
+
+                override fun getUri(): Uri? = delegate?.uri
+
+                override fun getResponseHeaders(): Map<String, List<String>> =
+                    delegate?.getResponseHeaders() ?: emptyMap()
+
+                override fun close() {
+                    val current = delegate
+                    if (current != null) {
+                        try {
+                            current.close()
+                        } finally {
+                            delegate = null
+                        }
+                    }
+                }
+            }
         }
     }
 

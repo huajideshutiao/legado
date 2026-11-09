@@ -340,14 +340,15 @@ object OhosLaunchRequests {
             //    (:627/646/665/…), 那是 user_grant 受限权限 —— 为一个标题让阅读器弹一次
             //    “允许读取相册视频”并背上上架审核代价, 不对等, 故不走这条路。
             // 不要再“顺手补上真实文件名”: 要么加权限(行为变更, 需拍板), 要么维持现状。
-            VideoDirect.targetFor(address, mimeIsVideo = true)?.let { direct ->
+            VideoDirect.targetFor(address, mimeIsVideo = true, mime = hint.first)?.let { direct ->
                 return LaunchRequest.OpenRoute(AppRoute.VideoPlay(direct))
             }
         }
         val scheme = address.substringBefore("://", missingDelimiterValue = "").lowercase()
         return when (scheme) {
-            // 鸿蒙文件关联给出的是 file://docs/... 授权体 URI, 与 Android content/file 同语义
-            // (没扩展名又没 MIME 提示的视频只能走这条链, 由 shared 侧嗅探后报"不支持的文件")
+            // 鸿蒙文件关联与分享面板给出的文件地址 (file://docs/... 文档授权体 URI 等),
+            // 与 Android content/file 同语义
+            // (没扩展名又没 MIME 提示的视频走这条链后由共享分发按扩展名/内容判定)
             "file", "content", "app", "datashare" -> LaunchRequest.ImportFile(address)
             "" -> null
             else -> LaunchRequest.DeepLink(address)

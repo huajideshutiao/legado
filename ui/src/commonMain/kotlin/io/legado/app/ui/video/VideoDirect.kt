@@ -18,7 +18,8 @@ import io.legado.app.utils.hasPlayableScheme
  *
  * # 判据 (两条, 缺一即返回 null 交回调用方继续按书/JSON 处理)
  * 1. 地址带可播 scheme (`http/https/file/content`), 或是一段本地绝对路径;
- * 2. 末段文件名命中 [AppPattern.videoFileRegex], 或调用方明确告知 MIME 是视频 ——
+ * 2. 末段文件名命中 [AppPattern.videoFileRegex], 或调用方给的 MIME 经 [isVideoMime]
+ *    判为视频 ([mimeIsVideo] 布尔或 [mime] 线索串, 后者随载荷带给播放器) ——
  *    `content://` 的末段常是数字 id 而不是 `x.mp4`, 那种只有 MIME 能认。
  *
  * 需要书源规则解析的网页地址**不在此列**: 那条路必须先拿到 Book,
@@ -29,6 +30,8 @@ object VideoDirect {
     /**
      * @param address 外部给的地址: 绝对路径 / file URI / content URI / http 直链
      * @param mimeIsVideo 调用方已从 MIME 判定为视频 (Android intent 的 type、鸿蒙 want 的 type)
+     * @param mime 调用方提供的资源格式 MIME 线索 (语义同 [VideoPlayTarget.Direct.mime]),
+     *   参与 [isVideoMime] 判定并随载荷带给播放器; 无类型投递不传, 不得伪造
      * @param headers 外部随附的请求头 (随载荷透传给播放器)
      * @param title 外部给的显示名 (Android 的 DISPLAY_NAME 等), 空则取地址末段
      * @return 直投播放目标; null = 这不是可直接播放的视频, 由调用方按原有链路继续处理
@@ -38,6 +41,7 @@ object VideoDirect {
         mimeIsVideo: Boolean = false,
         headers: Map<String, String> = emptyMap(),
         title: String? = null,
+        mime: String? = null,
     ): VideoPlayTarget.Direct? {
         if (address.isBlank()) return null
         val url = when {
@@ -47,11 +51,12 @@ object VideoDirect {
             else -> return null
         }
         val name = url.fileNameOf()
-        if (!mimeIsVideo && !name.matches(AppPattern.videoFileRegex)) return null
+        if (!mimeIsVideo && !isVideoMime(mime) && !name.matches(AppPattern.videoFileRegex)) return null
         return VideoPlayTarget.Direct(
             url = url,
             headers = headers,
             title = title?.takeIf { it.isNotBlank() } ?: name,
+            mime = mime,
         )
     }
 
@@ -96,13 +101,29 @@ object VideoDirect {
      */
     fun isVideoMime(type: String?): Boolean = type != null &&
         (type.startsWith(VIDEO_MIME_PREFIX, ignoreCase = true) ||
-            // 例外: 有投递方给的类型不带 video/ 前缀, 但投来的内容确实是视频
-            type.equals(MIME_DMCLIENT_TS, ignoreCase = true))
+            // 投递方报成文本类型的 TS 流 + .m3u8 清单三别名 (见 [HLS_MIME_TYPES]);
+            // MIME 只作投递分流判据, 不代表端上可解码, 清单可仅音频
+            type.equals(MIME_DMCLIENT_TS, ignoreCase = true) ||
+            isHlsMime(type))
+
+    /**
+     * MIME 是否为 .m3u8 清单 (三别名唯一清单);
+     * 播放器把 MIME 映射成本端 HLS 媒体源类型时用它分类。
+     */
+    fun isHlsMime(type: String?): Boolean =
+        type != null && HLS_MIME_TYPES.any { type.equals(it, ignoreCase = true) }
 
     /** 视频 MIME 前缀 (调用方判定用)。 */
     const val VIDEO_MIME_PREFIX = "video/"
 
     private const val MIME_DMCLIENT_TS = "text/vnd.DMClientTS"
+
+    /** .m3u8 清单的三个 MIME 别名 (唯一清单, 分类接口 [isHlsMime])。 */
+    private val HLS_MIME_TYPES = listOf(
+        "application/vnd.apple.mpegurl",
+        "application/x-mpegurl",
+        "audio/x-mpegurl",
+    )
 
     /** 取末段文件名 (先切掉 query/fragment), 用于扩展名判定与标题显示。 */
     private fun String.fileNameOf(): String =

@@ -348,6 +348,11 @@ sealed interface VideoPlayTarget {
         val headers: Map<String, String> = emptyMap(),
         /** 外部给的显示标题 (文件名/分享文案), 空则从 [url] 推导 */
         val title: String? = null,
+        /**
+         * 资源格式 MIME 线索, 供播放器选媒体源 (无后缀地址的格式依据), 未提供为 null。
+         * 来源可为外部投递声明或对真实文件类型的确认, 不保证是投递原串 (平台可能归一)。
+         */
+        val mime: String? = null,
     ) : VideoPlayTarget {
         /** 标题栏显示名: 显式标题优先, 否则取地址末段 (先切掉 fragment/query) */
         val displayTitle: String

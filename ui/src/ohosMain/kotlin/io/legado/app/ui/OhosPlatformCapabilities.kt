@@ -23,7 +23,11 @@ import io.legado.app.help.book.bookshelfJson
 import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.isImage
+import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.file.OhosDirAuthorizations
+import io.legado.app.help.file.OhosFilePickerException
+import io.legado.app.help.file.copyDocumentTo
+import io.legado.app.help.file.releasePickedDir
 import io.legado.app.help.copyToClipboard as copyTextToClipboard
 import io.legado.app.help.readFromClipboard
 import io.legado.app.help.openURL
@@ -67,8 +71,10 @@ import io.legado.app.ui.widget.dialog.WaitDialogHandle
 import io.legado.app.utils.File
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.ScreenInfoProviders
+import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.utils.toExportJsonText
 import io.legado.app.web.WebServerManager
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -95,6 +101,9 @@ import kotlinx.serialization.encodeToString
  */
 object OhosPlatformCapabilities : NativePlatformCapabilities {
     private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)
+
+    /** 分享/投递物化的请求序号: 临时目录按请求独占, 同名文件互不覆盖。 */
+    private val sharedImportSequence = atomic(0L)
 
     /**
      * 待分发的文件关联任务: 能力面只投递, 消费在主窗口组合内 (MainOhos)。
@@ -788,52 +797,20 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     override fun openImportFile(filePath: String) {
         offerAssociationFile { stages ->
             withContext(IoDispatcher) {
-                // 系统投递进来的是文档授权体 URI (`file://docs/...`): 共享转换按 RFC 8089 把 `docs`
+                // 文档授权体 URI (`file://docs/...`): 共享转换按 RFC 8089 把 `docs`
                 // 当网络主机段, 得出 `//docs/storage/...` 这种设备上不存在的形态 —— 先折回存储挂载点
                 // 真实路径再交分发链 (与 ArkTS 媒体桥折回视频地址同一规则)
                 val mountPath = filePath.docsUriToMountPath()
-                if (mountPath == filePath) {
-                    FileAssociationDispatch.dispatch(
-                        filePath,
-                        onUnknownFile = { name ->
-                            stages.confirmUnknownFile(
-                                title = syncGetString("draw"),
-                                message = "无法识别的文件: $name\n是否按书籍文件尝试导入？",
-                                okText = syncGetString("ok"),
-                            )
-                        },
-                    )
-                    return@withContext
-                }
-                // 系统投递的文件只有临时读许可 (未持久化, 无法 activatePermission): 按本次导入登记成
-                // 进程内临时访问; 普通书先复制进沙盒再分发, 长期引用不指向临时许可 (重启/退后台后必失效)
-                val fileName = mountPath.substringAfterLast('/')
-                val isVideo = VideoDirect.targetFor(mountPath, title = fileName) != null
-                if (isVideo) {
-                    // 视频体积大且播放链直接使用地址: 不执行 K 侧字节读取, 无需登记
-                    // OhosTransientFileAccess (该表只服务 FileBookAccessor 的授权旁路)
-                    FileAssociationDispatch.dispatch(
-                        mountPath,
-                        onUnknownFile = { name ->
-                            stages.confirmUnknownFile(
-                                title = syncGetString("draw"),
-                                message = "无法识别的文件: $name\n是否按书籍文件尝试导入？",
-                                okText = syncGetString("ok"),
-                            )
-                        },
-                    )
-                } else {
-                    // 仅普通书在复制/分发期间需要 K 侧临时读取旁路; 本批次结束即注销
-                    OhosTransientFileAccess.remember(mountPath)
-                    try {
-                        // 资格取当前分发 coroutine (任务投主窗口队列随窗口存亡), 取消不留孤儿长期副本
-                        val durable = TempBookPersistence.persist(
-                            mountPath,
-                            fileName,
-                            currentCoroutineContext()[Job],
-                        )
+                if (mountPath != filePath) {
+                    // 系统投递的文件只有临时读许可 (未持久化, 无法 activatePermission): 按本次导入登记成
+                    // 进程内临时访问; 普通书先复制进沙盒再分发, 长期引用不指向临时许可 (重启/退后台后必失效)
+                    val fileName = mountPath.substringAfterLast('/')
+                    val isVideo = VideoDirect.targetFor(mountPath, title = fileName) != null
+                    if (isVideo) {
+                        // 视频体积大且播放链直接使用地址: 不执行 K 侧字节读取, 无需登记
+                        // OhosTransientFileAccess (该表只服务 FileBookAccessor 的授权旁路)
                         FileAssociationDispatch.dispatch(
-                            durable,
+                            mountPath,
                             onUnknownFile = { name ->
                                 stages.confirmUnknownFile(
                                     title = syncGetString("draw"),
@@ -842,10 +819,133 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
                                 )
                             },
                         )
-                    } finally {
-                        OhosTransientFileAccess.forget(mountPath)
+                    } else {
+                        // 仅普通书在复制/分发期间需要 K 侧临时读取旁路; 本批次结束即注销
+                        OhosTransientFileAccess.remember(mountPath)
+                        try {
+                            // 资格取当前分发 coroutine (任务投主窗口队列随窗口存亡), 取消不留孤儿长期副本
+                            val durable = TempBookPersistence.persist(
+                                mountPath,
+                                fileName,
+                                currentCoroutineContext()[Job],
+                            )
+                            FileAssociationDispatch.dispatch(
+                                durable,
+                                onUnknownFile = { name ->
+                                    stages.confirmUnknownFile(
+                                        title = syncGetString("draw"),
+                                        message = "无法识别的文件: $name\n是否按书籍文件尝试导入？",
+                                        okText = syncGetString("ok"),
+                                    )
+                                },
+                            )
+                        } finally {
+                            OhosTransientFileAccess.forget(mountPath)
+                        }
                     }
+                    return@withContext
                 }
+                if (filePath.startsWith("file://")) {
+                    // 非 docs 的 file:// 地址: 分享面板/其它应用投来的授权体 URI,
+                    // 经 FD 物化后分发 (docs 形态已被上方折回早退, 不会到这里)
+                    dispatchSharedFileUri(filePath, stages)
+                    return@withContext
+                }
+                FileAssociationDispatch.dispatch(
+                    filePath,
+                    onUnknownFile = { name ->
+                        stages.confirmUnknownFile(
+                            title = syncGetString("draw"),
+                            message = "无法识别的文件: $name\n是否按书籍文件尝试导入？",
+                            okText = syncGetString("ok"),
+                        )
+                    },
+                )
+            }
+        }
+    }
+
+    /**
+     * 非 docs 授权体 URI (分享面板/其它应用投来的 file:// 地址) 的物化分发。
+     *
+     * 这类地址没有可折回的 POSIX 挂载路径, K 侧无法直接读, 经既有 FD 复制原语
+     * ([copyDocumentTo], ArkTS 侧 fs.openSync(uri) + fs.copyFile 流式, 不整份进内存)
+     * 物化到沙盒缓存, 再按既有导入链落长期副本后分发 (与 docs 分支同构)。物化只服务
+     * 书籍/压缩类文件: 视频已由 MIME 提示在路由层直投、带视频扩展名的地址由共享分发在
+     * 嗅探层直投, 都不会走到这里。
+     *
+     * 来源名取自 URI 末段 (官方分享 uri 契约 = 应用/用户文件 URI, 末段即文件名);
+     * 来源名为空时本端无从处置, 如实报原因, 不生成替代名。名称解码后若越出本次
+     * 临时目录 (含路径分隔符) 用现成 [File] 归属判定拒绝, 不落盘。无后缀的合法
+     * 来源名不做拒绝, 交既有未知文件确认流程处置。
+     *
+     * 取消/失败语义与文件选择物化 ([io.legado.app.help.file.pickDocuments] 消费侧) 一致:
+     * 取消即删本次临时目录并上抛; 通道失效 (窗口销毁) 不删 (复制 FD 仍在 IO, 由 ETS 在
+     * 真实终结后按目录回收); 其余真实失败删临时目录后向用户报出原因。
+     */
+    private suspend fun dispatchSharedFileUri(uri: String, stages: ImportStageHost) {
+        val name = uri.substringAfterLast('/').substringBefore('?')
+            .percentDecode()
+        if (name.isBlank()) {
+            AppLog.put("投递地址无来源文件名, 不进入导入链: $uri")
+            Toasters.get().toast("无法识别分享的文件")
+            return
+        }
+        val dir = File(
+            AppFilesDirs.get().cacheDir,
+            "associationImport/share-${systemCurrentTimeMillis()}-${sharedImportSequence.incrementAndGet()}",
+        )
+        val temp = File(dir, name)
+        if (temp.parentFile?.absolutePath != dir.absolutePath) {
+            AppLog.put("投递地址的文件名越出本次临时目录, 拒绝处理: $uri")
+            Toasters.get().toast("无法识别分享的文件")
+            return
+        }
+        var channelClosed = false
+        try {
+            currentCoroutineContext().ensureActive()
+            val copied = copyDocumentTo(uri, temp.path, currentCoroutineContext()[Job])
+            // 复制回执已终结 (awaitOnCancel 契约: 运行中 FD 已关闭, 目录可安全回收):
+            // 回执后先核消费资格 —— 父已撤销时取消上抛, 不提示读取失败; 目录由 finally 回收
+            currentCoroutineContext().ensureActive()
+            if (!copied) {
+                error("文件读取通道未就绪")
+            }
+            // 物化副本导入前落长期副本 (与 docs 分支同构): 分发完成清理临时目录不伤及已入库书籍
+            val durable = TempBookPersistence.persist(temp.path, name, currentCoroutineContext()[Job])
+            FileAssociationDispatch.dispatch(
+                durable,
+                onUnknownFile = { fileName ->
+                    stages.confirmUnknownFile(
+                        title = syncGetString("draw"),
+                        message = "无法识别的文件: $fileName\n是否按书籍文件尝试导入？",
+                        okText = syncGetString("ok"),
+                    )
+                },
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: OhosFilePickerException) {
+            if (e.channelClosed) {
+                // 通道失效只结算消费: 运行中的复制仍持有目标 FD, 由 ETS 在 IO 真实终结后
+                // 按目录回收, 这里不能先删
+                channelClosed = true
+                releasePickedDir(dir.path, temp.path)
+                throw e
+            }
+            // 错误回执与取消并发: 先核消费资格, 取消上抛不当读取失败提示
+            currentCoroutineContext().ensureActive()
+            val message = "无法读取分享的文件: ${e.message}"
+            AppLog.put(message, e)
+            Toasters.get().toast(message)
+        } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            val message = "无法读取分享的文件: ${e.message}"
+            AppLog.put(message, e)
+            Toasters.get().toast(message)
+        } finally {
+            if (!channelClosed) {
+                runCatching { dir.deleteRecursively() }
             }
         }
     }

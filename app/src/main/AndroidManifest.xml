@@ -125,20 +125,15 @@
                 <data android:scheme="legado" />
                 <data android:scheme="yuedu" />
             </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data android:scheme="content" />
-                <data android:scheme="file" />
-                <data android:mimeType="text/plain" />
-                <data android:mimeType="application/json" />
-                <data android:mimeType="application/epub+zip" />
-                <data android:mimeType="application/pdf" />
-                <data android:mimeType="application/octet-stream" />
-            </intent-filter>
+            <!-- 导入面 MIME 声明, 与消费侧文件名/内容识别对齐: 书 txt/epub/pdf/cbz + 业务 JSON +
+                 压缩包 zip/rar/7z/tar/gz/tgz/bz2/xz/lzma (libarchive 全格式) + octet-stream 兜底。
+                 拼写各取一手依据: rar = 平台表 application/rar 与 IANA 注册 application/vnd.rar;
+                 cbz = 平台表 application/x-cbz 与 freedesktop 注册 application/vnd.comicbook+zip;
+                 x-zip-compressed/x-rar-compressed/x-gzip = freedesktop 注册 alias;
+                 x-compressed-tar = freedesktop 一级类型 (*.tar.gz/*.tgz);
+                 x-bzip2/x-lzma 平台表无条目, 取 freedesktop 拼写。
+                 不带 path 指令: 未声明 authority 的 filter 不评估 path, 纯按 MIME 匹配,
+                 无文件名的 content URI (媒体库数字 id 等) 也命中。 -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
@@ -152,8 +147,30 @@
                 <data android:mimeType="application/json" />
                 <data android:mimeType="application/epub+zip" />
                 <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/x-cbz" />
+                <data android:mimeType="application/vnd.comicbook+zip" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
+                <data android:mimeType="application/rar" />
+                <data android:mimeType="application/vnd.rar" />
+                <data android:mimeType="application/x-rar-compressed" />
+                <data android:mimeType="application/x-7z-compressed" />
+                <data android:mimeType="application/x-tar" />
+                <data android:mimeType="application/x-compressed-tar" />
+                <data android:mimeType="application/gzip" />
+                <data android:mimeType="application/x-gzip" />
+                <data android:mimeType="application/x-bzip2" />
+                <data android:mimeType="application/x-xz" />
+                <data android:mimeType="application/x-lzma" />
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
+            <!-- 扩展名路径兜底: 挂 */* MIME, 按有/无 MIME 分轨只命中带类型的 intent; 无类型
+                 intent 只命中不带 MIME 的 filter (本声明面内即视频扩展名那条)。path 匹配要求
+                 filter 声明 authority (host="*")。pathPattern 的 .* 惰性停在下个模式字符首次
+                 出现且无回溯, 多点路径 (x.tar.gz、目录带点) 停在先前的点后即失配; pathSuffix
+                 是纯 endsWith, 补齐多点形态 (API 31 起, 更早平台忽略该属性)。大小写按字面
+                 逐条枚举, 已列小写/全大写两档; 未枚举组合仅在其经具体 MIME 等其他通道可达时
+                 由消费侧识别兜住, 未知 MIME 且未枚举路径不匹配。 -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
@@ -165,39 +182,77 @@
                 <data android:scheme="content" />
                 <data android:scheme="file" />
                 <data android:mimeType="*/*" />
-                <data android:pathAdvancedPattern=".*\\.[tT][xX][tT]" />
                 <data android:pathPattern=".*\\.txt" />
                 <data android:pathPattern=".*\\.TXT" />
-                <data android:pathAdvancedPattern=".*\\.[jJ][sS][oO][nN]" />
+                <data android:pathSuffix=".txt" />
+                <data android:pathSuffix=".TXT" />
                 <data android:pathPattern=".*\\.json" />
                 <data android:pathPattern=".*\\.JSON" />
-                <data android:pathAdvancedPattern=".*\\.[eE][pP][uU][bB]" />
+                <data android:pathSuffix=".json" />
+                <data android:pathSuffix=".JSON" />
                 <data android:pathPattern=".*\\.epub" />
                 <data android:pathPattern=".*\\.EPUB" />
-                <data android:pathAdvancedPattern=".*\\.[pP][dD][fF]" />
+                <data android:pathSuffix=".epub" />
+                <data android:pathSuffix=".EPUB" />
                 <data android:pathPattern=".*\\.pdf" />
                 <data android:pathPattern=".*\\.PDF" />
-                <data android:pathAdvancedPattern=".*\\.[zZ][iI][pP]" />
+                <data android:pathSuffix=".pdf" />
+                <data android:pathSuffix=".PDF" />
+                <data android:pathPattern=".*\\.cbz" />
+                <data android:pathPattern=".*\\.CBZ" />
+                <data android:pathSuffix=".cbz" />
+                <data android:pathSuffix=".CBZ" />
                 <data android:pathPattern=".*\\.zip" />
                 <data android:pathPattern=".*\\.ZIP" />
-                <data android:pathAdvancedPattern=".*\\.[rR][aA][rR]" />
+                <data android:pathSuffix=".zip" />
+                <data android:pathSuffix=".ZIP" />
                 <data android:pathPattern=".*\\.rar" />
                 <data android:pathPattern=".*\\.RAR" />
-                <data android:pathAdvancedPattern=".*\\.7[zZ]" />
+                <data android:pathSuffix=".rar" />
+                <data android:pathSuffix=".RAR" />
                 <data android:pathPattern=".*\\.7z" />
                 <data android:pathPattern=".*\\.7Z" />
+                <data android:pathSuffix=".7z" />
+                <data android:pathSuffix=".7Z" />
+                <data android:pathPattern=".*\\.tar" />
+                <data android:pathPattern=".*\\.TAR" />
+                <data android:pathSuffix=".tar" />
+                <data android:pathSuffix=".TAR" />
+                <data android:pathPattern=".*\\.gz" />
+                <data android:pathPattern=".*\\.GZ" />
+                <data android:pathSuffix=".gz" />
+                <data android:pathSuffix=".GZ" />
+                <data android:pathPattern=".*\\.tgz" />
+                <data android:pathPattern=".*\\.TGZ" />
+                <data android:pathSuffix=".tgz" />
+                <data android:pathSuffix=".TGZ" />
+                <data android:pathPattern=".*\\.bz2" />
+                <data android:pathPattern=".*\\.BZ2" />
+                <data android:pathSuffix=".bz2" />
+                <data android:pathSuffix=".BZ2" />
+                <data android:pathPattern=".*\\.xz" />
+                <data android:pathPattern=".*\\.XZ" />
+                <data android:pathSuffix=".xz" />
+                <data android:pathSuffix=".XZ" />
+                <data android:pathPattern=".*\\.lzma" />
+                <data android:pathPattern=".*\\.LZMA" />
+                <data android:pathSuffix=".lzma" />
+                <data android:pathSuffix=".LZMA" />
             </intent-filter>
             <!-- 视频直投 (与 shared AppPattern.videoFileRegex / VideoDirect 逐一对应):
                  外部"打开方式 / 浏览器点直链"把可播地址交给播放页, 不再走导入书籍链路。
-                 三条 filter 各自补一种投递形态:
-                 1) content/file + video/*  —— 相册/文件管理器给本地视频 (末段常是数字 id, 只能靠 MIME);
-                 2) http(s) + video/*       —— 投递方明确声明是视频的直链;
-                 3) host="*" + 视频扩展名 pathPattern —— 不给 MIME 的 VIEW intent (浏览器/自研管理器)
-                    按扩展名兜底, 写法照上组 txt/json/epub (pathAdvancedPattern 走大小写类, pathPattern
-                    不支持字符类故大小写各写一条)。
-                 注:**没有**把 application/octet-stream 或泛 */* 单独挂给视频 —— 泛 MIME 只配
-                 精确扩展名 pathPattern 才有意义; 已带 octet-stream 的 content/file 投递本来就命中
-                 上面那条既有 filter (所以代码侧仍要按扩展名判, 见 Intent.videoDirectTarget)。 -->
+                 MIME 按有/无分轨匹配: 带类型的 intent 只命中带 MIME 的 filter (发送方自填
+                 */* 命中任意带 MIME 的过滤器), 无类型 intent 只命中不带 MIME 的 filter ——
+                 1)/2) 管带类型的, 3) 管无类型的。
+                 1) content/file + video/* 与 HLS 三拼写、text/vnd.DMClientTS 两种大小写 ——
+                    文件管理器给本地视频 (末段常是数字 id, 只能靠 MIME; 未声明 authority 的
+                    filter 不评估 path, 无文件名 content URI 也命中);
+                 2) http(s) + 同一组 MIME —— 投递方声明是视频/播放清单的直链;
+                 3) host="*" + 视频扩展名 path 指令, 不带 MIME (pathPattern 覆盖单点形态,
+                    pathSuffix API 31 起补多点/目录点形态, 大小写约束同导入扩展名组)。
+                 HLS 命中由 VideoDirect.isHlsMime 分类, 格式线索随 Direct 载荷到播放器选
+                 HlsMediaSource (清单读持有句柄, 分段走默认数据源); octet-stream 投递命中
+                 导入面 filter, 不单独挂给视频 (代码侧仍按扩展名判, 见 Intent.videoDirectTarget)。 -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
@@ -207,6 +262,11 @@
                 <data android:scheme="content" />
                 <data android:scheme="file" />
                 <data android:mimeType="video/*" />
+                <data android:mimeType="application/vnd.apple.mpegurl" />
+                <data android:mimeType="application/x-mpegurl" />
+                <data android:mimeType="audio/x-mpegurl" />
+                <data android:mimeType="text/vnd.DMClientTS" />
+                <data android:mimeType="text/vnd.dmclientts" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -217,6 +277,11 @@
                 <data android:scheme="http" />
                 <data android:scheme="https" />
                 <data android:mimeType="video/*" />
+                <data android:mimeType="application/vnd.apple.mpegurl" />
+                <data android:mimeType="application/x-mpegurl" />
+                <data android:mimeType="audio/x-mpegurl" />
+                <data android:mimeType="text/vnd.DMClientTS" />
+                <data android:mimeType="text/vnd.dmclientts" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -229,30 +294,38 @@
                 <data android:scheme="https" />
                 <data android:scheme="content" />
                 <data android:scheme="file" />
-                <data android:pathAdvancedPattern=".*\\.[mM]3[uU]8" />
                 <data android:pathPattern=".*\\.m3u8" />
                 <data android:pathPattern=".*\\.M3U8" />
-                <data android:pathAdvancedPattern=".*\\.[mM][pP]4" />
+                <data android:pathSuffix=".m3u8" />
+                <data android:pathSuffix=".M3U8" />
                 <data android:pathPattern=".*\\.mp4" />
                 <data android:pathPattern=".*\\.MP4" />
-                <data android:pathAdvancedPattern=".*\\.[mM][kK][vV]" />
+                <data android:pathSuffix=".mp4" />
+                <data android:pathSuffix=".MP4" />
                 <data android:pathPattern=".*\\.mkv" />
                 <data android:pathPattern=".*\\.MKV" />
-                <data android:pathAdvancedPattern=".*\\.[mM][oO][vV]" />
+                <data android:pathSuffix=".mkv" />
+                <data android:pathSuffix=".MKV" />
                 <data android:pathPattern=".*\\.mov" />
                 <data android:pathPattern=".*\\.MOV" />
-                <data android:pathAdvancedPattern=".*\\.[wW][eE][bB][mM]" />
+                <data android:pathSuffix=".mov" />
+                <data android:pathSuffix=".MOV" />
                 <data android:pathPattern=".*\\.webm" />
                 <data android:pathPattern=".*\\.WEBM" />
-                <data android:pathAdvancedPattern=".*\\.[fF][lL][vV]" />
+                <data android:pathSuffix=".webm" />
+                <data android:pathSuffix=".WEBM" />
                 <data android:pathPattern=".*\\.flv" />
                 <data android:pathPattern=".*\\.FLV" />
-                <data android:pathAdvancedPattern=".*\\.[aA][vV][iI]" />
+                <data android:pathSuffix=".flv" />
+                <data android:pathSuffix=".FLV" />
                 <data android:pathPattern=".*\\.avi" />
                 <data android:pathPattern=".*\\.AVI" />
-                <data android:pathAdvancedPattern=".*\\.[tT][sS]" />
+                <data android:pathSuffix=".avi" />
+                <data android:pathSuffix=".AVI" />
                 <data android:pathPattern=".*\\.ts" />
                 <data android:pathPattern=".*\\.TS" />
+                <data android:pathSuffix=".ts" />
+                <data android:pathSuffix=".TS" />
             </intent-filter>
         </activity>
         <!-- windowSoftInputMode 必须在 manifest 声明 (对照原版逐 Activity 的 adjustResize):
@@ -299,11 +372,14 @@
 
         <!-- 搜索界面 alias 到 MainActivity (对照 master SearchActivity 冷启动直开搜索页,
              书架不进导航栈; extra: key/searchScope/submit, key 空聚焦输入框)。
-             系统分享面板的 SEND 两条 filter 也挂这里: 分享来的文本按 shared 的 shareTextTarget
-             分流 (整段是一条 http(s) 地址交自动识别链导入, 其余进搜索页); SEND 载荷要先过
-             视频直投 / 文件导入 两道判定才落搜索 (见 Intent.toLaunchRequest), 故本 alias
-             命中不等于"直达搜索页"。
-             */* 与 text/plain 必须在同一组件上: 拆到两个组件会让分享面板里出现两个同名条目。 -->
+             系统分享面板的 SEND 两条 filter 也挂这里: text/plain 载荷按 shared 的
+             shareTextTarget 分流 (整段是一条 http(s) 地址交自动识别链导入, 其余进搜索页);
+             能力 MIME 枚举 (视频 video/* 与 HLS 三拼写、text/vnd.DMClientTS, 书籍 epub/pdf/cbz,
+             业务 JSON, 压缩包, octet-stream 兜底) 的载荷先过视频直投 / 文件导入两道判定才轮到
+             文本分流 (见 Intent.toLaunchRequest), 故本 alias 命中不等于"直达搜索页"。
+             官方接收指南告诫非任意内容处理方避免声明 */*; 发送方自填的 */* 也无法在声明侧挡住
+             —— IntentFilter.findMimeType 对发送方 */* 命中任意带 MIME 的过滤器。
+             text/plain 与枚举必须在同一组件上: 拆到两个组件会让分享面板里出现两个同名条目。 -->
         <activity-alias
             android:name=".ui.book.search.SearchActivity"
             android:exported="true"
@@ -317,7 +393,31 @@
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="*/*" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="application/vnd.apple.mpegurl" />
+                <data android:mimeType="application/x-mpegurl" />
+                <data android:mimeType="audio/x-mpegurl" />
+                <data android:mimeType="text/vnd.DMClientTS" />
+                <data android:mimeType="text/vnd.dmclientts" />
+                <data android:mimeType="application/epub+zip" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/x-cbz" />
+                <data android:mimeType="application/vnd.comicbook+zip" />
+                <data android:mimeType="application/json" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
+                <data android:mimeType="application/rar" />
+                <data android:mimeType="application/vnd.rar" />
+                <data android:mimeType="application/x-rar-compressed" />
+                <data android:mimeType="application/x-7z-compressed" />
+                <data android:mimeType="application/x-tar" />
+                <data android:mimeType="application/x-compressed-tar" />
+                <data android:mimeType="application/gzip" />
+                <data android:mimeType="application/x-gzip" />
+                <data android:mimeType="application/x-bzip2" />
+                <data android:mimeType="application/x-xz" />
+                <data android:mimeType="application/x-lzma" />
+                <data android:mimeType="application/octet-stream" />
             </intent-filter>
         </activity-alias>
         <!-- 发现show 入口 alias 到 MainActivity (对照 master ExploreShowActivity 冷启动直开,

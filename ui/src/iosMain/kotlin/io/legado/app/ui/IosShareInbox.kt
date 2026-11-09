@@ -20,6 +20,7 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
+import platform.Foundation.NSURL
 import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 
@@ -340,9 +341,16 @@ object IosShareInbox {
     /**
      * 投一件给既有导入链, 投递成功后删掉容器里的原件 (副本已落应用内接收目录, 删原件不影响导入链
      * 稍后读取); 投递失败保留原件 (下次启动重试) 并给用户可见提示。
+     *
+     * 投递 URI 用 [NSURL.fileURLWithPath] 生成: POSIX 路径里的空格/`%`/`#`/`?` 按 URL 规则
+     * 百分号编码, 分发入口 [toLocalFilePath] 恰好做一次解码还原出原路径 —— 手拼未编码串会让
+     * 名字里带字面 `%20`/`#` 的文件被解码成别的路径、被当成 URL 结构截断。书籍存储引用与书架
+     * 查询不经这里 (内部契约是 `file://` + 原始 POSIX 路径, 见 NativeFileBookAccessor 的
+     * bookUrl), 不受本次编码影响。
      */
     private fun deliver(staged: File, source: File) {
-        if (!handleIosLaunchRequest("file://${staged.absolutePath}")) {
+        val payload = NSURL.fileURLWithPath(staged.path).absoluteString
+        if (payload == null || !handleIosLaunchRequest(payload)) {
             AppLog.put("分享扩展取件投递失败: ${staged.name}")
             Toasters.get().toast("分享进来的文件无法交给导入流程：${staged.name}")
             return

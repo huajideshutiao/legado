@@ -389,19 +389,31 @@ targets:
         CFBundleShortVersionString: "3.26.081614"
         CFBundleVersion: "17376"
         # 分享扩展点 + 入口类 (类名 = PRODUCT_MODULE_NAME.ShareViewController)
+        # 激活规则必须挂在 NSExtensionAttributes 之下 (Apple《App Extension Keys》: NSExtension 的
+        # 合法直接子键只有 NSExtensionAttributes / NSExtensionMainStoryboard /
+        # NSExtensionPointIdentifier / NSExtensionPrincipalClass, Share 扩展的激活规则是
+        # NSExtensionAttributes 的直接子键; 挂错层级系统读不到)。
         NSExtension:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
-          # 激活规则 (Apple《Keys for App Extensions》Table 3 / NSExtensionActivationDictionaryVersion):
-          # 不设 Version (=1) 时要求扩展能处理投递方提供的**全部**类型, 只声明收文件的本扩展在
-          # "Safari 分享一条链接" (给的是 public.url / public.plain-text) 时根本不出现,
-          # 故取 Version 2 = "至少能处理其中一类"。三类并存: 文件 (epub/txt/视频)、文本
-          # (选段/描述)、web 链接 (浏览器分享的 URL, 按文本取 absoluteString)。
-          NSExtensionActivationRule:
-            NSExtensionActivationDictionaryVersion: 2
-            NSExtensionActivationSupportsFileWithMaxCount: 1
-            NSExtensionActivationSupportsText: true
-            NSExtensionActivationSupportsWebURLWithMaxCount: 1
+          NSExtensionAttributes:
+            # 激活规则 = NSPredicate 谓词裸串 (Apple《Declaring Supported Data Types for a Share
+            # or Action Extension》: 预置字典键不够表达时, 把谓词串直接作 NSExtensionActivationRule
+            # 的值, 系统在运行时编译成 NSPredicate)。语义:
+            # - 每条附件必须是其一: 纯文本 (public.plain-text) / 网页链接 (public.url 且非
+            #   public.file-url, 后者继承前者) / 文件 (public.file-url 且 plain-text 的 TXT 文件,
+            #   或命中下方非文本支持清单 —— 提供方可以只给文件表示、不给 file-url);
+            # - 至少一条附件; 文件总数 ≤ 1、网页链接总数 ≤ 1: 按附件跨全部 extensionItem 精确计数
+            #   (带文件的 item ≤ 1 且单 item 内文件 ≤ 1, 两条件合取; 官方示例外层 .@count 是
+            #   item 数, 不是附件数); 文本不设上限。
+            # 支持清单 (与 ShareViewController.swift 的 nonTextFileTypeIdentifiers 逐字一致,
+            # 改一处两处同改): epub (org.idpf.epub-container)、json (public.json)、
+            # zip (public.zip-archive)、tar (public.tar-archive)、gz (org.gnu.gnu-zip-archive)、
+            # tgz (org.gnu.gnu-zip-tar-archive)、mp4 (public.mpeg-4)、mov
+            # (com.apple.quicktime-movie) —— iOS 端既有导入/压缩包/播放链实际接的格式。
+            # ⚠️ 本段与 ShareExtension/Info.plist 双写 (xcodegen generate 用本段重写该文件)。
+            NSExtensionActivationRule: >-
+              SUBQUERY ( extensionItems, $extensionItem, SUBQUERY ( $extensionItem.attachments, $attachment, (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.plain-text") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url" AND NOT (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.file-url")) OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.file-url" AND ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.plain-text") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "org.idpf.epub-container") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.json") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.zip-archive") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.tar-archive") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "org.gnu.gnu-zip-archive") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "org.gnu.gnu-zip-tar-archive") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.mpeg-4") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.apple.quicktime-movie") ).@count == $extensionItem.attachments.@count ).@count == extensionItems.@count AND SUBQUERY (extensionItems, $extensionItem, $extensionItem.attachments.@count > 0).@count > 0 AND SUBQUERY ( extensionItems, $extensionItem, SUBQUERY ( $extensionItem.attachments, $attachment, (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.file-url" AND ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.plain-text") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "org.idpf.epub-container") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.json") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.zip-archive") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.tar-archive") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "org.gnu.gnu-zip-archive") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "org.gnu.gnu-zip-tar-archive") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.mpeg-4") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.apple.quicktime-movie") ).@count > 0 ).@count <= 1 AND SUBQUERY ( extensionItems, $extensionItem, SUBQUERY ( $extensionItem.attachments, $attachment, (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.file-url" AND ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.plain-text") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "org.idpf.epub-container") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.json") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.zip-archive") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.tar-archive") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "org.gnu.gnu-zip-archive") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "org.gnu.gnu-zip-tar-archive") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.mpeg-4") OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.apple.quicktime-movie") ).@count > 1 ).@count == 0 AND SUBQUERY ( extensionItems, $extensionItem, SUBQUERY ( $extensionItem.attachments, $attachment, ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url" AND NOT (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.file-url") ).@count > 0 ).@count <= 1 AND SUBQUERY ( extensionItems, $extensionItem, SUBQUERY ( $extensionItem.attachments, $attachment, ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url" AND NOT (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.file-url") ).@count > 1 ).@count == 0
     settings:
       base:
         PRODUCT_NAME: ShareExtension

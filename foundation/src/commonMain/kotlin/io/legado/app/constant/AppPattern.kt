@@ -85,8 +85,8 @@ object AppPattern {
             ".*\\.(${videoFileTypes.joinToString("|") { it.first }})$",
             RegexOption.IGNORE_CASE,
         )
-    //压缩文件支持类型
-    val archiveFileRegex = Regex(".*\\.(zip|rar|7z|tar|gz|bz2|xz|lzma)$", RegexOption.IGNORE_CASE)
+    //压缩文件支持类型 (tgz 是 tar.gz 的短后缀)
+    val archiveFileRegex = Regex(".*\\.(zip|rar|7z|tar|gz|tgz|bz2|xz|lzma)$", RegexOption.IGNORE_CASE)
 
     /**
      * 本地书导入 (选目录与选文件两条入口) 的选择面板过滤扩展名: 书文件 ∪ 压缩包。

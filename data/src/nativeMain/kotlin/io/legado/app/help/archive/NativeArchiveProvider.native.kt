@@ -64,9 +64,9 @@ object NativeArchiveProvider : ArchiveProvider {
                 }
             }
 
-            // 单文件 gzip: 解压成同 base 名文件 (与 gzipToFile 同口径: 唯一临时件 + 改名就位)
+            // gzip 单文件解压后保留去掉压缩后缀的文件名，后缀大小写不敏感。
             name.endsWith(".gz", true) -> {
-                val out = destDir + "/" + name.removeSuffix(".gz")
+                val out = destDir + "/" + name.dropLast(3)
                 if (!writeBytesAtomically(out, gzipDecompress(File(archivePath).readBytes()))) {
                     throw NoStackTraceException("gzip 解压写入失败: $out")
                 }

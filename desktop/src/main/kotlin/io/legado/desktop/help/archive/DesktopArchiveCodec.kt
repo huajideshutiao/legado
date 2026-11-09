@@ -229,7 +229,7 @@ internal object DesktopArchiveCodec : DesktopArchiveSupport {
             "7z" -> Format.SEVEN_Z
             "rar" -> Format.RAR
             "tar" -> Format.TAR
-            "gz", "bz2", "xz", "lzma" -> Format.COMPRESSED
+            "gz", "tgz", "bz2", "xz", "lzma" -> Format.COMPRESSED
             else -> throw IllegalArgumentException("Unexpected file suffix")
         }
     }

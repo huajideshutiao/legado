@@ -17,6 +17,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.MimeTypes
 import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
@@ -724,7 +725,7 @@ internal const val EXPLORE_SHOW_ALIAS = "io.legado.app.ui.book.explore.ExploreSh
 /**
  * 搜索 alias 是否按"直达搜索页"语义处置。
  *
- * manifest 把 SEND 的两条 filter (text/plain 与通配 MIME) 也挂在这个 alias 上, 所以**组件名命中不等于
+ * manifest 把 SEND 的两条 filter (text/plain 与能力 MIME 枚举) 也挂在这个 alias 上, 所以**组件名命中不等于
  * 直达搜索页**: 分享载荷要先过 视频直投 / 文件导入 两道判定, 剩下的文本才轮到搜索分流
  * (分流判据只有一份, 见 shared 的 shareTextTarget)。
  *
@@ -825,19 +826,19 @@ fun Intent.toLaunchRequest(): LaunchRequest? {
 fun Intent.videoDirectTarget(): VideoPlayTarget.Direct? {
     val mimeIsVideo = VideoDirect.isVideoMime(type)
     return when (action) {
-        Intent.ACTION_VIEW -> data?.let { videoTargetOfUri(it, mimeIsVideo) }
+        Intent.ACTION_VIEW -> data?.let { videoTargetOfUri(it, mimeIsVideo, type) }
 
         Intent.ACTION_SEND -> {
             @Suppress("DEPRECATION")
             val stream = getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
             if (stream != null) {
-                videoTargetOfUri(stream, mimeIsVideo)
+                videoTargetOfUri(stream, mimeIsVideo, type)
             } else {
                 // 分享的是纯文本: 只有整条就是一个可播地址 (结尾 .m3u8/.mp4 等) 才截给播放页,
                 // 否则保持原语义 (交 ProcessText 分流), 不得把书名/普通文案当链接去播
                 getStringExtra(Intent.EXTRA_TEXT)?.trim()
                     ?.takeIf { it.hasPlayableScheme() }
-                    ?.let { VideoDirect.targetFor(it, mimeIsVideo) }
+                    ?.let { VideoDirect.targetFor(it, mimeIsVideo, mime = hlsFormatMimeOf(type, null)) }
             }
         }
 
@@ -845,8 +846,23 @@ fun Intent.videoDirectTarget(): VideoPlayTarget.Direct? {
     }
 }
 
-/** URI → 直投载荷: 只负责补显示名 (标题 + 扩展名判据), 其余判定全在 [VideoDirect]。 */
-private fun videoTargetOfUri(uri: Uri, mimeIsVideo: Boolean): VideoPlayTarget.Direct? {
+/**
+ * 意图携带的 HLS 格式线索: 投递类型被 [VideoDirect.isHlsMime] 分类命中, 或真实显示名以
+ * .m3u8 结尾 (大小写不敏感)。octet-stream 等泛类型不产生线索, 也不覆盖显示名后缀;
+ * 泛显示标题不臆测。归一为 media3 的 HLS 媒体源常量 (Direct.mime 是资源格式线索, 非原始串)。
+ */
+private fun hlsFormatMimeOf(type: String?, displayName: String?): String? = when {
+    VideoDirect.isHlsMime(type) -> MimeTypes.APPLICATION_M3U8
+    displayName?.endsWith(".m3u8", ignoreCase = true) == true -> MimeTypes.APPLICATION_M3U8
+    else -> null
+}
+
+/** URI → 直投载荷: 补显示名 (标题 + 扩展名判据) 与格式线索, 其余判定全在 [VideoDirect]。 */
+private fun videoTargetOfUri(
+    uri: Uri,
+    mimeIsVideo: Boolean,
+    declaredType: String?,
+): VideoPlayTarget.Direct? {
     val address = uri.toString()
     if (!address.hasPlayableScheme()) return null
     val displayName = uri.displayName(App.instance)
@@ -855,6 +871,7 @@ private fun videoTargetOfUri(uri: Uri, mimeIsVideo: Boolean): VideoPlayTarget.Di
         // DISPLAY_NAME 命中视频后缀 等同于 MIME 命中 (content URI 的末段常不是文件名)
         mimeIsVideo = mimeIsVideo || displayName?.matches(AppPattern.videoFileRegex) == true,
         title = displayName,
+        mime = hlsFormatMimeOf(declaredType, displayName),
     ) ?: return null
     // content:// 地址在此刻打开并持有句柄
     if (address.startsWith("content://", ignoreCase = true)) {

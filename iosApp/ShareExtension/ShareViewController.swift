@@ -48,10 +48,35 @@ private enum InboxUnavailable: Error {
     }
 }
 
-/// 一次分享里解出来的两类内容。
-private struct SharedContent {
-    var files: [URL] = []
-    var texts: [String] = []
+/// 一次附件加载的结算结果 (跨线程移交的值: Sendable 值类型, 由加载回调生成、主线程记录)。
+private enum LoadResult {
+    /// 文本产出 (并入文本槽批次)
+    case text(String)
+    /// 文件已就地落进收件目录
+    case fileDelivered
+    /// 这一件失败: 带回给用户看的说明 (不静默丢件)
+    case failure(String)
+}
+
+/// 一条附件的取用表示 (与激活谓词的分支一一镜像: 放行的每条附件都取得到, 文件计数两侧一致)。
+///
+/// 嵌套类型会随外层类型继承 global actor (SE-0316); 本分类在主线程产出、值只在主线程流转,
+/// 放文件层避免无谓的隔离标注。
+private enum AttachmentKind {
+    /// 文件带 file-url 表示: loadItem 直取 URL (真名随 URL)
+    case fileURL
+    /// 文件只有具体类型表示: loadFileRepresentation 拿系统临时件 (回调返回即被删)
+    case fileRepresentation(typeIdentifier: String)
+    /// 网页链接 (非文件 URL; file-url 继承 public.url, 须排除)
+    case url
+    /// 纯文本 (无文件上下文, 落文本槽)
+    case text
+}
+
+/// 一条待加载附件 (主线程分类的产物; NSItemProvider 的调用全部留在主线程)。
+private struct ReceivingItem {
+    let kind: AttachmentKind
+    let provider: NSItemProvider
 }
 
 /// 分享扩展的入口 ViewController (已接线)。
@@ -90,16 +115,95 @@ private struct SharedContent {
 /// (只有收不下时才停下来跟用户说一声)。
 final class ShareViewController: UIViewController {
 
+    /// 收件流程只跑一次的守卫: UIKit 生命周期会重复回调 viewDidAppear (呈现其上的弹窗收起等),
+    /// 同一次分享输入只收一次。
+    private var didStartDelivery = false
+
+    /// 批次结果记录 (仅主线程读写): 下标 = 批次条目顺序, nil = 该件尚未结算。
+    private var batchResults: [LoadResult?] = []
+
+    /// 批次校验拒件说明 (主线程写入, 汇总时并入失败清单)。
+    private var batchRejections: [String] = []
+
+    /// 本批待加载附件 (主线程分类的产物)。
+    private var batchItems: [ReceivingItem] = []
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        loadAttachments { [weak self] content in
-            guard let self else { return }
-            guard !content.files.isEmpty || !content.texts.isEmpty else {
-                self.finish(["没能从分享内容里取到文件或文本，未收到任何内容。"])
-                return
+        guard !didStartDelivery else { return }
+        didStartDelivery = true
+        startDelivery(plan: receivingPlan())
+    }
+
+    /// 主线程读取分享附件并按分类做批次校验 (分类与数量约束与激活谓词同一套):
+    /// 文件总数 ≤ 1、网页链接总数 ≤ 1、文本不限; 未受支持或超量的一律给出可见拒件说明,
+    /// 不静默跳过 —— 分享面板放行了批次之外的输入时, 用户必须知道哪一件没被接收。
+    private func receivingPlan() -> (accepted: [ReceivingItem], rejections: [String]) {
+        guard let items = extensionContext?.inputItems as? [NSExtensionItem] else {
+            return ([], [])
+        }
+        var accepted: [ReceivingItem] = []
+        var rejections: [String] = []
+        var fileSeen = false
+        var webURLSeen = false
+        for provider in items.compactMap({ $0.attachments }).flatMap({ $0 }) {
+            guard let kind = Self.attachmentKind(of: provider) else {
+                rejections.append("有一件分享内容不是本应用能接收的类型，没有接收。")
+                continue
             }
-            self.deliver(content) { [weak self] failures in
-                self?.finish(failures)
+            switch kind {
+            case .fileURL, .fileRepresentation:
+                if fileSeen {
+                    rejections.append("本次分享只接收一个文件，超出的没有接收。")
+                } else {
+                    fileSeen = true
+                    accepted.append(ReceivingItem(kind: kind, provider: provider))
+                }
+            case .url:
+                if webURLSeen {
+                    rejections.append("本次分享只接收一个网页链接，超出的没有接收。")
+                } else {
+                    webURLSeen = true
+                    accepted.append(ReceivingItem(kind: kind, provider: provider))
+                }
+            case .text:
+                accepted.append(ReceivingItem(kind: kind, provider: provider))
+            }
+        }
+        return (accepted, rejections)
+    }
+
+    /// 收件主流程: 分享面板的附件分类与批次结果记录都在主线程 (`UIViewController` 是
+    /// @MainActor, `extensionContext` 与 `NSItemProvider` 的调用都留在主线程); 容器/目录/
+    /// 文件物化/文本落盘是明确 nonisolated 的文件原语, 在后台队列与加载回调内完成 (临时文件
+    /// 生命周期不许推迟); 回调与后台只把 Sendable 结果值经主 actor 交回记录/汇总。
+    private func startDelivery(plan: (accepted: [ReceivingItem], rejections: [String])) {
+        guard !plan.accepted.isEmpty else {
+            // 分享面板给过附件才会走到收件: 全被拒时拒绝原因即整次结果,
+            // 一条附件都没解出来才用通用文案。
+            finish(plan.rejections.isEmpty
+                ? ["没能从分享内容里取到文件或文本，未收到任何内容。"]
+                : plan.rejections)
+            return
+        }
+        batchRejections = plan.rejections
+        batchItems = plan.accepted
+        batchResults = Array(repeating: nil, count: plan.accepted.count)
+        // @Sendable 标注: 闭包不随外层方法继承 @MainActor (SE-0316), 体内只调 nonisolated
+        // 文件原语; 回主线程一律经主 actor (Task { @MainActor })。
+        DispatchQueue.global(qos: .userInitiated).async { @Sendable in
+            do {
+                let container = try self.containerURL()
+                let inbox = try self.legadoDirectory(in: container, legadoInboxDirName)
+                let textSlot = try self.legadoDirectory(in: container, legadoTextDirName)
+                Task { @MainActor in
+                    self.loadAndDeliver(inbox: inbox, textSlot: textSlot)
+                }
+            } catch {
+                NSLog("[Legado] share extension: container unavailable: %@", Self.unavailableMessage(of: error))
+                Task { @MainActor in
+                    self.finish([Self.unavailableMessage(of: error)])
+                }
             }
         }
     }
@@ -128,58 +232,9 @@ final class ShareViewController: UIViewController {
         }
     }
 
-    /// 把分享内容拷/写进 App Group 容器 (文件进收件目录, 文本进文本槽)。
-    ///
-    /// 回调带回"用户能看懂的失败说明" (空数组 = 全部收下): 容器取不到、目录建不出来、
-    /// 单件拷贝失败都会带出来, 由 [finish] 摆给用户看 —— 用户在这里点了本应用却什么都没发生时,
-    /// 至少知道为什么。
-    /// 单件落盘一律走"隐藏临时名 + 成功后原子改名": 宿主在拷贝期间取件只会看到完整件或没有件
-    /// (宿主扫目录时跳过隐藏项), 同名覆盖也只在整份落完之后发生。
-    ///
-    /// 文本落成功后在**主队列**试一次 [wakeHost] (带前台是 best-effort, 见类型文档)。
-    private func deliver(_ content: SharedContent, completion: @escaping ([String]) -> Void) {
-        let container: URL
-        do {
-            container = try containerURL()
-        } catch let unavailable as InboxUnavailable {
-            NSLog("[Legado] share extension: container unavailable: %@", unavailable.userMessage)
-            completion([unavailable.userMessage])
-            return
-        } catch {
-            NSLog("[Legado] share extension: container unavailable: %@", error.localizedDescription)
-            completion([InboxUnavailable.cannotCreateInbox(error.localizedDescription).userMessage])
-            return
-        }
-        // 拷贝放后台队列: 分享进来的可能是上百 MB 的书/视频, 占着主队列做 IO 只会拖长
-        // 扩展存活时间 (回调在拷贝完成后才 completeRequest, 不会被提前杀)
-        DispatchQueue.global(qos: .userInitiated).async {
-            var failures: [String] = []
-            var textsDelivered = 0
-            if !content.files.isEmpty {
-                do {
-                    failures += self.deliverFiles(content.files, to: try self.legadoDirectory(in: container, legadoInboxDirName))
-                } catch {
-                    failures.append(Self.unavailableMessage(of: error))
-                }
-            }
-            if !content.texts.isEmpty {
-                do {
-                    let (count, errs) = try self.deliverTexts(content.texts, to: self.legadoDirectory(in: container, legadoTextDirName))
-                    textsDelivered = count
-                    failures += errs
-                } catch {
-                    failures.append(Self.unavailableMessage(of: error))
-                }
-            }
-            DispatchQueue.main.async {
-                if textsDelivered > 0 { self.wakeHost() }
-                completion(failures)
-            }
-        }
-    }
-
     /// 共享容器本体; 拿不到时抛 [InboxUnavailable.noSharedContainer]。
-    private func containerURL() throws -> URL {
+    /// (纯文件原语, 不涉 UI 状态; nonisolated 供后台队列与加载回调直接调用。)
+    private nonisolated func containerURL() throws -> URL {
         guard let container = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: legadoAppGroupId
         ) else { throw InboxUnavailable.noSharedContainer }
@@ -187,7 +242,8 @@ final class ShareViewController: UIViewController {
     }
 
     /// 容器内的一个 Legado 目录 (不存在时创建); 建不出来抛错, 由调用方转成用户可见说明。
-    private func legadoDirectory(in container: URL, _ name: String) throws -> URL {
+    /// (纯文件原语, nonisolated 供后台队列直接调用。)
+    private nonisolated func legadoDirectory(in container: URL, _ name: String) throws -> URL {
         let dir = container.appendingPathComponent(name, isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -198,42 +254,92 @@ final class ShareViewController: UIViewController {
         return dir
     }
 
-    /// 目录建不出来的统一措辞 (容器在但子目录写不了)。
-    private static func unavailableMessage(of error: Error) -> String {
+    /// 目录建不出来的统一措辞 (容器在但子目录写不了)。 (纯值转换, nonisolated。)
+    private nonisolated static func unavailableMessage(of error: Error) -> String {
         (error as? InboxUnavailable)?.userMessage
             ?? InboxUnavailable.cannotCreateInbox(error.localizedDescription).userMessage
     }
 
-    /// 文件: 逐件从调用方容器拷进收件目录 (原件可能在别的 App 的沙盒里, 读前要起 security-scoped 授权)。
-    private func deliverFiles(_ urls: [URL], to inbox: URL) -> [String] {
-        var failures: [String] = []
-        for url in urls {
-            let name = url.lastPathComponent
-            guard !name.isEmpty else {
-                NSLog("[Legado] share extension: attachment without file name dropped")
-                failures.append("有一件分享内容没有文件名，没能接收。")
-                continue
-            }
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            let dest = inbox.appendingPathComponent(name)
-            let temp = tempFile(for: dest)
-            do {
-                // copyItem 要求目标不存在: 上一次被系统杀掉的拷贝会停在临时名上, 先清掉
-                try? FileManager.default.removeItem(at: temp)
-                try FileManager.default.copyItem(at: url, to: temp)
-                try publish(temp: temp, to: dest)
-                NSLog("[Legado] share extension delivered file: %@", name)
-            } catch {
-                NSLog("[Legado] share extension deliver failed (%@): %@", name, error.localizedDescription)
-                failures.append("「\(name)」没能接收：\(error.localizedDescription)")
+    /// `public.file-url` 附件: 直取 URL, 真名随 URL; 原件可能在别的 App 的沙盒里,
+    /// 读前起 security-scoped 授权。 (纯文件原语, nonisolated 供加载回调直接调用。)
+    private nonisolated static func deliverFileURLItem(
+        _ loaded: Any?, error: Error?, suggestedName: String?, inbox: URL
+    ) -> LoadResult {
+        if let error {
+            NSLog("[Legado] share extension loadItem failed: %@", error.localizedDescription)
+            return .failure("有一件文件没能接收：\(error.localizedDescription)")
+        }
+        guard let url = fileURL(from: loaded) else {
+            return .failure("有一件文件没能接收：没有拿到文件内容。")
+        }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        return deliverOneFile(
+            url,
+            name: deliveryFileName(url.lastPathComponent, suggestedName),
+            inbox: inbox)
+    }
+
+    /// 文件表示附件: 官方契约 (`loadFileRepresentation(forTypeIdentifier:completionHandler:)`,
+    /// Foundation) 是回调拿到的临时文件 "which the system deletes when the completion handler
+    /// returns" —— 物化 (整份拷进容器) 必须在回调内完成。 (纯文件原语, nonisolated 供加载回调直接调用。)
+    private nonisolated static func deliverRepresentationItem(
+        _ itemURL: URL?, error: Error?, suggestedName: String?, inbox: URL
+    ) -> LoadResult {
+        if let error {
+            NSLog("[Legado] share extension loadFileRepresentation failed: %@", error.localizedDescription)
+            return .failure("有一件文件没能接收：\(error.localizedDescription)")
+        }
+        guard let itemURL else {
+            return .failure("有一件文件没能接收：没有拿到文件内容。")
+        }
+        return deliverOneFile(
+            itemURL,
+            name: deliveryFileName(suggestedName, itemURL.lastPathComponent),
+            inbox: inbox)
+    }
+
+    /// 落盘名: 依序取第一个可用名 (非空、不以点开头、不含路径分隔符)。
+    /// 建议名是空串时不算可用, 退到下一个候选 (file-url 的真名 / 系统临时件名);
+    /// 都不可用返回 nil, 由 [Self.deliverOneFile] 明确拒件 —— 不伪造文件名、不补造扩展名
+    /// (无扩展名的可用名照常落盘, 由宿主的未知文件确认流程接住)。 (纯值转换, nonisolated。)
+    private nonisolated static func deliveryFileName(_ candidates: String?...) -> String? {
+        for candidate in candidates {
+            if let candidate, !candidate.isEmpty, !candidate.hasPrefix("."), !candidate.contains("/") {
+                return candidate
             }
         }
-        return failures
+        return nil
+    }
+
+    /// 把一件文件拷进收件目录 (隐藏临时名 + 成功后原子改名, 与宿主取件的隐藏临时件契约同一套;
+    /// 只做一次整份拷贝, 不转 Data、不再落第二份中间件)。
+    /// 名字不可用 (空/隐藏名/含路径分隔) 时明确拒件: 宿主取件跳过隐藏名 (与临时件 `.name.part`
+    /// 同一契约), 带路径分隔的名字会写进子目录, 都不能当完整件交付。
+    /// (纯文件原语, nonisolated 供加载回调直接调用。)
+    private nonisolated static func deliverOneFile(_ source: URL, name: String?, inbox: URL) -> LoadResult {
+        guard let name, !name.isEmpty, !name.hasPrefix("."), !name.contains("/") else {
+            NSLog("[Legado] share extension: attachment without usable file name dropped")
+            return .failure("有一件分享内容没有可用于接收的文件名，没有接收。")
+        }
+        let dest = inbox.appendingPathComponent(name)
+        let temp = tempFile(for: dest)
+        do {
+            // copyItem 要求目标不存在: 上一次被系统杀掉的拷贝会停在临时名上, 先清掉
+            try? FileManager.default.removeItem(at: temp)
+            try FileManager.default.copyItem(at: source, to: temp)
+            try publish(temp: temp, to: dest)
+            NSLog("[Legado] share extension delivered file: %@", name)
+            return .fileDelivered
+        } catch {
+            NSLog("[Legado] share extension deliver failed (%@): %@", name, error.localizedDescription)
+            return .failure("「\(name)」没能接收：\(error.localizedDescription)")
+        }
     }
 
     /// 文本: 每条落一个 `.txt` (文件名带时间戳与序号, 多条分享不会互相覆盖)。
-    private func deliverTexts(_ texts: [String], to slot: URL) -> (Int, [String]) {
+    /// (纯文件原语, nonisolated 供后台队列直接调用。)
+    private nonisolated static func deliverTexts(_ texts: [String], to slot: URL) -> (Int, [String]) {
         var failures: [String] = []
         var delivered = 0
         let stamp = Int(Date().timeIntervalSince1970 * 1000)
@@ -255,8 +361,8 @@ final class ShareViewController: UIViewController {
     }
 
     /// 隐藏临时件的名字 (`.<正式名>.part`): 与 Kotlin 侧 `IosShareInbox.TEMP_SUFFIX` 同一套契约,
-    /// 宿主扫目录时跳过它, 因此半截内容不会被当成完整件取走。
-    private func tempFile(for dest: URL) -> URL {
+    /// 宿主扫目录时跳过它, 因此半截内容不会被当成完整件取走。 (纯路径值转换, nonisolated。)
+    private nonisolated static func tempFile(for dest: URL) -> URL {
         let dir = dest.deletingLastPathComponent()
         return dir.appendingPathComponent(".\(dest.lastPathComponent).part")
     }
@@ -265,8 +371,8 @@ final class ShareViewController: UIViewController {
     ///
     /// `Darwin.rename` 与宿主侧 `stage` 用的是同一个 POSIX 调用 —— Swift 里 `UIViewController`
     /// 经 `UIResponder` 在 iOS 16+ 也有一个 `rename(_:)` 实例方法, 裸写 `rename` 会解析成那个
-    /// 成员, 所以必须带 `Darwin.` 限定。
-    private func publish(temp: URL, to dest: URL) throws {
+    /// 成员, 所以必须带 `Darwin.` 限定。 (纯文件原语, nonisolated。)
+    private nonisolated static func publish(temp: URL, to dest: URL) throws {
         defer { try? FileManager.default.removeItem(at: temp) }
         guard Darwin.rename(temp.path, dest.path) == 0 else {
             let code = errno
@@ -298,116 +404,171 @@ final class ShareViewController: UIViewController {
         extensionContext?.open(url, completionHandler: nil)
     }
 
-    /// 把 `extensionContext.inputItems` 里的附件解成文件与文本两类。
+    /// 逐条登记加载 (主线程): 文件的两条表示路都接 (分支与激活谓词同一张清单, 见
+    /// [Self.attachmentKind(of:)]) ——
+    /// - `public.file-url` 经 `loadItem` 直取 URL (真名随 URL, 读前起 security-scoped 授权);
+    /// - 只有具体文件类型的经 `loadFileRepresentation` 拿文件表示 —— 官方契约是回调拿到的
+    ///   临时文件在回调返回时被系统删除, 物化 (整份拷进容器) 必须在回调内完成。
     ///
-    /// 用 `loadItem` (而不是 `loadFileRepresentation`): 前者拿到的是系统给的原始 item,
-    /// 对 `public.file-url` 就是文件 URL; 后者会把文件复制到临时目录并**要求调用方在
-    /// 回调返回后立刻处理**, 多一层临时文件生命周期要管, 而交付本来就要整份拷进容器。
-    ///
-    /// 类型优先级 (一条附件只归一类, 避免同一份内容既当文件又当文本被处理两遍):
-    /// `public.file-url` (文件) → `public.url` (浏览器分享的网页链接, 取 absoluteString 当文本)
-    /// → `public.plain-text` / `public.text` (选中的文字、分享的描述)。
-    private func loadAttachments(completion: @escaping (SharedContent) -> Void) {
-        guard let items = extensionContext?.inputItems as? [NSExtensionItem] else {
-            completion(SharedContent())
-            return
-        }
-        let providers = items.compactMap { $0.attachments }.flatMap { $0 }
-        guard !providers.isEmpty else {
-            completion(SharedContent())
-            return
-        }
-
-        // 结果按 providers 下标回填, 保证顺序稳定 (并发 loadItem 的回调顺序不定)
-        var collected = [SharedContent?](repeating: nil, count: providers.count)
-        let group = DispatchGroup()
-        for (index, provider) in providers.enumerated() {
-            let kind = Self.attachmentKind(of: provider)
-            guard let kind else { continue }
-            group.enter()
-            provider.loadItem(forTypeIdentifier: kind.identifier, options: nil) { item, error in
-                defer { group.leave() }
-                if let error {
-                    NSLog("[Legado] share extension loadItem failed: %@", error.localizedDescription)
-                    return
-                }
-                switch kind {
-                case .fileURL:
-                    if let url = Self.fileURL(from: item) {
-                        var content = SharedContent()
-                        content.files = [url]
-                        collected[index] = content
-                    }
-                case .url:
-                    if let text = Self.text(fromURLItem: item) {
-                        var content = SharedContent()
-                        content.texts = [text]
-                        collected[index] = content
-                    }
-                case .text:
-                    if let text = Self.text(fromTextItem: item) {
-                        var content = SharedContent()
-                        content.texts = [text]
-                        collected[index] = content
+    /// 两个加载回调都被 Foundation 声明为 @Sendable 且可能在后台队列执行: 回调内只调
+    /// nonisolated 文件原语/值转换并同步完成复制, 再把 Sendable 结果值经主 actor 交回
+    /// [recordResult] 记录汇总; 不在跨域闭包里捕获可变数组。
+    private func loadAndDeliver(inbox: URL, textSlot: URL) {
+        for (index, item) in batchItems.enumerated() {
+            switch item.kind {
+            case .fileURL:
+                let suggestedName = item.provider.suggestedName
+                item.provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { loaded, error in
+                    let result = Self.deliverFileURLItem(loaded, error: error, suggestedName: suggestedName, inbox: inbox)
+                    Task { @MainActor in
+                        self.recordResult(at: index, result, textSlot: textSlot)
                     }
                 }
-            }
-        }
-        group.notify(queue: .main) {
-            var merged = SharedContent()
-            for part in collected.compactMap({ $0 }) {
-                merged.files.append(contentsOf: part.files)
-                merged.texts.append(contentsOf: part.texts)
-            }
-            // 同一个链接常被投递方以 public.url 与 public.plain-text 两种形式各给一份 (Safari 等),
-            // 不去重就会把一条链接抓两遍书 (第二次必然报"已在书架") 或多搜一次: 按内容去重、保留原序
-            merged.texts = merged.texts.reduce(into: [String]()) { acc, text in
-                if !acc.contains(text) { acc.append(text) }
-            }
-            completion(merged)
-        }
-    }
-
-    /// 一条附件的取用类型 (下标即优先级)。
-    private enum AttachmentKind {
-        case fileURL
-        case url
-        case text
-
-        var identifier: String {
-            switch self {
-            case .fileURL: return UTType.fileURL.identifier
-            case .url: return UTType.url.identifier
-            case .text: return UTType.plainText.identifier
+            case .fileRepresentation(let typeIdentifier):
+                let suggestedName = item.provider.suggestedName
+                item.provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { itemURL, error in
+                    // 官方契约: 临时文件在本回调返回时被系统删除 —— 物化必须在回调内完成
+                    let result = Self.deliverRepresentationItem(
+                        itemURL, error: error, suggestedName: suggestedName, inbox: inbox)
+                    Task { @MainActor in
+                        self.recordResult(at: index, result, textSlot: textSlot)
+                    }
+                }
+            case .url:
+                item.provider.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { loaded, error in
+                    let result: LoadResult
+                    if let error {
+                        NSLog("[Legado] share extension loadItem failed: %@", error.localizedDescription)
+                        result = .failure("有一条网页链接没能接收：\(error.localizedDescription)")
+                    } else if let text = Self.text(fromURLItem: loaded) {
+                        result = .text(text)
+                    } else {
+                        result = .failure("有一条网页链接没能接收：没有拿到链接内容。")
+                    }
+                    Task { @MainActor in
+                        self.recordResult(at: index, result, textSlot: textSlot)
+                    }
+                }
+            case .text:
+                item.provider.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { loaded, error in
+                    let result: LoadResult
+                    if let error {
+                        NSLog("[Legado] share extension loadItem failed: %@", error.localizedDescription)
+                        result = .failure("有一条文本没能接收：\(error.localizedDescription)")
+                    } else if let text = Self.text(fromTextItem: loaded) {
+                        result = .text(text)
+                    } else {
+                        result = .failure("有一条文本没能接收：没有拿到文本内容。")
+                    }
+                    Task { @MainActor in
+                        self.recordResult(at: index, result, textSlot: textSlot)
+                    }
+                }
             }
         }
     }
 
-    /// 按优先级挑出这条附件该用哪个类型解 (通配 MIME 的分享常同时声明好几类)。
+    /// 批次结果记录与汇总 (仅主线程): 最后一件结算时合并拒件与文本, 文本落盘交后台, 收尾回主线程。
+    private func recordResult(at index: Int, _ result: LoadResult, textSlot: URL) {
+        batchResults[index] = result
+        guard !batchResults.contains(where: { $0 == nil }) else { return }
+        var texts: [String] = []
+        var failures = batchRejections
+        var fileDelivered = false
+        for settled in batchResults.compactMap({ $0 }) {
+            switch settled {
+            case .text(let text): texts.append(text)
+            case .fileDelivered: fileDelivered = true
+            case .failure(let message): failures.append(message)
+            }
+        }
+        // 同一个链接/文本常被投递方以 public.url 与 public.plain-text 两种形式各给一份 (Safari 等),
+        // 不去重就会把一条链接抓两遍书 (第二次必然报"已在书架") 或多搜一次: 按内容去重、保留原序
+        let settledTexts = texts.reduce(into: [String]()) { acc, text in
+            if !acc.contains(text) { acc.append(text) }
+        }
+        // 至此被接受的每条附件都已结算成文本/文件/失败之一: 全失败时 failures 非空
+        guard fileDelivered || !settledTexts.isEmpty else {
+            finish(failures)
+            return
+        }
+        if settledTexts.isEmpty {
+            // 只收到文件且已落盘: 无文本待写, 直接收尾
+            finish(failures)
+            return
+        }
+        let settledFailures = failures
+        DispatchQueue.global(qos: .userInitiated).async { @Sendable in
+            let (deliveredTexts, textFailures) = Self.deliverTexts(settledTexts, to: textSlot)
+            Task { @MainActor in
+                if deliveredTexts > 0 { self.wakeHost() }
+                self.finish(settledFailures + textFailures)
+            }
+        }
+    }
+
+    /// 非文本文件支持类型 (UTI 逐字): 有具体类型即按文件收 —— 提供方可以只给文件表示、
+    /// 不给 file-url。plain-text 不在此列: 没有文件上下文的选中文本按文字走文本槽,
+    /// 同时带 file-url 的才算 TXT 文件 (见 [Self.attachmentKind(of:)])。
+    ///
+    /// ⚠️ 必须与 ShareExtension/Info.plist 与 project.yml 里 `NSExtensionActivationRule`
+    /// 谓词的 UTI-CONFORMS-TO 文件清单逐字一致 (激活与取件同一张清单); 清单 = iOS 端既有
+    /// 导入/播放链实际接的格式: epub/json (导入链)、zip/tar/gz/tgz (压缩包链)、mp4/mov
+    /// (播放链 + shared 分发清单)。
+    private static let nonTextFileTypeIdentifiers: [String] = [
+        UTType.epub.identifier,
+        UTType.json.identifier,
+        UTType.zip.identifier,
+        UTType.tar.identifier,
+        UTType.gzip.identifier,
+        "org.gnu.gnu-zip-tar-archive",
+        UTType.mpeg4Movie.identifier,
+        UTType.quickTimeMovie.identifier,
+    ]
+
+    /// 按优先级挑出这条附件该用哪个表示解 (通配 MIME 的分享常同时声明好几类):
+    /// 1. 文件先于文本: 带清单内非文本类型即按文件收 (有 file-url 走 file-url 直取, 否则走
+    ///    文件表示); plain-text 同时带 file-url 的 (TXT 文件) 也按文件收 —— 同时带文字表示的
+    ///    书籍文件不降级成搜索文本;
+    /// 2. 链接: `public.url` 且非 `public.file-url` (它继承 public.url, 不排除会把文件当链接放行);
+    /// 3. 文本: `public.plain-text`。
     private static func attachmentKind(of provider: NSItemProvider) -> AttachmentKind? {
-        if provider.hasItemConformingToTypeIdentifier(AttachmentKind.fileURL.identifier) { return .fileURL }
-        if provider.hasItemConformingToTypeIdentifier(AttachmentKind.url.identifier) { return .url }
-        if provider.hasItemConformingToTypeIdentifier(AttachmentKind.text.identifier) { return .text }
+        let nonTextType = nonTextFileTypeIdentifiers.first {
+            provider.hasItemConformingToTypeIdentifier($0)
+        }
+        if let nonTextType {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) { return .fileURL }
+            return .fileRepresentation(typeIdentifier: nonTextType)
+        }
+        if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+            && provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+            return .fileURL
+        }
+        if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier)
+            && !provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            return .url
+        }
+        if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) { return .text }
         NSLog("[Legado] share extension got unsupported item: %@", String(describing: provider.registeredTypeIdentifiers))
         return nil
     }
 
-    /// `public.file-url` 的交付形态: URL, 或旧系统版本用 Data 装着的 file-url。
-    private static func fileURL(from item: Any?) -> URL? {
+    /// `public.file-url` 的交付形态: URL, 或旧系统版本用 Data 装着的 file-url。 (纯值转换, nonisolated。)
+    private nonisolated static func fileURL(from item: Any?) -> URL? {
         if let url = item as? URL { return url }
         if let data = item as? Data { return URL(dataRepresentation: data, relativeTo: nil) }
         return nil
     }
 
-    /// `public.url` 的交付形态解成文本 (网页链接就是给用户当"一段文本"分享的)。
-    private static func text(fromURLItem item: Any?) -> String? {
+    /// `public.url` 的交付形态解成文本 (网页链接就是给用户当"一段文本"分享的)。 (纯值转换, nonisolated。)
+    private nonisolated static func text(fromURLItem item: Any?) -> String? {
         guard let url = fileURL(from: item) else { return nil }
         let text = url.absoluteString
         return text.isEmpty ? nil : text
     }
 
-    /// `public.plain-text` 的交付形态: NSString, 或 Data (按 UTF-8 解)。
-    private static func text(fromTextItem item: Any?) -> String? {
+    /// `public.plain-text` 的交付形态: NSString, 或 Data (按 UTF-8 解)。 (纯值转换, nonisolated。)
+    private nonisolated static func text(fromTextItem item: Any?) -> String? {
         if let text = item as? String { return text.isEmpty ? nil : text }
         if let data = item as? Data, let text = String(data: data, encoding: .utf8) {
             return text.isEmpty ? nil : text
