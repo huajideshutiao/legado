@@ -162,9 +162,8 @@ fun DesktopDialogHost() {
     }
     // 启动期“云端有新备份”提示 (对照 app 端 MainActivity.backupSync): 判定下沉在
     // StartupMaintenanceShared, 提示/恢复用本端已有的 DesktopDialogRequest.Confirm。
-    // 挂在对话框宿主上 (而不是 DesktopCore.startupBackgroundTasks): DesktopDialogs 在 :desktop
-    // 模块内, :desktop-core 看不到它 (依赖方向 :desktop → :desktop-core), 且
-    // DesktopCore.startupBackgroundTasks 也被无 UI 的 :headless 入口调用 (那里无人消费弹框)。
+    // 挂在对话框宿主上 (而不是 DesktopCore.startupBackgroundTasks): 提示需要有人消费弹框,
+    // 而该启动任务也被纯命令行模式调用, 那里没有界面可弹。
     LaunchedEffect(Unit) {
         val result = withContext(Dispatchers.IO) {
             // 判定前先补认证: checkNewWebDavBackup → lastBackUp 首行是 authorization ?: return,

@@ -14,7 +14,7 @@
 // - **超时必须靠线程**: 阻塞调用不响应协程取消 (withTimeoutOrNull 收不回已进入 OkHttp/类加载的调用),
 //   故用 `Future.get(timeout)` 真超时, 超时即放弃该线程继续跑其余站点 (排查工具允许线程泄漏)。
 // - **bootstrap 走 DesktopCore**: TVBox 取数依赖文件目录/数据库/JS 引擎/HTTP 栈/平台钩子,
-//   逐项手工注册易漏 (与 headless 入口同一套调用)。
+//   逐项手工注册易漏 (与桌面端入口同一套调用)。
 package io.legado.desktop.help.tvbox
 
 import io.legado.app.constant.BookType

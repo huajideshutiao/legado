@@ -10,7 +10,7 @@ import java.io.File
  * - [newJarClassLoader] 走 DexClassLoader (jar 即时 dex 化, odex 落 cacheDir/tvbox/odex,
  *   父加载器为宿主 —— jar 内引用的壳类 com.github.catvod.* 由宿主 classpath 提供)。
  *
- * 桌面端对应物为 desktop-core 的 DesktopTvBoxHostPlatform (URLClassLoader)。
+ * 桌面端对应物为 :desktop 的 DesktopTvBoxHostPlatform (URLClassLoader)。
  */
 class AndroidTvBoxHostPlatform(context: Context) : TvBoxPlatform {
 

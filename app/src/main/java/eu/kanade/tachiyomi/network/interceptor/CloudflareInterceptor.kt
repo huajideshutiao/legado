@@ -10,7 +10,7 @@
 // 2. 非 GET 请求改用站点根页面加载 —— WebView 只能发 GET, 直接加载别的请求方式的
 //    地址常落到一个不返挑战的端点 (与上游同一处理)。
 //
-// 覆盖范围: 仅 Android (本模块) 与桌面 (:desktop-core) 挂 CF 自动解挑战; iOS / 鸿蒙的共享
+// 覆盖范围: 仅 Android (本模块) 与桌面 (:desktop) 挂 CF 自动解挑战; iOS / 鸿蒙的共享
 // HTTP 栈没有本拦截器, 遇到挑战仍按原版行为把挑战响应交回调用方。
 package eu.kanade.tachiyomi.network.interceptor
 

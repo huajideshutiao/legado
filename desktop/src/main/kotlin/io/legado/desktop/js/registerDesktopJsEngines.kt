@@ -1,0 +1,104 @@
+package io.legado.desktop.js
+
+import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.file.desktopAppCacheDir
+import io.legado.app.model.SharedJsScope
+import io.legado.app.model.script.JsBindingInjector
+import io.legado.app.model.script.JsEngineType
+import io.legado.app.model.script.JsEngines
+import io.legado.app.model.script.quickjs.QuickJsJsEngine
+import io.legado.app.utils.ChineseUtils
+import io.legado.app.utils.RemoteAssetsUtils
+import io.legado.app.utils.TcDictCachePathProvider
+import io.legado.app.utils.isCachedTcDictUsable
+import io.legado.desktop.image.DesktopImageOps
+import java.io.File
+import java.nio.file.Files
+import java.nio.file.Paths
+
+/**
+ * 桌面端 JS 引擎注册入口。
+ *
+ * 在桌面端启动早期调用一次 (GUI 与命令行模式共用), 完成 4 件事:
+ * 1. 注册 JS 图片 API: 注入 [DesktopImageOps] 到 [JsBindingInjector]
+ *    (基于 Skia 原生库纯 2D 像素操作, 支持 WebP/JPG/PNG 切片混淆解密, GUI 与命令行模式共用);
+ * 2. 注册 [QuickJsJsEngine] 到 [JsEngines] 作为 QUICKJS 引擎实现
+ *    (QuickJsJsEngine 已下沉到 `data/src/jvmAndAndroidMain`,
+ *    委托 `modules:quickjs` 的 commonMain QuickJsEngine API,
+ *    Android 端 `JsEnginesAndroid.kt` 也注册同一个 object, 行为完全一致);
+ * 3. 注册 [DesktopQuickJsSharedJsScopeProvider] 到 [SharedJsScope]
+ *    (jsLib 共享 scope 缓存, 三层结构 bytecodeCache + ThreadLocal LRU + versionSeq,
+ *    与 app 端 [io.legado.app.model.script.quickjs.QuickJsSharedJsScopeProvider] 行为一致,
+ *    仅 jsLib URL 下载内容缓存从 ACache 改为 in-memory Map);
+ * 4. 注册 [ChineseUtils.pathProvider] 为 [DesktopTcDictCachePathProvider]
+ *    (简繁词典缓存文件定位器, 指向 `{java.io.tmpdir}/legado/cache/tc_cache/` 目录;
+ *    桌面端与 app 端一致: 词典缓存缺失时在 loadDict 调用处 (功能实际使用时) 后台拉取
+ *    quick-transfer 自带默认词典, 行为可用但不持久化)。
+ *
+ * # 与 Android 端 `registerAndroidJsEngines` 的差异
+ * - Android 端注册 BitmapImageOps, 桌面端 (GUI 与命令行模式) 统一注册 Skia 版 [DesktopImageOps]
+ *   (原生高性能支持 WebP/JPG/PNG 切片混淆解密与 2D 像素操作, 纯图像核心无 UI 依赖);
+ * - Android 端 RuleBigDataProviders/SourceCacheProviders/SourceNetworkProviders 等业务 provider
+ *   在 registerAndroidJsEngines 内注册; 桌面端移到 [io.legado.desktop.help.source.registerDesktopSourceProviders]
+ *   统一注册 (业务 provider 与 JS 引擎注册解耦, 便于维护);
+ * - Android 端调用 registerAndroidChineseUtils 注册 TcDictCachePathProvider (含后台拉取副作用);
+ *   桌面端在 registerDesktopJsEngines 内注册同语义实现 (缺失即后台拉取, 2026-08-06 补)。
+ *
+ * # native 库依赖
+ * `QuickJsJsEngine.eval` 内部调 `QuickJsEngine.eval` -> JNI -> native legado_quickjs 库,
+ * 桌面端首次访问时触发 `loadLegadoQuickJsNative()` 加载 .dll/.so/.dylib,
+ * 详见 `modules/quickjs/src/jvmMain/kotlin/com/script/quickjs/Platform.kt` 注释。
+ * 若 native 库未构建, eval 会抛 UnsatisfiedLinkError, 调用方需先执行
+ * `./gradlew :modules:quickjs:buildJvmNativeLib`。
+ */
+fun registerDesktopJsEngines() {
+    // 注册 JS 图片 API: 统一注入 Skia 实现 (DesktopImageOps, 纯 2D 像素操作, GUI 与命令行模式共用)
+    JsBindingInjector.registerImageOps(DesktopImageOps)
+
+    JsEngines.registerProvider { type ->
+        when (type) {
+            JsEngineType.QUICKJS -> QuickJsJsEngine
+        }
+    }
+    // 注册 SharedJsScope provider (jsLib 共享 scope 缓存)
+    // 未注册时 SharedJsScope.getScope 抛 IllegalStateException, 被 runCatching 吞掉,
+    // 表现为书源 jsLib 规则失效 (JS 调用 jsLib 函数报 ReferenceError)
+    SharedJsScope.registerProviders { type ->
+        when (type) {
+            JsEngineType.QUICKJS -> DesktopQuickJsSharedJsScopeProvider
+        }
+    }
+    // 注册简繁词典缓存定位器 (替代 app 端 registerAndroidChineseUtils)
+    // 词典缓存缺失时后台拉取 (仅在 loadDict 实际调用时触发, 对照原版"用到时再下载"语义)
+    ChineseUtils.pathProvider = DesktopTcDictCachePathProvider
+}
+
+/**
+ * 桌面端简繁词典缓存文件定位器。
+ *
+ * 指向 `{java.io.tmpdir}/legado/cache/tc_cache/` 目录,
+ * 与 [io.legado.app.help.file.DesktopAppFilesDir] 的 cacheDir 同根。
+ *
+ * # 与 app 端 [io.legado.app.utils.TcDictCachePathProvider] (ChineseUtilsProvider.kt) 差异
+ * - app 端 lambda 内置 `RemoteAssetsUtils.downloadTcIfNeeded(fileName, isCachedTcDictUsable)`
+ *   后台拉取副作用, 缺失即异步下载 (依赖 Coroutine.async + RemoteAssetsUtils);
+ * - 桌面端同语义: 缓存文件缺失/为空时经 `Coroutine.async` 后台拉取 quick-transfer
+ *   默认词典, 副作用在 loadDict 实际调用时触发 (对照 app 端 ChineseUtilsProvider 的下载副作用);
+ *   词典存临时目录, 行为可用但不持久化。
+ */
+private val DesktopTcDictCachePathProvider = TcDictCachePathProvider { fileName ->
+    // 与 DesktopAppFilesDir.cacheDir 同根: 系统临时目录 {java.io.tmpdir}/legado/cache
+    val cacheRoot = Paths.get(desktopAppCacheDir(), "tc_cache")
+    Files.createDirectories(cacheRoot)
+    val file = File(cacheRoot.toFile(), fileName)
+    // 缺失即后台拉取 (对照 app 端 registerAndroidChineseUtils 的下载副作用,
+    // 2026-08-06 补: 此前桌面端只定位不下载, 每次启动回落 quick-transfer 默认词典加载慢);
+    // 可用的判据与加载方同一条 ([isCachedTcDictUsable]), 并原样传给下载入口 (下载侧不自带判据):
+    // 两侧判据不一致时, 加载方判不可用而下载方当有效, 坏缓存永远不会重下
+    if (!isCachedTcDictUsable(file)) {
+        Coroutine.async {
+            RemoteAssetsUtils.downloadTcIfNeeded(fileName, ::isCachedTcDictUsable)
+        }
+    }
+    file
+}

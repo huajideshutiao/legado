@@ -445,7 +445,7 @@ kotlin {
                 sharedJvmAndroidDeps()
                 implementation(libs.kxml2)
                 implementation(libs.androidx.sqlite.bundled)
-                // EpubFilePlatform.jvm 的 Skia 图片编码 (与 desktop-core 同款 skiko-awt)
+                // EpubFilePlatform.jvm 的 Skia 图片编码 (与 :desktop 同款 skiko-awt)
                 implementation("org.jetbrains.skiko:skiko-awt:0.144.6")
                 // TVBox 配置/站点解析用 org.json (Android 走 SDK 内置, JVM 走同名构件)
                 implementation(sharedLibs.findLibrary("json").get())

@@ -33,7 +33,7 @@ fun findDrawableResource(key: String): DrawableResource? = Res.allDrawableResour
  * 读取后走 AsyncCache, 之后零 IO。语言切换按 locale 路径自动取新语言。
  *
  * 四端宿主启动早期各调用一次, 须早于任何取值调用: Android App.onCreate /
- * DesktopCore.registerEarlyProviders (桌面与 headless 共用) / IosProviderRegistry / MainOhos。
+ * DesktopCore.registerEarlyProviders (GUI 与命令行模式共用) / IosProviderRegistry / MainOhos。
  * 未注册时两条通道均返回 key 名。
  */
 fun registerComposeStringProviders() {

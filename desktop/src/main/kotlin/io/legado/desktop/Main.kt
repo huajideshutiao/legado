@@ -40,10 +40,14 @@ import io.legado.app.help.coroutine.registerJvmDebugState
 import io.legado.app.help.file.desktopResolveStoredRef
 import io.legado.app.help.extension.MangaExtensionHostProviders
 import io.legado.app.help.extension.MangaExtensionManager
+import io.legado.app.help.file.desktopAppRootDir
+import io.legado.app.help.file.desktopResolveStoredRef
 import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.help.image.registerJvmBookImageLoader
 import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.storage.BackupShared
+import io.legado.app.help.ui.OpenUrlProvider
+import io.legado.app.help.ui.OpenUrlProviders
 import io.legado.app.help.toast.DesktopTrayNotifier
 import io.legado.app.help.tvbox.TvBoxSniffPlatforms
 import io.legado.app.help.tts.TtsEngineProvider
@@ -103,6 +107,9 @@ import io.legado.desktop.audio.registerDesktopSystemMediaControl
 import io.legado.desktop.config.probeSystemNightMode
 import io.legado.desktop.config.registerDesktopSystemNightModeDetector
 import io.legado.app.help.crash.CrashMarkerProviders
+import io.legado.desktop.cli.isServerMode
+import io.legado.desktop.cli.resolveExplicitDataDir
+import io.legado.desktop.help.DataRootLock
 import io.legado.desktop.help.DesktopCrashLogDirs
 import io.legado.desktop.help.DesktopCrashHandler
 import io.legado.desktop.help.DesktopKeepAwake
@@ -119,7 +126,7 @@ import io.legado.desktop.help.registerDesktopScreenInfoProvider
 import io.legado.desktop.help.source.registerDesktopVerificationUiProvider
 import io.legado.desktop.help.tvbox.DesktopTvBoxSniffer
 import io.legado.desktop.help.tts.DesktopReadAloudHost
-import io.legado.desktop.help.ui.registerDesktopOpenUrlProvider
+import io.legado.desktop.help.ui.DesktopOpenUrlProviderImpl
 import io.legado.desktop.extension.DesktopMangaExtensionHost
 import io.legado.desktop.model.fileBook.DesktopPdfRenderPort
 import io.legado.app.model.fileBook.PdfFileShared
@@ -185,8 +192,8 @@ private const val TAG = "legado-desktop"
  * 阶段3: 后台异步注册非首屏 provider (LaunchedEffect + Dispatchers.Default) — 不阻塞首屏渲染
  */
 /**
- * 进程启动参数说明: [startupArgs] 顶层声明已下沉 :desktop-core (DesktopCore.kt, 供
- * DesktopAppRestart 复用), 本文件直接以同包名引用。headless 入口亦经 DesktopCore 共享该 API。
+ * 进程启动参数说明: [startupArgs] 顶层声明在 DesktopCore.kt (供
+ * DesktopAppRestart 复用), 本文件直接以同包名引用。
  */
 
 /** 重启等待标记前缀: 新进程凭它等到旧进程退出后再抢单实例锁。 */
@@ -207,13 +214,20 @@ fun main(args: Array<String>) {
     // 只解析一次 —— 单实例守卫要在数据目录写 instance.lock, 提前读会把便携模式的根目录定位歪。
     // 弹窗预览的调试数据根同样是“进程内只解析一次”的根目录, 必须在它之前落到系统属性上
     // (否则预览进程会落在正式数据根, 预览里的改动直接写进正式数据)
-    applyDialogPreviewRoot(args)
-    initDesktopRuntimeEnvironment()
+    // 纯命令行模式 (--server): 只做与 GUI 相同的前置 (加密 provider / 运行时环境 / 崩溃处理),
+    // 之后的 mpv 日志接入、单实例守卫、AWT 预热、Compose 全部不执行 (见 ServerMode.kt)
+    val serverMode = isServerMode(args)
+    if (!serverMode) applyDialogPreviewRoot(args)
+    initDesktopRuntimeEnvironment(if (serverMode) resolveExplicitDataDir(args) else null)
     // URL 合法化统一入口: 桌面用 OkHttp 的宽松解析 (与 Android 同一实现)
     UrlCanonicalProviders.register(OkHttpUrlCanonicalizer)
     // 全局崩溃日志 (对照 app 端 CrashHandler): 必须紧跟 initDesktopRuntimeEnvironment ——
     // 落盘目录依赖它设的 legado.portable.root, 提前装会把便携模式的日志写到系统缓存目录去。
     DesktopCrashHandler.install()
+    if (serverMode) {
+        runServerMode(args)
+        return
+    }
     // mpv 日志接入 AppLog: 播放失败时 mediamp 只给出 mpv_error 码 (如 -13
     // MPV_ERROR_LOADING_FAILED), 拿不到 mpv 自己那行原因 (HTTP 状态 / Failed to recognize
     // file format / 解码器缺失)。sink 汇总 mpv 事件、JNI 层与 mediamp Kotlin 三处日志,
@@ -393,14 +407,14 @@ private fun isAssociationArg(arg: String): Boolean {
 private fun runDesktopApp() = application {
     // ==================== 阶段1: 首屏必需 provider 同步注册 (窗口显示前) ====================
     // 目标: 只注册首屏 (BookshelfScreen) 渲染依赖的 provider, 让窗口尽快显示。
-    // 其余 provider 延迟到窗口显示后异步注册 (见阶段3 registerSecondaryProviders)。
+    // 其余 provider 延迟到窗口显示后异步注册 (见阶段3 registerDesktopSecondaryProviders)。
 
     // KP6: 便携模式检测 + native 库加载已提前到 main() 首行执行 (单实例守卫要先读数据目录),
     // 此处不再重复调用; 其结果 (legado.portable.root / legado.quickjs.lib 系统属性) 对
     // 下方所有 provider 注册依然有效。
     //
-    // 阶段1 核心子集 (无 UI 依赖的 provider 注册) 已下沉 :desktop-core 的
-    // DesktopCore.registerEarlyProviders + registerRestProviders —— 与 headless 入口共用同一
+    // 阶段1 核心子集 (无 UI 依赖的 provider 注册) 在
+    // DesktopCore.registerEarlyProviders + registerRestProviders —— 纯命令行模式走同一
     // 注册序列, 保证两种入口的数据/配置环境等价。包含: AppLog/AppString/AndroidId/Toaster/NotificationProgress/
     // UpdateBookCallback/config+语言/AppUpdate/AppFilesDir/HTTP+jsoup/
     // DataStorage+BookImageStorage/HttpTTS 播放器工厂/JS 引擎/DefaultDataResource/数据库/
@@ -419,6 +433,18 @@ private fun runDesktopApp() = application {
         // 吃完, 守卫那 110~166ms 在其期间并行跑完了, 所以这个等待实测接近 0;
         // 再往下就是 java.util.prefs 与 Room 数据库, 必须知道"本进程是不是首实例"。
         SingleInstanceGuard.awaitPrimaryDecision()
+        // 数据目录互斥 (GUI ↔ 纯命令行模式): 两个入口共用同一个 SQLite 库与 Web 端口,
+        // 单实例守卫只管 GUI 与 GUI; 拿不到锁说明已有命令行实例在跑, 直接退出不动数据。
+        if (!DataRootLock.tryAcquire()) {
+            AppLog.put("数据目录已被命令行实例占用, 本进程退出: ${desktopAppRootDir()}")
+            javax.swing.JOptionPane.showMessageDialog(
+                null,
+                "已有以命令行模式运行的实例占用同一数据目录，请先关闭它。",
+                "阅读",
+                javax.swing.JOptionPane.ERROR_MESSAGE,
+            )
+            exitApplication()
+        }
         // 启动参数 (deep link / 关联文件) 必须在单实例判定之后消费: 本进程若是二次实例,
         // 守卫线程已把同一份 args 转发给首实例, 两边都入队就会重复导入同一次双击
         handleDeepLinkArgs(startupArgs)
@@ -450,8 +476,6 @@ private fun runDesktopApp() = application {
         }
         // 阶段1 余下重注册 (HTTP/JS/Room/存储/封面)
         DesktopCore.registerRestProviders()
-        // Compose UI 类型的 JVM 图片加载器 (SingletonImageLoader + BookImageLoaders, 依赖 ImageBitmap, 仅桌面 GUI 需要)
-        registerJvmBookImageLoader()
         return@remember duration
     }
     // ===== 以下为阶段1 的 UI 绑定注册 (依赖 AWT/Compose/JNA, 留在 :desktop) =====
@@ -461,9 +485,6 @@ private fun runDesktopApp() = application {
     // 且须在首个有任务栏按钮的窗口 (Compose 主窗口) 创建前设置;
     // 闪屏是无任务栏按钮的 JWindow, 不受此约束。
     DesktopAppUserModelId.ensureProcessAppId()
-    // 注册桌面端 ScreenInfoProvider (Toolkit.getDefaultToolkit().screenSize),
-    // 供 shared commonMain 经 ScreenInfoProviders.get() 读屏幕尺寸; 无依赖, 同步注册
-    registerDesktopScreenInfoProvider()
     // Toaster 链路 (登录对话框"没有请求头！"等) 统一收口到主窗口 UI toast
     // (DesktopToasts → DesktopToastHost), 不再只依赖托盘气泡 (Windows 通知设置
     // 会静默拦截 TrayIcon.displayMessage, 曾表现为 toast 无反应)
@@ -472,27 +493,19 @@ private fun runDesktopApp() = application {
         DesktopToasts.show(msg, isLong)
         true
     }
-    // 注册桌面端 PlatformCapabilities (供 shared LegadoApp 经 PlatformCapabilityProviders.get() 取能力)
-    PlatformCapabilityProviders.register(DesktopPlatformCapabilities)
     // 弹窗预览入口 (共享预览页在 :ui, 进入前要切数据根并重启, 故由本端注入)
     installDialogPreviewLauncher()
     // 系统深浅色变化来源: 主窗口收到的系统设置变更消息 (Windows 才有效)
     installSystemThemeWatcher()
-    // 注册桌面端 PlatformServices (必须早于 LegadoApp: shared 侧一律 PlatformServiceProviders.get(),
-    // 未注册即 error, 不再有静默回退分支)
-    // windowHandle 在 Window 组装后由 DisposableEffect 注入 AWT 窗口, 供全屏切换
+    // provider 图: 与纯命令行模式共用同一份注册序列 (窗口对象只由下方 DisposableEffect 注入,
+    // 命令行模式里 windowHandle.window 恒为 null)
     val windowHandle = remember { DesktopWindowHandle() }
-    PlatformServiceProviders.register(
-        DesktopPlatformServices(
-            DesktopPlatformCapabilities,
-            windowHandle
-        )
-    )
+    val desktopReaderProvider = registerDesktopProviderGraph(windowHandle)
     // 偏好读取提前到此处: 关闭窗口行为与窗口尺寸恢复共用同一份实例
     val prefProvider = PreferenceProviders.get()
-    // 朗读引擎 (Windows SAPI / Linux espeak / macOS say): DesktopSystemTtsEngine 依赖 JNA
-    // (WindowsSapiTtsBackend) 留在 :desktop 注册; HttpTTS 播放器工厂 (DesktopHttpTtsPlayer,
-    // 纯 JVM) 已随上方 DesktopCore.registerCoreProviders 注册, headless 亦具备该能力
+    // 朗读引擎 (Windows SAPI / Linux espeak / macOS say): 实现依赖 JNA,
+    // 已随上方 registerDesktopProviderGraph 注册 (命令行模式共用); HttpTTS 播放器工厂
+    // (DesktopHttpTtsPlayer, 纯 JVM) 已随 DesktopCore.registerRestProviders 注册
     //
     // 退出程序 (托盘菜单"退出" / 用户已选择关闭即退出): 先结束后台任务并等当前位置写回库,
     // 再结束进程。音频会话结束才把引擎当前位置落库 (与托盘菜单"停止"同一动作), 不等落库
@@ -578,9 +591,9 @@ private fun runDesktopApp() = application {
         }
         onDispose { DesktopWindowChrome.interfaceExitRequest = null }
     }
-    val desktopTtsEngine = remember { DesktopSystemTtsEngine() }
-    TtsEngineProvider.register(desktopTtsEngine)
     // 系统托盘: 音频/朗读活跃时给播放控制菜单 (最小化后仍可控), 同时承载 toast/进度气泡
+    // (provider 本体与 4 个媒体 PlatformProvider 已随上方 registerDesktopProviderGraph 注册,
+    // 命令行模式共用同一份)
     DisposableEffect(Unit) {
         DesktopMediaTray.install(
             windowProvider = { windowHandle.window },
@@ -598,30 +611,6 @@ private fun runDesktopApp() = application {
             DesktopMediaTray.uninstall()
         }
     }
-    // 注册桌面端 4 个媒体 PlatformProvider (对照 app 端 MainActivity.onActivityCreated 同步注册),
-    // 避免 Reader/Audio/Manga/Video Route 显示 "platform unavailable":
-    // - Reader: DesktopReadMenuController 功能性菜单 (导航/章节/夜间模式)
-    // - Audio: 复用 shared AudioPlayScreenContent + 桌面端 slots (封面/模糊背景/歌词/对话框)
-    // - Manga: Coil3 AsyncImage 渲染 + ColorMatrix 灰度/颜色滤镜
-    // - Video: MPV 播放器 (SwingPanel + nativeHwnd 桥接, Windows 用 WComponentPeer getHwnd)
-    val desktopReaderProvider = remember { DesktopReaderPlatformProvider() }
-    ReaderPlatformProviders.register(desktopReaderProvider)
-    // 注: ReadBookShared 平台钩子 (registerDesktopReadBookPlatform) 无 UI 依赖,
-    // 已随上方 DesktopCore.registerCoreProviders 注册 (headless 共用)
-    // 阅读排版度量: 注册 Skia 真实字形度量, 取代 SimpleTextMeasurer 等宽近似
-    // (字形来源与 PageContentCanvas 的 loadReaderFontFamily / FontFamily.Default 同源)
-    registerSkiaTextMeasurer()
-    // 阅读页内嵌图片 (PDF 单图页 / EPUB 插图): 排版取尺寸 + 绘制取位图
-    registerReaderImageResolver()
-    AudioPlayPlatformProviders.register(SharedAudioPlayPlatformProvider)
-    MangaReaderScreenModel.Providers.register(DesktopMangaReaderPlatform)
-    VideoPlayPlatformProviders.register(MediampVideoPlayPlatformProvider(windowHandle))
-    // 漫画插件宿主 (扩展目录扫描 + dex2jar 装载; 兼容层 Injekt 绑定/取数委派/图片获取/
-    // 管理页服务已在 DesktopCore.registerRestProviders 同步注册)
-    MangaExtensionHostProviders.register(DesktopMangaExtensionHost())
-    // 启动即装载扩展注册表 (后台异步): 虚拟行同步/登录标记/取数委派依赖注册表内存态,
-    // 不能等首次进插件管理页才装载 (Android/桌面同语义)
-    MangaExtensionManager.init()
 
     // ==================== 阶段2: 显示窗口 ====================
     // 启动闪屏已在阶段0 后、阶段1 重注册前显示 (见上方 splashScreen / 阶段1 块):
@@ -826,7 +815,7 @@ private fun runDesktopApp() = application {
         // 用 LaunchedEffect 在窗口显示后立即启动协程注册, 不阻塞首屏渲染
         // 用 withContext(Dispatchers.Default) 在后台线程执行, 避免阻塞 UI 线程
         LaunchedEffect(Unit) {
-            registerSecondaryProviders()
+            registerDesktopSecondaryProviders(DesktopOpenUrlProviderImpl)
             // 缓存书籍/书源校验两条后台任务的托盘呈现 (对照 app 端 CacheBookService /
             // CheckSourceService 的常驻通知); 本调用把已注册的缓存启动器包一层服务态镜像,
             // 故必须排在上面 (启动器在本函数内注册)
@@ -1066,7 +1055,60 @@ private fun persistWindowBounds(window: java.awt.Frame?) {
 }
 
 /**
- * 后台异步注册非首屏必需的 provider (启动性能优化)。
+ * 阶段1 的 UI 绑定 provider 图 (依赖 AWT/Compose/JNA/skia/mediamp)。
+ *
+ * GUI 与纯命令行模式共用本函数: 两边的差异只在窗口相关动作 (闪屏/托盘/任务栏/窗口监听),
+ * 能力注册必须一致 —— 否则命令行模式会缺阅读、漫画、视频、朗读、图片加载等链路。
+ *
+ * @param windowHandle 窗口句柄持有者; 命令行模式传未注入窗口的实例 (window 恒为 null)
+ * @return 阅读页平台 provider (GUI 需要它在窗口内挂浮动菜单宿主)
+ */
+internal fun registerDesktopProviderGraph(windowHandle: DesktopWindowHandle): DesktopReaderPlatformProvider {
+    // Compose UI 类型的 JVM 图片加载器 (SingletonImageLoader + BookImageLoaders, 依赖 ImageBitmap)
+    registerJvmBookImageLoader()
+    // 注册桌面端 ScreenInfoProvider (Toolkit.getDefaultToolkit().screenSize),
+    // 供 shared commonMain 经 ScreenInfoProviders.get() 读屏幕尺寸; 读取在首次消费时
+    registerDesktopScreenInfoProvider()
+    // 注册桌面端 PlatformCapabilities (供 shared 经 PlatformCapabilityProviders.get() 取能力)
+    PlatformCapabilityProviders.register(DesktopPlatformCapabilities)
+    // 注册桌面端 PlatformServices (必须早于首批业务调用: shared 侧一律 PlatformServiceProviders.get(),
+    // 未注册即 error, 不再有静默回退分支)
+    // windowHandle 在 Window 组装后由 DisposableEffect 注入 AWT 窗口, 供全屏切换
+    PlatformServiceProviders.register(
+        DesktopPlatformServices(
+            DesktopPlatformCapabilities,
+            windowHandle
+        )
+    )
+    // 朗读引擎 (Windows SAPI / Linux espeak / macOS say): 依赖 JNA, 引擎实例惰性创建
+    // (HttpTTS 播放器工厂无 UI 依赖, 已随 DesktopCore.registerRestProviders 注册)
+    TtsEngineProvider.register(DesktopSystemTtsEngine())
+    // 4 个媒体 PlatformProvider (避免 Reader/Audio/Manga/Video Route 报 "platform unavailable"):
+    // - Reader: DesktopReadMenuController 功能性菜单 (导航/章节/夜间模式)
+    // - Audio: 复用 shared AudioPlayScreenContent + 桌面端 slots (封面/模糊背景/歌词/对话框)
+    // - Manga: Coil3 AsyncImage 渲染 + ColorMatrix 灰度/颜色滤镜
+    // - Video: MPV 播放器 (SwingPanel + nativeHwnd 桥接, Windows 用 WComponentPeer getHwnd)
+    val desktopReaderProvider = DesktopReaderPlatformProvider()
+    ReaderPlatformProviders.register(desktopReaderProvider)
+    // 阅读排版度量: 注册 Skia 真实字形度量, 取代 SimpleTextMeasurer 等宽近似
+    // (字形来源与 PageContentCanvas 的 loadReaderFontFamily / FontFamily.Default 同源)
+    registerSkiaTextMeasurer()
+    // 阅读页内嵌图片 (PDF 单图页 / EPUB 插图): 排版取尺寸 + 绘制取位图
+    registerReaderImageResolver()
+    AudioPlayPlatformProviders.register(SharedAudioPlayPlatformProvider)
+    MangaReaderScreenModel.Providers.register(DesktopMangaReaderPlatform)
+    VideoPlayPlatformProviders.register(MediampVideoPlayPlatformProvider(windowHandle))
+    // 漫画插件宿主 (扩展目录扫描 + dex2jar 装载; 兼容层 Injekt 绑定/取数委派/图片获取/
+    // 管理页服务已随 DesktopCore.registerRestProviders 同步注册)
+    MangaExtensionHostProviders.register(DesktopMangaExtensionHost())
+    // 启动即装载扩展注册表 (后台异步): 虚拟行同步/登录标记/取数委派依赖注册表内存态,
+    // 不能等首次进插件管理页才装载 (Android/桌面同语义)
+    MangaExtensionManager.init()
+    return desktopReaderProvider
+}
+
+/**
+ * 后台异步注册非首屏必需的 provider (启动性能优化), GUI 与纯命令行模式共用。
  *
  * 首屏 (BookshelfScreen) 只依赖 AppDbProviders + BookHelpProviders + BookStorageProviders
  * (已在阶段1同步注册), 其余 provider 在窗口显示后用 [LaunchedEffect] + [withContext]
@@ -1074,12 +1116,14 @@ private fun persistWindowBounds(window: java.awt.Frame?) {
  * - registerDesktopAudioPlayProviders 依赖 SourceHelpAccessors + WebBookProviders + JsEngines + OkHttpClientProviders
  *   (必须在它们之后注册)
  *
- * 无 UI 核心子集已下沉 :desktop-core 的 DesktopCore.registerSecondaryCoreProviders()
+ * 无 UI 核心子集在 DesktopCore.registerSecondaryCoreProviders()
  * (原 0/0.5/1/4/5(zip)/7/8/9/10/10b(正则)/11/11b(UserAgent)/13b 步, 顺序保持; 8b 的
  * Web 服务 provider 已提到阶段1 同步注册, 见 DesktopCore.registerRestProviders),
- * 本函数只保留 UI 绑定子集 + 尾部启动任务调度, headless 入口复用核心子集。
+ * 本函数只保留 UI 绑定子集 + 尾部启动任务调度。
+ *
+ * @param openUrlProvider 书源 openUrl 的实现: GUI 弹确认框, 命令行模式一律拒绝
  */
-private suspend fun registerSecondaryProviders() {
+internal suspend fun registerDesktopSecondaryProviders(openUrlProvider: OpenUrlProvider) {
     withContext(Dispatchers.Default) {
         // ===== 核心子集 (无 UI 依赖): 见 DesktopCore.registerSecondaryCoreProviders 注释 =====
         DesktopCore.registerSecondaryCoreProviders()
@@ -1093,11 +1137,11 @@ private suspend fun registerSecondaryProviders() {
         //    PDF 编排骨架走共享 PdfFileShared)
         PdfRenderProviders.register(DesktopPdfRenderPort)
         registerDesktopFileBookAccessor(DesktopArchiveCodec, PdfFileShared)
-        // 原 11. Web 服务封面/插图 provider: 字节流实现在 desktop-core;
+        // 原 11. Web 服务封面/插图 provider (字节流实现见 DesktopImageControllerProvider);
         //    未注册时 BookController.getCover/getImg 抛 IllegalStateException
         ImageControllerProviders.register(DesktopImageControllerProvider())
-        // 原 11b. OpenUrl provider (打开确认框走 DesktopDialogs, 无 UI 无法确认)
-        registerDesktopOpenUrlProvider()
+        // 原 11b. OpenUrl provider: 由调用方选择实现 (GUI 确认框 / 命令行一律拒绝)
+        OpenUrlProviders.register(openUrlProvider)
         // 原 11c. 书源验证 UI provider (图片验证码走 Swing 输入框, 网页验证给明确报错)
         //      依赖 OkHttpClientProviders (阶段1, 拉验证码图片) + Toasters (已注册);
         //      未注册时 JS 触发验证会 IllegalStateException 裸抛
@@ -1125,31 +1169,40 @@ private suspend fun registerSecondaryProviders() {
 /**
  * KP6 桌面端运行时环境初始化 (便携模式 + native 库加载)。
  *
- * 核心逻辑 (系统属性设置 + native 库定位) 已下沉 :desktop-core 的
- * [DesktopCore.initRuntimeEnvironment] (与 headless 共用); 本函数只负责 :desktop 特有的
- * 定位输入:
+ * 核心逻辑 (系统属性设置 + native 库定位) 在
+ * [DesktopCore.initRuntimeEnvironment]; 本函数只负责 :desktop 特有的定位输入:
  * - 便携模式: 经 `compose.application.resources.dir` 定位 exe 所在目录, 数据存其同级 data/
- *   (编译期 InstallType 控制行为, InstallType 是 desktop/build.gradle.kts 生成类, headless 不用)
+ *   (编译期 InstallType 控制行为, InstallType 是 desktop/build.gradle.kts 生成类)
+ * - 显式数据根 (命令行模式 --data-dir / -Dlegado.data.dir) 优先于安装类型推导
  * - quickjs native: 从 resourcesDir (打包后 = app/{packageName}/, 含 copyQuickjsNativeToResources
  *   task 纳入的 legado_quickjs.dll) 直接定位; 开发期目录无 dll → 不设属性,
  *   Platform.kt 候选3 从当前目录向上递归找 modules/quickjs 构建产物
  *
  * 开发期默认 dev (build.gradle.kts 默认值), 保护项目源码树不被污染。
  */
-private fun initDesktopRuntimeEnvironment() {
-    val resourcesDir = System.getProperty("compose.application.resources.dir") ?: return
-    if (resourcesDir.isEmpty()) return
-    val resDirFile = File(resourcesDir)
-    if (!resDirFile.isDirectory) return
+internal fun initDesktopRuntimeEnvironment(explicitDataDir: File? = null) {
+    // 打包布局缺失 (开发期直起 / 手工 java -cp) 时 resDirFile 为 null,
+    // 但 explicitDataDir 仍要落下去, 否则 --data-dir 在开发期静默失效
+    val resDirFile = System.getProperty("compose.application.resources.dir")
+        ?.takeIf { it.isNotEmpty() }
+        ?.let(::File)
+        ?.takeIf { it.isDirectory }
 
     // 便携模式: resDirFile 指向 app/<packageName>/ (jar + 资源所在目录),
     // 其 parentFile = jpackage package root (exe 所在目录的同级)。
     // portable 模式数据存 exe 同级 dataDir; installed/dev 模式传 null (走 portable.txt 标记
     // 检测 / 系统数据目录), 仅日志记录安装模式。
-    val dataDir = if (InstallType.IS_PORTABLE) {
-        val exeDir = resDirFile.parentFile?.parentFile ?: resDirFile.parentFile
-        File(exeDir, "data")
-    } else {
+    // explicitDataDir 非空 (命令行模式 --data-dir / -Dlegado.data.dir) 时优先于安装类型推导。
+    val dataDir = when {
+        explicitDataDir != null -> explicitDataDir
+        !InstallType.IS_PORTABLE -> null
+        resDirFile == null -> null
+        else -> {
+            val exeDir = resDirFile.parentFile?.parentFile ?: resDirFile.parentFile
+            File(exeDir, "data")
+        }
+    }
+    if (resDirFile != null && explicitDataDir == null && !InstallType.IS_PORTABLE) {
         // 刻意不调 syncGetString: 本函数在 main() 第一行路径上, 取一次 CMP 字符串会把整套资源系统
         // 同步初始化 —— 实测 (-Xlog:class+load) MainKt 类在 0.075s, 而 DesktopCore 要到 0.536s
         // 才首次出现, 中间 461ms 全耗在这一句日志上; 而 CI 打便携包不传 -Plegado.installType
@@ -1160,7 +1213,6 @@ private fun initDesktopRuntimeEnvironment() {
                 "data root falls back to portable.txt detection or system location",
             tag = TAG,
         )
-        null
     }
 
     val osName = System.getProperty("os.name").lowercase()
@@ -1169,6 +1221,6 @@ private fun initDesktopRuntimeEnvironment() {
         osName.contains("mac") || osName.contains("darwin") -> "liblegado_quickjs.dylib"
         else -> "liblegado_quickjs.so"
     }
-    val libFile = File(resDirFile, libName).takeIf { it.isFile }
+    val libFile = resDirFile?.let { File(it, libName).takeIf { file -> file.isFile } }
     DesktopCore.initRuntimeEnvironment(dataDir, libFile)
 }

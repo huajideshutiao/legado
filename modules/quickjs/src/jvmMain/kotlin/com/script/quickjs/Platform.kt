@@ -105,7 +105,7 @@ private fun jvmNativePlatformId(): String {
     return "$os-$arch"
 }
 
-// QuickJS native 目录架构契约（生产者/desktop/headless/runtime 必须一致）：
+// QuickJS native 目录架构契约（生产者/desktop/runtime 必须一致）：
 // amd64|x86_64|x64 -> x86_64；arm64|aarch64 -> aarch64；其余仅做路径安全化。
 private fun normalizeJvmNativeArch(rawArch: String): String =
     when (val arch = rawArch.lowercase()) {

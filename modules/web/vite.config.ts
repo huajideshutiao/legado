@@ -24,7 +24,7 @@ export default defineConfig(({ mode }) => {
     base: mode === "development" ? "/" : "./",
     server: {
       port: 8080,
-      // 开发期代理: npm run dev 直连本机无头后端 (:headless:run, 默认端口 1122)。
+      // 开发期代理: npm run dev 直连本机命令行模式后端 (:desktop:run -Plegado.cli, 默认端口 1122)。
       // 代理所有 legado WebApi 路径 (get*/save*/delete*/cover/image/WS/restoreBackup/addLocalBook等),
       // 不碰 vite 自身的 /src /@vite /node_modules。
       proxy: {

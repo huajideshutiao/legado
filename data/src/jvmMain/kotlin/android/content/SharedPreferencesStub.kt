@@ -2,7 +2,7 @@
 // 语义对齐 Android: 同名多次 getSharedPreferences 返回同一实例、写入可读回、重启保留 ——
 // 插件源偏好 (keiyoushi utils getPreferencesLazy / Aniyomi sourcePreferences 的 source_<id>)
 // 与 TVBox spider 偏好走这里, 配置页写入必须与插件运行时读取同源。
-// AppFilesDirs 未注册 (headless 早期/测试) 时退化为纯内存; 注册后首次访问会补读磁盘,
+// AppFilesDirs 未注册 (启动极早期/测试) 时退化为纯内存; 注册后首次访问会补读磁盘,
 // 不会终生停在内存态。
 package android.content
 

@@ -4,7 +4,7 @@
 
 ## 兼容层配套
 
-- 扩展按 `eu.kanade.tachiyomi.*` 原包名编译（compileOnly），运行时类由宿主提供：见 `app/src/main/java/eu/kanade/tachiyomi/README.md`（Android）与 `desktop-core/.../DesktopExtensionCompat.kt`（桌面 Injekt 绑定 + 拦截器链）。
+- 扩展按 `eu.kanade.tachiyomi.*` 原包名编译（compileOnly），运行时类由宿主提供：见 `app/src/main/java/eu/kanade/tachiyomi/README.md`（Android）与 `desktop/.../extension/DesktopExtensionCompat.kt`（桌面 Injekt 绑定 + 拦截器链）。
 - 数据映射与现有书籍管线对接：见本模块 `io/legado/app/model/manga/`（漫画）、`io/legado/app/model/anime/`（视频）。
 
 ## 加载契约（逐字对齐 Mihon main ExtensionLoader）

@@ -9,9 +9,8 @@ import io.legado.desktop.config.DesktopAppConfigAccessor.Companion.systemNightMo
 /**
  * 系统深色模式检测器 (Windows 注册表版, JNA)。
  *
- * 原 DesktopAppConfigAccessor 内联实现 —— 该文件随"无 UI 核心"抽取下沉 :desktop-core 后,
- * JNA 直调拆出留在 :desktop 并经 [systemNightModeDetector] 注入 (:desktop-core 的依赖闭包
- * 不得携带 jna, 供 :headless 复用)。
+ * DesktopAppConfigAccessor 的夜间主题判定走本注入点:
+ * JNA 直调拆到 GUI 侧并经 [systemNightModeDetector] 注入 (公共初始化层不碰 JNA)。
  *
  * 调用时机: desktop Main 阶段1 (registerCoreProviders 之前注册一次)。未注册时
  * DesktopAppConfigAccessor.detectSystemNightMode 回落 false (与 macOS/Linux 无注册表行为一致)。

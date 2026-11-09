@@ -14,7 +14,7 @@ import kotlin.concurrent.Volatile
  * 引导脚本读取不在此钩子内: 已统一走 composeResources 单一数据源, 见 [PackagedResourceBytesProviders]。
  *
  * Android 端由 app 模块 AndroidTvBoxHostPlatform 注册 (App.onCreate), 桌面端由
- * desktop-core DesktopTvBoxHostPlatform 注册 (DesktopCore.registerDesktopTvBoxProviders)。
+ * :desktop 的 DesktopTvBoxHostPlatform 注册 (DesktopCore.registerDesktopTvBoxProviders)。
  */
 interface TvBoxPlatform {
 

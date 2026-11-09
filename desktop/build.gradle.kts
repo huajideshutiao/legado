@@ -15,7 +15,7 @@ plugins {
     id("legado.compose")
 }
 
-// QuickJS native 目录架构契约（生产者/desktop/headless/runtime 必须一致）：
+// QuickJS native 目录架构契约（生产者/desktop/runtime 必须一致）：
 // amd64|x86_64|x64 -> x86_64；arm64|aarch64 -> aarch64；其余仅做路径安全化。
 fun normalizeJvmNativeArch(rawArch: String): String = when (val arch = rawArch.lowercase()) {
     "amd64", "x86_64", "x64" -> "x86_64"
@@ -179,9 +179,6 @@ val mediaRuntimeOnly = configurations.create("mediaRuntimeOnly")
 dependencies {
     // 引入 shared 模块 jvm target (传递 commonMain + jvmMain 全部 API)
     implementation(project(":ui"))
-    // 无 UI 核心 (从本模块机械抽取, 见 desktop-core/build.gradle.kts 头注释):
-    // Main.kt 的阶段1/阶段3 provider 注册核心子集与运行时环境初始化改调 DesktopCore
-    implementation(project(":desktop-core"))
     // shared 模块 commonMain 已声明 kotlinx-serialization-json api, 但 jvm target 传递依赖可能不完整, 显式补
     implementation(libs.kotlinx.coroutines.core)
     // JVM 的 Dispatchers.Main 由本 artifact 经 ServiceLoader 注册到 EDT, 缺失则 withContext(Main) 抛异常
@@ -280,9 +277,12 @@ dependencies {
     // ===== 桌面扩展加载 (extension loader 依赖, 坐标经 Suwayomi-Server 实证) =====
     // APK 安装包解析链: manifest 二进制 XML (apk-parser) + v1/v2/v3 签名校验 (apksig,
     // 8.x/9.x 只发布在 Google Maven, settings 已配 google(); Central 停在 2.3.0)。
-    // dex→jar 转换 (dex2jar/asm) 归 DexJarConverter 所在的 :desktop-core 声明。
     implementation(libs.apk.parser)
     implementation(libs.apksig)
+    // dex→jar 转换 (DexJarConverter / CtorSiteFixer): dex2jar + ASM
+    implementation(libs.dex.translator)
+    implementation(libs.dex.tools)
+    implementation(libs.asm)
 
     // 测试: WebView2 消息泵/环境/窗口创建闭环验证 (修复"startBrowser 首次调用打不开")
     testImplementation(libs.junit)
