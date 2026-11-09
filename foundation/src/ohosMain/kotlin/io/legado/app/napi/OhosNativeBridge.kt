@@ -422,9 +422,6 @@ object OhosNativeBridge {
     /** 待响应的图片同步请求 Map<requestId, 状态>。 */
     private val imagePendingRequests = mutableMapOf<Long, ImagePendingRequest>()
 
-    /** 已发送且不等待结果的资源释放请求 Map<requestId, pixelMapId> (回执独立识别)。 */
-    private val imageReleaseRequests = mutableMapOf<Long, Long>()
-
     /** 图片请求自增 ID (原子性由 [lock] 保护)。 */
     private var imageRequestCounter = 0L
 
@@ -461,12 +458,8 @@ object OhosNativeBridge {
             deferred.complete(response)
             return
         }
-        // 资源释放请求的回执: 独立识别, 按真实结果记录成功/失败, 不递归当成图片结果
-        val releasedId = synchronized(lock) { imageReleaseRequests.remove(requestId) }
-        if (releasedId != null) {
-            logImageReleaseResult(releasedId, resultJson)
-            return
-        }
+        // 资源释放请求的回执: 按回执自带的 release 标识与 ID 记录真实结果, 不递归当成图片结果
+        if (handleImageReleaseResult(requestId, resultJson)) return
         // 等待方已超时/异常放弃 (pending 已移除) 后到达的迟到结果: 新建的 PixelMap 无人持有,
         // 必须在 ArkTS 主线程以非阻塞 threadsafe 消息发起释放 (不能回调阻塞的 invokeImageSync)
         releaseImageResultResources(resultJson, "迟到图片结果 requestId=$requestId")
@@ -480,7 +473,6 @@ object OhosNativeBridge {
      * 发送失败或 SDK 释放失败按具体 pixelMapId 与真实错误记录, 不宣称已释放。
      */
     fun releaseImageResource(pixelMapId: Long) {
-        if (pixelMapId <= 0L) return
         val tsfn = synchronized(lock) { imageTsfn }
         if (tsfn == null) {
             AppLog.put(
@@ -489,20 +481,15 @@ object OhosNativeBridge {
             )
             return
         }
-        val requestId = synchronized(lock) {
-            val id = ++imageRequestCounter
-            imageReleaseRequests[id] = pixelMapId
-            id
-        }
+        val requestId = synchronized(lock) { ++imageRequestCounter }
         val requestJson = KS_JSON.encodeToString(
             ImageBridgeRequest(
                 requestId = requestId,
                 action = "release",
-                payload = "{\"pixelMapId\":$pixelMapId}",
+                payload = KS_JSON.encodeToString(ImageReleasePayload(pixelMapId = pixelMapId)),
             )
         )
         runCatching { tsfn(requestJson, null) }.onFailure {
-            synchronized(lock) { imageReleaseRequests.remove(requestId) }
             AppLog.put(
                 "图片资源释放请求发送失败 pixelMapId=$pixelMapId",
                 it, false, IMAGE_LOG_TAG
@@ -510,35 +497,79 @@ object OhosNativeBridge {
         }
     }
 
-    /** 解析回执/迟到响应里的 pixelMap 资源 ID, 逐个发起释放。 */
+    /** 解析回执/迟到响应里的 pixelMap 资源 ID, 逐个发起释放; 无效字段明确记录。 */
     private fun releaseImageResultResources(resultJson: String, reason: String) {
         val json = runCatching { KS_JSON.parseToJsonElement(resultJson).jsonObject }.getOrNull()
         if (json == null) {
             AppLog.put("$reason: 回执解析失败, 未释放图片资源", null, false, IMAGE_LOG_TAG)
             return
         }
-        val ids = buildList {
-            json["pixelMapId"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()?.let { add(it) }
-            json["pixelMapIds"]?.jsonArray?.forEach { element ->
-                element.jsonPrimitive.contentOrNull?.toLongOrNull()?.let { add(it) }
+        val ids = mutableListOf<Long>()
+        json["pixelMapId"]?.let { element ->
+            val id = runCatching { element.jsonPrimitive.contentOrNull?.toLongOrNull() }.getOrNull()
+            if (id == null || id <= 0L) {
+                AppLog.put("$reason: 无效 pixelMapId=$element", null, false, IMAGE_LOG_TAG)
+            } else {
+                ids.add(id)
             }
         }
-        ids.filter { it > 0L }.forEach { releaseImageResource(it) }
+        json["pixelMapIds"]?.let { element ->
+            val array = runCatching { element.jsonArray }.getOrNull()
+            if (array == null) {
+                AppLog.put("$reason: pixelMapIds 不是数组", null, false, IMAGE_LOG_TAG)
+            } else {
+                array.forEachIndexed { index, item ->
+                    val id = runCatching {
+                        item.jsonPrimitive.contentOrNull?.toLongOrNull()
+                    }.getOrNull()
+                    if (id == null || id <= 0L) {
+                        AppLog.put(
+                            "$reason: pixelMapIds[$index] 无效=$item",
+                            null, false, IMAGE_LOG_TAG
+                        )
+                    } else {
+                        ids.add(id)
+                    }
+                }
+            }
+        }
+        ids.forEach { releaseImageResource(it) }
     }
 
-    /** 记录 release 请求的真实回执: 失败带具体 ID 与 SDK 错误, 不把请求发出当成已释放。 */
-    private fun logImageReleaseResult(pixelMapId: Long, resultJson: String) {
+    /**
+     * 识别并记录 release 请求的真实回执 (回执带 release=true 与 pixelMapId)。
+     * 返回 true 表示本回执属于资源释放, 不再按图片结果处理。
+     */
+    private fun handleImageReleaseResult(requestId: Long, resultJson: String): Boolean {
         val json = runCatching { KS_JSON.parseToJsonElement(resultJson).jsonObject }.getOrNull()
-        val ok = json?.get("ok")?.jsonPrimitive?.booleanOrNull == true
-        if (ok) {
-            AppLog.putDebug("图片资源已释放 pixelMapId=$pixelMapId", tag = IMAGE_LOG_TAG)
-            return
+            ?: return false
+        val isRelease = runCatching {
+            json["release"]?.jsonPrimitive?.booleanOrNull
+        }.getOrNull() == true
+        if (!isRelease) return false
+        val id = runCatching {
+            json["pixelMapId"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+        }.getOrNull()
+        if (id == null || id <= 0L) {
+            AppLog.put(
+                "图片资源释放回执缺少有效 pixelMapId requestId=$requestId: $resultJson",
+                null, false, IMAGE_LOG_TAG
+            )
+            return true
         }
-        val error = json?.get("error")?.jsonPrimitive?.contentOrNull ?: "回执不可解析"
-        AppLog.put(
-            "图片资源释放失败 pixelMapId=$pixelMapId: $error",
-            null, false, IMAGE_LOG_TAG
-        )
+        val ok = runCatching { json["ok"]?.jsonPrimitive?.booleanOrNull }.getOrNull() == true
+        if (ok) {
+            AppLog.putDebug("图片资源已释放 pixelMapId=$id", tag = IMAGE_LOG_TAG)
+        } else {
+            val error = runCatching {
+                json["error"]?.jsonPrimitive?.contentOrNull
+            }.getOrNull() ?: "回执不可解析"
+            AppLog.put(
+                "图片资源释放失败 pixelMapId=$id: $error",
+                null, false, IMAGE_LOG_TAG
+            )
+        }
+        return true
     }
 
     /**
@@ -569,22 +600,17 @@ object OhosNativeBridge {
         val requestJson = KS_JSON.encodeToString(
             ImageBridgeRequest(requestId = requestId, action = action, payload = payloadJson)
         )
-        val tsfn = synchronized(lock) { imageTsfn }
-        if (tsfn == null) {
-            // 降级: tsfn 未注册 (napi 未接入阶段), 移除 pending 请求返回 null
-            synchronized(lock) { imagePendingRequests.remove(requestId) }
-            return null
-        }
-        runCatching { tsfn(requestJson, bytes) }.onFailure {
-            // tsfn 调用失败 (module 卸载 / 线程异常), 移除 pending 请求返回 null
-            synchronized(lock) { imagePendingRequests.remove(requestId) }
-            return null
-        }
-
-        // 阻塞等待 ArkTS 回调 (JS 引擎线程阻塞, ArkTS 主线程回调 complete, 不同线程无死锁)。
-        // 超时/异常获胜但回执随后到达时, 结果留在 state.result 中, 由 finally 释放其中资源。
+        // 登记/发送/等待都在同一个终态回收内: 发送异常与等待异常都按“未交付”释放已到达的资源
         var delivered: OhosBinaryBridgeResponse? = null
         try {
+            val tsfn = synchronized(lock) { imageTsfn } ?: return null
+            runCatching { tsfn(requestJson, bytes) }.onFailure {
+                AppLog.put(
+                    "图片请求发送失败 requestId=$requestId action=$action",
+                    it, false, IMAGE_LOG_TAG
+                )
+                return null
+            }
             delivered = runBlocking { withTimeoutOrNull(timeoutMs) { state.deferred.await() } }
             return delivered
         } finally {
@@ -2392,6 +2418,10 @@ object OhosNativeBridge {
         val action: String,
         val payload: String,
     )
+
+    /** image 资源释放请求 payload (pixelMapId 来自本应用 Map 产生的已验证资源)。 */
+    @Serializable
+    private data class ImageReleasePayload(val pixelMapId: Long)
 
     /** crypto 桥请求 payload (Kotlin → ArkTS, 同 ImageBridgeRequest 结构, action=encrypt/decrypt/sign/verify)。 */
     @Serializable

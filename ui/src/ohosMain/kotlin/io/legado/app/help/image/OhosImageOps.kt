@@ -27,7 +27,8 @@ import kotlin.native.ref.createCleaner
  * - [decode]: 通过桥接调 `image.createImageSource(bytes).createPixelMap()`, ArkTS 侧存入
  *   `Map<pixelMapId, PixelMap>`, 返回 ID 给 Kotlin; 同时保留原始 bytes 供降级/encode 回退。
  *   每个新建 PixelMap 由一个 [OhosImageRef] 的资源 token 拥有, ref 不可达后经 Cleaner
- *   向桥发送非阻塞 release 请求 (ArkTS 侧等待 PixelMap.release() 完成); 降级/借用 ref 不拥有资源。
+ *   向桥发送非阻塞 release 请求 (ArkTS 侧等该图在途 SDK 操作结束再完成 PixelMap.release(),
+ *   失败保留资源条目); 降级/借用 ref 不拥有资源。
  *   图片字节作为 invokeImageSync 数据面裸参数 (napi ArrayBuffer) 直传, 不经 base64
  * - [encode]: 通过桥接调 `image.createImagePacker().packing(pixelMap, {format, quality})`,
  *   ArkTS 侧把 packed 字节经 imageCallback 第三参数 ArrayBuffer 裸传, Kotlin 拷为 ByteArray

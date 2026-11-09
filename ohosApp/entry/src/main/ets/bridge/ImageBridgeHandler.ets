@@ -31,14 +31,25 @@ import image from '@ohos.multimedia.image';
  * - 数据面 bodyArrayBuffer: encode 的 packed 图片字节裸传 (不经 base64, 二进制保真)
  *
  * # PixelMap 句柄管理
- * ArkTS 侧用 Map<number, PixelMap> 持有 PixelMap 实例, Kotlin 侧只持有 id。
- * decode/crop/split/stitch/rotate/flip 创建新 PixelMap 并存入 Map; release 请求在
- * PixelMap.release() 的 Promise 完成后删除并结束 (官方要求 release 前确认关联异步操作已结束)。
+ * ArkTS 侧用 Map<number, PixelMapEntry> 持有 PixelMap 实例与借用/释放状态, Kotlin 侧只持有 id。
+ * decode/crop/split/stitch/rotate/flip 创建新 PixelMap 并存入 Map; release 请求先等该图
+ * 借用计数归零, 再在 PixelMap.release() 的 Promise 成功后删除并结束; 失败保留条目并回执真实错误。
  */
 
-// PixelMap 句柄存储 (id → PixelMap)
-const pixelMaps = new Map<number, image.PixelMap>();
+// PixelMap 句柄存储 (id → 资源条目: PixelMap + 真实在途使用/释放状态)
+const pixelMaps = new Map<number, PixelMapEntry>();
 let nextPixelMapId = 1;
+
+// 单个 PixelMap 的资源条目: 借用计数与释放状态归同一处
+interface PixelMapEntry {
+  id: number;
+  pixelMap: image.PixelMap;
+  inUse: number;
+  releasePending: boolean;
+  releasing: boolean;
+  releasePromise?: Promise<ImageResponse>;
+  releaseResolve?: (response: ImageResponse) => void;
+}
 
 // Image callback 类型 (由 EntryAbility 注入, 内部调 legado.imageCallback; body 为数据面裸字节)
 export type ImageCallback = (requestId: number, resultJson: string, body: ArrayBuffer | undefined) => void;
@@ -58,6 +69,7 @@ interface ImageResponse {
   width?: number;
   height?: number;
   error?: string;
+  release?: boolean;
 }
 
 // Payload 各 action 的参数结构 (encode 的 packed 字节走回调 body 裸参, 不在 JSON)
@@ -81,6 +93,102 @@ interface StitchSource {
   w: number;
   h: number;
   buffer: ArrayBuffer;
+}
+
+// ===== 资源条目与借用/释放 =====
+
+function newPixelMapEntry(id: number, pixelMap: image.PixelMap): PixelMapEntry {
+  return {
+    id: id,
+    pixelMap: pixelMap,
+    inUse: 0,
+    releasePending: false,
+    releasing: false,
+  };
+}
+
+/** 借用输入图: 在 SDK 操作终态（含失败）必须调用 [returnPixelMaps] 归还。 */
+function borrowPixelMap(id: number, borrowed: PixelMapEntry[]): PixelMapEntry | undefined {
+  const entry = pixelMaps.get(id);
+  if (entry == undefined) {
+    return undefined;
+  }
+  entry.inUse += 1;
+  borrowed.push(entry);
+  return entry;
+}
+
+/** 归还借用；最后一个借用归还且已有释放请求时，开始真实 release。 */
+function returnPixelMaps(borrowed: PixelMapEntry[]): void {
+  for (const entry of borrowed) {
+    entry.inUse = Math.max(entry.inUse - 1, 0);
+    if (entry.inUse === 0 && entry.releasePending) {
+      startRelease(entry).catch((e: Error): void => {
+        console.error('[ImageBridge] release task failed id=' + entry.id + ': ' + String(e.message ?? e));
+      });
+    }
+  }
+}
+
+/** 真实释放: 只有 SDK release() Promise 成功后才从 Map 移除；失败保留资源条目并回执错误。 */
+async function startRelease(entry: PixelMapEntry): Promise<void> {
+  if (entry.releasing || entry.inUse > 0 || !entry.releasePending) {
+    return;
+  }
+  entry.releasing = true;
+  let response: ImageResponse;
+  try {
+    await entry.pixelMap.release();
+    if (pixelMaps.get(entry.id) === entry) {
+      pixelMaps.delete(entry.id);
+    }
+    response = { ok: true, release: true, pixelMapId: entry.id };
+  } catch (e) {
+    const err = e as BusinessError;
+    const message = 'release pixelMapId=' + entry.id + ' failed: ' + (err.message ?? String(e));
+    console.error('[ImageBridge] ' + message);
+    response = { ok: false, release: true, pixelMapId: entry.id, error: message };
+  }
+  entry.releasing = false;
+  entry.releasePending = false;
+  const resolver = entry.releaseResolve;
+  entry.releasePromise = undefined;
+  entry.releaseResolve = undefined;
+  if (resolver != undefined) {
+    resolver(response);
+  }
+}
+
+/** 请求释放: 有借用未归还时等最后一个归还再 release；同一图共享同一回执 Promise。 */
+function requestRelease(entry: PixelMapEntry): Promise<ImageResponse> {
+  entry.releasePending = true;
+  if (entry.releasePromise != undefined) {
+    return entry.releasePromise;
+  }
+  const promise = new Promise<ImageResponse>((resolve) => {
+    // 包一层, 避免把 Promise 构造器的宽 resolver 类型收窄后直接存入条目
+    entry.releaseResolve = (response: ImageResponse): void => {
+      resolve(response);
+    };
+  });
+  entry.releasePromise = promise;
+  if (entry.inUse === 0) {
+    startRelease(entry).catch((e: Error): void => {
+      console.error('[ImageBridge] release task failed id=' + entry.id + ': ' + String(e.message ?? e));
+    });
+  }
+  return promise;
+}
+
+/** 撤销本次请求新建的图: 逐个等到 release 终态; 失败保留资源条目。 */
+async function releaseCreatedEntries(ids: number[]): Promise<void> {
+  for (const id of ids) {
+    const entry = pixelMaps.get(id);
+    if (entry == undefined) {
+      continue;
+    }
+    await requestRelease(entry);
+  }
 }
 
 /**
@@ -135,10 +243,10 @@ async function handleDecode(bytes: ArrayBuffer | undefined): Promise<ImageRespon
   try {
     const pixelMap = await imageSource.createPixelMap();
     const id = nextPixelMapId++;
-    pixelMaps.set(id, pixelMap);
+    pixelMaps.set(id, newPixelMapEntry(id, pixelMap));
     return { ok: true, pixelMapId: id };
   } finally {
-    // release() 返回 Promise, 必须等待完成; 失败记录真实错误
+    // release() 返回 Promise, 必须等待完成; 失败只记录辅助资源真实错误, 不改变本次解码结果
     try {
       await imageSource.release();
     } catch (e) {
@@ -150,62 +258,71 @@ async function handleDecode(bytes: ArrayBuffer | undefined): Promise<ImageRespon
 // ===== encode: PixelMap → packed 字节 (回调 body 裸传) =====
 async function handleEncode(payload: string): Promise<ImageActionResult> {
   const p = JSON.parse(payload) as EncodePayload;
-  const pixelMap = pixelMaps.get(p.pixelMapId);
-  if (pixelMap == null) {
+  const entry = pixelMaps.get(p.pixelMapId);
+  if (entry == undefined) {
     return { resp: { ok: false, error: 'pixelMap not found: ' + p.pixelMapId } };
   }
+  const borrowed: PixelMapEntry[] = [];
   const packer = image.createImagePacker();
   try {
+    borrowPixelMap(p.pixelMapId, borrowed);
     // format 规范: "jpeg" → "image/jpeg", "png" → "image/png"
     const formatStr = p.format.startsWith('image/') ? p.format : 'image/' + p.format;
-    const packed = await packer.packToData(pixelMap, { format: formatStr, quality: p.quality });
+    const packed = await packer.packToData(entry.pixelMap, { format: formatStr, quality: p.quality });
     // packed 是 ArrayBuffer: 原样裸传 (零拷贝, 二进制保真)
     return { resp: { ok: true }, body: packed };
   } catch (e) {
     const err = e as BusinessError;
     return { resp: { ok: false, error: 'packToData failed: ' + (err.message ?? String(e)) } };
   } finally {
-    // release() 返回 Promise, 必须等待完成; 失败记录真实错误
+    // release() 返回 Promise, 必须等待完成; 失败只记录辅助资源真实错误, 不改变本次编码结果
     try {
       await packer.release();
     } catch (e) {
       console.error('[ImageBridge] encode: packer.release failed: ' + String((e as BusinessError).message ?? e));
     }
+    returnPixelMaps(borrowed);
   }
 }
 
 // ===== size: 获取 PixelMap 宽高 =====
 async function handleSize(payload: string): Promise<ImageResponse> {
+  const borrowed: PixelMapEntry[] = [];
   try {
     const p = JSON.parse(payload) as SizePayload;
-    const pixelMap = pixelMaps.get(p.pixelMapId);
-    if (pixelMap == null) {
+    const entry = borrowPixelMap(p.pixelMapId, borrowed);
+    if (entry == undefined) {
       return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
     }
-    const info = pixelMap.getImageInfoSync();
+    const info = entry.pixelMap.getImageInfoSync();
     return { ok: true, width: info.size.width, height: info.size.height };
   } catch (e) {
     const err = e as BusinessError;
     return { ok: false, error: err.message ?? String(e) };
+  } finally {
+    returnPixelMaps(borrowed);
   }
 }
 
 // ===== crop: 裁剪 PixelMap 区域, 返回新 PixelMap =====
 async function handleCrop(payload: string): Promise<ImageResponse> {
+  const borrowed: PixelMapEntry[] = [];
   try {
     const p = JSON.parse(payload) as CropPayload;
-    const srcMap = pixelMaps.get(p.pixelMapId);
-    if (srcMap == null) {
+    const entry = borrowPixelMap(p.pixelMapId, borrowed);
+    if (entry == undefined) {
       return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
     }
     // 创建独立副本后裁剪 (crop 修改 in-place, 不能直接操作原图)
-    const croppedMap = await createCroppedCopy(srcMap, p.x, p.y, p.w, p.h);
+    const croppedMap = await createCroppedCopy(entry.pixelMap, p.x, p.y, p.w, p.h);
     const id = nextPixelMapId++;
-    pixelMaps.set(id, croppedMap);
+    pixelMaps.set(id, newPixelMapEntry(id, croppedMap));
     return { ok: true, pixelMapId: id };
   } catch (e) {
     const err = e as BusinessError;
     return { ok: false, error: err.message ?? String(e) };
+  } finally {
+    returnPixelMaps(borrowed);
   }
 }
 
@@ -213,17 +330,18 @@ async function handleCrop(payload: string): Promise<ImageResponse> {
 async function handleSplit(payload: string): Promise<ImageResponse> {
   // 本次请求已入 Map 的切块 id: 中途失败时逐个撤销, 不误删原图或其他请求的图
   const createdIds: number[] = [];
+  const borrowed: PixelMapEntry[] = [];
   try {
     const p = JSON.parse(payload) as SplitPayload;
-    const srcMap = pixelMaps.get(p.pixelMapId);
-    if (srcMap == null) {
+    const entry = borrowPixelMap(p.pixelMapId, borrowed);
+    if (entry == undefined) {
       return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
     }
     if (p.rows <= 0 || p.cols <= 0) {
       return { ok: false, error: 'invalid rows/cols: ' + p.rows + 'x' + p.cols };
     }
 
-    const info = srcMap.getImageInfoSync();
+    const info = entry.pixelMap.getImageInfoSync();
     const totalW = info.size.width;
     const totalH = info.size.height;
     const cellW = Math.floor(totalW / p.cols);
@@ -231,7 +349,7 @@ async function handleSplit(payload: string): Promise<ImageResponse> {
 
     // 读取一次原图像素, 供所有 cell 复用 (createPixelMap 内部拷贝数据)
     const srcBuffer = new ArrayBuffer(totalW * totalH * 4);
-    await srcMap.readPixelsToBuffer(srcBuffer);
+    await entry.pixelMap.readPixelsToBuffer(srcBuffer);
 
     const ids: number[] = [];
     for (let row = 0; row < p.rows; row++) {
@@ -240,45 +358,45 @@ async function handleSplit(payload: string): Promise<ImageResponse> {
         const y = row * cellH;
         const cellMap = await createPixelMapFromSubRegion(srcBuffer, totalW, totalH, x, y, cellW, cellH);
         const id = nextPixelMapId++;
-        pixelMaps.set(id, cellMap);
+        pixelMaps.set(id, newPixelMapEntry(id, cellMap));
         createdIds.push(id);
         ids.push(id);
       }
     }
     return { ok: true, pixelMapIds: ids };
   } catch (e) {
-    await releasePixelMaps(createdIds);
+    await releaseCreatedEntries(createdIds);
     const err = e as BusinessError;
     return { ok: false, error: err.message ?? String(e) };
+  } finally {
+    returnPixelMaps(borrowed);
   }
 }
 
 // ===== stitch: 将多个 PixelMap 合并为一个, 返回新 PixelMap =====
 async function handleStitch(payload: string): Promise<ImageResponse> {
+  const borrowed: PixelMapEntry[] = [];
   try {
     const p = JSON.parse(payload) as StitchPayload;
     if (p.pixelMapIds.length === 0) {
       return { ok: false, error: 'empty pixelMapIds' };
     }
 
-    // 收集所有源 PixelMap 及其尺寸
-    const sources: image.PixelMap[] = [];
-    const sizes: StitchSource[] = [];
+    // 逐个借用源 PixelMap; 中途缺图时 finally 归还已借用的部分
     for (const id of p.pixelMapIds) {
-      const pm = pixelMaps.get(id);
-      if (pm == null) {
+      if (borrowPixelMap(id, borrowed) == undefined) {
         return { ok: false, error: 'pixelMap not found: ' + id };
       }
-      sources.push(pm);
     }
 
     // 读取每个源 PixelMap 的像素数据
-    for (const pm of sources) {
-      const info = pm.getImageInfoSync();
+    const sizes: StitchSource[] = [];
+    for (const entry of borrowed) {
+      const info = entry.pixelMap.getImageInfoSync();
       const w = info.size.width;
       const h = info.size.height;
       const buf = new ArrayBuffer(w * h * 4);
-      await pm.readPixelsToBuffer(buf);
+      await entry.pixelMap.readPixelsToBuffer(buf);
       const src: StitchSource = { w: w, h: h, buffer: buf };
       sizes.push(src);
     }
@@ -330,98 +448,96 @@ async function handleStitch(payload: string): Promise<ImageResponse> {
       alphaType: image.AlphaType.PREMUL,
     });
     const id = nextPixelMapId++;
-    pixelMaps.set(id, stitchedMap);
+    pixelMaps.set(id, newPixelMapEntry(id, stitchedMap));
     return { ok: true, pixelMapId: id };
   } catch (e) {
     const err = e as BusinessError;
     return { ok: false, error: err.message ?? String(e) };
+  } finally {
+    returnPixelMaps(borrowed);
   }
 }
 
 // ===== rotate: PixelMap 旋转 (in-place, 先复制再旋转), 返回新 PixelMap =====
 async function handleRotate(payload: string): Promise<ImageResponse> {
-  const p = JSON.parse(payload) as RotatePayload;
-  const srcMap = pixelMaps.get(p.pixelMapId);
-  if (srcMap == null) {
-    return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
-  }
-  // rotate 是 in-place 操作, 先做可编辑副本再旋转, 不动原图
-  const copy = await createEditableCopy(srcMap);
+  const borrowed: PixelMapEntry[] = [];
   try {
-    // PixelMap.rotate(angle): 正值为顺时针 (Kotlin 侧已归一化到 [0,360))
-    await copy.rotate(p.degrees);
-  } catch (e) {
-    // 失败副本按官方 release() Promise 完整等待, 失败只记录真实错误, 不掩盖 rotate 的错误
-    try {
-      await copy.release();
-    } catch (re) {
-      console.error('[ImageBridge] rotate: release failed copy: ' + String((re as BusinessError).message ?? re));
+    const p = JSON.parse(payload) as RotatePayload;
+    const entry = borrowPixelMap(p.pixelMapId, borrowed);
+    if (entry == undefined) {
+      return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
     }
-    return { ok: false, error: 'rotate failed: ' + String((e as Error).message ?? e) };
+    // rotate 是 in-place 操作, 先做可编辑副本再旋转, 不动原图
+    const copy = await createEditableCopy(entry.pixelMap);
+    try {
+      // PixelMap.rotate(angle): 正值为顺时针 (Kotlin 侧已归一化到 [0,360))
+      await copy.rotate(p.degrees);
+    } catch (e) {
+      // 失败副本按官方 release() Promise 完整等待, 失败只记录真实错误, 不掩盖 rotate 的错误
+      try {
+        await copy.release();
+      } catch (re) {
+        console.error('[ImageBridge] rotate: release failed copy: ' + String((re as BusinessError).message ?? re));
+      }
+      return { ok: false, error: 'rotate failed: ' + String((e as Error).message ?? e) };
+    }
+    const id = nextPixelMapId++;
+    pixelMaps.set(id, newPixelMapEntry(id, copy));
+    return { ok: true, pixelMapId: id };
+  } catch (e) {
+    const err = e as BusinessError;
+    return { ok: false, error: err.message ?? String(e) };
+  } finally {
+    returnPixelMaps(borrowed);
   }
-  const id = nextPixelMapId++;
-  pixelMaps.set(id, copy);
-  return { ok: true, pixelMapId: id };
 }
 
 // ===== flip: PixelMap 翻转/镜像 (in-place, 先复制再翻转), 返回新 PixelMap =====
 async function handleFlip(payload: string): Promise<ImageResponse> {
-  const p = JSON.parse(payload) as FlipPayload;
-  const srcMap = pixelMaps.get(p.pixelMapId);
-  if (srcMap == null) {
-    return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
-  }
-  const copy = await createEditableCopy(srcMap);
+  const borrowed: PixelMapEntry[] = [];
   try {
-    await copy.flip(p.isH, p.isV);
-  } catch (e) {
-    try {
-      await copy.release();
-    } catch (re) {
-      console.error('[ImageBridge] flip: release failed copy: ' + String((re as BusinessError).message ?? re));
+    const p = JSON.parse(payload) as FlipPayload;
+    const entry = borrowPixelMap(p.pixelMapId, borrowed);
+    if (entry == undefined) {
+      return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
     }
-    return { ok: false, error: 'flip failed: ' + String((e as Error).message ?? e) };
-  }
-  const id = nextPixelMapId++;
-  pixelMaps.set(id, copy);
-  return { ok: true, pixelMapId: id };
-}
-
-// ===== release: 释放指定 PixelMap =====
-async function handleRelease(payload: string): Promise<ImageResponse> {
-  const p = JSON.parse(payload) as ReleasePayload;
-  const pm = pixelMaps.get(p.pixelMapId);
-  if (pm == null) {
-    return { ok: true };
-  }
-  try {
-    await pm.release();
-    pixelMaps.delete(p.pixelMapId);
-    return { ok: true };
-  } catch (e) {
-    // 释放失败: 带具体 ID 与真实错误回执, 不宣称已释放; 同时移出 Map 解除强引用
-    pixelMaps.delete(p.pixelMapId);
-    const err = e as BusinessError;
-    const message = 'release pixelMapId=' + p.pixelMapId + ' failed: ' + (err.message ?? String(e));
-    console.error('[ImageBridge] ' + message);
-    return { ok: false, error: message };
-  }
-}
-
-/** 撤销一组 PixelMap: 逐个等待 release() 完成, 失败记录具体 ID 与真实错误。 */
-async function releasePixelMaps(ids: number[]): Promise<void> {
-  for (const id of ids) {
-    const pm = pixelMaps.get(id);
-    if (pm == null) {
-      continue;
-    }
-    pixelMaps.delete(id);
+    const copy = await createEditableCopy(entry.pixelMap);
     try {
-      await pm.release();
+      await copy.flip(p.isH, p.isV);
     } catch (e) {
-      console.error('[ImageBridge] release failed id=' + id + ': ' + String((e as BusinessError).message ?? e));
+      try {
+        await copy.release();
+      } catch (re) {
+        console.error('[ImageBridge] flip: release failed copy: ' + String((re as BusinessError).message ?? re));
+      }
+      return { ok: false, error: 'flip failed: ' + String((e as Error).message ?? e) };
     }
+    const id = nextPixelMapId++;
+    pixelMaps.set(id, newPixelMapEntry(id, copy));
+    return { ok: true, pixelMapId: id };
+  } catch (e) {
+    const err = e as BusinessError;
+    return { ok: false, error: err.message ?? String(e) };
+  } finally {
+    returnPixelMaps(borrowed);
   }
+}
+
+// ===== release: 等该 PixelMap 当前在途使用结束后释放 =====
+async function handleRelease(payload: string): Promise<ImageResponse> {
+  let p: ReleasePayload;
+  try {
+    p = JSON.parse(payload) as ReleasePayload;
+  } catch (e) {
+    // 释放请求解析失败必须回带 release 标识, 让 Kotlin 侧按释放结果记录真实错误
+    return { ok: false, release: true, error: 'release payload parse failed: ' + String((e as Error).message ?? e) };
+  }
+  const entry = pixelMaps.get(p.pixelMapId);
+  if (entry == undefined) {
+    // 已成功释放/从未创建: 幂等成功, 不能把缺失条目当成新的失败资源
+    return { ok: true, release: true, pixelMapId: p.pixelMapId };
+  }
+  return await requestRelease(entry);
 }
 
 // ===== 工具函数 =====

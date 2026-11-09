@@ -240,8 +240,13 @@ object NativeJsEngine : JsEngine {
             scope.close()
             throw t
         }
-        // 注入 bindings 变量到 globalThis
-        injectBindings(scope, bindings)
+        // 注入 bindings 变量到 globalThis; 注入中途失败 (如图片桥包装失败) 同样关闭本 scope
+        try {
+            injectBindings(scope, bindings)
+        } catch (t: Throwable) {
+            scope.close()
+            throw t
+        }
         return scope
     }
 
@@ -394,6 +399,7 @@ object NativeJsEngine : JsEngine {
         nativeScope.dangerousApi = bindings.dangerousApi
         val prevScope = threadLocalScope
         threadLocalScope = nativeScope
+        val prevCoroutineContext = nativeScope.coroutineContext
         nativeScope.coroutineContext = coroutineContext
         nativeScope.recursiveCount++
         try {
@@ -427,7 +433,7 @@ object NativeJsEngine : JsEngine {
             }
         } finally {
             nativeScope.recursiveCount--
-            nativeScope.coroutineContext = null
+            nativeScope.coroutineContext = prevCoroutineContext
             threadLocalScope = prevScope
         }
     }
@@ -608,13 +614,9 @@ object NativeJsEngine : JsEngine {
 
     // ============ 当前线程 JS 执行上下文 ============
 
-    /** 当前线程的 JS 执行上下文 (可空), 借用视图 (不拥有 rt/ctx, close 不释放)。 */
+    /** 当前线程的 JS 执行上下文 (可空), 借用视图 (共享 owner 资源状态, close 不释放)。 */
     override fun currentContext(): JsScope? =
-        threadLocalScope?.let { owner ->
-            NativeJsScope(owner.rt, owner.ctx, ownsResources = false).also { view ->
-                view.imageBridgeState = owner.imageBridgeState
-            }
-        }
+        threadLocalScope?.let { NativeJsScope.view(it.resources) }
 
     /** 当前线程的 JS 执行上下文 (非空), 无上下文时抛 [IllegalStateException]。 */
     override fun currentContextNonNull(): JsScope =
@@ -1220,10 +1222,16 @@ object NativeJsEngine : JsEngine {
         bindings: JsBindings
     ): List<Pair<String, CValue<JSValue>>> {
         val kvs = ArrayList<Pair<String, CValue<JSValue>>>(bindings.size)
-        for ((key, value) in bindings) {
-            if (!isValidVarName(key)) continue
-            val jsValue = toJsValue(ctx, value) ?: continue
-            kvs.add(key to jsValue)
+        try {
+            for ((key, value) in bindings) {
+                if (!isValidVarName(key)) continue
+                val jsValue = toJsValue(ctx, value) ?: continue
+                kvs.add(key to jsValue)
+            }
+        } catch (t: Throwable) {
+            // 中途转换失败: 已建 JSValue 的引用在此回收, 异常仍交给 caller
+            for ((_, jsValue) in kvs) JS_FreeValue(ctx, jsValue)
+            throw t
         }
         return kvs
     }
@@ -1516,6 +1524,20 @@ function __wrapJavaHandle(handle) {
 }
 
 /**
+ * 一个 scope 的原生资源状态。
+ *
+ * 拥有者 scope 持有并释放 rt/ctx; 借用视图引用同一状态, 因此 owner close 后
+ * 借用视图读到 null 而不是旧指针。图片桥的 per-runtime 元数据也归在这里。
+ */
+internal class NativeJsScopeResources(
+    var rt: CPointer<JSRuntime>?,
+    var ctx: CPointer<JSContext>?,
+) {
+    var imageBridgeState: NativeImageBridgeState? = null
+    val handles = mutableListOf<Long>()
+}
+
+/**
  * native 端 (iOS/鸿蒙) JS 执行 scope, 持有 quickjs [JSRuntime] / [JSContext] 指针。
  *
  * 对应 quickjs 的 QuickJsJsScope (包装 QuickJsContext)。
@@ -1523,9 +1545,10 @@ function __wrapJavaHandle(handle) {
  *
  * # 资源管理
  * - 拥有者 scope 的 [rt] / [ctx] 由 [NativeJsEngine.getRuntimeScope] / [createStandaloneScope] 创建;
- *   [close] 摘取指针并置 null 后调 JS_FreeContext + JS_FreeRuntime, 重复/并发 close 只释放一次;
- * - [NativeJsEngine.currentContext] 返回借用视图 ([ownsResources] = false): 同一 rt/ctx 的
- *   临时包装, 不拥有资源, close 不释放原生对象;
+ *   [close] 在同一个 [closeLock] 内一次性摘取 rt/ctx 与全部 handle 登记, 再在锁外释放;
+ *   重复/并发 close 只释放一次;
+ * - [NativeJsEngine.currentContext] 返回借用视图: 与 owner 共享 [NativeJsScopeResources],
+ *   不拥有资源, close 不释放原生对象; owner 关闭后借用视图的 rt/ctx 读到 null;
  * - [ctx] 可能为 null (close 后), 调用方需判空 (evalInternal 等内部方法用 ctx!! 强制非空)。
  *
  * @property rt quickjs JSRuntime 指针 (cinterop CPointer<JSRuntime>), 由 JS_NewRuntime 创建
@@ -1533,30 +1556,37 @@ function __wrapJavaHandle(handle) {
  * @property dangerousApi 是否旁路安全名单 (native 上语义为 no-op, 保留字段对齐接口)
  */
 class NativeJsScope internal constructor(
-    rt: CPointer<JSRuntime>?,
-    ctx: CPointer<JSContext>?,
+    internal val resources: NativeJsScopeResources,
     /** true = 本次构造拥有 rt/ctx; false = 同一 scope 的借用视图, close 不释放原生资源。 */
     private val ownsResources: Boolean,
 ) : JsScope {
 
-    /** 创建自有 scope (close 时释放 rt/ctx)。 */
-    constructor(rt: CPointer<JSRuntime>?, ctx: CPointer<JSContext>?) : this(rt, ctx, ownsResources = true)
+    /** 创建自有 scope (close 时释放 rt/ctx 与登记的 handle)。 */
+    constructor(
+        rt: CPointer<JSRuntime>?,
+        ctx: CPointer<JSContext>?,
+        dangerousApi: Boolean = false,
+    ) : this(NativeJsScopeResources(rt, ctx), ownsResources = true) {
+        this.dangerousApi = dangerousApi
+    }
 
     /** quickjs JSRuntime 指针 (CPointer<JSRuntime>), 由 JS_NewRuntime 创建。null = 已 close。 */
-    var rt: CPointer<JSRuntime>? = rt
-        private set
+    val rt: CPointer<JSRuntime>? get() = resources.rt
 
     /** quickjs JSContext 指针 (CPointer<JSContext>), 由 JS_NewContext 创建。null = 已 close。 */
-    var ctx: CPointer<JSContext>? = ctx
-        private set
+    val ctx: CPointer<JSContext>? get() = resources.ctx
 
     /** native 上 dangerousApi 语义为 no-op (无 Java 反射可旁路), 保留字段仅为接口对齐 */
     var dangerousApi: Boolean = false
 
     /** 本 runtime 的图片桥类 ID 等元数据; getRuntimeScope/createStandaloneScope 注册一次, 借用视图共享。 */
-    internal var imageBridgeState: NativeImageBridgeState? = null
+    internal var imageBridgeState: NativeImageBridgeState?
+        get() = resources.imageBridgeState
+        set(value) {
+            resources.imageBridgeState = value
+        }
 
-    /** close 幂等保护: 摘取 rt/ctx 与清空句柄列表在同一临界区, 重复 close 只释放一次。 */
+    /** close 幂等保护: 摘取 rt/ctx 与全部 handle 登记在同一临界区, 重复 close 只释放一次。 */
     private val closeLock = SynchronizedObject()
 
     override var coroutineContext: CoroutineContext? = null
@@ -1569,7 +1599,7 @@ class NativeJsScope internal constructor(
      * [NativeJsExtensionsBridge.createJsObject] 注册 handle 时同步记录到此列表,
      * [close] 时统一调 [NativeJsExtensionsBridge.unregisterObject] 清理, 防止 Kotlin 对象内存泄漏。
      */
-    val handles = mutableListOf<Long>()
+    val handles: MutableList<Long> get() = resources.handles
 
     /** 检查协程是否已取消, 在 binding handler 中由业务层调用。 */
     override fun ensureActive() {
@@ -1590,38 +1620,41 @@ class NativeJsScope internal constructor(
      * 1. JS_FreeContext(ctx) — 释放 JSContext (会触发 GC 释放所有 JS 对象)
      * 2. JS_FreeRuntime(rt) — 释放 JSRuntime (会检查内存泄漏, dump 残留对象)
      *
-     * 幂等: 在 [closeLock] 内摘取并置 null rt/ctx 后释放, 后续调用 no-op;
+     * 幂等: 在 [closeLock] 内一次性摘取 rt/ctx 与 handle 登记并置空, 后续调用 no-op;
      * 借用视图 ([ownsResources] = false) 不释放原生对象。
      * 保留 close() 实现为满足 AutoCloseable 接口 + 业务层 try-finally 模式。
      */
     override fun close() {
-        val owned = synchronized(closeLock) {
+        val snapshot = synchronized(closeLock) {
             if (!ownsResources) return
-            val ownedCtx = ctx
-            val ownedRt = rt
-            ctx = null
-            rt = null
-            ownedCtx to ownedRt
+            val ctxToFree = resources.ctx
+            val rtToFree = resources.rt
+            val handlesToUnregister = resources.handles.toTypedArray()
+            resources.ctx = null
+            resources.rt = null
+            resources.handles.clear()
+            resources.imageBridgeState = null
+            Triple(ctxToFree, rtToFree, handlesToUnregister)
         }
-        val (ownedCtx, ownedRt) = owned
-        if (ownedCtx != null) {
-            JS_FreeContext(ownedCtx)
+        val (ctxToFree, rtToFree, handlesToUnregister) = snapshot
+        if (ctxToFree != null) {
+            JS_FreeContext(ctxToFree)
         }
-        if (ownedRt != null) {
-            JS_FreeRuntime(ownedRt)
+        if (rtToFree != null) {
+            JS_FreeRuntime(rtToFree)
         }
         // 清理 JsExtensions 桥接器 handle 表 (防止 Kotlin 对象内存泄漏)
-        val pendingHandles = synchronized(closeLock) {
-            if (handles.isEmpty()) emptyArray<Long>()
-            else handles.toTypedArray().also { handles.clear() }
-        }
-        for (handle in pendingHandles) {
+        for (handle in handlesToUnregister) {
             NativeJsExtensionsBridge.unregisterObject(handle)
         }
     }
 
-    private companion object {
-        const val MAX_RECURSION = 10
+    companion object {
+        private const val MAX_RECURSION = 10
+
+        /** 同一 owner 资源状态的借用视图 (不拥有 rt/ctx)。 */
+        internal fun view(resources: NativeJsScopeResources): NativeJsScope =
+            NativeJsScope(resources, ownsResources = false)
     }
 }
 
