@@ -1,13 +1,30 @@
-// android.text 输入相关 JVM 空壳 stub: 扩展在 EditTextPreference.OnBindEditTextListener 里
-// 给输入框挂过滤器/监听及 TextWatcher/Editable 回调参数需要这些类型。
-// 接口签名与常量逐字对齐 android-35 真实定义 (InputFilter.filter 返回可空 CharSequence;
-// Spanned 点/标记常量与别名; InputType 变体值); LengthFilter 直接小改复用 AOSP 实现
-// (含 UTF-16 高代理截断保护); getSpans 按 actual componentType 生成真实 typed 数组。
-// 仅存在于 :data 的 jvm 变体 (data/src/jvmMain), :app (android 变体) 编译与打包不接触本目录。
+// android.text 输入相关 JVM 兼容面: 扩展在 EditTextPreference.OnBindEditTextListener 里
+// 给输入框挂过滤/长度限制/变更监听, 以及 TextWatcher/Editable 回调参数需要的类型。
+// 接口签名与常量逐字对齐 android-35 定义 (InputFilter.filter 返回可空 CharSequence;
+// Spanned 点/标记常量与别名; InputType 变体值); LengthFilter 小改复用 AOSP 实现
+// (含 UTF-16 高代理截断保护)。仅存在于 :data 的 jvm 变体 (data/src/jvmMain),
+// :app (android 变体) 编译与打包不接触本目录。
 package android.text
 
 /**
- * 对齐 android.text.Spanned: CharSequence 的 span 读面 (真实接口继承 CharSequence)。
+ * 对齐 android.text.NoCopySpan: 切片/复制时不随文本复制的 span 标记面。
+ */
+interface NoCopySpan {
+
+    /** 对齐 NoCopySpan.Concrete: 需要一个不可复制的普通对象 span 时直接用它。 */
+    class Concrete : NoCopySpan
+}
+
+/**
+ * 对齐 android.text.GetChars: 一次拷出区间的 CharSequence 扩展面。
+ */
+interface GetChars : CharSequence {
+
+    fun getChars(start: Int, end: Int, dest: CharArray, destOff: Int)
+}
+
+/**
+ * 对齐 android.text.Spanned: CharSequence 的 span 读面。
  * 常量与别名逐字对齐 android-35 Spanned.java。
  */
 interface Spanned : CharSequence {
@@ -19,20 +36,26 @@ interface Spanned : CharSequence {
         const val SPAN_POINT_MARK: Int = 0x21
         const val SPAN_POINT_POINT: Int = 0x22
 
-        /** 对齐 Spanned.java: SPAN_PARAGRAPH = 0x33。 */
+        /** 段落 span: 端点须在段落边界, 端点落在全文末尾时按点处理。 */
         const val SPAN_PARAGRAPH: Int = 0x33
 
-        /** 对齐 Spanned.java: 四个 inclusive/exclusive 名是相应点/标记原常量别名。 */
+        /** 四个 inclusive/exclusive 名是相应点/标记原常量别名。 */
         const val SPAN_INCLUSIVE_EXCLUSIVE: Int = SPAN_MARK_MARK
         const val SPAN_INCLUSIVE_INCLUSIVE: Int = SPAN_MARK_POINT
         const val SPAN_EXCLUSIVE_EXCLUSIVE: Int = SPAN_POINT_MARK
         const val SPAN_EXCLUSIVE_INCLUSIVE: Int = SPAN_POINT_POINT
 
         const val SPAN_COMPOSING: Int = 0x100
+
+        /** 输入法中间态标记位 (不参与本文档的 span 区间语义)。 */
         const val SPAN_INTERMEDIATE: Int = 0x200
+
         const val SPAN_USER_SHIFT: Int = 24
         const val SPAN_USER: Int = -0x1000000
         const val SPAN_PRIORITY_SHIFT: Int = 16
+
+        /** 优先级位段: 同区间命中多个 span 时大者先返回。 */
+        const val SPAN_PRIORITY: Int = 0x00FF0000
     }
 
     fun <T> getSpans(start: Int, end: Int, type: Class<T>): Array<T>
@@ -56,10 +79,10 @@ interface Spannable : Spanned {
 
 /**
  * Editable: TextWatcher.afterTextChanged 与 EditText.getText() 的类型面。
- * 修改方法签名 (replace/insert/delete/append/clear) 对齐真实接口;
- * append 以协变返回 [Editable] 重声明, 对齐真实方法描述符。
+ * 修改方法签名 (replace/insert/delete/append/clear) 对齐真实接口; append 以协变返回
+ * [Editable] 重声明, 对齐真实方法描述符。
  */
-interface Editable : Spannable, Appendable {
+interface Editable : GetChars, Spannable, Appendable {
 
     override fun append(csq: CharSequence?): Editable
 
@@ -80,145 +103,135 @@ interface Editable : Spannable, Appendable {
     fun clear()
 
     fun clearSpans()
+
+    fun setFilters(filters: Array<InputFilter>?)
+
+    fun getFilters(): Array<InputFilter>
 }
 
 /**
- * 可变文本承载: EditText.getText() 返回的活对象 (快照会让扩展在回调里的追加静默丢失)。
- * span 存储为真实合同面 (合法 watcher 用 setSpan 跟踪编辑偏移): 列表存储 + 修改映射;
- * 修改映射由宿主适配层在文本变更时驱动 (见 DesktopEditable)。
+ * 独立可变文本对象 (EditText.getText() 返回活对象; 快照会让扩展在回调里的追加静默丢失)。
+ * span 面与文本修改区间调整由 [SpanStore] 承载; 文本修改统一走 replace 合同
+ * (过滤 → before → 修改 → on → after)。
  */
 class TextEditable(content: String = "") : Editable {
 
     private var content: StringBuilder = StringBuilder(content)
 
-    private class SpanRecord(val what: Any, var start: Int, var end: Int, var flags: Int)
+    private var filters: Array<InputFilter> = emptyArray()
 
-    private val spans = ArrayList<SpanRecord>()
+    private val spans: SpanStore = SpanStore { content }
 
     override val length: Int get() = content.length
 
     override fun get(index: Int): Char = content[index]
 
     override fun subSequence(startIndex: Int, endIndex: Int): CharSequence =
-        content.subSequence(startIndex, endIndex)
+        spans.slice(startIndex, endIndex)
 
-    override fun append(csq: CharSequence?): Editable {
-        content.append(csq ?: "")
-        return this
+    override fun getChars(start: Int, end: Int, dest: CharArray, destOff: Int) {
+        spans.getChars(start, end, dest, destOff)
     }
 
-    override fun append(csq: CharSequence?, start: Int, end: Int): Editable {
-        content.append(csq?.subSequence(start, end) ?: "")
-        return this
-    }
+    override fun append(csq: CharSequence?): Editable = replace(length, length, csq ?: "")
 
-    override fun append(c: Char): Editable {
-        content.append(c)
-        return this
-    }
+    override fun append(csq: CharSequence?, start: Int, end: Int): Editable =
+        replace(length, length, csq ?: "", start, end)
+
+    override fun append(c: Char): Editable = replace(length, length, c.toString())
 
     override fun replace(start: Int, end: Int, source: CharSequence?): Editable {
-        content.replace(start, end, source?.toString() ?: "")
-        return this
+        val text = source ?: ""
+        return replace(start, end, text, 0, text.length)
     }
 
-    override fun replace(start: Int, end: Int, source: CharSequence?, startOfSource: Int, endOfSource: Int): Editable {
-        content.replace(start, end, source?.subSequence(startOfSource, endOfSource)?.toString() ?: "")
+    override fun replace(
+        start: Int,
+        end: Int,
+        source: CharSequence?,
+        startOfSource: Int,
+        endOfSource: Int,
+    ): Editable {
+        val originalSource: CharSequence = source ?: ""
+        checkTextRange("replace", start, end, content.length)
+        checkTextRange("replace source", startOfSource, endOfSource, originalSource.length)
+        val filtered = applyInputFilters(
+            filters,
+            originalSource,
+            startOfSource,
+            endOfSource,
+            this,
+            start,
+            end,
+        )
+        // 来源可能引用本文本身: 在调整/改写任何 span 前取下文字与 span
+        val replaceSource = ReplaceSource.capture(filtered.text, filtered.start, filtered.end)
+        val oldLength = end - start
+        val newLength = replaceSource.text.length
+        if (oldLength == 0 && newLength == 0 && replaceSource.hasNoExpandableSpan) {
+            return this
+        }
+        val watchers = spans.getSpans(start, start + oldLength, TextWatcher::class.java)
+        for (watcher in watchers) watcher.beforeTextChanged(this, start, oldLength, newLength)
+        spans.adjustForReplace(start, end, newLength, content.length)
+        content.replace(start, end, replaceSource.text)
+        spans.copySourceSpans(replaceSource, start)
+        for (watcher in watchers) watcher.onTextChanged(this, start, oldLength, newLength)
+        for (watcher in watchers) watcher.afterTextChanged(this)
         return this
     }
 
     override fun insert(where: Int, text: CharSequence?): Editable {
-        content.insert(where, text?.toString() ?: "")
-        return this
+        val value = text ?: ""
+        return replace(where, where, value, 0, value.length)
     }
 
-    override fun insert(where: Int, text: CharSequence?, startOfText: Int, endOfText: Int): Editable {
-        content.insert(where, text?.subSequence(startOfText, endOfText)?.toString() ?: "")
-        return this
-    }
+    override fun insert(where: Int, text: CharSequence?, startOfText: Int, endOfText: Int): Editable =
+        replace(where, where, text ?: "", startOfText, endOfText)
 
-    override fun delete(start: Int, end: Int): Editable {
-        content.delete(start, minOf(end, content.length))
-        return this
-    }
+    override fun delete(start: Int, end: Int): Editable = replace(start, end, "")
 
     override fun clear() {
-        content.setLength(0)
+        replace(0, length, "")
     }
 
     override fun clearSpans() {
-        spans.clear()
+        spans.clearSpans()
     }
 
+    override fun setFilters(filters: Array<InputFilter>?) {
+        this.filters = filters ?: throw IllegalArgumentException()
+    }
+
+    override fun getFilters(): Array<InputFilter> = filters
+
     override fun setSpan(what: Any?, start: Int, end: Int, flags: Int) {
-        if (what == null) return
-        spans.removeAll { it.what === what }
-        spans.add(SpanRecord(what, start, end, flags))
+        spans.setSpan(what, start, end, flags)
     }
 
     override fun removeSpan(what: Any?) {
-        if (what == null) return
-        spans.removeAll { it.what === what }
+        spans.removeSpan(what)
     }
 
-    override fun <T> getSpans(start: Int, end: Int, type: Class<T>): Array<T> {
-        val matched = spans.filter { it.what != null && type.isInstance(it.what) && it.end >= start && it.start <= end }
-        @Suppress("UNCHECKED_CAST")
-        val result = java.lang.reflect.Array.newInstance(type, matched.size) as Array<T>
-        matched.forEachIndexed { index, record -> result[index] = type.cast(record.what) }
-        return result
-    }
+    override fun <T> getSpans(start: Int, end: Int, type: Class<T>): Array<T> =
+        spans.getSpans(start, end, type)
 
-    override fun getSpanStart(tag: Any?): Int = spans.firstOrNull { it.what === tag }?.start ?: -1
+    override fun getSpanStart(tag: Any?): Int = spans.getSpanStart(tag)
 
-    override fun getSpanEnd(tag: Any?): Int = spans.firstOrNull { it.what === tag }?.end ?: -1
+    override fun getSpanEnd(tag: Any?): Int = spans.getSpanEnd(tag)
 
-    override fun getSpanFlags(tag: Any?): Int = spans.firstOrNull { it.what === tag }?.flags ?: 0
+    override fun getSpanFlags(tag: Any?): Int = spans.getSpanFlags(tag)
 
-    override fun nextSpanTransition(start: Int, limit: Int, type: Class<*>?): Int {
-        var next = limit
-        for (record in spans) {
-            if (type != null && !type.isInstance(record.what)) continue
-            if (record.start > start && record.start < next) next = record.start
-            if (record.end > start && record.end < next) next = record.end
-        }
-        return next
-    }
+    override fun nextSpanTransition(start: Int, limit: Int, type: Class<*>?): Int =
+        spans.nextSpanTransition(start, limit, type)
 
-    /** 宿主 setText 时重置内容 (同一实例, 引用者立即可见)。 */
+    /** 宿主 setText 时以同一 replace 合同重置内容 (旧 span 随新文本弃置)。 */
     fun setContent(value: String) {
-        content.setLength(0)
-        content.append(value)
+        spans.clearSpans()
+        replace(0, length, value)
     }
-
-    /** 文本变更后的 span 区间映射由使用方驱动 (合同修改点已知替换区间); 存储面仅持有记录。 */
 
     override fun toString(): String = content.toString()
-}
-
-/**
- * `[start, end)` 被替换成 [replacementLength] 个字符后原区间 `[min, max)` 的位置 (与
- * foundation TextFieldBuffer 对程序化编辑的选区/span 调整一致): 整体在变化区间之前保持
- * 不动, 整体在之后按长度差平移, 落在变化区间内 (含光标恰在纯插入位置) 落到插入文本末尾,
- * 与变化区间部分重叠时只调整重叠的那一端。
- */
-internal fun mapSpanRange(
-    start: Int,
-    end: Int,
-    replacementLength: Int,
-    min: Int,
-    max: Int,
-): Pair<Int, Int> {
-    val delta = replacementLength - (end - start)
-    return when {
-        max < start -> min to max
-        min <= start && end <= max ->
-            if (min == max) (min + delta) to (min + delta) else min to (max + delta)
-        min > start && max < end -> (start + replacementLength) to (start + replacementLength)
-        min >= end -> (min + delta) to (max + delta)
-        start < min -> (start + replacementLength) to (max + delta)
-        else -> min to start
-    }
 }
 
 /** 对齐 android.text.InputFilter (真实签名: 返回可空 CharSequence, null = 接受原替换)。 */
@@ -270,7 +283,10 @@ interface InputFilter {
     }
 }
 
-/** 对齐 android.text.TextWatcher (含 NoCopySpan 标记父类型)。 */
+/**
+ * 对齐 android.text.TextWatcher (含 NoCopySpan 标记父类型): before/on 只读,
+ * after 允许继续改文本; 需要定位时用 setSpan 记录, 并在 after 里读它调整后的位置。
+ */
 interface TextWatcher : NoCopySpan {
 
     fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int)

@@ -22,7 +22,6 @@ import io.legado.app.ui.book.manga.extension.MangaExtensionSourceEntry
 import io.legado.app.ui.book.manga.extension.MangaExtensionUiState
 import io.legado.app.ui.book.manga.extension.MangaInstallState
 import io.legado.app.ui.book.manga.extension.MangaNotLoadedReason
-import io.legado.app.ui.book.manga.extension.MangaPrefCacheOwner
 import io.legado.app.ui.book.manga.extension.MangaPrefItem
 import io.legado.app.ui.book.manga.extension.MangaPrefTextSession
 import io.legado.app.ui.book.manga.extension.MangaPrefValue
@@ -66,7 +65,7 @@ open class SharedMangaExtensionPlatform(
     interface MangaExtensionConfig {
         fun isConfigurable(pkgName: String): Boolean
 
-        suspend fun buildPreferenceItems(pkgName: String, owner: MangaPrefCacheOwner): List<MangaPrefItem>
+        suspend fun buildPreferenceItems(pkgName: String): List<MangaPrefItem>
 
         suspend fun setPreferenceValue(item: MangaPrefItem, value: MangaPrefValue)
 
@@ -75,8 +74,6 @@ open class SharedMangaExtensionPlatform(
         suspend fun applyPreferenceChange(item: MangaPrefItem, newValue: Boolean)
 
         suspend fun clickTextEditor(item: MangaPrefItem): MangaPrefTextSession?
-
-        fun releasePreferenceCache(owner: MangaPrefCacheOwner)
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -250,8 +247,8 @@ open class SharedMangaExtensionPlatform(
     override fun isConfigurable(pkgName: String): Boolean =
         config?.isConfigurable(pkgName) ?: false
 
-    override suspend fun buildPreferenceItems(pkgName: String, owner: MangaPrefCacheOwner): List<MangaPrefItem> {
-        return config?.buildPreferenceItems(pkgName, owner) ?: emptyList()
+    override suspend fun buildPreferenceItems(pkgName: String): List<MangaPrefItem> {
+        return config?.buildPreferenceItems(pkgName) ?: emptyList()
     }
 
     override suspend fun setPreferenceValue(item: MangaPrefItem, value: MangaPrefValue) {
@@ -268,10 +265,6 @@ open class SharedMangaExtensionPlatform(
 
     override suspend fun clickTextEditor(item: MangaPrefItem): MangaPrefTextSession? {
         return config?.clickTextEditor(item)
-    }
-
-    override fun releasePreferenceCache(owner: MangaPrefCacheOwner) {
-        config?.releasePreferenceCache(owner)
     }
 
     // endregion

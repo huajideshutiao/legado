@@ -16,6 +16,7 @@ import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -29,9 +30,11 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSwitch
+import kotlin.concurrent.Volatile
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import kotlinx.coroutines.launch
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.manga_extension_pref_empty
@@ -47,6 +50,8 @@ import org.jetbrains.compose.resources.stringResource
  */
 data class MangaPrefDialogState(
     val pkgName: String,
+    /** 本次打开的稳定身份 (仅用于 UI 状态/作用域隔离, 不持久化; 刷新 copy 保持同值) */
+    val requestId: Long = 0,
     val loading: Boolean = true,
     /** 平台读取配置失败 (区别于"确无配置项"), UI 显示错误文案而非空表 */
     val failed: Boolean = false,
@@ -58,11 +63,11 @@ data class MangaPrefDialogState(
  *
  * 配置行交互按 androidx: 点击 → [onPreferenceClick] (平台侧 `Preference.performClick()`);
  * 开关拨动 → [onPreferenceChange] (平台侧 `callChangeListener` + `setChecked`); 真实文本项
- * ([MangaPrefItem.ref] 非 null) 走单一点击链 → [onTextItemClick] (平台侧完成 performClick
- * 合同并返回活编辑会话, 无独立竞速), 编辑弹窗由平台槽承载 (Android 真实控件/桌面兼容层
- * 活适配, 插件的单行/多行声明、hint、动态校验与提交拦截都在活会话内生效); 通用降级项与
- * 无 key 项保持既有交互原状; 选择/输入完成后的值写入经 [onSetPreference] 回平台 (平台侧
- * 走 shim setter, 持久化规则与 androidx 一致)。
+ * ([MangaPrefItem.editableText]) 走单一点击链 → [onTextItemClick] (平台侧完成 performClick
+ * 并返回活编辑会话), 编辑弹窗由平台槽承载 (Android 真实控件/桌面兼容层活适配, 插件的单行/
+ * 多行声明、hint、动态校验与提交拦截都在活会话内生效); 其余文本项与无 key 项保持既有点击
+ * 转发与快照编辑; 选择/输入完成后的值写入经 [onSetPreference] 回平台 (平台侧走 shim setter,
+ * 持久化规则与 androidx 一致)。
  *
  * 管理页行内「设置」入口与虚拟源登录直达 ([io.legado.app.ui.root.ExtensionPrefOverlayContent])
  * 共用本弹窗; 两级输入/复选状态在弹窗内部持有, 调用方只供 [dialog] 快照与回调。
@@ -74,10 +79,36 @@ internal fun ExtensionPrefDialog(
     onSetPreference: (MangaPrefItem, MangaPrefValue) -> Unit,
     onPreferenceClick: (MangaPrefItem) -> Unit = {},
     onPreferenceChange: (MangaPrefItem, Boolean) -> Unit = { _, _ -> },
-    /** 真实文本项点击: 平台完成 performClick 合同并返回活编辑会话 (null = 插件自消费)。 */
+    /** 真实文本项点击: 平台完成 performClick 并返回活编辑会话 (null = 无可用会话)。 */
     onTextItemClick: suspend (MangaPrefItem) -> MangaPrefTextSession? = { null },
     /** 活编辑会话落值后重读刷新弹窗当前值 (入口各自实现)。 */
     onReloadPrefItems: () -> Unit = {},
+    onDismiss: () -> Unit,
+) {
+    // 一次打开一个稳定身份: 重开/换包名即作废旧的编辑状态与协程作用域
+    key(dialog.requestId, dialog.pkgName) {
+        ExtensionPrefDialogContent(
+            dialog = dialog,
+            settingText = settingText,
+            onSetPreference = onSetPreference,
+            onPreferenceClick = onPreferenceClick,
+            onPreferenceChange = onPreferenceChange,
+            onTextItemClick = onTextItemClick,
+            onReloadPrefItems = onReloadPrefItems,
+            onDismiss = onDismiss,
+        )
+    }
+}
+
+@Composable
+private fun ExtensionPrefDialogContent(
+    dialog: MangaPrefDialogState,
+    settingText: String,
+    onSetPreference: (MangaPrefItem, MangaPrefValue) -> Unit,
+    onPreferenceClick: (MangaPrefItem) -> Unit,
+    onPreferenceChange: (MangaPrefItem, Boolean) -> Unit,
+    onTextItemClick: suspend (MangaPrefItem) -> MangaPrefTextSession?,
+    onReloadPrefItems: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -86,7 +117,7 @@ internal fun ExtensionPrefDialog(
     val okText = stringResource(Res.string.ok)
     val cancelText = stringResource(Res.string.cancel)
 
-    // 真实文本项的活编辑会话 (点击合同取得, 持本次实际配置对象)
+    // 真实文本项的活编辑会话 (点击路径取得, 持本次实际配置对象)
     var textSession by remember(dialog.pkgName) { mutableStateOf<MangaPrefTextSession?>(null) }
     // 通用降级项的快照编辑目标 (既有交互原状)
     var fallbackEditing by remember(dialog.pkgName) { mutableStateOf<MangaPrefItem?>(null) }
@@ -134,7 +165,7 @@ internal fun ExtensionPrefDialog(
                         onPreferenceClick = { onPreferenceClick(item) },
                         onPreferenceChange = { checked -> onPreferenceChange(item, checked) },
                         onPickChoice = { value ->
-                            onSetPreference(item, MangaPrefValue.Choice(value))
+                            if (item.key != null) onSetPreference(item, MangaPrefValue.Choice(value))
                         },
                         onTextItemClick = { item ->
                             scope.launch {
@@ -192,7 +223,7 @@ internal fun ExtensionPrefDialog(
             onDismissRequest = { multiSelect = null },
             title = item.title,
             okButton = AlertButton(text = okText) {
-                item.key?.let { onSetPreference(it, MangaPrefValue.MultiChoice(picked)) }
+                if (item.key != null) onSetPreference(item, MangaPrefValue.MultiChoice(picked))
                 multiSelect = null
             },
             cancelButton = AlertButton(text = cancelText) { multiSelect = null },
@@ -232,8 +263,9 @@ internal fun ExtensionPrefDialog(
  * 配置项单行: 开关行标题/摘要居左、开关居右; 其余类型标题/摘要在上。
  *
  * 行内不渲染当前值 (Mihon 的插件设置页即 androidx `Preference` 列表, 只渲染 title/summary;
- * 当前值只能由扩展自设 summary 的表达承载)。整行可点, 点击上报 [onPreferenceClick] (平台侧
- * `performClick()`), 并按值类型打开对应的二级弹窗 (弹窗内才显示已存值); 开关拨动上报 [onPreferenceChange]。
+ * 当前值只能由扩展自设 summary 的表达承载)。整行可点: 真实文本项走活编辑会话, 其余类型
+ * 上报 [onPreferenceClick] (平台侧 `performClick()`) 并按值类型打开对应的二级弹窗 (弹窗内才
+ * 显示已存值); 开关拨动上报 [onPreferenceChange]。
  */
 @Composable
 internal fun PrefItemRow(
@@ -287,11 +319,9 @@ internal fun PrefItemRow(
         Modifier
             .fillMaxWidth()
             .clickable(enabled = enabled) {
-                // 每类型一条链 (B4): 真实文本项的点击合同在平台侧与会话取得同链完成,
-                // 不再叠加独立点击回调; 其余类型保持原状 (点击转发 + 对应二级弹窗)
                 when (val v = item.value) {
                     is MangaPrefValue.Text -> when {
-                        item.key != null && item.ref != null -> onTextItemClick(item)
+                        item.key != null && item.editableText -> onTextItemClick(item)
                         item.key != null -> {
                             onPreferenceClick()
                             onFallbackEdit(item)
@@ -357,3 +387,30 @@ internal fun PrefChoiceDialog(
         }
     }
 }
+
+/**
+ * 插件文本项编辑弹窗的平台槽: Android 注入真实控件承载 (Mihon 同款), 桌面注入兼容层活适配
+ * 承载; 槽随桥在同端装配序列注册, 未装配端 (iOS/鸿蒙, 「设置」入口本就隐藏) 不会产生会话。
+ *
+ * request 只带活会话与回调 (会话已持实际配置对象身份); 平台控件、插件绑定监听与提交细节
+ * 全部留在槽实现内, 跨端 UI 不接触平台 View/控件类型。
+ */
+object MangaPrefTextEditorSlot {
+
+    @Volatile
+    var editor: (@Composable (MangaPrefTextEditorRequest) -> Unit)? = null
+}
+
+/**
+ * 编辑弹窗请求 (shared 数据面)。
+ *
+ * @param session 点击路径取得的活编辑会话 (持本次实际配置对象)
+ * @param onSettled 确认提交完成回调 (committed = 会话落值成功; 被插件拦截为 false), 入口据此
+ *              重读刷新; 提交异常记录日志后直接走 [onDismiss] 关闭
+ * @param onDismiss 关闭回调 (取消按钮/点外/提交故障), 会话与控件随之弃置
+ */
+class MangaPrefTextEditorRequest(
+    val session: MangaPrefTextSession,
+    val onSettled: (committed: Boolean) -> Unit,
+    val onDismiss: () -> Unit,
+)

@@ -1,10 +1,10 @@
-// android.widget JVM 空壳 stub: 满足扩展 setupPreferenceScreen 与 OnBindEditTextListener 的控件引用面
+// android.widget JVM 兼容面: 满足扩展 setupPreferenceScreen 与 OnBindEditTextListener 的控件引用面
 // (EditTextPreference.OnBindEditTextListener 拿到 EditText, Kotlin 编译的扩展把 setInputType/
 // setFilters/addTextChangedListener 的 owner 落在 TextView 上, 类层次或方法缺面即
 // NoClassDefFoundError / NoSuchMethodError)。
 // getter/setter 声明对齐 android-35 真实方法描述符 (getText/getHint/isSingleLine/
 // getInputType/getFilters/getMinLines/getMaxLines/getTransformationMethod 及对应 setter);
-// 声明面保证扩展链接, 行为状态由宿主桌面适配层以子类私有后备字段承载。
+// 声明面保证扩展链接, 行为状态由宿主桌面适配层以子类私有状态承载。
 // 仅存在于 :data 的 jvm 变体 (data/src/jvmMain), :app (android 变体) 编译与打包不接触本目录。
 package android.widget
 
@@ -79,17 +79,17 @@ open class TextView(private val context: Context? = null) : View() {
     open fun setLines(lines: Int) {
     }
 
-    /** 对齐 android.view.TextView.getMinLines()。 */
+    /** 对齐 android.view.TextView.getMinLines() (mMinMode = LINES 时返回 mMinimum)。 */
     open fun getMinLines(): Int = 1
 
-    /** 对齐 android.view.TextView.getMaxLines()。 */
+    /** 对齐 android.view.TextView.getMaxLines() (mMaxMode = LINES 时返回 mMaximum)。 */
     open fun getMaxLines(): Int = -1
 
-    open fun setSelection(index: Int) {
-    }
+    /** 对齐 android.view.TextView.getSelectionStart() (无选区 = -1)。 */
+    open fun getSelectionStart(): Int = -1
 
-    open fun setSelection(start: Int, stop: Int) {
-    }
+    /** 对齐 android.view.TextView.getSelectionEnd() (无选区 = -1)。 */
+    open fun getSelectionEnd(): Int = -1
 
     open fun setError(error: CharSequence?) {
     }
@@ -101,7 +101,7 @@ open class TextView(private val context: Context? = null) : View() {
     }
 
     /** 对齐 android.view.TextView.getFilters()。 */
-    open fun getFilters(): Array<out InputFilter> = arrayOf()
+    open fun getFilters(): Array<InputFilter> = emptyArray()
 
     open fun setTransformationMethod(method: TransformationMethod?) {
     }
@@ -127,6 +127,14 @@ open class TextView(private val context: Context? = null) : View() {
 open class EditText(context: Context? = null) : TextView(context) {
 
     override fun getText(): Editable = editable
+
+    /** 对齐 android.widget.EditText.setSelection (Selection.setSelection(getText(), ...))。 */
+    open fun setSelection(start: Int, stop: Int) {
+    }
+
+    /** 对齐 android.widget.EditText.setSelection(int)。 */
+    open fun setSelection(index: Int) {
+    }
 }
 
 /** Button 空壳: 插件动态校验把确认键 (android.R.id.button1) 改 enabled 的目标类型。 */

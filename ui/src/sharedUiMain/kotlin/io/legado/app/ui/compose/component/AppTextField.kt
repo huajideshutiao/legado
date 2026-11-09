@@ -12,10 +12,12 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActionScope
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.InputTransformation
 import androidx.compose.foundation.text.input.KeyboardActionHandler
 import androidx.compose.foundation.text.input.OutputTransformation
 import androidx.compose.foundation.text.input.TextFieldDecorator
 import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material.ExperimentalMaterialApi
@@ -30,20 +32,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.foundation.text.input.InputTransformation
-import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -91,16 +91,65 @@ fun AppTextField(
     maxLines: Int = Int.MAX_VALUE,
     minLines: Int = 1,
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    textStyle: TextStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
+    focusRequester: FocusRequester? = null,
+) {
+    AppTextFieldVisual(
+        state = rememberSyncedTextFieldState(value, onValueChange, StringFieldAdapter),
+        decorationText = StringFieldAdapter.text(value),
+        modifier = modifier,
+        enabled = enabled,
+        readOnly = readOnly,
+        label = label,
+        placeholder = placeholder,
+        leadingIcon = leadingIcon,
+        trailingIcon = trailingIcon,
+        isError = isError,
+        errorMessage = errorMessage,
+        singleLine = singleLine,
+        maxLines = maxLines,
+        minLines = minLines,
+        visualTransformation = visualTransformation,
+        inputTransformation = null,
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+        textStyle = textStyle,
+        focusRequester = focusRequester,
+    )
+}
+
+/**
+ * [AppTextField] 的 state-based 窄入口: 活文本与选区直接持有在 [TextFieldState] (调用方
+ * 唯一真源), 无 value/onValueChange 回写环。视觉与受控入口一致。
+ */
+@OptIn(ExperimentalMaterialApi::class)
+@Composable
+fun AppTextField(
+    state: TextFieldState,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    readOnly: Boolean = false,
+    label: String? = null,
+    placeholder: String? = null,
+    leadingIcon: @Composable (() -> Unit)? = null,
+    trailingIcon: @Composable (() -> Unit)? = null,
+    isError: Boolean = false,
+    errorMessage: String? = null,
+    singleLine: Boolean = false,
+    maxLines: Int = Int.MAX_VALUE,
+    minLines: Int = 1,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
     inputTransformation: InputTransformation? = null,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     textStyle: TextStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
     focusRequester: FocusRequester? = null,
 ) {
-    AppTextFieldCore(
-        value = value,
-        onValueChange = onValueChange,
-        adapter = StringFieldAdapter,
+    AppTextFieldVisual(
+        state = state,
+        decorationText = state.text.toString(),
         modifier = modifier,
         enabled = enabled,
         readOnly = readOnly,
@@ -119,50 +168,6 @@ fun AppTextField(
         keyboardActions = keyboardActions,
         textStyle = textStyle,
         focusRequester = focusRequester,
-    )
-}
-
-/**
- * [AppTextField] 的 state-based 窄入口: 活文本与选区直接持有在 [TextFieldState] (调用方
- * 唯一真源), 无 value/onValueChange 回写环。视觉与 String 重载一致。
- */
-@OptIn(ExperimentalMaterialApi::class)
-@Composable
-fun AppTextField(
-    state: TextFieldState,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    readOnly: Boolean = false,
-    label: String? = null,
-    placeholder: String? = null,
-    isError: Boolean = false,
-    errorMessage: String? = null,
-    singleLine: Boolean = false,
-    maxLines: Int = Int.MAX_VALUE,
-    minLines: Int = 1,
-    visualTransformation: VisualTransformation = VisualTransformation.None,
-    inputTransformation: InputTransformation? = null,
-    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-    keyboardActions: KeyboardActions = KeyboardActions.Default,
-    textStyle: TextStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
-) {
-    AppTextFieldStateful(
-        state = state,
-        modifier = modifier,
-        enabled = enabled,
-        readOnly = readOnly,
-        label = label,
-        placeholder = placeholder,
-        isError = isError,
-        errorMessage = errorMessage,
-        singleLine = singleLine,
-        maxLines = maxLines,
-        minLines = minLines,
-        visualTransformation = visualTransformation,
-        inputTransformation = inputTransformation,
-        keyboardOptions = keyboardOptions,
-        keyboardActions = keyboardActions,
-        textStyle = textStyle,
     )
 }
 
@@ -188,16 +193,14 @@ fun AppTextField(
     maxLines: Int = Int.MAX_VALUE,
     minLines: Int = 1,
     visualTransformation: VisualTransformation = VisualTransformation.None,
-    inputTransformation: InputTransformation? = null,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     textStyle: TextStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
     focusRequester: FocusRequester? = null,
 ) {
-    AppTextFieldCore(
-        value = value,
-        onValueChange = onValueChange,
-        adapter = TextFieldValueFieldAdapter,
+    AppTextFieldVisual(
+        state = rememberSyncedTextFieldState(value, onValueChange, TextFieldValueFieldAdapter),
+        decorationText = TextFieldValueFieldAdapter.text(value),
         modifier = modifier,
         enabled = enabled,
         readOnly = readOnly,
@@ -211,7 +214,7 @@ fun AppTextField(
         maxLines = maxLines,
         minLines = minLines,
         visualTransformation = visualTransformation,
-        inputTransformation = inputTransformation,
+        inputTransformation = null,
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
         textStyle = textStyle,
@@ -220,14 +223,14 @@ fun AppTextField(
 }
 
 /**
- * 两个 [AppTextField] 重载的公共实现体, 取值差异全部经 [adapter] 注入。
+ * 三个 [AppTextField] 入口共用的唯一绘制体: [state] 承载活文本与选区, [decorationText] 只供
+ * 装饰盒判定 label 浮动与占位符 (受控入口取调用方声明值, state 入口取库当前文本)。
  */
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
-private fun <T : Any> AppTextFieldCore(
-    value: T,
-    onValueChange: (T) -> Unit,
-    adapter: SyncedFieldAdapter<T>,
+private fun AppTextFieldVisual(
+    state: TextFieldState,
+    decorationText: String,
     modifier: Modifier,
     enabled: Boolean,
     readOnly: Boolean,
@@ -248,7 +251,11 @@ private fun <T : Any> AppTextFieldCore(
     focusRequester: FocusRequester?,
 ) {
     AppTextFieldImpl(
-        modifier = modifier.padding(start = DesignTokens.spacingXs, end = DesignTokens.spacingXs, bottom = DesignTokens.spacingXs),
+        modifier = modifier.padding(
+            start = DesignTokens.spacingXs,
+            end = DesignTokens.spacingXs,
+            bottom = DesignTokens.spacingXs,
+        ),
         isError = isError,
         errorMessage = errorMessage,
     ) {
@@ -262,10 +269,6 @@ private fun <T : Any> AppTextFieldCore(
             fontSize = effectiveFontSize,
             lineHeight = effectiveFontSize * 1.5f,
         )
-        // 新版 TextFieldState API (受控双同步): 用户编辑 → onValueChange;
-        // 外部 value → state (程序化修改)。旧版 value/onValueChange 契约保持不变。
-        // 同步语义见 rememberSyncedTextFieldState (出向/入向同一收集体, 按触发侧决定动作)
-        val state = rememberSyncedTextFieldState(value, onValueChange, adapter)
         // 呈现变换实例稳定 (remember): BasicTextField 内部按 (state, codepointTransformation,
         // outputTransformation) remember TransformedTextFieldState, 实例一变就重建 TextLayoutState
         // 缓存 → 全文重变换+重布局。内联新建实例会让每次重组都全量重算 (无变换字段也中招);
@@ -311,98 +314,7 @@ private fun <T : Any> AppTextFieldCore(
             cursorBrush = SolidColor(colors.cursorColor(isError).value),
             decorator = TextFieldDecorator { innerTextField ->
                 AppDecorationBox(
-                    text = adapter.text(value),
-                    innerTextField = innerTextField,
-                    enabled = enabled,
-                    visualTransformation = visualTransformation,
-                    interactionSource = interactionSource,
-                    isError = isError,
-                    label = label,
-                    placeholder = placeholder,
-                    leadingIcon = leadingIcon,
-                    trailingIcon = trailingIcon,
-                    colors = colors,
-                )
-            },
-        )
-    }
-}
-
-/**
- * [AppTextField] 的 state-based 实现: 活文本与选区唯一真源在调用方 [TextFieldState],
- * 无回写环。视觉与受控重载一致。
- */
-@OptIn(ExperimentalMaterialApi::class)
-@Composable
-private fun AppTextFieldStateful(
-    state: TextFieldState,
-    modifier: Modifier,
-    enabled: Boolean,
-    readOnly: Boolean,
-    label: String?,
-    placeholder: String?,
-    isError: Boolean,
-    errorMessage: String?,
-    singleLine: Boolean,
-    maxLines: Int,
-    minLines: Int,
-    visualTransformation: VisualTransformation,
-    inputTransformation: InputTransformation?,
-    keyboardOptions: KeyboardOptions,
-    keyboardActions: KeyboardActions,
-    textStyle: TextStyle,
-) {
-    AppTextFieldImpl(
-        modifier = modifier.padding(start = DesignTokens.spacingXs, end = DesignTokens.spacingXs, bottom = DesignTokens.spacingXs),
-        isError = isError,
-        errorMessage = errorMessage,
-    ) {
-        val colors = AppFieldColors
-        val interactionSource = remember { MutableInteractionSource() }
-        val textColor = textStyle.color.takeOrElse { colors.textColor(enabled).value }
-        val effectiveFontSize = textStyle.fontSize.takeOrElse { 16.sp }
-        val effectiveTextStyle = textStyle.copy(
-            fontSize = effectiveFontSize,
-            lineHeight = effectiveFontSize * 1.5f,
-        )
-        val outputTransformation = remember(visualTransformation) {
-            if (visualTransformation === VisualTransformation.None) {
-                null
-            } else {
-                visualTransformation.asOutputTransformation()
-            }
-        }
-        BasicTextField(
-            state = state,
-            modifier = Modifier
-                .fillMaxWidth()
-                .singleLineVerticalKeyGuard(singleLine)
-                .indicatorLine(enabled, isError, interactionSource, colors)
-                .defaultMinSize(
-                    minWidth = TextFieldDefaults.MinWidth,
-                    minHeight = appFieldDefaultMinHeight(
-                        label != null,
-                        effectiveFontSize,
-                    ),
-                )
-                .heightIn(max = safeMaxFieldHeight(LocalDensity.current)),
-            enabled = enabled,
-            readOnly = readOnly,
-            textStyle = effectiveTextStyle.copy(color = textColor),
-            inputTransformation = inputTransformation,
-            keyboardOptions = keyboardOptions,
-            onKeyboardAction = keyboardActions.toKeyboardActionHandler(keyboardOptions.imeAction),
-            lineLimits = if (singleLine) {
-                TextFieldLineLimits.SingleLine
-            } else {
-                TextFieldLineLimits.MultiLine(minLines, maxLines)
-            },
-            outputTransformation = outputTransformation,
-            interactionSource = interactionSource,
-            cursorBrush = SolidColor(colors.cursorColor(isError).value),
-            decorator = TextFieldDecorator { innerTextField ->
-                AppDecorationBox(
-                    text = state.text.toString(),
+                    text = decorationText,
                     innerTextField = innerTextField,
                     enabled = enabled,
                     visualTransformation = visualTransformation,

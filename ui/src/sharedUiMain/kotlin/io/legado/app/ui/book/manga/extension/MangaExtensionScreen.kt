@@ -136,7 +136,7 @@ fun MangaExtensionScreen(
     onSetPreference: (MangaPrefItem, MangaPrefValue) -> Unit = { _, _ -> },
     onPreferenceClick: (MangaPrefItem) -> Unit = {},
     onPreferenceChange: (MangaPrefItem, Boolean) -> Unit = { _, _ -> },
-    /** 真实文本项点击: 平台完成 performClick 合同并返回活编辑会话。 */
+    /** 真实文本项点击: 平台按实际对象完成点击并返回活编辑会话。 */
     onTextItemClick: suspend (MangaPrefItem) -> MangaPrefTextSession? = { null },
     /** 活编辑会话落值后重读刷新配置弹窗当前值。 */
     onReloadPrefItems: () -> Unit = {},
