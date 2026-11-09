@@ -209,6 +209,12 @@
 -dontwarn com.github.weisj.**
 # kotlinx.coroutines.debug AgentPremain 引用 android 注解
 -dontwarn android.annotation.**
+# bouncycastle 的 JCA 算法实现由运行期字符串注册决定 (provider.addAlgorithm("Cipher.SM4",
+# PREFIX + "$ECB") → ClassUtil.loadClass 反射加载), 静态分析看不到引用; 只 -dontwarn 时
+# 这些实现类被当死代码删除, 算法在产物里静默消失 (实测: 瘦身后 SM4/ECB/PKCS7Padding 抛
+# NoSuchAlgorithmException, 只剩被直接引用的 SM4Engine)。书源 JS 可调用任意 JCA 算法,
+# 所以保留整个 provider 层, 不列举当前用到的 SM2/SM3/SM4/PKCS7Padding。
+-keep class org.bouncycastle.jcajce.provider.** { *; }
 # apk-parser 证书 CMS 校验引用可选 bouncycastle, dex2jar (d2j-jasmin/d2j-smali)
 # 传递的 antlr-runtime DOTTreeGenerator 引用可选 stringtemplate; 桌面端均未引入,
 # 引用点功能不可达, 缺类会被 shrink 裁除
