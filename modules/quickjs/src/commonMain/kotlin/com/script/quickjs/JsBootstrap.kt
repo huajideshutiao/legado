@@ -100,22 +100,34 @@ function __exitBindings() {
 
 /**
  * 把 Class 句柄包装为 JS 构造函数 + Proxy。
+ *
+ * Class 句柄按 scope 所有权回收, 此 proxy 可被 JavaImporter/全局变量长期缓存:
+ * 每次静态成员/构造/接口判定前都按 path 在当前 scope 重新取得有效句柄。
  */
 function __wrapClass(classHandle, path) {
     var dangerousApi = __getDangerousApi();
 
+    function resolveClassHandle() {
+        var current = __loadJavaClass(path, dangerousApi);
+        if (current > 0) {
+            classHandle = current;
+            return current;
+        }
+        throw new Error('Java class not available: ' + path);
+    }
+
     var ctor = function() {};
     var proxy = new Proxy(ctor, {
         get: function(target, prop) {
-            if (prop === '__classHandle__') return classHandle;
-            if (prop === '__java_class_handle__') return classHandle;
+            if (prop === '__classHandle__') return resolveClassHandle();
+            if (prop === '__java_class_handle__') return resolveClassHandle();
             if (prop === '__pkgPath__') return undefined;
             if (prop === 'name') return path;
             if (prop === 'length') return 0;
             if (typeof prop !== 'string') return undefined;
             if (prop === 'toString') return function() { return 'class ' + path; };
             if (prop === 'then') return undefined;
-            var field = __getStaticField(classHandle, prop, dangerousApi);
+            var field = __getStaticField(resolveClassHandle(), prop, dangerousApi);
             if (field !== null && field !== undefined) return field;
             var innerClassHandle = __loadJavaClass(path + "$" + prop, dangerousApi);
             if (innerClassHandle > 0) {
@@ -123,20 +135,21 @@ function __wrapClass(classHandle, path) {
             }
             return function() {
                 var args = Array.prototype.slice.call(arguments);
-                return __callStaticMethod(classHandle, prop, args, dangerousApi);
+                return __callStaticMethod(resolveClassHandle(), prop, args, dangerousApi);
             };
         },
         construct: function(target, args) {
+            var currentClassHandle = resolveClassHandle();
             if (args.length === 1
                 && typeof args[0] === 'object' && args[0] !== null
                 && args[0].__classHandle__ === undefined
-                && __isInterface(classHandle, dangerousApi)) {
+                && __isInterface(currentClassHandle, dangerousApi)) {
                 return JavaAdapter(proxy, args[0]);
             }
-            return __newJavaInstance(classHandle, args, dangerousApi);
+            return __newJavaInstance(currentClassHandle, args, dangerousApi);
         },
         apply: function(target, thisArg, args) {
-            return __newJavaInstance(classHandle, args, dangerousApi);
+            return __newJavaInstance(resolveClassHandle(), args, dangerousApi);
         }
     });
     return proxy;
@@ -269,6 +282,7 @@ function JavaAdapter(superClass, implementation) {
     if (!superClass || !superClass.__classHandle__) {
         throw new Error('JavaAdapter requires a Java class/interface as first argument');
     }
+    // __classHandle__ getter 按 path 在当前 scope 重新取得有效句柄
     var classHandle = superClass.__classHandle__;
     var jsFnHandle = __registerJsFunction(implementation);
     var dangerousApi = __getDangerousApi();
