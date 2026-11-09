@@ -14,6 +14,8 @@ import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import io.legado.app.ui.compose.platform.LocalOverlayTopInset
 import io.legado.app.ui.compose.platform.OverlayInsetGap
+import io.legado.app.ui.compose.theme.ProvideWindowTextMenu
+import io.legado.app.ui.compose.theme.WithTextMenuWindowArea
 import kotlin.math.max
 
 /**
@@ -25,6 +27,10 @@ import kotlin.math.max
  * 本组件统一截获 [PopupPositionProvider] 返回的 y 坐标，强制 y >= topInset，
  * 彻底消除全应用所有下拉菜单、自动补全框、划词浮动条被控制条遮挡的问题。
  * 移动端 [LocalOverlayTopInset] 恒为 0.dp，零开销零副作用。
+ *
+ * 弹出层是独立窗口 (独立的 LayoutNode 根): 层内文本字段的选区菜单必须用本窗口自己的
+ * 通道与宿主, 继承主窗的提供者会在跨根取选区坐标时失败。故每个 Popup 都装一套,
+ * 菜单只在弹出层窗口内容区里摆放。
  */
 @Composable
 fun AppPopup(
@@ -67,7 +73,11 @@ fun AppPopup(
         popupPositionProvider = clampedProvider,
         onDismissRequest = onDismissRequest,
         properties = properties,
-        content = content,
+        content = {
+            WithTextMenuWindowArea { area ->
+                ProvideWindowTextMenu(area, content)
+            }
+        },
     )
 }
 

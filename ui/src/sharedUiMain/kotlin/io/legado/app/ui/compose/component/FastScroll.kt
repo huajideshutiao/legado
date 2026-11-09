@@ -1,12 +1,15 @@
 package io.legado.app.ui.compose.component
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -61,6 +64,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.LocalEInk
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -89,13 +93,14 @@ internal data class FastScrollPlatformConfig(
 internal expect val fastScrollPlatform: FastScrollPlatformConfig
 
 private val FastScrollThumbHeight = 100.dp
+
+/** 按内容比例计算滑块长度时的最小长度 (短列表的滑块仍可抓取)。 */
+private val FastScrollMinThumbHeight = 24.dp
 private const val FastScrollHideDelayMillis = 1_000L
 private const val FastScrollShowAnimationMillis = 300
 private const val FastScrollHideAnimationMillis = 300
 
 private data class FastScrollMetrics(
-    val itemCount: Int,
-    val visibleItemCount: Int,
     val positionFraction: Float,
     /** 列表是否实际可滚动 (内容超出视口), 决定滚动条是否显示。 */
     val needsScroll: Boolean,
@@ -209,7 +214,6 @@ private fun BoxScope.LazyListFastScrollbar(state: LazyListState) {
             val layout = state.layoutInfo
             val visible = layout.visibleItemsInfo
             val itemCount = layout.totalItemsCount
-            val visibleCount = visible.size
             val first = visible.firstOrNull()
             val averageItemSize = if (visible.isEmpty()) {
                 0f
@@ -223,8 +227,6 @@ private fun BoxScope.LazyListFastScrollbar(state: LazyListState) {
             val maxScrollOffsetPx = (itemCount * averageItemSize - viewportSizePx)
                 .coerceAtLeast(0f)
             FastScrollMetrics(
-                itemCount = itemCount,
-                visibleItemCount = visibleCount,
                 needsScroll = state.canScrollBackward || state.canScrollForward,
                 positionFraction = when {
                     !state.canScrollBackward -> 0f
@@ -262,7 +264,6 @@ private fun BoxScope.LazyGridFastScrollbar(state: LazyGridState) {
             val layout = state.layoutInfo
             val visible = layout.visibleItemsInfo
             val itemCount = layout.totalItemsCount
-            val visibleCount = visible.size
             val first = visible.firstOrNull()
             val visibleRows = visible.groupBy { it.row }.filterKeys { it >= 0 }
             val averageRowHeight = if (visibleRows.isEmpty()) {
@@ -283,8 +284,6 @@ private fun BoxScope.LazyGridFastScrollbar(state: LazyGridState) {
             val maxScrollOffsetPx = (totalRows * averageRowHeight - viewportSizePx)
                 .coerceAtLeast(0f)
             FastScrollMetrics(
-                itemCount = itemCount,
-                visibleItemCount = visibleCount,
                 needsScroll = state.canScrollBackward || state.canScrollForward,
                 positionFraction = when {
                     !state.canScrollBackward -> 0f
@@ -326,7 +325,6 @@ private fun BoxScope.LazyStaggeredGridFastScrollbar(state: LazyStaggeredGridStat
             val layout = state.layoutInfo
             val visible = layout.visibleItemsInfo
             val itemCount = layout.totalItemsCount
-            val visibleCount = visible.size
             val first = visible.firstOrNull()
             val averageItemHeight = if (visible.isEmpty()) {
                 0f
@@ -340,8 +338,6 @@ private fun BoxScope.LazyStaggeredGridFastScrollbar(state: LazyStaggeredGridStat
             val viewportSizePx = (layout.viewportEndOffset - layout.viewportStartOffset).coerceAtLeast(0)
             val maxScrollOffsetPx = (estimatedTotalRows * averageItemHeight - viewportSizePx).coerceAtLeast(0f)
             FastScrollMetrics(
-                itemCount = itemCount,
-                visibleItemCount = visibleCount,
                 needsScroll = state.canScrollBackward || state.canScrollForward,
                 positionFraction = when {
                     !state.canScrollBackward -> 0f
@@ -373,25 +369,93 @@ private fun BoxScope.LazyStaggeredGridFastScrollbar(state: LazyStaggeredGridStat
     )
 }
 
+/**
+ * [ScrollState] 驱动的快速滚动条 (没有 lazy 布局信息可用时的窄适配)。
+ *
+ * 滑块位置与长度用真实滚动偏移 [ScrollState.value]、可滚范围 [ScrollState.maxValue] 与
+ * 视口 [ScrollState.viewportSize] 推出 (长度按视口占比给, 不是列表那档固定 100dp);
+ * 拖动直接调 [ScrollState.scrollTo]。绘制、显隐规则与拖动/悬停交互全部复用 [FastScrollbar]。
+ *
+ * 首次组合即显示 (移动端沿用既有"静止约 1s 后隐藏", 桌面常显), 让面板打开就能看出还能滚。
+ */
+@Composable
+internal fun BoxScope.ScrollStateFastScrollbar(
+    state: ScrollState,
+    interactive: Boolean,
+) {
+    // 首次布局前 ScrollState 仍是未测量状态 (maxValue = Int.MAX_VALUE, viewportSize = 0):
+    // 此时不组合滚动条 —— 没有真实滑块长度, 也不该存在默认 100dp 滑块与它的触区
+    if (state.viewportSize <= 0 || state.maxValue <= 0 || state.maxValue == Int.MAX_VALUE) return
+    val metrics by remember(state) {
+        derivedStateOf {
+            FastScrollMetrics(
+                needsScroll = state.maxValue > 0,
+                positionFraction = if (state.maxValue <= 0) {
+                    0f
+                } else {
+                    (state.value.toFloat() / state.maxValue).coerceIn(0f, 1f)
+                },
+            )
+        }
+    }
+    // 视口与可滚范围都已实测 (上方守卫): 滑块长度按内容比例给出, 不用列表的固定 100dp
+    val thumbFraction = fastScrollThumbFraction(state.viewportSize, state.maxValue)
+    FastScrollbar(
+        metrics = metrics,
+        isScrollInProgress = state.isScrollInProgress,
+        isDragged = state.interactionSource.collectIsDraggedAsState().value,
+        scrollToFraction = { fraction ->
+            state.scrollTo((fraction * state.maxValue).roundToInt())
+        },
+        thumbFraction = thumbFraction,
+        initiallyVisible = true,
+        interactive = interactive,
+    )
+}
+
+/**
+ * 滑块长度占轨道比例: 视口占"视口 + 可滚范围"的份额。
+ *
+ * 调用方只在视口已测量且确实可滚动时调用 (不可滚动时滚动条不显示, 不产生该比例);
+ * 用浮点相加, 可滚范围达到 Int 上限也不溢出。
+ */
+internal fun fastScrollThumbFraction(viewportSize: Int, maxValue: Int): Float =
+    viewportSize.toFloat() / (viewportSize.toFloat() + maxValue.toFloat())
+
 @Composable
 private fun BoxScope.FastScrollbar(
     metrics: FastScrollMetrics,
     isScrollInProgress: Boolean,
     isDragged: Boolean,
     scrollToFraction: suspend (Float) -> Unit,
+    /** 滑块长度占轨道比例; null = 固定 100dp (列表既有规格) */
+    thumbFraction: Float? = null,
+    /** 首次组合即显示 (菜单展开后立刻给出还能滚的提示), 之后照既有隐藏规则走 */
+    initiallyVisible: Boolean = fastScrollPlatform.alwaysVisible,
+    /** 是否接收拖动/悬停输入; false = 只留绘制 (菜单退场动画期间) */
+    interactive: Boolean = true,
 ) {
     // 内容无需滚动时不显示滚动条 (桌面常显/悬停高亮只对可滚动列表生效)。
-    if (!metrics.needsScroll || metrics.visibleItemCount <= 0) return
+    if (!metrics.needsScroll) return
 
     val colors = AppTheme.colors
+    // 墨水屏不做过渡 (残影且无灰阶意义): 滑块缩放与整条显隐都直接到位
+    val eInk = LocalEInk.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     var trackHeightPx by remember { mutableIntStateOf(0) }
     var dragFraction by remember { mutableStateOf<Float?>(null) }
     var scrollJob by remember { mutableStateOf<Job?>(null) }
-    var scrollbarVisible by remember { mutableStateOf(fastScrollPlatform.alwaysVisible) }
-    val thumbHeightPx = with(density) { FastScrollThumbHeight.toPx() }
-        .coerceAtMost(trackHeightPx.toFloat())
+    var scrollbarVisible by remember {
+        mutableStateOf(initiallyVisible || fastScrollPlatform.alwaysVisible)
+    }
+    val thumbHeightPx = if (thumbFraction == null) {
+        with(density) { FastScrollThumbHeight.toPx() }.coerceAtMost(trackHeightPx.toFloat())
+    } else {
+        (trackHeightPx * thumbFraction)
+            .coerceAtLeast(with(density) { FastScrollMinThumbHeight.toPx() })
+            .coerceAtMost(trackHeightPx.toFloat())
+    }
     val travelPx = (trackHeightPx - thumbHeightPx).coerceAtLeast(0f)
     val positionFraction = dragFraction ?: metrics.positionFraction
     // 交互激活态: 按住 或 (桌面悬停, 等于提前响应按压)。
@@ -400,7 +464,7 @@ private fun BoxScope.FastScrollbar(
     val active = dragFraction != null || (fastScrollPlatform.hoverHighlight && hovered)
     val selectedScale by animateFloatAsState(
         targetValue = if (active) 1.5f else 1f,
-        animationSpec = tween(200),
+        animationSpec = tween(if (eInk) 0 else 200),
         label = "fastScrollHandleScale",
     )
 
@@ -434,19 +498,27 @@ private fun BoxScope.FastScrollbar(
     AnimatedVisibility(
         visible = scrollbarVisible,
         modifier = Modifier.align(Alignment.CenterEnd),
-        enter = fadeIn(tween(FastScrollShowAnimationMillis)) +
-            slideInHorizontally(tween(FastScrollShowAnimationMillis)) { it },
-        exit = fadeOut(tween(FastScrollHideAnimationMillis)) +
-            slideOutHorizontally(tween(FastScrollHideAnimationMillis)) { it },
+        enter = if (eInk) {
+            EnterTransition.None
+        } else {
+            fadeIn(tween(FastScrollShowAnimationMillis)) +
+                slideInHorizontally(tween(FastScrollShowAnimationMillis)) { it }
+        },
+        exit = if (eInk) {
+            ExitTransition.None
+        } else {
+            fadeOut(tween(FastScrollHideAnimationMillis)) +
+                slideOutHorizontally(tween(FastScrollHideAnimationMillis)) { it }
+        },
     ) {
         Box(
             Modifier
                 .fillMaxHeight()
                 .width(fastScrollPlatform.touchWidth)
-                .hoverable(hoverInteraction)
+                .then(if (interactive) Modifier.hoverable(hoverInteraction) else Modifier)
                 .onSizeChanged { trackHeightPx = it.height }
                 // key 不含 itemCount: 分页加载/刷新时项数变化会重启手势协程打断正在进行的拖拽
-                .pointerInput(trackHeightPx, thumbHeightPx) {
+                .then(if (interactive) Modifier.pointerInput(trackHeightPx, thumbHeightPx) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         // 对齐原版 onTouchEvent ACTION_DOWN: 按下即定位跳转, 不等 touch slop
@@ -463,7 +535,7 @@ private fun BoxScope.FastScrollbar(
                             dragFraction = null
                         }
                     }
-                },
+                } else Modifier),
         ) {
             Box(
                 Modifier

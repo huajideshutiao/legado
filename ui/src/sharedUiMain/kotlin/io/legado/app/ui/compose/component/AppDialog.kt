@@ -77,11 +77,10 @@ import io.legado.app.ui.compose.platform.PlatformSheetSystemBarIcons
 import io.legado.app.ui.compose.platform.PlatformSheetWindowStyle
 import io.legado.app.ui.compose.platform.bottomSheetBottomInsets
 import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
-import io.legado.app.ui.compose.theme.AppTextMenuState
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.compose.theme.LocalAppTextMenuState
-import io.legado.app.ui.compose.theme.ProvidePlatformTextMenu
+import io.legado.app.ui.compose.theme.ProvideWindowTextMenu
+import io.legado.app.ui.compose.theme.WithTextMenuWindowArea
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.toComposeEasing
 import io.legado.app.utils.ScreenInfoProviders
@@ -178,21 +177,20 @@ internal fun Modifier.blockInputWhile(active: Boolean): Modifier = pointerInput(
 }
 
 /**
- * 在"当前独立窗口"内安装 per-window 文本菜单通道 (Android 新通道)。
+ * 在"当前独立窗口"内安装本窗口自己的文本菜单通道 (新旧两条) + 菜单宿主。
  *
- * Compose CompositionLocal 跨 Dialog 窗口继承: Dialog 内长按文本时 framework 会用**本窗口**
- * 的选区节点坐标调 `contentBounds(主窗口 host 坐标)`, 两坐标不在同一 hierarchy, 抛
- * `IllegalArgumentException: layouts are not part of the same hierarchy` 闪退。故每个独立窗口
- * 的根再包一层 [ProvidePlatformTextMenu] (Box 坐标 + 弹层宿主都挂本窗口), 长按走本窗口自己的
- * provider —— 与 framework 默认实现 (每窗口 Box + coordinatesProvider, 见
- * AndroidTextContextMenuToolbarProvider) 的设计一致; 主窗口通道仍由 AppTheme 根部提供。
+ * 对话框是独立窗口: 它只绘制、只命中自己的内容区, 菜单也必须画在这里而不是主窗口 ——
+ * CompositionLocal 会跨 Dialog 继承主窗口的通道, 若继续用它, 菜单会落到主窗口根上去。
+ * 故每个对话框根都无条件装一套新通道, 并把量出的窗口内容区交给菜单定位作边界。
+ *
+ * 正文里再包 [AppTheme] 时那层看到已有通道就只取主题 (见 ProvideAppTextToolbar), 不会
+ * 把对话框菜单收进某一段子区域。
  */
 @Composable
 internal fun WithWindowTextMenu(content: @Composable () -> Unit) {
-    ProvidePlatformTextMenu(
-        state = LocalAppTextMenuState.current ?: remember { AppTextMenuState() },
-        content = content,
-    )
+    WithTextMenuWindowArea { area ->
+        ProvideWindowTextMenu(area, content)
+    }
 }
 
 /**

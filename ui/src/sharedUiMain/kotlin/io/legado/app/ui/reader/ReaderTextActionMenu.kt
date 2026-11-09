@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
 import io.legado.app.ui.book.read.page.SelectionGeometry
+import io.legado.app.ui.compose.theme.AppTextMenuAnchorSpace
 import io.legado.app.ui.compose.theme.AppTextMenuContent
 import io.legado.app.ui.compose.theme.AppTextMenuEntry
 import io.legado.app.ui.compose.theme.AppTextMenuHost
@@ -37,8 +38,9 @@ internal class ReaderTextPlatformAction(val label: String, val onClick: (String)
 internal expect fun rememberReaderTextPlatformActions(): List<ReaderTextPlatformAction>
 
 /**
- * 一次请求: 选中文本 + 弹菜单那一刻定格的选区几何 (全窗坐标, 同次快照, 见
- * [io.legado.app.ui.book.read.page.PageSelectionState.geometrySnapshot])。
+ * 一次请求: 选中文本 + 弹菜单那一刻定格的选区几何 (阅读页正文容器坐标, 同次快照, 见
+ * [io.legado.app.ui.book.read.page.PageSelectionState.geometrySnapshot]); 菜单宿主与选区
+ * 同处一个容器, 由宿主按自身根坐标折一次到窗口。
  * 同步调用链内直接传递, 不经任何暂存；旧调用名 ([anchor]/[textArea]) 是同一几何的
  * 计算属性, 不重复缓存同源字段。
  *
@@ -109,7 +111,9 @@ object ReaderDictWord {
  * [actions] 的旧闭包一起钉住。菜单只在显示期间参与组合。
  *
  * @param request null = 不显示
- * @param onFinally 动作执行后收尾 (对照原版 onMenuActionFinally: 关菜单 + 取消页内选择)
+ * @param onFinally 动作执行后收尾 (对照原版 onMenuActionFinally: 关菜单 + 取消页内选择)。
+ *   点卡片外不经过这里: 透明外框不接收输入, 点按落到正文/选区手柄, 由阅读页自己的
+ *   取消选区流程关菜单 (见 ReadViewComposable 的手势层)
  */
 @Composable
 fun ReaderTextActionMenu(
@@ -136,6 +140,10 @@ fun ReaderTextActionMenu(
             }
         AppTextMenuContent(
             anchor = req.anchor,
+            // 一次选区请求 = 一个显示会话: 平台每次 onTextSelected 都会新建请求, 即新会话
+            session = req,
+            // 选区几何与宿主同处页面容器: 声明为容器局部坐标, 由宿主按自身根坐标折一次
+            anchorSpace = AppTextMenuAnchorSpace.Container,
             // 两个真实手柄作为通用二维避让矩形输入定位流程 (保护两游标是同类约束)
             protectedRects = listOf(req.geometry.startHandle, req.geometry.endHandle),
             entries = buildList {
@@ -155,5 +163,5 @@ fun ReaderTextActionMenu(
             },
         )
     }
-    AppTextMenuHost(content, onDismiss = onFinally)
+    AppTextMenuHost(content)
 }

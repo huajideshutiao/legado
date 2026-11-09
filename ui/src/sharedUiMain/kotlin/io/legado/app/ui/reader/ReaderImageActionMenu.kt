@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.compose.platform.syncGetString
+import io.legado.app.ui.compose.theme.AppTextMenuAnchorSpace
 import io.legado.app.ui.compose.theme.AppTextMenuContent
 import io.legado.app.ui.compose.theme.AppTextMenuEntry
 import io.legado.app.ui.compose.theme.AppTextMenuHost
@@ -17,21 +18,19 @@ import io.legado.app.ui.compose.theme.AppTextMenuHost
  *
  * 对照原版 ReadBookActivity.onImageLongPress 的系统 ActionMode 浮窗 (旧 PopupAction)
  * 改为自绘: 平台仅通过 [ReaderImageActions] 注入动作能力，菜单项文案、顺序及收尾由
- * [buildReaderImageActionMenuRequest] 统一装配。关闭链路
- * ([ImageActionMenuRequest.onDismiss] / 条目动作后) 对照原版
- * popupAction.onDismiss → ReadBookEvents.postSelectionCancel:
- * 取消页内选择标志 (imageMenuShowing), 后续翻页/换章走同一条 selectionDismissed 链路
- * 调 [dismiss] 关闭。
+ * [buildReaderImageActionMenuRequest] 统一装配。关闭链路对照原版
+ * popupAction.onDismiss → ReadBookEvents.postSelectionCancel: 条目动作后直接收尾;
+ * 点卡片外不经菜单 —— 透明外框不接收输入, 点按落到页内手势层, 它按原版
+ * ACTION_DOWN 分支取消选择并关菜单 (ReadViewComposable 的 isActive/imageMenuShowing
+ * 判据), 后续翻页/换章走同一条 selectionDismissed 链路调 [dismiss] 关闭。
  *
  * 请求经 [show]/[dismiss] 注入: Android 的 onImageLongPress 落在 Activity 层, 无组合
  * 环境; 宿主 [Host] 挂在文本菜单宿主旁 (MainActivity 根组合)。
  */
 class ImageActionMenuRequest(
-    /** 锚点矩形 (长按点), 与弹层宿主父节点同坐标空间 (窗口坐标)。 */
+    /** 锚点矩形 (长按点), 与菜单宿主同处页面容器局部坐标。 */
     val anchor: Rect,
     val entries: List<ImageActionMenuEntry>,
-    /** 菜单被关闭 (点外部/退场) 时回调; 条目动作的关闭由条目 onClick 自行收尾。 */
-    val onDismiss: () -> Unit,
 )
 
 /** 图片操作菜单项 (标签 + 动作)。 */
@@ -74,7 +73,6 @@ fun buildReaderImageActionMenuRequest(
             add(entry("action_save", actions.save))
             actions.selectDirectory?.let { add(entry("select_folder", it)) }
         },
-        onDismiss = ::finish,
     )
 }
 
@@ -101,9 +99,13 @@ object ReaderImageActionMenu {
         val content = req?.let {
             AppTextMenuContent(
                 anchor = it.anchor,
+                // 一次 show() 的请求 = 一个显示会话
+                session = it,
+                // 长按点与宿主同处页面容器局部坐标
+                anchorSpace = AppTextMenuAnchorSpace.Container,
                 entries = it.entries.map { e -> AppTextMenuEntry(e.label, e.onClick) },
             )
         }
-        AppTextMenuHost(content, onDismiss = { req?.onDismiss?.invoke() })
+        AppTextMenuHost(content)
     }
 }
