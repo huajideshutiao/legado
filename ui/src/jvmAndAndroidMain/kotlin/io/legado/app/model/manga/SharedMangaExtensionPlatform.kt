@@ -22,7 +22,9 @@ import io.legado.app.ui.book.manga.extension.MangaExtensionSourceEntry
 import io.legado.app.ui.book.manga.extension.MangaExtensionUiState
 import io.legado.app.ui.book.manga.extension.MangaInstallState
 import io.legado.app.ui.book.manga.extension.MangaNotLoadedReason
+import io.legado.app.ui.book.manga.extension.MangaPrefCacheOwner
 import io.legado.app.ui.book.manga.extension.MangaPrefItem
+import io.legado.app.ui.book.manga.extension.MangaPrefTextSession
 import io.legado.app.ui.book.manga.extension.MangaPrefValue
 import io.legado.app.ui.book.manga.extension.MangaRepoItem
 import kotlinx.coroutines.CancellationException
@@ -64,15 +66,17 @@ open class SharedMangaExtensionPlatform(
     interface MangaExtensionConfig {
         fun isConfigurable(pkgName: String): Boolean
 
-        suspend fun buildPreferenceItems(pkgName: String): List<MangaPrefItem>
+        suspend fun buildPreferenceItems(pkgName: String, owner: MangaPrefCacheOwner): List<MangaPrefItem>
 
-        suspend fun setPreferenceValue(pkgName: String, key: String, value: MangaPrefValue)
+        suspend fun setPreferenceValue(item: MangaPrefItem, value: MangaPrefValue)
 
-        suspend fun performPreferenceClick(pkgName: String, index: Int)
+        suspend fun performPreferenceClick(item: MangaPrefItem)
 
-        suspend fun applyPreferenceChange(pkgName: String, index: Int, newValue: Boolean)
+        suspend fun applyPreferenceChange(item: MangaPrefItem, newValue: Boolean)
 
-        suspend fun bindEditTextPreference(pkgName: String, index: Int)
+        suspend fun clickTextEditor(item: MangaPrefItem): MangaPrefTextSession?
+
+        fun releasePreferenceCache(owner: MangaPrefCacheOwner)
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -246,23 +250,28 @@ open class SharedMangaExtensionPlatform(
     override fun isConfigurable(pkgName: String): Boolean =
         config?.isConfigurable(pkgName) ?: false
 
-    override suspend fun buildPreferenceItems(pkgName: String): List<MangaPrefItem> =
-        config?.buildPreferenceItems(pkgName) ?: emptyList()
-
-    override suspend fun setPreferenceValue(pkgName: String, key: String, value: MangaPrefValue) {
-        config?.setPreferenceValue(pkgName, key, value)
+    override suspend fun buildPreferenceItems(pkgName: String, owner: MangaPrefCacheOwner): List<MangaPrefItem> {
+        return config?.buildPreferenceItems(pkgName, owner) ?: emptyList()
     }
 
-    override suspend fun performPreferenceClick(pkgName: String, index: Int) {
-        config?.performPreferenceClick(pkgName, index)
+    override suspend fun setPreferenceValue(item: MangaPrefItem, value: MangaPrefValue) {
+        config?.setPreferenceValue(item, value)
     }
 
-    override suspend fun applyPreferenceChange(pkgName: String, index: Int, newValue: Boolean) {
-        config?.applyPreferenceChange(pkgName, index, newValue)
+    override suspend fun performPreferenceClick(item: MangaPrefItem) {
+        config?.performPreferenceClick(item)
     }
 
-    override suspend fun bindEditTextPreference(pkgName: String, index: Int) {
-        config?.bindEditTextPreference(pkgName, index)
+    override suspend fun applyPreferenceChange(item: MangaPrefItem, newValue: Boolean) {
+        config?.applyPreferenceChange(item, newValue)
+    }
+
+    override suspend fun clickTextEditor(item: MangaPrefItem): MangaPrefTextSession? {
+        return config?.clickTextEditor(item)
+    }
+
+    override fun releasePreferenceCache(owner: MangaPrefCacheOwner) {
+        config?.releasePreferenceCache(owner)
     }
 
     // endregion

@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,9 +57,12 @@ data class MangaPrefDialogState(
  * 插件自带配置弹窗: 渲染平台侧从 shim `PreferenceScreen` 降级来的 [MangaPrefItem] 列表。
  *
  * 配置行交互按 androidx: 点击 → [onPreferenceClick] (平台侧 `Preference.performClick()`);
- * 开关拨动 → [onPreferenceChange] (平台侧 `callChangeListener` + `setChecked`); 文本行打开输入框时
- * [onBindEditText] (对应 `EditTextPreference.OnBindEditTextListener` 的触发时机)。
- * 选择/输入完成后的值写入经 [onSetPreference] 回平台 (平台侧走 shim setter, 持久化规则与 androidx 一致)。
+ * 开关拨动 → [onPreferenceChange] (平台侧 `callChangeListener` + `setChecked`); 真实文本项
+ * ([MangaPrefItem.ref] 非 null) 走单一点击链 → [onTextItemClick] (平台侧完成 performClick
+ * 合同并返回活编辑会话, 无独立竞速), 编辑弹窗由平台槽承载 (Android 真实控件/桌面兼容层
+ * 活适配, 插件的单行/多行声明、hint、动态校验与提交拦截都在活会话内生效); 通用降级项与
+ * 无 key 项保持既有交互原状; 选择/输入完成后的值写入经 [onSetPreference] 回平台 (平台侧
+ * 走 shim setter, 持久化规则与 androidx 一致)。
  *
  * 管理页行内「设置」入口与虚拟源登录直达 ([io.legado.app.ui.root.ExtensionPrefOverlayContent])
  * 共用本弹窗; 两级输入/复选状态在弹窗内部持有, 调用方只供 [dialog] 快照与回调。
@@ -67,10 +71,13 @@ data class MangaPrefDialogState(
 internal fun ExtensionPrefDialog(
     dialog: MangaPrefDialogState,
     settingText: String,
-    onSetPreference: (String, MangaPrefValue) -> Unit,
+    onSetPreference: (MangaPrefItem, MangaPrefValue) -> Unit,
     onPreferenceClick: (MangaPrefItem) -> Unit = {},
     onPreferenceChange: (MangaPrefItem, Boolean) -> Unit = { _, _ -> },
-    onBindEditText: (MangaPrefItem) -> Unit = {},
+    /** 真实文本项点击: 平台完成 performClick 合同并返回活编辑会话 (null = 插件自消费)。 */
+    onTextItemClick: suspend (MangaPrefItem) -> MangaPrefTextSession? = { null },
+    /** 活编辑会话落值后重读刷新弹窗当前值 (入口各自实现)。 */
+    onReloadPrefItems: () -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -79,10 +86,13 @@ internal fun ExtensionPrefDialog(
     val okText = stringResource(Res.string.ok)
     val cancelText = stringResource(Res.string.cancel)
 
-    // EditText 二级输入框待写项 (key + 初始文本)
-    var editing by remember(dialog.pkgName) { mutableStateOf<Pair<String, String>?>(null) }
+    // 真实文本项的活编辑会话 (点击合同取得, 持本次实际配置对象)
+    var textSession by remember(dialog.pkgName) { mutableStateOf<MangaPrefTextSession?>(null) }
+    // 通用降级项的快照编辑目标 (既有交互原状)
+    var fallbackEditing by remember(dialog.pkgName) { mutableStateOf<MangaPrefItem?>(null) }
     // MultiSelectListPreference 二级复选待写项
     var multiSelect by remember(dialog.pkgName) { mutableStateOf<MangaPrefItem?>(null) }
+    val scope = rememberCoroutineScope()
 
     AppAlertDialog(
         onDismissRequest = onDismiss,
@@ -123,13 +133,16 @@ internal fun ExtensionPrefDialog(
                         item = item,
                         onPreferenceClick = { onPreferenceClick(item) },
                         onPreferenceChange = { checked -> onPreferenceChange(item, checked) },
-                        onBindEditText = { onBindEditText(item) },
                         onPickChoice = { value ->
-                            item.key?.let { onSetPreference(it, MangaPrefValue.Choice(value)) }
+                            onSetPreference(item, MangaPrefValue.Choice(value))
                         },
-                        onEditText = { current ->
-                            item.key?.let { editing = it to current }
+                        onTextItemClick = { item ->
+                            scope.launch {
+                                val session = onTextItemClick(item)
+                                if (session != null) textSession = session
+                            }
                         },
+                        onFallbackEdit = { fallbackEditing = it },
                         onEditMulti = { multiSelect = item },
                     )
                 }
@@ -137,15 +150,31 @@ internal fun ExtensionPrefDialog(
         }
     }
 
-    editing?.let { (key, initial) ->
-        var text by remember(key) { mutableStateOf(initial) }
+    textSession?.let { session ->
+        // 槽随桥在同端装配序列注册, 会话在则槽在 (缺失即宿主装配错误, 不伪回落)
+        val editorSlot = requireNotNull(MangaPrefTextEditorSlot.editor)
+        editorSlot(
+            MangaPrefTextEditorRequest(
+                session = session,
+                onSettled = { committed ->
+                    if (committed) onReloadPrefItems()
+                    textSession = null
+                },
+                onDismiss = { textSession = null },
+            )
+        )
+    }
+
+    fallbackEditing?.let { item ->
+        val initial = (item.value as? MangaPrefValue.Text)?.value.orEmpty()
+        var text by remember(item) { mutableStateOf(initial) }
         AppAlertDialog(
-            onDismissRequest = { editing = null },
+            onDismissRequest = { fallbackEditing = null },
             okButton = AlertButton(text = okText) {
-                onSetPreference(key, MangaPrefValue.Text(text))
-                editing = null
+                onSetPreference(item, MangaPrefValue.Text(text))
+                fallbackEditing = null
             },
-            cancelButton = AlertButton(text = cancelText) { editing = null },
+            cancelButton = AlertButton(text = cancelText) { fallbackEditing = null },
         ) {
             AppTextField(
                 value = text,
@@ -211,9 +240,9 @@ internal fun PrefItemRow(
     item: MangaPrefItem,
     onPreferenceClick: () -> Unit,
     onPreferenceChange: (Boolean) -> Unit,
-    onBindEditText: () -> Unit,
     onPickChoice: (String) -> Unit,
-    onEditText: (String) -> Unit,
+    onTextItemClick: (MangaPrefItem) -> Unit,
+    onFallbackEdit: (MangaPrefItem) -> Unit,
     onEditMulti: () -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -258,18 +287,26 @@ internal fun PrefItemRow(
         Modifier
             .fillMaxWidth()
             .clickable(enabled = enabled) {
-                // 先上报点击 (平台侧 performClick), 再按值类型打开宿主侧的二级弹窗
-                onPreferenceClick()
+                // 每类型一条链 (B4): 真实文本项的点击合同在平台侧与会话取得同链完成,
+                // 不再叠加独立点击回调; 其余类型保持原状 (点击转发 + 对应二级弹窗)
                 when (val v = item.value) {
-                    is MangaPrefValue.Choice -> choiceExpanded = true
-                    is MangaPrefValue.MultiChoice -> onEditMulti()
-                    is MangaPrefValue.Text -> {
-                        // 输入框对话框绑定时机 = androidx 的 OnBindEditTextListener
-                        onBindEditText()
-                        onEditText(v.value)
+                    is MangaPrefValue.Text -> when {
+                        item.key != null && item.ref != null -> onTextItemClick(item)
+                        item.key != null -> {
+                            onPreferenceClick()
+                            onFallbackEdit(item)
+                        }
+                        else -> onPreferenceClick()
                     }
 
-                    else -> {}
+                    else -> {
+                        onPreferenceClick()
+                        when (v) {
+                            is MangaPrefValue.Choice -> choiceExpanded = true
+                            is MangaPrefValue.MultiChoice -> onEditMulti()
+                            else -> {}
+                        }
+                    }
                 }
             }
             .padding(vertical = DesignTokens.spacingDefault),

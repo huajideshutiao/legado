@@ -44,7 +44,9 @@ import io.legado.app.model.manga.MangaSourceDelegateImpl
 import io.legado.app.model.manga.SharedMangaExtensionPlatform
 import io.legado.app.model.manga.SharedMangaSourceConfig
 import io.legado.app.ui.book.changecover.CoverStorageServiceProviders
+import io.legado.app.ui.book.manga.extension.DesktopMangaPrefTextEditor
 import io.legado.app.ui.book.manga.extension.MangaExtensionServiceProviders
+import io.legado.app.ui.book.manga.extension.MangaPrefTextEditorSlot
 import io.legado.app.ui.association.registerUiRuleSubAutoUpdateHook
 import io.legado.app.ui.compose.platform.registerComposeStringProviders
 import io.legado.app.web.registerDesktopWebServerPlatform
@@ -325,8 +327,12 @@ object DesktopCore {
         // 插件服务构造期即启动一份长命状态收集器 (SharedMangaExtensionPlatform.init), 重复注册会
         // 留下第二份永不取消的收集器; 与 app 端进程级单例同语义: 已有实例就不再新建
         if (MangaExtensionServiceProviders.getOrNull() == null) {
+            val context = Context()
+            val config = SharedMangaSourceConfig(context)
+            // 编辑弹窗槽捕获同一个配置桥所在端的编辑 Context (兼容层控件需要非空 context)
+            MangaPrefTextEditorSlot.editor = { request -> DesktopMangaPrefTextEditor(request, context) }
             MangaExtensionServiceProviders.register(
-                SharedMangaExtensionPlatform(SharedMangaSourceConfig(Context()))
+                SharedMangaExtensionPlatform(config)
             )
         }
         // Web 服务 provider (NanoHTTPD 独立, 不依赖其他 provider):

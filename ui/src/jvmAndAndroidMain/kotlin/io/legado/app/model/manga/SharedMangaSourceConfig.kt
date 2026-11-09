@@ -16,17 +16,24 @@ import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.Source
 import io.legado.app.constant.AppLog
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.coroutine.PlatformDispatchers
 import io.legado.app.help.extension.MangaExtensionManager
 import io.legado.app.model.manga.SharedMangaExtensionPlatform.MangaExtensionConfig
+import io.legado.app.ui.book.manga.extension.MangaPrefCacheOwner
 import io.legado.app.ui.book.manga.extension.MangaPrefItem
+import io.legado.app.ui.book.manga.extension.MangaPrefItemRef
+import io.legado.app.ui.book.manga.extension.MangaPrefTextEditorSession
+import io.legado.app.ui.book.manga.extension.MangaPrefTextSession
 import io.legado.app.ui.book.manga.extension.MangaPrefValue
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 插件自带配置的平台桥 (JVM+Android 共用): 构造 shim `PreferenceScreen`、把扩展偏好
- * (`source_<sourceId>`) 设为 PreferenceDataStore 并回填当前值; 交互事件按 androidx 语义转发到
- * shim 实例 (点击 → `performClick()`; 开关切换 → `callChangeListener` + `setChecked`;
+ * (`source_<sourceId>`) 设为 PreferenceDataStore 并回填当前值; 交互事件按 androidx 语义
+ * 转发到 shim 实例 (点击 → `performClick()`; 开关切换 → `callChangeListener` + `setChecked`;
  * 输入框 → `OnBindEditTextListener`), 与 Mihon 的 SourcePreferencesFragment 同口径。
+ * 实际配置对象身份经快照句柄 ([MangaPrefItem.ref]) 直达, 无序号/键查找缓存。
  * app 端经 AndroidMangaExtensionPlatform、desktop 端经 DesktopCore 启动序列注入;
  * 未注入端 (iOS/鸿蒙) 「设置」入口隐藏。
  */
@@ -39,7 +46,7 @@ class SharedMangaSourceConfig(
 
     override fun isConfigurable(pkgName: String): Boolean = MangaExtensionManager.isPkgConfigurable(pkgName)
 
-    override suspend fun buildPreferenceItems(pkgName: String): List<MangaPrefItem> =
+    override suspend fun buildPreferenceItems(pkgName: String, owner: MangaPrefCacheOwner): List<MangaPrefItem> =
         withContext(IoDispatcher) {
             val source = sourceOf(pkgName) ?: return@withContext emptyList()
             val prefs = sourcePrefsOf(source) ?: return@withContext emptyList()
@@ -64,54 +71,90 @@ class SharedMangaSourceConfig(
             val preferences = screen.getPreferences()
             // 对齐 androidx PreferenceManager.dispatchSetInitialValue: 已持久化的值读回 Preference 实例
             preferences.forEach { it.dispatchSetInitialValue(prefs) }
-            // 事件通道依赖活 Preference 实例 (无 key 项只能按序号定位), 缓存本次构建结果,
-            // 下次构建/写入自动覆盖。
-            prefCache[pkgName] = preferences
-            // 交互按下标回传并打在全量表 (prefCache) 上, 故 index 必须是全量序号;
-            // visible 只决定渲染哪些项, 不改变序号。
+            // 构建归属登记: 入口关闭时按归属定点释放, 不清另一入口的构建
+            activeScreens[owner] = screen
+            // 实际对象身份随快照句柄直达; visible 只决定渲染哪些项。
             preferences.mapIndexedNotNull { index, item ->
                 if (item.visible) item.toPrefItem(index) else null
             }
         }
 
-    override suspend fun setPreferenceValue(pkgName: String, key: String, value: MangaPrefValue) {
-        withContext(IoDispatcher) {
-            val preference = prefCache[pkgName]?.firstOrNull { it.key == key } ?: return@withContext
+    override fun releasePreferenceCache(owner: MangaPrefCacheOwner) {
+        // 仅清本归属; 另一入口的构建不受影响
+        activeScreens.remove(owner)
+    }
+
+    override suspend fun setPreferenceValue(item: MangaPrefItem, value: MangaPrefValue) {
+        withContext(PlatformDispatchers.mainDispatcher) {
+            val preference = item.ref.ownerAsPreference()
             // 经 shim 的 setter 落值: 持久化规则 (key/持久化开关) 与 androidx 一致
             when (value) {
                 is MangaPrefValue.Text -> (preference as? EditTextPreference)?.setText(value.value)
-                is MangaPrefValue.Flag -> (preference as? TwoStatePreference)?.setChecked(value.value)
                 is MangaPrefValue.Choice -> (preference as? ListPreference)?.setValue(value.value)
                 is MangaPrefValue.MultiChoice -> (preference as? MultiSelectListPreference)?.setValues(value.values)
+                is MangaPrefValue.Flag -> (preference as? TwoStatePreference)?.setChecked(value.value)
             }
         }
     }
 
-    override suspend fun performPreferenceClick(pkgName: String, index: Int) {
-        withContext(IoDispatcher) {
-            prefCache[pkgName]?.getOrNull(index)?.performClick()
+    override suspend fun performPreferenceClick(item: MangaPrefItem) {
+        withContext(PlatformDispatchers.mainDispatcher) {
+            item.ref.ownerAsPreference().performClick()
         }
     }
 
-    override suspend fun applyPreferenceChange(pkgName: String, index: Int, newValue: Boolean) {
-        withContext(IoDispatcher) {
-            val preference = prefCache[pkgName]?.getOrNull(index) as? TwoStatePreference
+    override suspend fun applyPreferenceChange(item: MangaPrefItem, newValue: Boolean) {
+        withContext(PlatformDispatchers.mainDispatcher) {
+            val preference = item.ref.ownerAsPreference() as? TwoStatePreference
                 ?: return@withContext
             // 对齐 androidx: callChangeListener 通过才落值 (未挂监听视为通过)
             if (preference.callChangeListener(newValue)) preference.setChecked(newValue)
         }
     }
 
-    override suspend fun bindEditTextPreference(pkgName: String, index: Int) {
-        withContext(IoDispatcher) {
-            val preference = prefCache[pkgName]?.getOrNull(index) as? EditTextPreference
-                ?: return@withContext
-            preference.onBindEditTextListener?.onBindEditText(EditText(appContext))
+    override suspend fun clickTextEditor(item: MangaPrefItem): MangaPrefTextSession? {
+        return withContext(PlatformDispatchers.mainDispatcher) {
+            val preference = item.ref.ownerAsEditText() ?: return@withContext null
+            // 对齐 androidx performClick 合同: 插件监听消费即结束; 否则 EditTextPreference
+            // 默认路径 = 请求宿主显示编辑对话框 (shim onClick 经 onShowEditDialog 交还)
+            var session: MangaPrefTextEditorSession? = null
+            try {
+                preference.onShowEditDialog = { opened -> session = sessionOf(opened) }
+                preference.performClick()
+            } finally {
+                preference.onShowEditDialog = null
+            }
+            session
         }
     }
 
-    /** 最近一次构建的 shim Preference 列表 (按 pkgName; 交互事件按序号定位到它)。 */
-    private val prefCache = HashMap<String, List<Preference>>()
+    /** 会话持本次定位到的实际对象: 后续绑定/提交全针对它, 与交互重建后的缓存替换无关。 */
+    private fun sessionOf(preference: EditTextPreference): MangaPrefTextEditorSession {
+        return object : MangaPrefTextEditorSession {
+            override fun initialText(): String = preference.getText().orEmpty()
+
+            override fun onBindEditText(editText: EditText) {
+                preference.onBindEditTextListener?.onBindEditText(editText)
+            }
+
+            override suspend fun commit(text: String): Boolean {
+                // View/模型操作 (插件 changeListener 可引用实际 EditText) 在主线程;
+                // 真实平台 SharedPreferences.apply 本就异步落盘, 磁盘持久化边界待另批
+                return withContext(PlatformDispatchers.mainDispatcher) {
+                    // 对齐 androidx/Mihon 确认路径: callChangeListener 通过才落值
+                    if (preference.callChangeListener(text)) {
+                        preference.setText(text)
+                        true
+                    } else {
+                        false
+                    }
+                }
+            }
+        }
+    }
+
+    /** 构建归属登记 (入口关闭按归属定点释放; 实际对象由快照句柄持有, 随弃即回收)。 */
+    private val activeScreens = ConcurrentHashMap<MangaPrefCacheOwner, PreferenceScreen>()
 
     /**
      * 扩展自身偏好文件: `source_<sourceId>` (对齐 keiyoushi.utils.getPreferencesLazy /
@@ -198,6 +241,23 @@ class SharedMangaSourceConfig(
             entries = entries,
             entryValues = entryValues,
             enabled = enabled,
+            // 全部项带实际对象句柄: 交互与文本会话按它直达实际对象
+            ref = SharedPrefItemRef(this),
         )
     }
 }
+
+/** 平台私有句柄实现: 持确切配置对象, 不经 Any 万能盒。 */
+private class SharedPrefItemRef(
+    val preference: Preference,
+) : MangaPrefItemRef
+
+/** 句柄消费 (平台内): 取确切 Preference / EditTextPreference。 */
+private fun MangaPrefItemRef.ownerAsPreference(): Preference =
+    when (this) {
+        is SharedPrefItemRef -> preference
+        else -> error("未知配置句柄实现: $this")
+    }
+
+private fun MangaPrefItemRef.ownerAsEditText(): EditTextPreference? =
+    ownerAsPreference() as? EditTextPreference

@@ -4,8 +4,9 @@ package io.legado.app.ui.book.manga.extension
  * 插件自带配置项 (跨层数据类, 对齐 keiyoushi extensions-lib 的 androidx.preference shim 面)。
  *
  * 为什么转数据类而不是直传 `androidx.preference.PreferenceScreen`:
- * - shim 只在 `:data` 的 jvmAndAndroidMain 源集, UI 层要引用它必须把 :data 依赖改成 `api`
- *   (现为 `implementation`), 且 sharedUiMain 是四端共享源码, 鸿蒙/iOS 无该 shim 会编译不过;
+ * - sharedUiMain 是四端共享源码, 鸿蒙/iOS 无该 shim (shim 类型只存在于 :data 的
+ *   JVM+Android 平台变体), 直传会让这两端编译不过 (:data 依赖已是 api, 依赖可见性不是
+ *   约束);
  * - 直传 shim 还得把 `Context` (只存在于 Android) 一并跨层, 破坏「接口只依赖 shared 类型」约定。
  * 故平台侧读完 shim 立即降级成以下纯数据, UI 侧只渲染数据 + 上报交互。
  *
@@ -23,6 +24,23 @@ sealed interface MangaPrefValue {
 }
 
 /**
+ * 配置项实例句柄: 平台侧构建快照时生成, 指向本次构建的实际配置对象 (平台内部实例)。
+ * 仅作交互与文本编辑会话定位的身份引用 — 不可序列化、不持久化, UI 层原样透传不解析。
+ */
+interface MangaPrefItemRef
+
+/**
+ * 配置构建归属 (入口级): 平台按它隔离构建缓存, 入口关闭时定点释放自己的对象/缓存,
+ * 不清另一入口已替换的对象。
+ */
+class MangaPrefCacheOwner private constructor() {
+
+    internal companion object {
+        fun create(): MangaPrefCacheOwner = MangaPrefCacheOwner()
+    }
+}
+
+/**
  * 一个可渲染的配置项。
  *
  * @param index 在 `PreferenceScreen.getPreferences()` 列表中的序号; 交互按它回传定位 shim 实例
@@ -35,6 +53,8 @@ sealed interface MangaPrefValue {
  *              entryValues 中时为 null
  * @param entries/entryValues 列表项的展示文案与取值 (`ListPreference.entries/entryValues`)
  * @param enabled `Preference.isEnabled` (禁用项按 androidx 语义不响应交互)
+ * @param ref 实际配置对象句柄 (全部配置项均非 null): 交互与文本编辑会话按它定位本快照
+ *              对应的实际对象 (序号在交互重建后可能失配)
  */
 data class MangaPrefItem(
     val index: Int,
@@ -48,6 +68,7 @@ data class MangaPrefItem(
     val entries: List<String> = emptyList(),
     val entryValues: List<String> = emptyList(),
     val enabled: Boolean = true,
+    val ref: MangaPrefItemRef? = null,
 ) {
     /**
      * 行内摘要, 按值类型对齐 androidx `Preference.getSummary()`:

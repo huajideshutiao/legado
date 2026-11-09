@@ -42,6 +42,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -89,6 +91,7 @@ fun AppTextField(
     maxLines: Int = Int.MAX_VALUE,
     minLines: Int = 1,
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    inputTransformation: InputTransformation? = null,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     textStyle: TextStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
@@ -111,10 +114,55 @@ fun AppTextField(
         maxLines = maxLines,
         minLines = minLines,
         visualTransformation = visualTransformation,
+        inputTransformation = inputTransformation,
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
         textStyle = textStyle,
         focusRequester = focusRequester,
+    )
+}
+
+/**
+ * [AppTextField] 的 state-based 窄入口: 活文本与选区直接持有在 [TextFieldState] (调用方
+ * 唯一真源), 无 value/onValueChange 回写环。视觉与 String 重载一致。
+ */
+@OptIn(ExperimentalMaterialApi::class)
+@Composable
+fun AppTextField(
+    state: TextFieldState,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    readOnly: Boolean = false,
+    label: String? = null,
+    placeholder: String? = null,
+    isError: Boolean = false,
+    errorMessage: String? = null,
+    singleLine: Boolean = false,
+    maxLines: Int = Int.MAX_VALUE,
+    minLines: Int = 1,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    inputTransformation: InputTransformation? = null,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    textStyle: TextStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
+) {
+    AppTextFieldStateful(
+        state = state,
+        modifier = modifier,
+        enabled = enabled,
+        readOnly = readOnly,
+        label = label,
+        placeholder = placeholder,
+        isError = isError,
+        errorMessage = errorMessage,
+        singleLine = singleLine,
+        maxLines = maxLines,
+        minLines = minLines,
+        visualTransformation = visualTransformation,
+        inputTransformation = inputTransformation,
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+        textStyle = textStyle,
     )
 }
 
@@ -140,6 +188,7 @@ fun AppTextField(
     maxLines: Int = Int.MAX_VALUE,
     minLines: Int = 1,
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    inputTransformation: InputTransformation? = null,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     textStyle: TextStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
@@ -162,6 +211,7 @@ fun AppTextField(
         maxLines = maxLines,
         minLines = minLines,
         visualTransformation = visualTransformation,
+        inputTransformation = inputTransformation,
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
         textStyle = textStyle,
@@ -191,6 +241,7 @@ private fun <T : Any> AppTextFieldCore(
     maxLines: Int,
     minLines: Int,
     visualTransformation: VisualTransformation,
+    inputTransformation: InputTransformation?,
     keyboardOptions: KeyboardOptions,
     keyboardActions: KeyboardActions,
     textStyle: TextStyle,
@@ -247,6 +298,7 @@ private fun <T : Any> AppTextFieldCore(
             enabled = enabled,
             readOnly = readOnly,
             textStyle = effectiveTextStyle.copy(color = textColor),
+            inputTransformation = inputTransformation,
             keyboardOptions = keyboardOptions,
             onKeyboardAction = keyboardActions.toKeyboardActionHandler(keyboardOptions.imeAction),
             lineLimits = if (singleLine) {
@@ -260,6 +312,97 @@ private fun <T : Any> AppTextFieldCore(
             decorator = TextFieldDecorator { innerTextField ->
                 AppDecorationBox(
                     text = adapter.text(value),
+                    innerTextField = innerTextField,
+                    enabled = enabled,
+                    visualTransformation = visualTransformation,
+                    interactionSource = interactionSource,
+                    isError = isError,
+                    label = label,
+                    placeholder = placeholder,
+                    leadingIcon = leadingIcon,
+                    trailingIcon = trailingIcon,
+                    colors = colors,
+                )
+            },
+        )
+    }
+}
+
+/**
+ * [AppTextField] 的 state-based 实现: 活文本与选区唯一真源在调用方 [TextFieldState],
+ * 无回写环。视觉与受控重载一致。
+ */
+@OptIn(ExperimentalMaterialApi::class)
+@Composable
+private fun AppTextFieldStateful(
+    state: TextFieldState,
+    modifier: Modifier,
+    enabled: Boolean,
+    readOnly: Boolean,
+    label: String?,
+    placeholder: String?,
+    isError: Boolean,
+    errorMessage: String?,
+    singleLine: Boolean,
+    maxLines: Int,
+    minLines: Int,
+    visualTransformation: VisualTransformation,
+    inputTransformation: InputTransformation?,
+    keyboardOptions: KeyboardOptions,
+    keyboardActions: KeyboardActions,
+    textStyle: TextStyle,
+) {
+    AppTextFieldImpl(
+        modifier = modifier.padding(start = DesignTokens.spacingXs, end = DesignTokens.spacingXs, bottom = DesignTokens.spacingXs),
+        isError = isError,
+        errorMessage = errorMessage,
+    ) {
+        val colors = AppFieldColors
+        val interactionSource = remember { MutableInteractionSource() }
+        val textColor = textStyle.color.takeOrElse { colors.textColor(enabled).value }
+        val effectiveFontSize = textStyle.fontSize.takeOrElse { 16.sp }
+        val effectiveTextStyle = textStyle.copy(
+            fontSize = effectiveFontSize,
+            lineHeight = effectiveFontSize * 1.5f,
+        )
+        val outputTransformation = remember(visualTransformation) {
+            if (visualTransformation === VisualTransformation.None) {
+                null
+            } else {
+                visualTransformation.asOutputTransformation()
+            }
+        }
+        BasicTextField(
+            state = state,
+            modifier = Modifier
+                .fillMaxWidth()
+                .singleLineVerticalKeyGuard(singleLine)
+                .indicatorLine(enabled, isError, interactionSource, colors)
+                .defaultMinSize(
+                    minWidth = TextFieldDefaults.MinWidth,
+                    minHeight = appFieldDefaultMinHeight(
+                        label != null,
+                        effectiveFontSize,
+                    ),
+                )
+                .heightIn(max = safeMaxFieldHeight(LocalDensity.current)),
+            enabled = enabled,
+            readOnly = readOnly,
+            textStyle = effectiveTextStyle.copy(color = textColor),
+            inputTransformation = inputTransformation,
+            keyboardOptions = keyboardOptions,
+            onKeyboardAction = keyboardActions.toKeyboardActionHandler(keyboardOptions.imeAction),
+            lineLimits = if (singleLine) {
+                TextFieldLineLimits.SingleLine
+            } else {
+                TextFieldLineLimits.MultiLine(minLines, maxLines)
+            },
+            outputTransformation = outputTransformation,
+            interactionSource = interactionSource,
+            cursorBrush = SolidColor(colors.cursorColor(isError).value),
+            decorator = TextFieldDecorator { innerTextField ->
+                AppDecorationBox(
+                    text = state.text.toString(),
                     innerTextField = innerTextField,
                     enabled = enabled,
                     visualTransformation = visualTransformation,

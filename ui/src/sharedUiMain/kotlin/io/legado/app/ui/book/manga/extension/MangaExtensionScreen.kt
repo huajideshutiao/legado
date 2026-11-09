@@ -133,10 +133,13 @@ fun MangaExtensionScreen(
     /** 插件自带配置对话框状态 (null=未打开); 平台未实现配置契约时恒 null。 */
     prefDialog: MangaPrefDialogState? = null,
     onOpenPrefDialog: (String) -> Unit = {},
-    onSetPreference: (String, MangaPrefValue) -> Unit = { _, _ -> },
+    onSetPreference: (MangaPrefItem, MangaPrefValue) -> Unit = { _, _ -> },
     onPreferenceClick: (MangaPrefItem) -> Unit = {},
     onPreferenceChange: (MangaPrefItem, Boolean) -> Unit = { _, _ -> },
-    onBindEditText: (MangaPrefItem) -> Unit = {},
+    /** 真实文本项点击: 平台完成 performClick 合同并返回活编辑会话。 */
+    onTextItemClick: suspend (MangaPrefItem) -> MangaPrefTextSession? = { null },
+    /** 活编辑会话落值后重读刷新配置弹窗当前值。 */
+    onReloadPrefItems: () -> Unit = {},
     onDismissPrefDialog: () -> Unit = {},
 ) {
     val colors = AppTheme.colors
@@ -468,7 +471,8 @@ fun MangaExtensionScreen(
             onSetPreference = onSetPreference,
             onPreferenceClick = onPreferenceClick,
             onPreferenceChange = onPreferenceChange,
-            onBindEditText = onBindEditText,
+            onTextItemClick = onTextItemClick,
+            onReloadPrefItems = onReloadPrefItems,
             onDismiss = onDismissPrefDialog,
         )
     }

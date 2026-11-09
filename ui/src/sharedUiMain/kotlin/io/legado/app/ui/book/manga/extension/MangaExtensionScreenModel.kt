@@ -1,7 +1,9 @@
 package io.legado.app.ui.book.manga.extension
 
+import io.legado.app.constant.AppLog
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,6 +28,9 @@ private const val SearchDebounceMillis = 250L
 class MangaExtensionScreenModel : ScreenModel {
 
     private val service = MangaExtensionServiceProviders.getOrNull()
+
+    /** 配置构建归属: 平台按它隔离构建产物, 入口关闭时定点释放。 */
+    private val cacheOwner = MangaPrefCacheOwner.create()
 
     private val scope = screenModelScope("漫画插件管理")
 
@@ -79,7 +84,7 @@ class MangaExtensionScreenModel : ScreenModel {
         val svc = service ?: return
         _prefDialog.value = MangaPrefDialogState(pkgName = pkgName)
         scope.launch {
-            runCatching { svc.buildPreferenceItems(pkgName) }
+            runCatching { svc.buildPreferenceItems(pkgName, cacheOwner) }
                 .onSuccess { items ->
                     _prefDialog.update { current ->
                         if (current?.pkgName == pkgName) current.copy(loading = false, items = items) else current
@@ -95,46 +100,61 @@ class MangaExtensionScreenModel : ScreenModel {
     }
 
     /** 写入单个配置项 (经平台侧 shim setter 落扩展偏好), 成功后重读配置刷新弹窗当前值。 */
-    fun setPreference(key: String, value: MangaPrefValue) {
+    fun setPreference(item: MangaPrefItem, value: MangaPrefValue) {
         val svc = service ?: return
-        val pkgName = _prefDialog.value?.pkgName ?: return
         scope.launch {
-            svc.setPreferenceValue(pkgName, key, value)
-            reloadPreferenceItems(pkgName)
+            svc.setPreferenceValue(item, value)
+            reloadPreferenceItems()
         }
     }
 
     /** 点击配置项 (平台侧 `Preference.performClick()`), 完成后重读配置刷新弹窗。 */
     fun performPreferenceClick(item: MangaPrefItem) {
         val svc = service ?: return
-        val pkgName = _prefDialog.value?.pkgName ?: return
         scope.launch {
-            svc.performPreferenceClick(pkgName, item.index)
-            reloadPreferenceItems(pkgName)
+            svc.performPreferenceClick(item)
+            reloadPreferenceItems()
         }
     }
 
     /** 开关类配置项切到 [newValue] (平台侧 `callChangeListener` + `setChecked`)。 */
     fun applyPreferenceChange(item: MangaPrefItem, newValue: Boolean) {
         val svc = service ?: return
-        val pkgName = _prefDialog.value?.pkgName ?: return
         scope.launch {
-            svc.applyPreferenceChange(pkgName, item.index, newValue)
-            reloadPreferenceItems(pkgName)
+            svc.applyPreferenceChange(item, newValue)
+            reloadPreferenceItems()
         }
     }
 
-    /** 输入框对话框绑定 (对应 androidx `OnBindEditTextListener` 的触发时机), 不改值不需重读。 */
-    fun bindEditTextPreference(item: MangaPrefItem) {
-        val svc = service ?: return
-        val pkgName = _prefDialog.value?.pkgName ?: return
-        scope.launch { svc.bindEditTextPreference(pkgName, item.index) }
+    /** 活编辑会话落值后重读配置刷新弹窗当前值 (活会话写入不经本类, 弹窗关闭回调触发)。 */
+    fun reloadPreferences() {
+        scope.launch { reloadPreferenceItems() }
+    }
+
+    /**
+     * 真实文本项点击: 平台完成 performClick 合同并返回活编辑会话; 插件监听抛错与取消区分
+     * (取消重抛, 故障记录日志并保持无会话); 点击可能联动改值 (插件监听), 会话取得后重读
+     * 刷新弹窗当前值。
+     */
+    suspend fun textItemClick(item: MangaPrefItem): MangaPrefTextSession? {
+        val svc = service ?: return null
+        val session = try {
+            svc.clickTextEditor(item)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AppLog.put("插件配置点击失败", e)
+            null
+        }
+        reloadPreferenceItems()
+        return session
     }
 
     /** 交互可能联动改值 (回调返回 true), 重读配置刷新弹窗当前值。 */
-    private suspend fun reloadPreferenceItems(pkgName: String) {
+    private suspend fun reloadPreferenceItems() {
         val svc = service ?: return
-        val items = svc.buildPreferenceItems(pkgName)
+        val pkgName = _prefDialog.value?.pkgName ?: return
+        val items = svc.buildPreferenceItems(pkgName, cacheOwner)
         _prefDialog.update { current ->
             if (current?.pkgName == pkgName) current.copy(items = items) else current
         }
@@ -142,6 +162,8 @@ class MangaExtensionScreenModel : ScreenModel {
 
     fun dismissPrefDialog() {
         _prefDialog.value = null
+        // 入口关闭: 定点释放本归属的构建产物 (不影响另一入口已替换的构建)
+        service?.releasePreferenceCache(cacheOwner)
     }
 
     // endregion

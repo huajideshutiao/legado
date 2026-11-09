@@ -264,6 +264,19 @@ open class EditTextPreference(context: Context) : DialogPreference() {
     @JvmField
     var onBindEditTextListener: OnBindEditTextListener? = null
 
+    /**
+     * 宿主编辑对话框请求回调: 对齐 androidx EditTextPreference.onClick() 的默认路径
+     * (真实类经 PreferenceManager.showDialog 委派宿主显示; shim 经此交还)。扩展子类覆写
+     * [onClick] 不调 super 时不会触发。
+     */
+    @JvmField
+    var onShowEditDialog: ((EditTextPreference) -> Unit)? = null
+
+    /** 对齐 androidx EditTextPreference.onClick(): 默认路径 = 请求宿主显示编辑对话框。 */
+    override fun onClick() {
+        onShowEditDialog?.invoke(this)
+    }
+
     /** 对齐 androidx EditTextPreference.getText()/setText(): set 时持久化。 */
     open fun getText(): String? = textState
 

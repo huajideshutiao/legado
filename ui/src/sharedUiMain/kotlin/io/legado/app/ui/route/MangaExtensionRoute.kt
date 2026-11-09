@@ -49,7 +49,8 @@ fun MangaExtensionRoute(
         onSetPreference = screenModel::setPreference,
         onPreferenceClick = screenModel::performPreferenceClick,
         onPreferenceChange = screenModel::applyPreferenceChange,
-        onBindEditText = screenModel::bindEditTextPreference,
+        onTextItemClick = screenModel::textItemClick,
+        onReloadPrefItems = screenModel::reloadPreferences,
         onDismissPrefDialog = screenModel::dismissPrefDialog,
     )
 }

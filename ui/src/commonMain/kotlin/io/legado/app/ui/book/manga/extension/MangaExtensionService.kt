@@ -81,35 +81,44 @@ interface MangaExtensionService {
      * 读取插件自带配置项快照: 平台侧构造 shim `PreferenceScreen`、调
      * `setupPreferenceScreen(screen)`、再按插件自身 SharedPreferences 回填当前值,
      * 最终转成跨层数据类 [MangaPrefItem] (UI 层不引用 androidx.preference shim)。
-     * 未实现配置契约返回空表。
+     * 构建归属 [owner]: 平台按它隔离构建产物, 入口关闭时经 [releasePreferenceCache]
+     * 定点释放。未实现配置契约返回空表。偏好磁盘预读在后台域。
      */
-    suspend fun buildPreferenceItems(pkgName: String): List<MangaPrefItem> = emptyList()
+    suspend fun buildPreferenceItems(pkgName: String, owner: MangaPrefCacheOwner): List<MangaPrefItem> = emptyList()
 
     /**
      * 写入单个配置项 (对齐 androidx `Persistable.setXxx()`): 经 shim 的 `setText/setValue/setValues`
      * 落插件自身 SharedPreferences (`source_<sourceId>`, 与扩展侧 `keiyoushi.utils.getPreferencesLazy`
      * 同契约), 扩展下次读取即生效。
      */
-    suspend fun setPreferenceValue(pkgName: String, key: String, value: MangaPrefValue) {}
+    suspend fun setPreferenceValue(item: MangaPrefItem, value: MangaPrefValue) {}
 
     /**
      * 点击配置项 (对齐 androidx `Preference.performClick()`): 扩展挂的 `OnPreferenceClickListener`
-     * 返回 true 即消费, 否则走默认 `onClick()` (开关类即切换)。按 [MangaPrefItem.index] 定位 shim 实例。
-     * 未实现配置契约时静默无操作。
+     * 返回 true 即消费, 否则走默认 `onClick()` (开关类即切换)。按 [MangaPrefItem.ref] 定位
+     * shim 实例。未实现配置契约时静默无操作。
      */
-    suspend fun performPreferenceClick(pkgName: String, index: Int) {}
+    suspend fun performPreferenceClick(item: MangaPrefItem) {}
 
     /**
      * 开关类配置项切到 [newValue] (对齐 androidx `TwoStatePreference`): `callChangeListener(newValue)`
      * 通过才 `setChecked` (含持久化), 未挂监听视为通过。
      */
-    suspend fun applyPreferenceChange(pkgName: String, index: Int, newValue: Boolean) {}
+    suspend fun applyPreferenceChange(item: MangaPrefItem, newValue: Boolean) {}
 
     /**
-     * 输入框绑定 (对齐 androidx `EditTextPreference.OnBindEditTextListener` 的触发时机:
-     * 打开输入对话框时回调一次), 让扩展侧的输入框配置照常执行。
+     * 文本项点击合同 (对齐 androidx `Preference.performClick()` 的完整顺序): 插件点击监听
+     * 消费即返回 null; 否则 EditTextPreference 的默认路径是请求宿主显示编辑对话框, 返回
+     * 打开时定位到的活编辑会话 ([MangaPrefTextSession] 持实际配置对象, 绑定/校验/提交全程
+     * 针对同一对象)。通用降级项/插件自消费/非文本项返回 null, 调用方保持各自既有交互。
      */
-    suspend fun bindEditTextPreference(pkgName: String, index: Int) {}
+    suspend fun clickTextEditor(item: MangaPrefItem): MangaPrefTextSession? = null
+
+    /**
+     * 入口关闭时定点释放本归属的构建产物 (实际配置对象随快照弃置), 不影响另一入口
+     * 已替换的构建。
+     */
+    fun releasePreferenceCache(owner: MangaPrefCacheOwner) {}
 
     /**
      * 插件源虚拟行的行首图标: 归属插件包启动图标在应用私有缓存区的文件路径。
