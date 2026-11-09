@@ -55,7 +55,6 @@ import io.legado.app.napi.quickjs.qjs_NewInt32
 import io.legado.app.napi.quickjs.qjs_NewString
 import io.legado.app.napi.quickjs.qjs_ValueGetBool
 import io.legado.app.napi.quickjs.qjs_ToCString
-import io.legado.app.napi.quickjs.qjs_ValueGetFloat64
 import io.legado.app.napi.quickjs.qjs_ValueGetInt
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CValue
@@ -285,7 +284,8 @@ object NativeJsExtensionsBridge {
         val ctxNotNull = ctx ?: return jsUndefined()
         if (argc < 3 || argv == null) return jsUndefined()
         try {
-            val handle = qjs_ValueGetFloat64(argv[0L].readValue()).toLong()
+            val handle = readJsNumberValue(argv[0L].readValue())?.toLong()
+                ?: return jsUndefined()
             val methodId = qjs_ValueGetInt(argv[1L].readValue())
             val argsArray = argv[2L].readValue()
             val obj = getObject(handle) ?: return jsUndefined()
@@ -1290,7 +1290,7 @@ function __createJsUrlObj(handle) {
             return qjs_ValueGetBool(v) != 0
         }
         if (qjs_IsNumber(v) != 0) {
-            return qjs_ValueGetFloat64(v)
+            return readJsNumberValue(v)
         }
         if (qjs_IsString(v) != 0) {
             return jsValueToString(ctx, v)

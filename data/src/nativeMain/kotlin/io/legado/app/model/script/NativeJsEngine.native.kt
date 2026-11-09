@@ -52,7 +52,6 @@ import io.legado.app.napi.quickjs.JS_NewUint8Array
 import io.legado.app.napi.quickjs.JS_SetPropertyStr
 import io.legado.app.napi.quickjs.JS_SetPropertyUint32
 import io.legado.app.napi.quickjs.JS_ToBool
-import io.legado.app.napi.quickjs.JS_ToFloat64
 import io.legado.app.napi.quickjs.JS_ToInt32
 import io.legado.app.napi.quickjs.qjs_AtomToCString
 import io.legado.app.napi.quickjs.qjs_EvalFlagCompileOnly
@@ -82,7 +81,6 @@ import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CPointerVar
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.COpaquePointer
-import kotlinx.cinterop.DoubleVar
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.LongVar
 import kotlinx.cinterop.UByteVar
@@ -133,6 +131,17 @@ internal const val MAX_JS_DEPTH = 64
  */
 internal val JS_DEPTH_ERROR_MESSAGE =
     "JS 值嵌套超过 $MAX_JS_DEPTH 层 (可能存在循环引用)"
+
+/**
+ * 读取 Number 的 Kotlin 实际类型: JS_TAG_INT -> Int, JS_TAG_FLOAT64 -> Double;
+ * 非 Number 返回 null。qjs_ValueGetFloat64 只能用于 FLOAT64, 不能用于 INT。
+ */
+internal fun readJsNumberValue(v: CValue<JSValue>): Number? =
+    when (qjs_ValueGetTag(v)) {
+        JS_TAG_INT -> qjs_ValueGetInt(v)
+        JS_TAG_FLOAT64 -> qjs_ValueGetFloat64(v)
+        else -> null
+    }
 
 /**
  * JS_Eval 的 UTF-8 安全封装 (compile / evalInternal / bridge 工厂 eval 共用)。
@@ -885,14 +894,7 @@ object NativeJsEngine : JsEngine {
         if (qjs_IsUndefined(v) != 0 || qjs_IsNull(v) != 0) return null
         if (qjs_IsBool(v) != 0) return qjs_ValueGetBool(v) != 0
         if (qjs_IsNumber(v) != 0) {
-            val tag = qjs_ValueGetTag(v)
-            if (tag == JS_TAG_INT) return qjs_ValueGetInt(v)
-            if (tag == JS_TAG_FLOAT64) return qjs_ValueGetFloat64(v)
-            // 其他 number tag (如 JS_TAG_BIG_INT), fallback 用 JS_ToFloat64
-            return memScoped {
-                val pres = alloc<DoubleVar>()
-                if (JS_ToFloat64(ctx, pres.ptr, v) == 0) pres.value else null
-            }
+            return readJsNumberValue(v)
         }
         if (qjs_IsString(v) != 0) {
             val cstr = qjs_ToCString(ctx, v) ?: return ""
@@ -940,8 +942,7 @@ object NativeJsEngine : JsEngine {
     private fun bridgeObjectHandle(ctx: CPointer<JSContext>, obj: CValue<JSValue>): Long? {
         val handleValue = JS_GetPropertyStr(ctx, obj, "__h")
         try {
-            if (qjs_IsNumber(handleValue) == 0) return null
-            return qjs_ValueGetFloat64(handleValue).toLong().takeIf { it > 0 }
+            return readJsNumberValue(handleValue)?.toLong()?.takeIf { it > 0 }
         } finally {
             JS_FreeValue(ctx, handleValue)
         }
