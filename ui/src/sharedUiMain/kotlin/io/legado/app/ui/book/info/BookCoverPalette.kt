@@ -13,7 +13,7 @@ import io.legado.app.utils.ColorUtils
  * 详情页封面取色: 顶栏与(书名+字数+最新章节)前景色按其背后的模糊封面背景自适应。
  *
  * 取色不另发请求: 平台 slot 加载出封面位图后经 [LocalCoverLoaded] 上报**原图**, 宿主就地分区采样
- * (见 [sampleCoverRegions]), 再由分区均值按 [BookInfoBgTransformation] 的视觉模型换算元素背后的有效背景:
+ * (见 [sampleCoverRegions]), 再由分区均值按详情页背景绘制阶段的视觉模型换算元素背后的有效背景:
  * - 整体压暗 argb(50,0,0,0) SRC_ATOP ≈ RGB × [DARKEN]
  * - 竖屏书名块位于 300dp 背景的渐变尾段 (封面残留 alpha ≈ [CONTENT_ALPHA]), 有效背景 =
  *   lerp(页面底色, 封面分区均值, alpha); 横屏左列无渐变, alpha = 1
@@ -68,7 +68,7 @@ val LocalBookCoverPalette = staticCompositionLocalOf<BookCoverPalette?> { null }
 /** 封面分区原始均值 (已叠压暗, 未混合页面底色)。 */
 class CoverRegions internal constructor(internal val topBar: Color, internal val content: Color)
 
-/** BookInfoBgTransformation 的 argb(50,0,0,0) SRC_ATOP 压暗 ≈ RGB × 0.8。 */
+/** 背景压暗层 argb(50,0,0,0) SRC_ATOP ≈ RGB × 0.8。 */
 private const val DARKEN = 0.8f
 
 /** 竖屏书名块渐变尾段的封面残留 alpha (渐变 stops ~0.80 处)。 */

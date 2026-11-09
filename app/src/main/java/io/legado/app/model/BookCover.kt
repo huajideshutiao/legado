@@ -12,15 +12,12 @@ import androidx.core.graphics.drawable.toDrawable
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
-import coil3.request.transformations
 import coil3.toBitmap
-import coil3.transform.Transformation
 import io.legado.app.App
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.glide.BlurTransformation
 import io.legado.app.help.image.sourceOrigin
 import io.legado.app.model.BookCover.currentCovers
 import io.legado.app.model.BookCover.loadCoverBitmap
@@ -201,18 +198,4 @@ object BookCover {
         }
     }
 
-}
-
-/**
- * 模糊封面配置: 调用方 `imageView.load(path) { blurConfig(...) }`。
- * 含 BlurTransformation + 调用方传入的 extraTransformations(如 BookInfoBgTransformation)。
- */
-fun ImageRequest.Builder.blurConfig(
-    seed: String? = null,
-    ratio: CoverRatio = CoverRatio.NOVEL,
-    sourceOrigin: String? = null,
-    extraTransformations: List<Transformation> = emptyList(),
-): ImageRequest.Builder = apply {
-    sourceOrigin(sourceOrigin)
-    transformations(listOf(BlurTransformation()) + extraTransformations)
 }

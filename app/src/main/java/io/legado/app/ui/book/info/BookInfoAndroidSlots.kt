@@ -14,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -21,20 +22,24 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.IntSize
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import coil3.request.allowHardware
+import coil3.size.Precision
 import coil3.size.Scale
 import coil3.toBitmap
 import io.legado.app.data.entities.Book
 import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.help.image.ImageBitmapLoader
-import io.legado.app.model.blurConfig
+import io.legado.app.help.image.sourceOrigin
+import io.legado.app.model.stackBlurBitmap
+import io.legado.app.ui.book.info.bookInfoBgOverlay
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /*
  * BookInfoScreen 下沉到 shared 后, app 端保留的 L3 (Android 专属) Composable。
@@ -55,9 +60,12 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
  */
 
 /**
- * 模糊封面背景: 模糊计算留在 Android 位图层 (StackBlur + [BookInfoBgTransformation] 在 Coil3
- * 请求内执行; Compose `Modifier.blur` 依赖 RenderEffect, API<31 无效, 本项目 minSdk 24),
- * 渲染走 Compose `Image`, 与 shared [io.legado.app.ui.book.info.SharedBlurCoverBg] 同构。
+ * 模糊封面背景: 模糊计算留在 Android 位图层 (StackBlur), 渲染走 Compose `Image`,
+ * 与 shared [io.legado.app.ui.book.info.SharedBlurCoverBg] 同构。
+ *
+ * 三个阶段分开归属: 图片请求只取未变换的工作图 (容器尺寸不参与身份, 也不做精确尺寸匹配);
+ * CPU 模糊只随真实底层位图或模糊半径变化算一次; 压暗与渐变蒙版在绘制期按当前容器叠。
+ * 现在图从缓存里复用到同一张位图时, 容器微变只重绘、不重解也不重糊。
  *
  * @param modifier 调用方传入的尺寸约束 (fillMaxSize 或 fillMaxWidth+height(300.dp))
  */
@@ -72,93 +80,70 @@ fun BookInfoBlurCoverBg(
 ) {
     val context = LocalContext.current
     val cover = book?.getDisplayCover()
+    val origin = book?.origin
     val bgDesc = rememberString("bg_image")
-    // bitmap 只在成功取到新图时整体替换 (不随 cover 键重置): 换/清 URL 的那一帧保留旧图,
-    // 否则重载被失败跳过表拦截时 (url 曾 403) 会闪回空白
-    var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    // 取色入口 (详情页宿主提供): 本端绘制的是模糊后的图, 不能直接采样, 另取原图小样上报
+    val onCoverLoaded = LocalCoverLoaded.current
+    // 工作图 (未变换的原图) 与容器无关: 容器微变不重建请求, 也不重算模糊。
+    // 存真实底层 Bitmap (不是每取一次就新建的 ImageBitmap 包装), 这样只有原图真的换了才重糊。
+    var work by remember { mutableStateOf<Bitmap?>(null) }
     // 模糊背景是否已绘制 (宿主与绘制方共用同一状态, 见 shared BookCoverPalette)
     val paintedState = LocalBlurCoverPainted.current
-    // 封面取色入口 (详情页宿主提供): 本端绘制的是变换后的图, 不能直接采样, 另取原图小样上报
-    val onCoverLoaded = LocalCoverLoaded.current
-    // 容器尺寸测量后触发加载; 变化时按**量化档位**重解 (渐变蒙版比例须与容器一致,
-    // 见 BookInfoBgTransformation.cropToAspect)
-    var containerSize by remember { mutableStateOf(IntSize.Zero) }
-    // 请求尺寸按档位钉死: 同一页面在布局微变 (分屏/折叠/旋转/滚动条出现) 时不再逐次重解。
-    // 变换后的位图在 Coil 内存缓存里按尺寸分 key, 每种尺寸各存一份, 只能等预算淘汰。
-    // 宽高比仍取容器真实比例 —— 竖屏的 cropToAspect 依赖它, 比例不一致会让渐变上下错位。
-    val requestSize = remember(containerSize) {
-        if (containerSize == IntSize.Zero) IntSize.Zero
-        else quantizeBgRequestSize(containerSize)
-    }
-    LaunchedEffect(cover, coverTick, isEInkMode, land, requestSize) {
+    LaunchedEffect(cover, coverTick, isEInkMode, origin) {
         // book 为 null 时 cover 必为 null, 故先取 b 与后置判断等价; 放在 cover 判断前
         // 可避开 K2 的“cover 非空已蕴含 book 非空”推断造成的冗余告警
         val b = book ?: return@LaunchedEffect
-        if (isEInkMode || cover.isNullOrBlank() || requestSize == IntSize.Zero) {
-            return@LaunchedEffect
-        }
+        if (isEInkMode || cover.isNullOrBlank()) return@LaunchedEffect
         val request = ImageRequest.Builder(context)
             .data(cover)
-            .size(requestSize.width, requestSize.height)
-            .scale(Scale.FILL)
-            .blurConfig(
-                seed = b.name,
-                sourceOrigin = b.origin,
-                extraTransformations = listOf(BookInfoBgTransformation(land)),
-            )
+            // 书源防盗链 header 随 origin 注入 (同封面链), 漏掉会被只认 Referer 的源拒绝
+            .sourceOrigin(b.origin)
+            // 本请求不烘焙任何变换: 带变换的请求会把完整请求尺寸写进缓存键并强制精确匹配
+            .memoryCacheKey("$cover\u0000${b.origin}\u0000bg")
+            // 长边封顶取原图量级的未变换工作图 (按库自身的尺寸复用能力取图, 不做精确尺寸匹配)
+            .size(BG_WORK_MAX_LONG_SIDE, BG_WORK_MAX_LONG_SIDE)
+            .scale(Scale.FIT)
+            .precision(Precision.INEXACT)
+            // 工作图要过 CPU 模糊, 必须软件位图; 只约束本请求, 不全局禁硬件位图
+            .allowHardware(false)
             .build()
         val result = SingletonImageLoader.get(context).execute(request) as? SuccessResult
         val loaded = result?.image?.toBitmap() ?: return@LaunchedEffect
-        bitmap = loaded.asImageBitmap()
-        // blur 成功 = 原始字节已由 fetcher 落盘, 此小图请求只走缓存命中, 不会再发网络
-        // (本请求产物是 blur+渐变变换后的图, 不能直接采样, 故经 loader 另取 24×32 原图小样;
-        //  尺寸对齐 shared 取色采样粒度)
+        work = loaded
+        // 原始字节已落盘, 此小图请求只走缓存命中, 不会再发网络; 尺寸对齐 shared 取色采样粒度
         BookImageLoaders.get()
             .loadImageOrNull(cover, b.origin, 24, 32)
             ?.let { onCoverLoaded(it) }
     }
-    // 写出时机与绘制条件一致: 本实现画出封面的充要条件就是 bitmap 非空 (Image 只在该条件下渲染)。
-    // 共享状态在组合后写回, 顶栏读到新值会多重组一帧 —— 背景已画出而顶栏尚未换色的那一帧
-    // 是主题色压在模糊封面上, 不存在"白字压在空白背景上"的可读性缺口
-    SideEffect { paintedState.value = bitmap != null }
-    Box(modifier.onSizeChanged { containerSize = it }) {
-        val drawn = bitmap
-        if (drawn != null) {
+    // CPU 模糊只随真实底层位图与半径变化算一次 (同一原图换包装/容器微变都不重算)
+    val blurred by produceState<ImageBitmap?>(null, work, BG_BLUR_RADIUS) {
+        val source = work ?: return@produceState
+        value = withContext(Dispatchers.Default) {
+            stackBlurBitmap(source, BG_BLUR_RADIUS).asImageBitmap()
+        }
+    }
+    // 写出时机与绘制条件一致: 本实现画出封面的充要条件就是绘制图非空
+    SideEffect { paintedState.value = blurred != null }
+    Box(modifier) {
+        blurred?.let { drawn ->
             Image(
                 bitmap = drawn,
                 contentDescription = bgDesc,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                // 压暗/渐变蒙版与三端共用同一份曲线, 压暗用原版 SRC_ATOP 语义 (只压图自身)
+                modifier = Modifier
+                    .fillMaxSize()
+                    .bookInfoBgOverlay(land),
             )
         }
     }
 }
 
-/**
- * 详情页模糊背景的请求尺寸档位。
- *
- * 变换后的位图在 Coil 内存缓存里按请求尺寸分 key, 尺寸每变一次就多存一份软件位图
- * (带 transformation 的请求被 coil3 从 HARDWARE 降级为 ARGB_8888, 像素进 native 堆)。
- * 宽度按本档位向上取整, 使同一页面在布局微变时复用同一张缓存图。
- */
-private const val BG_WIDTH_STEP = 64
+/** 工作纹理模糊半径 (StackBlur 像素半径, 与三端 24dp 绘制期模糊不同)。 */
+private const val BG_BLUR_RADIUS = 20
 
-/** 请求宽度上限: 竖屏渐变蒙版无高频细节, 超过此宽度再解只是徒增像素。 */
-private const val BG_BAKE_MAX_LONG_SIDE = 1600
-
-/**
- * 按 [BG_WIDTH_STEP] 量化宽度、按容器真实比例反推高度, 并把宽度限在 [BG_BAKE_MAX_LONG_SIDE]。
- *
- * 高度必须随容器比例 —— 竖屏的 `BookInfoBgTransformation.cropToAspect` 用请求尺寸的宽高比
- * 裁剪出渐变载体, 比例不一致会让渐变上下错位 (底部收不到全透明)。
- */
-private fun quantizeBgRequestSize(containerSize: IntSize): IntSize {
-    val width = ((containerSize.width + BG_WIDTH_STEP - 1) / BG_WIDTH_STEP) * BG_WIDTH_STEP
-    val capped = width.coerceAtMost(BG_BAKE_MAX_LONG_SIDE)
-    val height = (capped.toFloat() * containerSize.height / containerSize.width)
-        .toInt().coerceAtLeast(1)
-    return IntSize(capped, height)
-}
+/** 工作纹理长边上限: 未变换原图量级的采样上限, 与容器尺寸无关。 */
+private const val BG_WORK_MAX_LONG_SIDE = 1600
 
 /**
  * 简介内整宽图: Glide 异步加载 Bitmap, 渲染为 Compose Image (可点击查看大图)。

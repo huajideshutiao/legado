@@ -145,7 +145,7 @@ import org.jetbrains.compose.resources.stringResource
  *   (注: bottomBackground 已通过 AppTheme.colors.bottomBackground 暴露, 不需要 rememberColor)
  *
  * L3 不可下沉项 (保留 app 端, 通过 slot 注入):
- *   - BlurCoverBg: Coil3 位图管线模糊 (StackBlur + BookInfoBgTransformation), Compose Image 渲染
+ *   - BlurCoverBg: 位图管线模糊 (StackBlur), 压暗与渐变蒙版绘制期叠加, Compose Image 渲染
  *     → blurCoverBgSlot: @Composable (Modifier) -> Unit
  *   - InfoCover 中的封面渲染 (原 app 端 ShelfCover)
  *     → coverSlot: @Composable (Book?, Modifier) -> Unit (现默认 SharedBookCover)
@@ -270,7 +270,7 @@ val LocalBookInfoActions = compositionLocalOf<BookInfoUiActions> {
  *
  * 视觉/布局/动画/手势/状态管理完全与 app 端原版一致 (宽高/边距/颜色/层级)。
  *
- * @param blurCoverBgSlot 模糊封面背景 (Glide + BookInfoBgTransformation + AndroidView, L3)
+ * @param blurCoverBgSlot 模糊封面背景 (位图模糊 + 绘制期压暗/渐变蒙版, L3)
  *   - 调用方传入 modifier 已经包含尺寸约束 (fillMaxSize / fillMaxWidth+height(300.dp))
  *   - slot 内部自行从 state 读 coverTick/book/isEInkMode 等判断是否加载
  * @param coverSlot 书籍封面 (默认 SharedBookCover)

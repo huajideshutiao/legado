@@ -206,8 +206,8 @@ private fun decodeSampled(path: String, widthPx: Int, heightPx: Int): Bitmap? {
 
 /**
  * StackBlur 统一入口: 半径钳 1..100, 短边 > [BAKE_MAX_SHORT_SIDE] 先降采样再模糊,
- * 返回工作图不放大。app 端原 BitmapUtils.stackBlur 下沉后的唯一副本 (glide 封面模糊
- * 与壁纸烘焙/兜底共用, 见 [BlurTransformation])。
+ * 返回工作图不放大。app 端原 BitmapUtils.stackBlur 下沉后的唯一副本
+ * (壁纸烘焙/兜底与详情页背景模糊共用)。
  */
 fun stackBlurBitmap(bitmap: android.graphics.Bitmap, radius: Int): android.graphics.Bitmap =
     bitmap.stackBlurBaked(radius)

@@ -118,13 +118,15 @@ actual class ImageBitmapLoader actual constructor() {
             if (url.startsWith("data:")) {
                 val bytes = parseDataUriBytes(url) ?: return@withContext null
                 val maxDim = maxOf(widthPx, heightPx)
+                // 键只带实际解码约束 (长边上限): 解码路径只按 [maxDim] 降采样, 宽高分开入键会让
+                // 同一张图按不同宽高组合各存一份, 同源尺寸微变全部失去复用能力
                 val key = if (useBitmapCache) {
                     DecodedBitmapCache.cacheKey(
                         url,
                         bookSource?.bookSourceUrl,
                         isCover,
-                        widthPx,
-                        heightPx
+                        maxDim,
+                        0
                     )
                 } else null
                 val cached = key?.let { DecodedBitmapCache.get(it) }
@@ -135,12 +137,13 @@ actual class ImageBitmapLoader actual constructor() {
             }
             val bytes = ohosLoadImageBytes(url, book, bookSource, isCover, useBitmapCache, persistent)
                 ?: return@withContext null
+            val maxDim = maxOf(widthPx, heightPx)
             val key = if (useBitmapCache) {
-                DecodedBitmapCache.cacheKey(url, bookSource?.bookSourceUrl, isCover, widthPx, heightPx)
+                // 同上: 只按实际解码约束 (长边上限) 入键
+                DecodedBitmapCache.cacheKey(url, bookSource?.bookSourceUrl, isCover, maxDim, 0)
             } else null
             val cached = key?.let { DecodedBitmapCache.get(it) }
             if (cached != null) return@withContext cached
-            val maxDim = maxOf(widthPx, heightPx)
             val bitmap = decodeBytesSampled(bytes, maxDim) ?: decodeSvgFallback(bytes, maxDim)
             if (bitmap != null && key != null) DecodedBitmapCache.put(key, bitmap)
             bitmap
