@@ -11,6 +11,7 @@ import androidx.core.graphics.drawable.toBitmap
 import androidx.core.graphics.drawable.toDrawable
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import coil3.request.allowHardware
 import coil3.request.transformations
 import coil3.toBitmap
 import coil3.transform.Transformation
@@ -147,9 +148,15 @@ object BookCover {
     }
 
     /**
-     * suspend 取封面 Bitmap: 通知/PhotoDialog/getCover 用。useDefaultCover 或空路径回退默认封面。
-     * 不改写 diskCacheKey: 对照原版 `ImageLoader.loadBitmap` 无 `signature("covers")`, 写临时区;
-     * 读时 MultiDiskCache 会回查持久区, 书架书仍能命中。
+     * suspend 取封面 Bitmap: 朗读/音频播放服务的通知与 MediaSession 封面。
+     * useDefaultCover 或空路径回退默认封面。
+     *
+     * 结果经 MediaSession.setMetadata 交给系统: 系统开关 scale_bitmap_to_ashmem 启用且封面宽或高
+     * 超过框架上限 (config_mediaMetadataBitmapMaxSize) 时, 系统在软件 Canvas 上缩放该封面
+     * (MediaMetadata.Builder.scaleBitmap → Bitmap.createScaledAshmemBitmap), 硬件位图不能被软件
+     * Canvas 绘制。本请求禁用硬件位图。
+     *
+     * 不设置 diskCacheKey: 写临时区, 读时 MultiDiskCache 会回查持久区, 书架封面仍能命中。
      */
     suspend fun loadCoverBitmap(
         context: Context,
@@ -165,6 +172,7 @@ object BookCover {
         val request = ImageRequest.Builder(context)
             .data(path)
             .sourceOrigin(sourceOrigin)
+            .allowHardware(false)
             .build()
         val result = loader.execute(request)
         return if (result is SuccessResult) {
