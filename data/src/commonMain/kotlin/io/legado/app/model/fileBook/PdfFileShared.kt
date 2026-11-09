@@ -4,66 +4,74 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.writeBytesAtomically
+import io.legado.app.utils.File
 import io.legado.app.utils.InputStream
-import java.io.ByteArrayInputStream
-import java.io.File
+import io.legado.app.utils.toInputStream
 import kotlin.concurrent.Volatile
 import kotlin.math.ceil
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 /**
- * PDF 本地书编排骨架 (jvmAndAndroidMain, 对照 app 端 `PdfFile`)。
+ * PDF 本地书编排骨架 (commonMain, 四端共用, 对照 app 端 `PdfFile`)。
  *
  * 骨架只做编排: 每 [PAGE_SIZE] 页一章 (`分段_N`, url `pdf_N`)、正文按
  * `<img src="页码">` 拼装、首页渲染 JPEG 写封面、打开失败按"书籍导入异常"处理、
- * 按 bookUrl 换书关闭重建单例。渲染后端 (PdfRenderer / PDFBox) 经
- * [PdfRenderProviders] 注入 [PdfRenderPort]。
+ * 按 bookUrl 换书关闭重建单例。渲染后端 (app PdfRenderer / 桌面 PDFBox /
+ * iOS、鸿蒙端各自实现) 经 [PdfRenderProviders] 注入 [PdfRenderPort]。
  *
- * 页图缓存差异: app 端由 ImageProvider 外层编排缓存 (端口缓存钩子为 no-op),
- * 桌面端走 BookImageStorage (缓存 key 带渲染宽度), 均由端口实现内聚。
+ * 文档操作和清理使用同一互斥锁。锁顺序为骨架 → 渲染端口，端口不得回调骨架或阅读层。
+ *
+ * 页图磁盘缓存经各端的 BookImageStorage 读写，缓存键包含页码与实际渲染宽度。
  */
 object PdfFileShared : BaseFileBook {
 
     private var pFile: PdfBookFile? = null
 
+    private val lock = SynchronizedObject()
+
     /** pdf分页尺寸 */
     const val PAGE_SIZE = 10
 
-    @Synchronized
+    /** 选书/换书重建 (调用方须已持 [lock], 见各入口); 关闭旧文档在此同步完成。 */
     private fun getPFile(book: Book): PdfBookFile {
         if (pFile == null || pFile?.book?.bookUrl != book.bookUrl || pFile?.invalid == true) {
             pFile?.closePdf()
             pFile = PdfBookFile(book)
-            return pFile!!
+        } else {
+            pFile?.book = book
         }
-        pFile?.book = book
         return pFile!!
     }
 
-    @Synchronized
     override fun upBookInfo(book: Book) {
-        getPFile(book).upBookInfo()
+        synchronized(lock) { getPFile(book).upBookInfo() }
     }
 
     override fun getChapterList(book: Book): ArrayList<BookChapter> {
-        return getPFile(book).getChapterList()
+        return synchronized(lock) { getPFile(book).getChapterList() }
     }
 
     override fun getContent(book: Book, chapter: BookChapter): String? {
-        return getPFile(book).getContent(chapter)
+        return synchronized(lock) { getPFile(book).getContent(chapter) }
     }
 
     override fun getImage(book: Book, href: String): InputStream? {
-        return getPFile(book).getImage(href)
+        return synchronized(lock) { getPFile(book).getImage(href) }
     }
 
     override fun clear() {
-        pFile?.closePdf()
-        pFile = null
+        synchronized(lock) {
+            pFile?.closePdf()
+            pFile = null
+        }
     }
 }
 
 /**
  * 单本书的 PDF 解析实例 (骨架): 持有书与打开状态, 渲染一律走 [PdfRenderPort]。
+ *
+ * 由 [PdfFileShared] 在其互斥锁内创建并调用。
  */
 class PdfBookFile(internal var book: Book) {
 
@@ -81,14 +89,12 @@ class PdfBookFile(internal var book: Book) {
         upBookCover(true)
     }
 
-    /** 懒打开 (对齐 app 端 `pdfRenderer` 的 @Volatile + synchronized 双检)。 */
+    /** 懒打开 (打开失败标记 [invalid], 由换书重建重试)。 */
     private fun ensureOpen(): Boolean {
         if (open) return true
-        return synchronized(this) {
-            open || port.openDocument(book).also {
-                open = it
-                if (!it) invalid = true
-            }
+        return port.openDocument(book).also {
+            open = it
+            if (!it) invalid = true
         }
     }
 
@@ -118,7 +124,7 @@ class PdfBookFile(internal var book: Book) {
         port.readCachedPage(book, index)?.let { return it }
         val bytes = port.renderPageJpegBytes(index) ?: return null
         port.writeCachedPage(book, index, bytes)
-        return ByteArrayInputStream(bytes)
+        return bytes.toInputStream()
     }
 
     internal fun getChapterList(): ArrayList<BookChapter> {
@@ -138,12 +144,7 @@ class PdfBookFile(internal var book: Book) {
         return chapterList
     }
 
-    /**
-     * 首页渲染成封面 (fastCheck 时已有封面文件就不再烘焙)。
-     *
-     * 封面按"文件存在即有效"被复用 (fastCheck 直接跳过), 半截 JPEG 会被永久当成有效封面,
-     * 故整份落盘 (同目录临时件 + 改名就位)。
-     */
+    /** 首页封面整份落盘；fastCheck 时复用已存在的封面文件。 */
     private fun upBookCover(fastCheck: Boolean = false) {
         try {
             if (!ensureOpen()) return

@@ -136,6 +136,12 @@
               {
                 "type": "application/epub+zip"
               },
+              // PDF 文件投递入口: scheme+type 同条目 (官方隐式 Want 匹配契约, want 的 uri 与
+              // type 双非空时两者须均匹配), 本端经官方 PDFKit 真实渲染阅读
+              {
+                "scheme": "file",
+                "type": "application/pdf"
+              },
               {
                 "type": "application/zip"
               },
@@ -191,8 +197,8 @@
           // - 文本族 TEXT/PLAIN_TEXT/HTML/HYPERLINK: 纯文本/网页链接与文本形态文件
           //   (.txt/.json 等; JSON 无专用 UTD, 系统报文本类)。general.xml 存在但本端无
           //   XML 配置导入链, 不申报。
-          // - 书籍 general.epub; com.adobe.pdf 不申报: 本端书链未实装 PDF 阅读
-          //   (导入即报不支持), 不声称可接。
+          // - 书籍 general.epub / com.adobe.pdf (本端 PDF 阅读经官方 PDFKit 真实渲染); 电子书
+          //   大类 general.ebook 与 com.amazon.* (mobi/azw3) 不在本端书籍识别链, 不申报。
           // - 压缩 general.zip-archive / general.tar-archive / org.gnu.gnu-zip-archive /
           //   org.gnu.gnu-zip-tar-archive (共有解包实现支持的四类; rar/7z/bz2/xz/lzma
           //   无 native 解码, 不申报)。
@@ -228,6 +234,11 @@
               {
                 "scheme": "file",
                 "utd": "general.epub",
+                "maxFileSupported": 1
+              },
+              {
+                "scheme": "file",
+                "utd": "com.adobe.pdf",
                 "maxFileSupported": 1
               },
               {

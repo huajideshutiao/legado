@@ -20,9 +20,9 @@ import io.legado.app.utils.InputStream
  * - [CbzFile]: CBZ/ZIP 漫画解析 (commonMain, 四端共用)
  * - [io.legado.app.model.fileBook.TextFile]: TXT 本地书解析 (各端: jvmAndAndroidMain / nativeMain)
  * - [io.legado.app.model.fileBook.EpubFile]: EPUB 解析 (jvmAndAndroidMain epublib / nativeMain 自实现)
- * - [PdfFileShared]: PDF 解析编排骨架 (jvmAndAndroidMain), 渲染后端经
- *   [PdfRenderPort] 注入 (app 系统 PdfRenderer / 桌面 PDFBox;
- *   iOS/鸿蒙尚未实现, 走 [NativeFileBookAccessor] 的 UnsupportedFileBook)
+ * - [PdfFileShared]: PDF 解析编排骨架 (commonMain, 四端共用), 渲染后端经
+ *   [PdfRenderPort] 注入 (app 系统 PdfRenderer / 桌面 PDFBox / iOS、鸿蒙端各自实现,
+ *   宿主启动早期经 PdfRenderProviders 注册)
  *
  * 模式参考 app 端原 `interface BaseFileBook`, 仅剥离 Android 依赖默认方法。
  */

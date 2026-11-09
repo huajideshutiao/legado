@@ -10,7 +10,7 @@ import kotlin.native.concurrent.ThreadLocal
  * 按线程隔离: 协调块内是同步调用, 不同请求互不影响。
  */
 @ThreadLocal
-internal object FileBookOperationPath {
+object FileBookOperationPath {
 
     private var path: String? = null
 

@@ -178,6 +178,8 @@ extern "C" void ohos_permission_dispatch_gen(const char *, int64_t, int64_t);
 static void NotifyDialogRequestFailed(long long, long long);
 static void NotifyDialogChannelClosed(int64_t);
 static void NotifyFilePickerRequestFailed(long long, long long);
+static void NotifyPdfRequestFailed(long long, long long);
+static void NotifyPdfChannelClosed(int64_t);
 static void NotifyFilePickerChannelClosed(int64_t);
 static void NotifyPermissionRequestFailed(long long, long long);
 static void NotifyPermissionChannelClosed(int64_t);
@@ -190,6 +192,8 @@ typedef void (*legado_register_webview_dispatch_fn)(legado_cstr_cstr_void_fn);
 // dlsym 加载的函数指针 - Image/Media tsfn 注入 (KP8+ 新增, 同 Toast/Notification 模式)
 // Image 桥 KP9+ 升级为二进制混合协议 (JSON + 裸字节), 用 legado_register_bin_dispatch_fn
 static legado_register_bin_dispatch_fn g_register_image_fn = nullptr;
+// PDF 桥 (官方 PDFKit; 纯 JSON 请求面, 走 Window/FilePicker 同款源代次通道)
+static legado_register_dispatch_gen_fn g_register_pdf_gen_fn = nullptr;
 static legado_register_dispatch_fn g_register_media_fn = nullptr;
 
 // dlsym 加载的函数指针 - Image/Media ArkTS → Kotlin 回调 (KP8+ 新增, 同 FileDir @CName 模式)
@@ -197,6 +201,8 @@ static legado_register_dispatch_fn g_register_media_fn = nullptr;
 // C++ 通过 dlsym 调 Kotlin @CName 函数, 把结果/事件推送给 Kotlin。
 // Image 桥 KP9+ 升级为二进制混合协议 (JSON + 裸字节), 用 legado_int64_cstr_bin_void_fn
 static legado_int64_cstr_bin_void_fn g_image_callback = nullptr;
+// PDF 桥 ArkTS → Kotlin 回调 (同 image 四参签名: requestId/resultJson/bytes/bytesLen)
+static legado_int64_cstr_bin_void_fn g_pdf_callback = nullptr;
 static legado_cstr_void_fn g_media_event = nullptr;
 
 // dlsym 加载的函数指针 - TTS tsfn 注入 + ArkTS → Kotlin 回调 (KP8+ 新增, 同 Image/Media 模式)
@@ -300,21 +306,25 @@ typedef void (*legado_int64_void_fn)(int64_t);
 static legado_int64_void_fn g_set_window_epoch = nullptr;
 static legado_int64_void_fn g_set_file_picker_epoch = nullptr;
 static legado_int64_void_fn g_set_permission_epoch = nullptr;
+static legado_int64_void_fn g_set_pdf_epoch = nullptr;
 
 static std::atomic<int64_t> g_epoch_window{0};
 static std::atomic<int64_t> g_epoch_file_picker{0};
 static std::atomic<int64_t> g_epoch_permission{0};
+static std::atomic<int64_t> g_epoch_pdf{0};
 
 // 候选代次序列: 只有 TSFN 创建成功后才提交为当前代次 (创建失败不影响旧源)
 static std::atomic<int64_t> g_seq_window{0};
 static std::atomic<int64_t> g_seq_file_picker{0};
 static std::atomic<int64_t> g_seq_permission{0};
+static std::atomic<int64_t> g_seq_pdf{0};
 
 static std::atomic<int64_t> *EpochSlot(const char *name) {
     if (name == nullptr) return nullptr;
     if (strcmp(name, "Window") == 0) return &g_epoch_window;
     if (strcmp(name, "FilePicker") == 0) return &g_epoch_file_picker;
     if (strcmp(name, "Permission") == 0) return &g_epoch_permission;
+    if (strcmp(name, "Pdf") == 0) return &g_epoch_pdf;
     return nullptr;
 }
 
@@ -323,6 +333,7 @@ static std::atomic<int64_t> *SeqSlot(const char *name) {
     if (strcmp(name, "Window") == 0) return &g_seq_window;
     if (strcmp(name, "FilePicker") == 0) return &g_seq_file_picker;
     if (strcmp(name, "Permission") == 0) return &g_seq_permission;
+    if (strcmp(name, "Pdf") == 0) return &g_seq_pdf;
     return nullptr;
 }
 
@@ -350,6 +361,8 @@ static void PublishChannelEpoch(const char *name, int64_t epoch) {
         g_set_file_picker_epoch(epoch);
     } else if (strcmp(name, "Permission") == 0 && g_set_permission_epoch != nullptr) {
         g_set_permission_epoch(epoch);
+    } else if (strcmp(name, "Pdf") == 0 && g_set_pdf_epoch != nullptr) {
+        g_set_pdf_epoch(epoch);
     }
 }
 
@@ -371,12 +384,14 @@ static std::mutex g_tsfn_mutex;
 static std::map<int64_t, TsfnEntry*> g_window_entries;
 static std::map<int64_t, TsfnEntry*> g_file_picker_entries;
 static std::map<int64_t, TsfnEntry*> g_permission_entries;
+static std::map<int64_t, TsfnEntry*> g_pdf_entries;
 
 static std::map<int64_t, TsfnEntry*> *EntryMapFor(const char *name) {
     if (name == nullptr) return nullptr;
     if (strcmp(name, "Window") == 0) return &g_window_entries;
     if (strcmp(name, "FilePicker") == 0) return &g_file_picker_entries;
     if (strcmp(name, "Permission") == 0) return &g_permission_entries;
+    if (strcmp(name, "Pdf") == 0) return &g_pdf_entries;
     return nullptr;
 }
 
@@ -471,6 +486,8 @@ static bool load_legado_shared() {
 
     // 解析 @CName 导出符号 - Image/Media tsfn 注入 + ArkTS → Kotlin 回调 (KP8+ 新增)
     g_register_image_fn = (legado_register_bin_dispatch_fn) dlsym(g_legado_so, "legado_register_image_fn");
+    g_register_pdf_gen_fn = (legado_register_dispatch_gen_fn) dlsym(g_legado_so, "legado_register_pdf_gen_fn");
+    g_pdf_callback = (legado_int64_cstr_bin_void_fn) dlsym(g_legado_so, "legado_pdf_callback");
     g_register_media_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_media_fn");
     g_image_callback = (legado_int64_cstr_bin_void_fn) dlsym(g_legado_so, "legado_image_callback");
     g_media_event = (legado_cstr_void_fn)dlsym(g_legado_so, "legado_media_event");
@@ -520,6 +537,7 @@ static bool load_legado_shared() {
     g_set_window_epoch = (legado_int64_void_fn) dlsym(g_legado_so, "legado_set_window_epoch");
     g_set_file_picker_epoch = (legado_int64_void_fn) dlsym(g_legado_so, "legado_set_file_picker_epoch");
     g_set_permission_epoch = (legado_int64_void_fn) dlsym(g_legado_so, "legado_set_permission_epoch");
+    g_set_pdf_epoch = (legado_int64_void_fn) dlsym(g_legado_so, "legado_set_pdf_epoch");
 
     // 解析 @CName 导出符号 - 外部启动请求投递 (ArkTS → Kotlin 同步推送, 同 deep link 模式)
     g_handle_launch_request = (legado_str_int_fn) dlsym(g_legado_so, "legado_handle_launch_request");
@@ -1073,22 +1091,24 @@ extern "C" void ohos_window_dispatch_gen(const char *json, int64_t gen, int64_t 
     napi_release_threadsafe_function(entry->tsfn, napi_tsfn_release);
 }
 
-// tsfn call-js 回调: 在 ArkTS 主线程执行, 把 data (JSON 串) 包成 napi string 后调用 ArkTS 回调。
-static void WindowCallJs(napi_env env, napi_value js_cb, void *context, void *data) {
+// gen 通道 call-js 通用体: 在 ArkTS 主线程执行, 把 data (JSON 串) 包成 napi string 后
+// 调用 ArkTS 回调; 旧源退休/已 abort 都按该请求 id/来源代次失败回执, 不投过期输入。
+static void DispatchGenCallJsCommon(napi_env env, napi_value js_cb, void *context, void *data,
+        const char *channel, void (*failed_fn)(long long, long long)) {
     if (data == nullptr) return;
     DispatchPayload *payload = static_cast<DispatchPayload *>(data);
     char *json = payload->json;
     TsfnEntry *entry = static_cast<TsfnEntry *>(context);
-    if (!IsEntryLive("Window", entry)) {
-        // 旧源已退休: 不再启动过期 UI 输入, 按该请求失败回执
-        NotifyDialogRequestFailed(payload->request_id, payload->gen);
+    if (!IsEntryLive(channel, entry)) {
+        // 旧源已退休: 不再启动过期输入, 按该请求失败回执
+        failed_fn(payload->request_id, payload->gen);
         free(json);
         delete payload;
         return;
     }
     if (js_cb == nullptr || env == nullptr) {
         // tsfn 已 abort: 回调不再投递, 按该请求 id/来源代次回失败
-        NotifyDialogRequestFailed(payload->request_id, payload->gen);
+        failed_fn(payload->request_id, payload->gen);
         free(json);
         delete payload;
         return;
@@ -1100,6 +1120,10 @@ static void WindowCallJs(napi_env env, napi_value js_cb, void *context, void *da
     napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
     free(json);
     delete payload;
+}
+
+static void WindowCallJs(napi_env env, napi_value js_cb, void *context, void *data) {
+    DispatchGenCallJsCommon(env, js_cb, context, data, "Window", NotifyDialogRequestFailed);
 }
 
 // ============ Register*Callback 通用宏 ============
@@ -1427,6 +1451,65 @@ REGISTER_TSFN_CALLBACK(Image, ImageCallJs, g_image_tsfn, g_register_image_fn, oh
     kNoChannelNotify,
     "registerImageCallback: legado_register_image_fn not resolved (KMP invokeImageSync 将降级)")
 
+// PDF 桥失败/通道回执: 经 legado_pdf_callback (K 侧) 按 requestId 结算; requestId=0 表示
+// 通道级事件 (重注册结算全部在途)。
+static void NotifyPdfRequestFailed(long long request_id, long long gen) {
+    if (g_pdf_callback == nullptr) return;
+    char payload[192];
+    snprintf(payload, sizeof(payload),
+             "{\"ok\":false,\"error\":\"PDF 请求通道已退休或未送达\",\"requestGen\":%lld}", gen);
+    g_pdf_callback(request_id, payload, nullptr, 0);
+}
+
+static void NotifyPdfChannelClosed(int64_t old_gen) {
+    if (g_pdf_callback == nullptr) return;
+    long long gen = old_gen;
+    char payload[192];
+    snprintf(payload, sizeof(payload),
+             "{\"ok\":false,\"channelClosed\":true,\"rebind\":true,\"gen\":%lld}", gen);
+    g_pdf_callback(0, payload, nullptr, 0);
+}
+
+// 带源代次的 PDF 投递: 只有本次请求所属注册代次仍持有源对象才投; 旧源请求在该请求上
+// 直接失败回执, 不会投到新注册通道。PDF 请求面纯 JSON。
+extern "C" void ohos_pdf_dispatch_gen(const char *json, int64_t gen, int64_t request_id) {
+    if (json == nullptr) return;
+    TsfnEntry *entry = AcquireEntry(g_pdf_entries, gen);
+    if (entry == nullptr) {
+        if (request_id > 0) NotifyPdfRequestFailed(request_id, gen);
+        return;
+    }
+    size_t len = strlen(json) + 1;
+    char *dup = (char *) malloc(len);
+    napi_status status = napi_closing;
+    DispatchPayload *payload = nullptr;
+    if (dup != nullptr) {
+        memcpy(dup, json, len);
+        payload = new DispatchPayload{dup, request_id, gen};
+        status = napi_call_threadsafe_function(entry->tsfn, payload, napi_tsfn_nonblocking);
+        if (status != napi_ok) {
+            free(dup);
+            delete payload;
+        }
+    }
+    if (status != napi_ok && request_id > 0) NotifyPdfRequestFailed(request_id, gen);
+    napi_release_threadsafe_function(entry->tsfn, napi_tsfn_release);
+}
+
+static void PdfCallJs(napi_env env, napi_value js_cb, void *context, void *data) {
+    DispatchGenCallJsCommon(env, js_cb, context, data, "Pdf", NotifyPdfRequestFailed);
+}
+
+// napi 包装: registerPdfCallback(callback: (json: string) => void): number
+// ArkTS 注册 PDF 回调; 走 Window/FilePicker 同款源代次通道 (RegisterTsfnWithGen):
+// C++ 创建 per-代次 tsfn, 经 legado_register_pdf_gen_fn 注入 ohos_pdf_dispatch_gen
+// (单 JSON+代次+请求 id) 到 Kotlin, 返回注册代次。
+static napi_value RegisterPdfCallback(napi_env env, napi_callback_info info) {
+    return RegisterTsfnWithGen(env, info, "Pdf", g_pdf_entries,
+        g_register_pdf_gen_fn, ohos_pdf_dispatch_gen, PdfCallJs, NotifyPdfChannelClosed,
+        "registerPdfCallback: legado_register_pdf_gen_fn not resolved (KMP invokePdfSync 将降级)");
+}
+
 // napi 包装: registerMediaCallback(callback: (json: string) => void): void
 // ArkTS 注册 media 回调; C++ 创建 tsfn, 通过 legado_register_media_fn 注入 ohos_media_dispatch 到 Kotlin
 REGISTER_TSFN_CALLBACK(Media, MediaCallJs, g_media_tsfn, g_register_media_fn, ohos_media_dispatch,
@@ -1472,6 +1555,40 @@ static napi_value ImageCallback(napi_env env, napi_callback_info info) {
 
     if (load_legado_shared() && g_image_callback != nullptr) {
         g_image_callback(request_id, buf, bytes, bytes_len);
+    }
+    delete[] buf;
+
+    napi_value ret;
+    napi_get_undefined(env, &ret);
+    return ret;
+}
+
+// napi 包装: pdfCallback(requestId: number, result: string, body?: ArrayBuffer): void
+// ArkTS → Kotlin PDF 操作结果回调 (openDocument/renderPage/closeDocument 完成后调用, 混合协议;
+// renderPage 的 JPEG 字节走 body, 其余操作/失败为 undefined)
+static napi_value PdfCallback(napi_env env, napi_callback_info info) {
+    size_t argc = 3;
+    napi_value args[3] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    int64_t request_id = 0;
+    napi_get_value_int64(env, args[0], &request_id);
+
+    size_t str_len = 0;
+    napi_get_value_string_utf8(env, args[1], nullptr, 0, &str_len);
+    char* buf = new char[str_len + 1];
+    napi_get_value_string_utf8(env, args[1], buf, str_len + 1, &str_len);
+
+    const void *bytes = nullptr;
+    size_t bytes_len = 0;
+    bool is_ab = false;
+    if (argc >= 3 && args[2] != nullptr &&
+            napi_is_arraybuffer(env, args[2], &is_ab) == napi_ok && is_ab) {
+        napi_get_arraybuffer_info(env, args[2], (void **) &bytes, &bytes_len);
+    }
+
+    if (load_legado_shared() && g_pdf_callback != nullptr) {
+        g_pdf_callback(request_id, buf, bytes, bytes_len);
     }
     delete[] buf;
 
@@ -1992,31 +2109,7 @@ extern "C" void ohos_file_picker_dispatch_gen(const char *json, int64_t gen, int
 
 // tsfn call-js 回调: 在 ArkTS 主线程执行, 把 data (JSON 串) 包成 napi string 后调用 ArkTS 回调
 static void FilePickerCallJs(napi_env env, napi_value js_cb, void* context, void* data) {
-    if (data == nullptr) return;
-    DispatchPayload* payload = static_cast<DispatchPayload*>(data);
-    char* json = payload->json;
-    TsfnEntry* entry = static_cast<TsfnEntry*>(context);
-    if (!IsEntryLive("FilePicker", entry)) {
-        // 旧源已退休: 不再启动过期选择/复制, 按该请求失败回执
-        NotifyFilePickerRequestFailed(payload->request_id, payload->gen);
-        free(json);
-        delete payload;
-        return;
-    }
-    if (js_cb == nullptr || env == nullptr) {
-        // tsfn 已 abort: 按该请求 id/来源代次回失败
-        NotifyFilePickerRequestFailed(payload->request_id, payload->gen);
-        free(json);
-        delete payload;
-        return;
-    }
-    napi_value json_arg;
-    napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_value undef;
-    napi_get_undefined(env, &undef);
-    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
-    free(json);
-    delete payload;
+    DispatchGenCallJsCommon(env, js_cb, context, data, "FilePicker", NotifyFilePickerRequestFailed);
 }
 
 // napi 包装: registerFilePickerCallback(callback: (json: string) => void): void
@@ -2549,6 +2642,9 @@ androidx_compose_ui_arkui_init(env, exports
         {"registerTtsCallback", nullptr, RegisterTtsCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
         // Image/Media ArkTS → Kotlin 回调 (KP8+ 新增, ArkTS → Kotlin 结果/事件推送)
         {"imageCallback", nullptr, ImageCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
+        // PDF tsfn 回调注册 + ArkTS → Kotlin 回调 (官方 PDFKit, 同 Image 模式)
+        {"registerPdfCallback", nullptr, RegisterPdfCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"pdfCallback", nullptr, PdfCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"mediaEvent", nullptr, MediaEvent, nullptr, nullptr, nullptr, napi_default, nullptr},
         // TTS ArkTS → Kotlin 回调 (KP8+ 新增, 同 Image/Media 模式)
         {"ttsEvent", nullptr, TtsEvent, nullptr, nullptr, nullptr, napi_default, nullptr},

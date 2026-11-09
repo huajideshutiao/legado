@@ -247,6 +247,28 @@ export interface LegadoNativeBridge {
   registerImageCallback(callback: (json: string, bytes: ArrayBuffer | undefined) => void): void;
 
   /**
+   * 注册 PDF 回调 (KMP → ArkTS 跨线程 dispatch, @hms.officeservice.pdfservice 操作)。
+   *
+   * 与 registerFilePickerCallback 同款源代次通道: C++ 侧 RegisterTsfnWithGen 创建 per-代次
+   * tsfn, 并通过 @CName legado_register_pdf_gen_fn 把 dispatch 函数指针 (json+代次+请求 id)
+   * 注入 Kotlin; 返回本次注册代次, ArkTS 可据此判断注册成功 (>0)。旧代次请求在 C++ 层
+   * 按该请求失败回执, 不会投到新通道。此后 KMP 调用 OhosNativeBridge.invokePdfSync 时,
+   * JSON 请求带当前代次跨线程 dispatch 到此 [callback], 由 ArkTS PdfBridgeHandler 调
+   * PDFKit (loadDocument/getPage/getAreaPixelMap)。处理完成后通过 [pdfCallback]
+   * 回送结果给 Kotlin。
+   *
+   * @param callback 接收 json (gen 通道单 JSON 参, 请求面无大字节): 请求 JSON
+   *   `{ requestId, action, payload }`:
+   *   - action='openDocument':  payload=`{ path }` → loadDocument, 回送 `{ ok, pageCount }`
+   *     或 `{ ok:false, error, parseResult }`
+   *   - action='renderPage':    payload=`{ index, width }` → getAreaPixelMap + JPEG 打包,
+   *     回送 `{ ok, width, height }` + JPEG 字节 (pdfCallback 第三参)
+   *   - action='closeDocument': 回送 `{ ok }`
+   * @returns 本次注册代次 (创建通道失败时 napi 抛错, 不会返回)
+   */
+  registerPdfCallback(callback: (json: string) => void): number;
+
+  /**
    * 注册 Media 回调 (KMP → ArkTS 跨线程 dispatch, AVPlayer 命令)。
    *
    * C++ 侧创建 napi_threadsafe_function 包装 [callback], 并通过 @CName legado_register_media_fn
@@ -279,6 +301,19 @@ export interface LegadoNativeBridge {
    * @param body 数据面裸字节 (encode 的 packed 图片; 无字节面时可省略)
    */
   imageCallback(requestId: number, result: string, body?: ArrayBuffer): void;
+
+  /**
+   * PDF 操作结果回调 (ArkTS → Kotlin, 混合协议)。
+   *
+   * ArkTS 侧处理完 openDocument/renderPage/closeDocument 后, 通过此方法把结果
+   * 回送给 Kotlin, 唤醒 OhosNativeBridge.invokePdfSync 中阻塞的 CompletableDeferred。
+   *
+   * @param requestId 请求 ID (与 invokePdfSync 生成的 requestId 对应)
+   * @param result 控制面结果 JSON, 如 `{ ok: true, pageCount: 10 }` 或 `{ ok: false, error: '...' }`
+   *   (renderPage 成功为 `{ ok: true, width, height }`, JPEG 字节走 [body] 裸参)
+   * @param body 数据面裸字节 (renderPage 的 JPEG; 无字节面时可省略)
+   */
+  pdfCallback(requestId: number, result: string, body?: ArrayBuffer): void;
 
   /**
    * Media 事件回调 (ArkTS → Kotlin)。

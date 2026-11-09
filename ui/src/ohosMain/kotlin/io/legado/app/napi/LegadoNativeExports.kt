@@ -606,6 +606,56 @@ object LegadoNativeExports {
         )
     }
 
+    /**
+     * 注入 PDF gen 版 dispatch (由 legado_napi.cpp RegisterPdfCallback 经 RegisterTsfnWithGen 调用)。
+     *
+     * 与 filePicker gen 版同型: dispatch 三参 `(json, gen, requestId)`, 请求面纯 JSON;
+     * ArkTS 处理完成后经 [pdfCallback] (@CName legado_pdf_callback) 回送结果。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_pdf_dispatch_gen`),
+     *   类型 `void(*)(const char*, int64_t gen, int64_t request_id)`
+     */
+    @CName("legado_register_pdf_gen_fn")
+    fun registerPdfGenFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>, Long, Long) -> Unit>>) {
+        OhosNativeBridge.registerPdfDispatchGen { json, gen, requestId ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this), gen, requestId)
+            }
+        }
+    }
+
+    /** 注入 PDF 通道本次注册的代次 (C++ 每次重绑 +1): 旧代次在途请求按通道结算。 */
+    @CName("legado_set_pdf_epoch")
+    fun setPdfChannelEpoch(epoch: Long) {
+        OhosNativeBridge.setPdfChannelEpoch(epoch)
+    }
+
+    /**
+     * ArkTS → Kotlin PDF 操作结果回调 (由 legado_napi.cpp PdfCallback 调用, 混合协议)。
+     *
+     * 调用链: `ArkTS pdfCallback(requestId, resultJson, body?)` → napi →
+     * dlsym("legado_pdf_callback") → 本函数 → [OhosNativeBridge.onPdfResult] →
+     * 唤醒 [OhosNativeBridge.invokePdfSync] 中阻塞的 CompletableDeferred。
+     *
+     * @param requestId 请求 ID (与 invokePdfSync 生成的 requestId 对应)
+     * @param result 控制面结果 JSON ({ok,pageCount}/{ok,width,height}/{ok:false,error}, 不含字节)
+     * @param bytes 数据面裸字节 (仅 renderPage 回传 JPEG; 其余操作/失败为 null)
+     * @param bytesLen [bytes] 长度 (无字节面时为 0)
+     */
+    @CName("legado_pdf_callback")
+    fun pdfCallback(
+        requestId: Long,
+        result: CPointer<ByteVar>,
+        bytes: COpaquePointer?,
+        bytesLen: ULong
+    ) {
+        OhosNativeBridge.onPdfResult(
+            requestId,
+            result.toKString(),
+            bytes.toByteArrayOrNull(bytesLen)
+        )
+    }
+
     // ===== Media tsfn 注入 + ArkTS → Kotlin 事件回调 (KP8+) =====
 
     /**

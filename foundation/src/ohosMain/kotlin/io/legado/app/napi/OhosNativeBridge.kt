@@ -485,6 +485,139 @@ object OhosNativeBridge {
      */
     fun isImageBridgeReady(): Boolean = synchronized(lock) { imageTsfn != null }
 
+    // ===== PDF 同步桥 (源代次通道, 与 Window/FilePicker 同型; 纯 JSON 请求面) =====
+    // 契约 (PdfRenderPort 单实例语义由 K 侧 [io.legado.app.model.fileBook.OhosPdfRenderPort]
+    // 保证, ArkTS 侧文档单例与其一一对应):
+    //   - openDocument {path} → { ok, pageCount } / { ok:false, error, parseResult }
+    //     (path 为沙盒内 POSIX 路径; 打开失败时 ArkTS 侧不保留半开文档)
+    //   - renderPage {index, width} → { ok, width, height } + JPEG 字节 (index 越界/未打开 → ok:false)
+    //   - closeDocument → { ok }
+    // dispatch/代次未注入时 invokePdfSync 返回 null (调用方按打开失败降级, 不伪造页图)。
+
+    /** PDF 通道级回执时给在途请求的真实失败结果 (ArkTS 正常回执不会带 channelClosed)。 */
+    private const val PDF_CHANNEL_CLOSED_RESULT =
+        "{\"ok\":false,\"channelClosed\":true,\"error\":\"PDF 桥通道已重注册, 在途请求按失败结束\"}"
+
+    /** PDF gen 版 dispatch (Kotlin → ArkTS 发请求; 三参 json+来源代次+请求 id, 请求面纯 JSON)。 */
+    private var pdfDispatchGen: OhosTsfnCallbackGen? = null
+
+    /** 待响应的 PDF 同步请求 Map<requestId, CompletableDeferred<OhosBinaryBridgeResponse>>。 */
+    private val pdfPendingRequests =
+        mutableMapOf<Long, CompletableDeferred<OhosBinaryBridgeResponse>>()
+
+    /** 每个在途 PDF 请求的来源代次 (通道结算按 gen 筛, 不误杀新代次请求)。 */
+    private val pdfRequestEpochs = mutableMapOf<Long, Long>()
+
+    /** PDF 通道当前代次 (C++ PublishChannelEpoch 经 legado_set_pdf_epoch 注入)。 */
+    @Volatile
+    private var pdfChannelEpoch = 0L
+
+    /** PDF 请求自增 ID (原子性由 [lock] 保护)。 */
+    private var pdfRequestCounter = 0L
+
+    /** 注入 PDF gen 版 dispatch (由 legado_napi.cpp RegisterPdfCallback 经 RegisterTsfnWithGen 调用)。 */
+    fun registerPdfDispatchGen(dispatch: OhosTsfnCallbackGen) {
+        synchronized(lock) { pdfDispatchGen = dispatch }
+    }
+
+    /** 注入 PDF 通道本次注册的代次 (C++ PublishChannelEpoch → legado_set_pdf_epoch)。 */
+    fun setPdfChannelEpoch(epoch: Long) {
+        synchronized(lock) { if (epoch > pdfChannelEpoch) pdfChannelEpoch = epoch }
+    }
+
+    /**
+     * PDF 操作结果回调 (由 ArkTS 侧调 @CName legado_pdf_callback 触发, 混合协议)。
+     *
+     * requestId<=0 是通道级回执 (C++ NotifyPdfChannelClosed 广播, 经 legado_pdf_callback):
+     * 旧代次在途请求按真实失败结束 (gen 筛, 与 filePicker 同款语义), 新代次请求不受影响。
+     *
+     * @param requestId 对应 [invokePdfSync] 生成的请求 ID (0 = 通道级事件)
+     * @param resultJson 控制面结果 JSON ({ok,pageCount}/{ok,width,height}/{ok:false,error}, 不含字节)
+     * @param bodyBytes 数据面裸字节 (仅 renderPage 回传 JPEG; 其余操作/失败为 null)
+     */
+    fun onPdfResult(requestId: Long, resultJson: String, bodyBytes: ByteArray? = null) {
+        if (requestId <= 0L) {
+            channelGenFrom(resultJson).takeIf { it > 0L }?.let { gen ->
+                synchronized(lock) { if (gen > pdfChannelEpoch) pdfChannelEpoch = gen }
+            }
+            val (ids, rebind, gen) = channelCloseInfoFrom(resultJson)
+            val waiting = synchronized(lock) {
+                val targets = if (rebind && ids.isNullOrEmpty() && gen > 0L) {
+                    pdfRequestEpochs.filterValues { it <= gen }.keys.toList()
+                } else {
+                    ids.orEmpty()
+                }
+                targets.mapNotNull { id ->
+                    pdfRequestEpochs.remove(id)
+                    pdfPendingRequests.remove(id)
+                }
+            }
+            waiting.forEach { it.complete(OhosBinaryBridgeResponse(PDF_CHANNEL_CLOSED_RESULT, null)) }
+            return
+        }
+        val deferred = synchronized(lock) {
+            pdfRequestEpochs.remove(requestId)
+            pdfPendingRequests.remove(requestId)
+        }
+        deferred?.complete(OhosBinaryBridgeResponse(resultJson, bodyBytes))
+    }
+
+    /**
+     * 同步调用 PDF 操作 (阻塞等待 ArkTS 返回结果, 纯 JSON 请求面)。
+     *
+     * 请求登记与来源代次/ dispatch 取用在同一锁段完成 (分配 id → 登记代次 → 取 dispatch),
+     * 重注册结算不会插在中间把已登记请求漏成"已失败但仍向新通道投递"。
+     *
+     * @param action 操作类型: "openDocument" / "renderPage" / "closeDocument"
+     * @param payloadJson 操作参数 JSON (控制面小字段)
+     * @param timeoutMs 超时毫秒 (默认 15s, 防 ArkTS 无响应永久阻塞)
+     * @return ArkTS 返回的 [OhosBinaryBridgeResponse] (控制面 JSON + renderPage 的 JPEG 字节);
+     *         dispatch 未注册、通道已重注册或超时返回 null (调用方按打开/渲染失败降级, 不伪造页图)
+     */
+    fun invokePdfSync(
+        action: String,
+        payloadJson: String,
+        timeoutMs: Long = 15000L,
+    ): OhosBinaryBridgeResponse? {
+        val deferred = CompletableDeferred<OhosBinaryBridgeResponse>()
+        var requestId = 0L
+        var epoch = 0L
+        val dispatch = synchronized(lock) {
+            requestId = ++pdfRequestCounter
+            epoch = pdfChannelEpoch
+            pdfPendingRequests[requestId] = deferred
+            pdfRequestEpochs[requestId] = epoch
+            pdfDispatchGen
+        }
+        val requestJson = KS_JSON.encodeToString(
+            PdfBridgeRequest(requestId = requestId, action = action, payload = payloadJson)
+        )
+        if (dispatch == null) {
+            // 降级: dispatch 未注册 (napi 未接入阶段), 移除 pending 请求返回 null
+            synchronized(lock) { pdfRequestEpochs.remove(requestId); pdfPendingRequests.remove(requestId) }
+            return null
+        }
+        runCatching { dispatch(requestJson, epoch, requestId) }.onFailure {
+            // dispatch 调用失败 (module 卸载 / 线程异常), 移除 pending 请求返回 null
+            synchronized(lock) { pdfRequestEpochs.remove(requestId); pdfPendingRequests.remove(requestId) }
+            return null
+        }
+
+        // 阻塞等待 ArkTS 回调 (JS 引擎线程阻塞, ArkTS 主线程回调 complete, 不同线程无死锁)。
+        // 超时只是结束等待 (pending 移除, 迟到回执按未知 id 丢弃), 不是 SDK 操作的终态
+        val result = runBlocking { withTimeoutOrNull(timeoutMs) { deferred.await() } }
+        synchronized(lock) { pdfRequestEpochs.remove(requestId); pdfPendingRequests.remove(requestId) }
+        return result
+    }
+
+    /** PDF 请求信封 (与 ArkTS PdfBridgeHandler.ets 的 BridgeRequest 对齐)。 */
+    @Serializable
+    private data class PdfBridgeRequest(
+        val requestId: Long,
+        val action: String,
+        val payload: String,
+    )
+
     // ===== Media 事件桥 (tsfn fire-and-forget + @CName event callback, KP8+) =====
     // HttpTtsPlayer / OhosAudioPlayCommander 的 play/pause/stop/seekTo 是 fire-and-forget 命令
     // (无返回值), 用 tsfn dispatch 到 ArkTS 主线程操作 AVPlayer;

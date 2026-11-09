@@ -6,7 +6,6 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.writeBytesAtomically
@@ -23,7 +22,6 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
-import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.utils.File
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MD5Utils
@@ -43,7 +41,8 @@ import okio.Path.Companion.toPath
  *
  * # 与 desktop 端差异
  * - EPUB 走 nativeMain [EpubFile] (纯 Kotlin EpubParser); TXT 走 nativeMain [TextFile]
- *   (commonMain TextFileCore); PDF/CBZ 解析器未下沉, 走 [UnsupportedFileBook] 抛明确异常, 不静默空返回
+ *   (commonMain TextFileCore); PDF 走 commonMain 共享骨架 [PdfFileShared]
+ *   (渲染后端 IosPdfRenderPort / OhosPdfRenderPort 经 PdfRenderProviders 注册);
  * - zip 解析用 commonMain [RemoteZipCore] + [ZipEntryReader] (无 java.util.zip)
  * - bookUrl 用 `file://` + 绝对路径 (与 NativeLocalBookLocator.parseLocalPath 对齐)
  * - saveBookFile(str) 的 webDav 分支与 "下载到本地" / "刷新远端更新" 链路共用同一流式入口
@@ -70,16 +69,14 @@ class NativeFileBookAccessor : FileBookAccessor {
 
     override fun getHandler(book: Book): BaseFileBook {
         // 逐字对齐 app 端 FileBookAccessorImpl.getHandler (即 archive 原版 Book.getHandler):
-        // isPdf -> UnsupportedFileBook (PDF 解析器未下沉) / isEpub -> EpubFile /
+        // isPdf -> PdfFileShared (共享骨架, 渲染后端经 PdfRenderProviders 注册) / isEpub -> EpubFile /
         // isLocal && (originName 以 .cbz 结尾 || (originName 以 .zip 结尾 && isImage)) -> CbzFile /
         // else -> TextFile。
         // 注意 .cbz 分支不要求 isImage —— 导入时已由 importLocalFile 按后缀置为 image 类型,
         // 但已入库的旧书 type 可能缺失, 按原版以后缀为准才不会误落 TextFile。
-        // PDF 解析器在 native 端仍未下沉 (iOS 待接 CoreGraphics, 鸿蒙无渲染 API),
-        // 故 isPdf 分支暂走 UnsupportedFileBook 抛明确异常。
         val originName = book.originName.lowercase()
         return when {
-            book.isPdf -> UnsupportedFileBook
+            book.isPdf -> PdfFileShared
             book.isEpub -> EpubFile
             book.isLocal && (originName.endsWith(".cbz") || originName.endsWith(".zip") && book.isImage) -> CbzFile
             else -> TextFile
@@ -97,9 +94,10 @@ class NativeFileBookAccessor : FileBookAccessor {
      * 本地书文件当前的读取路径: 引用取当前可用的那个 (引用失效时按文件名在书籍保存位置/导入目录找回,
      * 与桌面端 openLocalFile 同口径), 解析不到时按 bookUrl 原样给出, 由打开方按异常处理。
      *
-     * internal 供 iOS 授权装饰器在同一路径上取授权与协调 —— 装饰器不另写一套路径解析。
+     * 跨模块的读取路径入口: 授权装饰器与 [io.legado.app.model.fileBook.PdfRenderPort] 各端实现
+     * 共用这一套路径解析, 不各自复制。
      */
-    internal fun localFilePathOf(book: Book): String =
+    fun localFilePathOf(book: Book): String =
         // 本次协调访问有旁路地址时优先 (书籍身份 bookUrl 不变)
         FileBookOperationPath.current()
             ?: LocalBookLocators.get().getReadableFileRef(book)
@@ -417,26 +415,6 @@ internal fun FileBookAccessor.reopenFromArchive(book: Book, parent: Job? = null)
     val archiveRef = LocalBookLocators.get().getReadableArchiveRef(book) ?: return null
     return importFromArchive(archiveRef, book.originName, parent) { it.contains(book.originName) }
         .firstOrNull()?.let { getBookInputStream(it, parent) }
-}
-
-/**
- * PDF/CBZ 等未下沉格式的占位解析器: 抛明确"此端暂不支持"异常, 不静默空返回。
- */
-private object UnsupportedFileBook : BaseFileBook {
-    override fun upBookInfo(book: Book) = throw unsupportedFormatException(book.originName)
-    override fun getChapterList(book: Book): ArrayList<BookChapter> =
-        throw unsupportedFormatException(book.originName)
-
-    override fun getContent(book: Book, chapter: BookChapter): String? =
-        throw unsupportedFormatException(book.originName)
-
-    override fun getImage(book: Book, href: String): InputStream? =
-        throw unsupportedFormatException(book.originName)
-}
-
-private fun unsupportedFormatException(fileName: String): NoStackTraceException {
-    val suffix = fileName.substringAfterLast('.', "").ifEmpty { fileName }
-    return NoStackTraceException(syncGetString("native_book_format_not_supported", suffix))
 }
 
 /**

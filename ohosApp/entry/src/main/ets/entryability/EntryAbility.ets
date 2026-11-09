@@ -52,6 +52,7 @@ import { systemShare } from '@kit.ShareKit';
 import uniformTypeDescriptor from '@ohos.data.uniformTypeDescriptor';
 import type { UIContext } from '@ohos.arkui.UIContext';
 import { handleKeyboardCommand } from '../bridge/KeyboardBridgeHandler';
+import { handlePdfRequest } from '../bridge/PdfBridgeHandler';
 import { initPermissionBridge, handlePermissionRequest, pendingPermissionRequestIds } from '../bridge/PermissionBridgeHandler';
 // 系统崩溃事件订阅 (hiAppEvent): 系统同时覆盖 ArkTS 崩溃 (JsError) 与原生崩溃 (NativeCrash),
 // 现场含全量线程调用栈与故障日志文件路径, 取代原先只覆盖 ArkTS 的 errorManager 观测器。
@@ -189,7 +190,7 @@ const SHARE_TEXT_BASE_UTD: string = 'general.text';
  */
 const SHARE_SUPPORTED_UTDS: string[] = [
   'general.text', 'general.plain-text', 'general.html', 'general.hyperlink',
-  'general.epub',
+  'general.epub', 'com.adobe.pdf',
   'general.zip-archive', 'general.tar-archive', 'org.gnu.gnu-zip-archive', 'org.gnu.gnu-zip-tar-archive',
   'general.mpeg-4', 'org.matroska.mkv', 'general.ts',
 ];
@@ -991,6 +992,19 @@ export default class EntryAbility extends UIAbility {
     registerSafely((): void => {
       legado.registerKeyboardCallback(handleKeyboardCommand);
     }, '[Legado] keyboard tsfn callback registered via napi', '[Legado] registerKeyboardCallback failed: ');
+
+    // PDF 桥回调注册 (KMP → ArkTS, Window/FilePicker 同款源代次通道, 单 JSON 请求面)
+    // KMP OhosNativeBridge.invokePdfSync 发 PDF 操作请求 (openDocument/renderPage/closeDocument),
+    // ArkTS 侧 PdfBridgeHandler 调 @hms.officeservice.pdfservice 真实加载/渲染, 完成后经本
+    // 回调链回送 legado.pdfCallback(requestId, resultJson, jpegBytes?) 唤醒 KMP 侧等待。
+    // 未注入时 KMP 侧按打开/渲染失败降级 (见 OhosPdfRenderPort, 不伪造页图)。
+    registerSafely((): void => {
+      legado.registerPdfCallback((json: string): void => {
+        handlePdfRequest(json, (requestId: number, resultJson: string, body: ArrayBuffer | undefined): void => {
+          legado.pdfCallback(requestId, resultJson, body);
+        });
+      });
+    }, '[Legado] pdf tsfn callback registered via napi', '[Legado] registerPdfCallback failed: ');
 
     // Permission tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 权限查询/申请)
     // KMP OhosPlatformServices.permissions.hasPermission/requestPermission

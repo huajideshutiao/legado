@@ -61,6 +61,7 @@
     OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "org.gnu.gnu-zip-tar-archive")
     OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.mpeg-4")
     OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.apple.quicktime-movie")
+    OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.adobe.pdf")
   ).@count == $extensionItem.attachments.@count
 ).@count == extensionItems.@count
 AND SUBQUERY (extensionItems, $extensionItem, $extensionItem.attachments.@count &gt; 0).@count &gt; 0
@@ -80,6 +81,7 @@ AND SUBQUERY (
     OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "org.gnu.gnu-zip-tar-archive")
     OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.mpeg-4")
     OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.apple.quicktime-movie")
+    OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.adobe.pdf")
   ).@count &gt; 0
 ).@count &lt;= 1
 AND SUBQUERY (
@@ -98,6 +100,7 @@ AND SUBQUERY (
     OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "org.gnu.gnu-zip-tar-archive")
     OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.mpeg-4")
     OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.apple.quicktime-movie")
+    OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.adobe.pdf")
   ).@count &gt; 1
 ).@count == 0
 AND SUBQUERY (

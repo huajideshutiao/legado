@@ -50,6 +50,8 @@ import io.legado.app.ui.compose.platform.registerComposeStringProviders
 import io.legado.app.help.ui.registerOhosOpenUrlProvider
 import io.legado.app.help.ui.registerNativeUserAgentProvider
 import io.legado.app.model.fileBook.BitmapProviders
+import io.legado.app.model.fileBook.OhosPdfRenderPort
+import io.legado.app.model.fileBook.PdfRenderProviders
 import io.legado.app.model.fileBook.registerOhosFileBookAccessor
 import io.legado.app.model.registerNativeCacheBookCallback
 import io.legado.app.model.registerOhosAudioPlayCommanders
@@ -277,8 +279,14 @@ fun registerOhosProviders() {
     // 音频页封面/模糊背景/书架封面此前因未注册恒占位)
     registerOhosBookImageLoader()
 
+    // 6.55 PDF 渲染后端 (官方 PDFKit 经 PdfBridgeHandler 桥接, shared PdfFileShared 编排骨架调用)
+    // 须在任何 FileBook 调用之前 (PdfRenderProviders.get() 未注册时 PDF 书 getHandler 抛
+    // IllegalStateException); 渲染口径与 app PdfRenderer / 桌面 PDFBox 两端一致 (屏宽/白底/JPEG 90)
+    PdfRenderProviders.register(OhosPdfRenderPort)
+
     // 6.6 本地书 accessor + cbz 容器工厂 (FileBookProviders: epub 走 nativeMain EpubFile,
-    // cbz 走 commonMain CbzFile + NativeZipFileWrapperFactory, pdf 仍明确抛异常)
+    // cbz 走 commonMain CbzFile + NativeZipFileWrapperFactory, pdf 走 commonMain PdfFileShared +
+    // 本端 PDFKit 渲染端口)
     // 须在 BookStorage/LocalBookLocator/BitmapProviders 之后, 任何 FileBook 调用之前;
     // 鸿蒙注册目录授权装饰器 (外部授权目录的读取/属性/删原文件先激活再委托 native 实现)
     registerOhosFileBookAccessor()

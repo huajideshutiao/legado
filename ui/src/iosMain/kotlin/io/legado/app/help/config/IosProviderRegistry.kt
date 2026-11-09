@@ -51,6 +51,8 @@ import io.legado.app.help.tts.registerIosSystemTtsEngine
 import io.legado.app.help.ui.registerIosOpenUrlProvider
 import io.legado.app.help.ui.registerNativeUserAgentProvider
 import io.legado.app.model.fileBook.BitmapProviders
+import io.legado.app.model.fileBook.IosPdfRenderPort
+import io.legado.app.model.fileBook.PdfRenderProviders
 import io.legado.app.model.fileBook.registerIosFileBookAccessor
 import io.legado.app.model.registerIosAudioPlayCommanders
 import io.legado.app.model.registerIosReadBookPlatform
@@ -64,6 +66,7 @@ import io.legado.app.ui.book.manage.registerNativeBookshelfManagePlatform
 import io.legado.app.ui.book.read.page.provider.registerSkiaTextMeasurer
 import io.legado.app.utils.IosRuleRegex
 import io.legado.app.utils.RuleRegexes
+import io.legado.app.utils.ScreenInfoProviders
 import io.legado.app.utils.registerIosScreenInfoProvider
 import io.legado.app.utils.registerRuleRegexForJsonPath
 import platform.UIKit.UIDevice
@@ -256,7 +259,8 @@ fun registerIosProviders() {
     BitmapProviders.register(NativeBitmapProvider(IosImageOps))
 
     // 7.6 本地书 accessor + cbz 容器工厂 (FileBookProviders: epub 走 nativeMain EpubFile,
-    // cbz 走 commonMain CbzFile + NativeZipFileWrapperFactory, pdf 仍明确抛异常)
+    // cbz 走 commonMain CbzFile + NativeZipFileWrapperFactory, pdf 走 commonMain PdfFileShared,
+    // 其渲染后端经 PDF 渲染后端注册, 见下方屏幕尺寸 provider 之后的那条)
     // iOS 额外包一层 security-scoped 授权装饰器 (外部目录书籍文件需授权才能读)
     // 须在 BookStorage/LocalBookLocator/BitmapProviders 之后, 任何 FileBook 调用之前
     registerIosFileBookAccessor()
@@ -272,6 +276,13 @@ fun registerIosProviders() {
     // 屏幕尺寸 provider (UIScreen.nativeBounds): sharedUiMain AppDialogSizes 在容器尺寸未知时
     // 取 ScreenInfoProviders.get() 兜底, 未注册会 error 导致所有对话框崩溃
     registerIosScreenInfoProvider()
+
+    // 9b. PDF 渲染后端 (PdfFileShared 编排骨架经 PdfRenderProviders 取实现, 未注册时任何
+    // PDF 书解析直接 error)。注册在任何 PDF 书解析之前; 渲染宽在注册主线程读一次随端口
+    // 缓存 (UIScreen 是 @MainActor, 渲染线程是后台), 屏幕尺寸 provider 已在其上方注册。
+    PdfRenderProviders.register(
+        IosPdfRenderPort(initialScreenWidthPx = ScreenInfoProviders.get().screenWidthPx),
+    )
     // 阅读编排平台钩子 (朗读桥接 IosReadAloudHost, 缓存服务运行态取 IosBackgroundTasks)
     registerIosReadBookPlatform()
     // 备份/恢复钩子 (lastBackup 时间戳 + 恢复完成提示; zip 复制/解压走 BackupFileOps 默认实现)

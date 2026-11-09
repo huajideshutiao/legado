@@ -15,15 +15,15 @@ import org.apache.pdfbox.rendering.ImageType
 import org.apache.pdfbox.rendering.PDFRenderer
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.impl.use
+import java.awt.HeadlessException
 import java.awt.image.BufferedImage
-import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
 
 /**
  * [PdfRenderPort] 桌面实现: Apache PDFBox 后端 (对齐原 DesktopPdfFile 的渲染行为)。
  *
- * 渲染宽度取屏幕宽 (provider 未注册时回退 1080), 白底 ([ImageType.RGB] 不透明位图
+ * 渲染宽度取屏幕宽 (无显示环境回退 1080), 白底 ([ImageType.RGB] 不透明位图
  * 渲染前填白), JPEG 质量 90; 页图缓存走 [BookImageStorageProviders] (缓存 key 带渲染
  * 宽度, 换屏幕后自然失效); 封面 coverUrl 是落库存储引用, 解析为本地路径后交骨架落盘。
  * 编排骨架在共享 [PdfFileShared], 注册: desktop main() 经 [PdfRenderProviders.register] 注入。
@@ -36,10 +36,20 @@ object DesktopPdfRenderPort : PdfRenderPort {
     @Volatile
     private var renderer: PDFRenderer? = null
 
-    /** 渲染目标宽度 (对齐 app 端 `SystemUtils.screenWidthPx`; provider 未注册时回退 1080)。 */
+    /** 最近一次成功渲染实际采用的宽度 (写缓存 key 的身份; 各操作共享锁定 render→write 顺序)。 */
+    private var lastRenderWidth: Int? = null
+
+    /**
+     * 渲染目标宽度 (对齐 app 端 `SystemUtils.screenWidthPx`)。provider 注册于 provider 图,
+     * 先于任何 PDF 解析; Toolkit.getScreenSize 在 headless 环境抛 HeadlessException,
+     * 此时用既有的 1080 渲染宽度。
+     */
     private val targetWidth: Int
-        get() = runCatching { ScreenInfoProviders.get().screenWidthPx }.getOrNull()
-            ?.takeIf { it > 0 } ?: 1080
+        get() = try {
+            ScreenInfoProviders.get().screenWidthPx
+        } catch (_: HeadlessException) {
+            1080
+        }
 
     /**
      * 打开 [book] 对应的 PDF 文档; 失败返回 false 时文档与渲染器都不发布, 仍停在未打开状态
@@ -79,13 +89,19 @@ object DesktopPdfRenderPort : PdfRenderPort {
     }
 
     override fun renderPageJpegBytes(index: Int): ByteArray? = synchronized(this) {
-        val image = openPdfPage(index) ?: return null
-        toJpegBytes(image)
+        // 渲染宽度只捕获一次: 主显示器/分辨率可在渲染与编码期间被切换, 写缓存 key 用本次实际采用的宽
+        val renderWidth = targetWidth
+        val image = openPdfPage(index, renderWidth) ?: return null
+        val bytes = toJpegBytes(image)
+        if (bytes != null) {
+            lastRenderWidth = renderWidth
+        }
+        bytes
     }
 
     /** 命中图片缓存直接读文件, 未命中才渲染并写缓存 (缓存 key 带渲染宽度)。 */
     override fun readCachedPage(book: Book, index: Int): InputStream? {
-        val storage = runCatching { BookImageStorageProviders.get() }.getOrNull() ?: return null
+        val storage = BookImageStorageProviders.get()
         val chapter = placeholderImageChapter(index.toString(), book.bookUrl)
         val cacheKey = "pdf_${index}_$targetWidth.jpg"
         return runCatching { storage.getImagePath(book, chapter, cacheKey) }.getOrNull()?.let { path ->
@@ -94,9 +110,10 @@ object DesktopPdfRenderPort : PdfRenderPort {
     }
 
     override fun writeCachedPage(book: Book, index: Int, bytes: ByteArray) {
-        val storage = runCatching { BookImageStorageProviders.get() }.getOrNull() ?: return
+        val storage = BookImageStorageProviders.get()
         val chapter = placeholderImageChapter(index.toString(), book.bookUrl)
-        val cacheKey = "pdf_${index}_$targetWidth.jpg"
+        // key 用最近一次成功渲染实际采用的宽, 编码期间屏宽切换不会串 key
+        val cacheKey = "pdf_${index}_${checkNotNull(lastRenderWidth)}.jpg"
         runCatching { storage.saveImage(book, chapter, cacheKey, bytes) }
     }
 
@@ -108,17 +125,17 @@ object DesktopPdfRenderPort : PdfRenderPort {
      *
      * [ImageType.RGB] 为不透明位图, PDFBox 渲染前填白, 等价 app 端 `eraseColor(Color.WHITE)`。
      */
-    private fun openPdfPage(index: Int): BufferedImage? {
+    private fun openPdfPage(index: Int, renderWidth: Int): BufferedImage? {
         val pdfRenderer = renderer ?: return null
         val doc = document ?: return null
         if (index < 0 || index >= doc.numberOfPages) return null
         val page = doc.getPage(index)
         val box = page.cropBox
-        // 旋转 90/270 时输出宽高互换, 用旋转后的宽算缩放比才能得到 targetWidth 宽的图
+        // 旋转 90/270 时输出宽高互换, 用旋转后的宽算缩放比才能得到 renderWidth 宽的图
         val rotated = page.rotation == 90 || page.rotation == 270
         val pageWidth = if (rotated) box.height else box.width
         if (pageWidth <= 0f) return null
-        return pdfRenderer.renderImage(index, targetWidth / pageWidth, ImageType.RGB)
+        return pdfRenderer.renderImage(index, renderWidth / pageWidth, ImageType.RGB)
     }
 
     /** BufferedImage → JPEG 字节 (质量 90, 对齐 app 端 `Bitmap.compress(JPEG, 90)`)。 */

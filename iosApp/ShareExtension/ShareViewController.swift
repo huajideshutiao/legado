@@ -513,11 +513,12 @@ final class ShareViewController: UIViewController {
     ///
     /// ⚠️ 必须与 ShareExtension/Info.plist 与 project.yml 里 `NSExtensionActivationRule`
     /// 谓词的 UTI-CONFORMS-TO 文件清单逐字一致 (激活与取件同一张清单); 清单 = iOS 端既有
-    /// 导入/播放链实际接的格式: epub/json (导入链)、zip/tar/gz/tgz (压缩包链)、mp4/mov
+    /// 导入/播放链实际接的格式: epub/json/pdf (导入链)、zip/tar/gz/tgz (压缩包链)、mp4/mov
     /// (播放链 + shared 分发清单)。
     private static let nonTextFileTypeIdentifiers: [String] = [
         UTType.epub.identifier,
         UTType.json.identifier,
+        UTType.pdf.identifier,
         UTType.zip.identifier,
         UTType.tar.identifier,
         UTType.gzip.identifier,
