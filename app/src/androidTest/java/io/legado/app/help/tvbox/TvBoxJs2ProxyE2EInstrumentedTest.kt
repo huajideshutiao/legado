@@ -72,7 +72,7 @@ class TvBoxJs2ProxyE2EInstrumentedTest {
 
         // 走 TvBoxManager 的 loader 实例 (与 proxyDispatch 同源)
         val spider = runBlocking { TvBoxManager.spiderFor("e2e_js").second }
-        val catJson = spider.categoryContent("fyclass", "1", false, null) ?: ""
+        val catJson = spider.categoryContent("fyclass", "1", false, null)
         println("[Js2ProxyE2E] category=$catJson")
         val vodId = JSONObject(catJson).getJSONArray("list").getJSONObject(0).getString("vod_id")
         println("[Js2ProxyE2E] js2Proxy URL=$vodId")
@@ -90,7 +90,7 @@ class TvBoxJs2ProxyE2EInstrumentedTest {
             .readTimeout(30, TimeUnit.SECONDS)
             .build()
         val body = client.newCall(Request.Builder().url(vodId).build()).execute().use { resp ->
-            val text = resp.body!!.string()
+            val text = resp.body.string()
             check(resp.code == 200) { "do=js 回环 HTTP ${resp.code}: ${resp.message} body='$text' url=$vodId" }
             text
         }

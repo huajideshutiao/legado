@@ -196,7 +196,7 @@ class TvBoxSpiderRemoteInstrumentedTest {
         }.build()
         com.github.catvod.net.OkHttp.client().newCall(request).execute().use { resp ->
             assertTrue(site.api + " 直链 HTTP " + resp.code + ": " + url, resp.isSuccessful)
-            val stream = resp.body?.byteStream() ?: error("直链空响应体")
+            val stream = resp.body.byteStream()
             val head = ByteArray(2048)
             var off = 0
             while (off < head.size) {

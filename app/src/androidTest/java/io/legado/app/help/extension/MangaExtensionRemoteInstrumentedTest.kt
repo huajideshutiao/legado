@@ -126,7 +126,7 @@ class MangaExtensionRemoteInstrumentedTest {
 
         // 真实下载首图 (验证防盗链头经虚拟源 header 注入)
         val request = Request.Builder().url(imgUrls.first()).apply {
-            bookSource.getHeaderMap()?.forEach { (k, v) -> header(k, v) }
+            bookSource.getHeaderMap().forEach { (k, v) -> header(k, v) }
         }.build()
         OkHttpClient().newCall(request).execute().use { resp ->
             assertTrue("首图 HTTP ${resp.code}", resp.isSuccessful)

@@ -128,7 +128,7 @@ class TvBoxBiliPlayInstrumentedTest {
             header("User-Agent", headers["User-Agent"] ?: CHROME_UA)
         }.build()
         com.github.catvod.net.OkHttp.client().newCall(req).execute().use { resp ->
-            val text = resp.body?.string().orEmpty()
+            val text = resp.body.string()
             println("[BiliProbe2] GET $url -> ${resp.code} ${resp.header("Content-Type")}")
             return text
         }

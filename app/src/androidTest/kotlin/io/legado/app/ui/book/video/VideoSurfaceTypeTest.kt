@@ -15,7 +15,7 @@ import org.junit.runner.RunWith
  * 画面缩放是按图层变换施加的, 只有参与 View 合成的渲染面会跟随 (纹理视图);
  * 渲染面若是独立合成的 SurfaceView, 缩放会静默失效 —— 这条测试守住这个前提。
  */
-@OptIn(UnstableApi::class)
+@androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 @RunWith(AndroidJUnit4::class)
 class VideoSurfaceTypeTest {
 

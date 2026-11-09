@@ -294,7 +294,7 @@ class TvBoxSnifferInstrumentedTest {
     /** 读前 4KB; 返回 (缓冲区, 有效长度)。m3u8 清单通常远小于此, 头字节足够判。
      *  mp4 等大文件只验头字节可读 (完整下载不适合测试)。 */
     private fun readHead(resp: okhttp3.Response): Pair<ByteArray, Int> {
-        val stream = resp.body?.byteStream() ?: error("空响应体")
+        val stream = resp.body.byteStream()
         val buffer = ByteArray(4096)
         var off = 0
         while (off < buffer.size) {

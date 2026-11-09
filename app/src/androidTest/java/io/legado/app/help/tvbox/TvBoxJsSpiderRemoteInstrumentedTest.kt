@@ -108,7 +108,7 @@ class TvBoxJsSpiderRemoteInstrumentedTest {
         }
         check(!vodId.isNullOrBlank()) { site.api + " 搜索/分类均无 vod 数据" }
 
-        val vod = JSONObject(spider.detailContent(listOf(vodId!!)))
+        val vod = JSONObject(spider.detailContent(listOf(vodId)))
             .optJSONArray("list")?.optJSONObject(0)
         checkNotNull(vod) { site.api + " detailContent(" + vodId + ") list[] 为空" }
         val playFrom = vod.optString("vod_play_from").trim()
@@ -155,7 +155,7 @@ class TvBoxJsSpiderRemoteInstrumentedTest {
                 site.api + " 直链 HTTP " + resp.code + ": " + playUrlOut.take(120),
                 resp.isSuccessful,
             )
-            val stream = resp.body?.byteStream() ?: error("直链空响应体")
+            val stream = resp.body.byteStream()
             val head = ByteArray(2048)
             var off = 0
             while (off < head.size) {
