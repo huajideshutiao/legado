@@ -13,18 +13,21 @@ data class ExploreOption(
 ) {
     val selectedValues: MutableSet<String> = mutableSetOf()
 
+    /**
+     * 取本次要提交的值: 空值项不参与拼接 —— 取值是空的选项代表不了任何提交内容, 选中它也只会
+     * 往 URL 里塞空参数; 拼接结果为空时整段返回空, prefix/suffix 也不拼。
+     */
     val resolvedValue: String
         get() {
             val core = if (multiSelect) {
-                if (selectedValues.isEmpty()) return ""
                 options.asSequence()
                     .map { it.second }
-                    .filter { it in selectedValues }
+                    .filter { it.isNotBlank() && it in selectedValues }
                     .joinToString(separator)
             } else {
-                if (selectedValue.isEmpty()) return ""
                 selectedValue
             }
+            if (core.isBlank()) return ""
             return prefix + core + suffix
         }
 

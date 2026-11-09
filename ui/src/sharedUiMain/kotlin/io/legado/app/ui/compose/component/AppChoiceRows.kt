@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -82,12 +83,16 @@ data class AppChoiceField(
  *
  * 选择在弹窗内进行, 确认时把整份选中集合交回 [onSelectionChange] 一次 —— 逐项回调会让
  * 调用方每点一下重搜一次。
+ *
+ * [headerIndexes] 是分组标题行的下标: 这些项在弹窗里只做分段显示, 不可勾选、不进入选中集合
+ * (取值为空的选项没有可提交的内容)。
  */
 data class AppMultiChoiceField(
     val title: String,
     val options: List<String>,
     val selectedIndexes: Set<Int>,
     val onSelectionChange: (Set<Int>) -> Unit,
+    val headerIndexes: Set<Int> = emptySet(),
 ) : AppOptionField
 
 @Composable
@@ -136,6 +141,7 @@ private data class ChoiceRow(
     val onSelect: (Int) -> Unit,
     val onSelectionChange: (Set<Int>) -> Unit,
     val onReset: (() -> Unit)?,
+    val headerIndexes: Set<Int> = emptySet(),
 ) {
     val displayValue: String
         get() = options.filterIndexed { index, _ -> index in selectedIndexes }
@@ -165,6 +171,7 @@ private fun AppMultiChoiceField.toChoiceRow() = ChoiceRow(
     onSelect = {},
     onSelectionChange = onSelectionChange,
     onReset = null,
+    headerIndexes = headerIndexes,
 )
 
 @Composable
@@ -457,7 +464,21 @@ private fun ChoicePickerDialog(row: ChoiceRow, onDismiss: () -> Unit) {
         ) {
             items(visible, key = { it.index }) { entry ->
                 val label = entry.value
-                if (row.multiSelect) {
+                if (row.multiSelect && entry.index in row.headerIndexes) {
+                    Text(
+                        text = label,
+                        color = colors.secondaryText,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                horizontal = DesignTokens.spacingLg,
+                                vertical = DesignTokens.spacingDefault,
+                            ),
+                    )
+                } else if (row.multiSelect) {
                     val checked = entry.index in working
                     Row(
                         Modifier

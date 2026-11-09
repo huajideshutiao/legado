@@ -76,4 +76,6 @@ private fun ExploreOption.toMultiChoiceField(onChanged: () -> Unit) = AppMultiCh
             onChanged()
         }
     },
+    // 取值是空的选项没有可提交的内容, 在弹窗里当分组标题: 只做分段显示, 不可勾选
+    headerIndexes = options.indices.filter { options[it].second.isBlank() }.toSet(),
 )
