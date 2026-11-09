@@ -18,7 +18,11 @@ import java.util.zip.ZipOutputStream
  *     - sqlite-bundled-jvm 2.7.0: natives/{windows_x64,linux_x64,linux_arm64,osx_arm64} 四份
  *       sqliteJni, 解压 7.17MiB, 非本平台三份在 jar 内仍占 2.66MiB;
  *     - jna 5.19.1: com/sun/jna/ 下 27 份 jnidispatch (aix/sunos/freebsd/loongarch64/s390x…),
- *       解压 5.04MiB, 本机只认 win32-x86-64 一份。
+ *       解压 5.04MiB, 本机只认 win32-x86-64 一份;
+ *     - zstd-kmp-jvm 0.4.0: jni/{aarch64,amd64,x86_64}/ 六份 libzstd-kmp/zstd-kmp
+ *       (目录名即 JVM os.arch), 六份共 3.67MiB, 本平台只认一份。zstd 运行时按 os.name
+ *       选文件名 (zstd-kmp.dll / libzstd-kmp.so / libzstd-kmp.dylib)、按 os.arch 选目录
+ *       (Zstd__JvmZstdKt.loadNativeLibrary 拼资源路径, 见 jar 内实现)。
  *    这些条目在 jar 内已 deflate, jpackage 外层再压不动, 所以每出一个平台的包就把其它平台的字节
  *    照抄一遍。
  *
@@ -35,7 +39,7 @@ import java.util.zip.ZipOutputStream
  */
 object ReleaseJarRewriter {
 
-    private val foreignNativeRoots = listOf("natives/", "com/sun/jna/")
+    private val foreignNativeRoots = listOf("natives/", "com/sun/jna/", "jni/")
 
     private val knownNativeTokens = setOf(
         // sqlite-bundled: natives/<token>/
@@ -50,6 +54,8 @@ object ReleaseJarRewriter {
         "freebsd-x86", "freebsd-x86-64", "freebsd-arm", "freebsd-ia64",
         "openbsd-x86", "openbsd-x86-64", "netbsd-x86", "netbsd-x86-64",
         "dragonflybsd-x86-64", "kfreebsd-i386", "kfreebsd-x86-64", "aix-ppc", "aix-ppc64",
+        // zstd-kmp: jni/<token>/ (目录名即 JVM os.arch, 通用 arch 名, 注意与其它库同名碰撞风险)
+        "aarch64", "amd64", "x86_64",
     )
 
     private const val metaInfPrefix = "META-INF/"
@@ -157,14 +163,14 @@ object ReleaseJarRewriter {
     /** 本平台要保留的 native 目录 token。 */
     fun tokensToKeep(os: NativePlatformOs, arm64: Boolean): Set<String> = when (os) {
         NativePlatformOs.WINDOWS ->
-            if (arm64) setOf("win32-aarch64", "windows_arm64")
-            else setOf("win32-x86-64", "win32-amd64", "windows_x64")
+            if (arm64) setOf("win32-aarch64", "windows_arm64", "aarch64")
+            else setOf("win32-x86-64", "win32-amd64", "windows_x64", "amd64")
         NativePlatformOs.MACOS ->
-            if (arm64) setOf("darwin-aarch64", "osx_arm64")
-            else setOf("darwin-x86-64", "darwin-x86", "osx_x64")
+            if (arm64) setOf("darwin-aarch64", "osx_arm64", "aarch64")
+            else setOf("darwin-x86-64", "darwin-x86", "osx_x64", "x86_64")
         NativePlatformOs.LINUX ->
-            if (arm64) setOf("linux-aarch64", "linux_arm64")
-            else setOf("linux-x86-64", "linux-x86_64", "linux_x64")
+            if (arm64) setOf("linux-aarch64", "linux_arm64", "aarch64")
+            else setOf("linux-x86-64", "linux-x86_64", "linux_x64", "amd64")
     }
 }
 

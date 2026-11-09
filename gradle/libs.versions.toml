@@ -226,6 +226,12 @@ androidx-uiautomator = { module = "androidx.test.uiautomator:uiautomator", versi
 
 # ===== 网络栈 =====
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+# 漫画扩展按 compileOnly 引用 okhttp3.zstd.Zstd / okhttp3.brotli.Brotli(BrotliInterceptor)与
+# com.squareup.zstd.okio.OkioZstd, 运行时委派宿主; okhttp-zstd 传递 zstd-kmp-okio(0.4.0,
+# Android 变体为 AAR 含全 ABI libzstd-kmp.so, JVM 变体 jar 含 /jni/ 全平台 native),
+# okhttp-brotli 传递 org.brotli:dec(0.1.2, 纯类 jar)
+okhttp-zstd = { module = "com.squareup.okhttp3:okhttp-zstd", version.ref = "okhttp" }
+okhttp-brotli = { module = "com.squareup.okhttp3:okhttp-brotli", version.ref = "okhttp" }
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 kmp-zip-okio = { module = "no.synth:kmp-zip-okio", version.ref = "kmp-zip" }

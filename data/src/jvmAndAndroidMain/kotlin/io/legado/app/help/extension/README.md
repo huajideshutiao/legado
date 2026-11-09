@@ -23,8 +23,8 @@
 | injekt 用 null2264 fork | kohesive 原版 1.16.1 缺扩展所需包面 |
 | keiyoushi 主仓库索引格式 | `index.min.json` 已是 "Outdated App" 占位；实际为 index.pb / 新版 index.json（`extensionList.extensions[]`：`packageName`/`resources.apkUrl`(GitHub Releases 直链)/`language`/contentWarning 字符串枚举）；yuzono 等社区仓库仍发老格式（`pkg`/`apk`/`lang`/int nsfw/float lib，`$baseUrl/apk/$apk` 拼接）。三种格式需自动识别 |
 | org.jsoup 门面不全 | 见 `data/src/commonMain/kotlin/org/jsoup/README.md`：597 个扩展文件引用，门面补齐前仅 JSON-API 型扩展可用 |
-| rxjava 1.3.8 / zstd-kmp-okio 未引入 | 22 / 1 个扩展不可用，暂不处理（kotlinx-serialization-protobuf 已随 index.pb 解析引入） |
-| shim 兜底待替换 | okhttp3/brotli、okhttp3/zstd、androidx.preference ×9、kotlinx/serialization/json/okio（文件头已注明），引真依赖后须删 |
+| rxjava 1.3.8 未引入 | 22 个扩展不可用，暂不处理（zstd-kmp-okio 已随 okhttp-zstd 工件引入；kotlinx-serialization-protobuf 已随 index.pb 解析引入） |
+| shim 兜底待替换 | androidx.preference ×9、kotlinx/serialization/json/okio（文件头已注明），引真依赖后须删（okhttp3/brotli、okhttp3/zstd 占位已删，真依赖已引入） |
 | Cloudflare/WebView 挑战 | Android 已实现（插件栈+书源栈注入，同 host 公平锁去重，cf_clearance 经 CookieStore 回写）；desktop 书源栈由同套语义的 DesktopCloudflareInterceptor 接入（DesktopWebViewEngine）；iOS 第二阶段（WKWebView+cookie 桥已具备）；ohos 阻塞在 WebView napi 桥（ui/src/ohosMain/.../OhosWebViewStub.kt 既有方案） |
 | desktop 插件支持 | 已接入：JvmExtensionLoader（dex2jar 转 JAR + ChildFirstURLClassLoader，Suwayomi-Server 先例）+ DesktopMangaExtensionHost（扩展目录扫描/安装/卸载/信任）；入口「我的」页与 Android 同一套 SharedMangaExtensionPlatform；android.graphics 图片加工桩（BufferedImage/Skia 解码）承载切图混排 |
 | iOS/ohos 插件支持 | 机制性不可能（无 dex/ART/JVM 运行时且系统禁动态加载，dex2jar 转出也无处理处）；native 端扩展生态唯一替代路线是 JS 规则（legado 书源式） |

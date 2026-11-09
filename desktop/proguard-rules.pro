@@ -148,6 +148,15 @@
 -keep class okhttp3.*{*;}
 -keepclassmembers class okhttp3.** {    *** protocol(...);}
 -dontwarn okhttp3.internal.**
+# okhttp3 子包: 上方只有单星 okhttp3.*, 不含 okhttp3.internal 等子包;
+# 覆盖 okhttp3.zstd.Zstd / okhttp3.brotli.Brotli(BrotliInterceptor) (官方 okhttp-zstd/okhttp-brotli
+# 工件): 扩展 dex 按名引用, 宿主源码零直调, 不 keep 即被整包裁光; 与 app 端规则同构
+-keep,allowoptimization class okhttp3.** { public protected *; }
+# com.squareup.zstd (zstd-kmp/zstd-kmp-okio): 扩展 dex 直调 OkioZstd.zstdCompress/zstdDecompress,
+# 规则面与 Mihon 官方 proguard-rules.pro 扩展依赖保留段逐字同构;
+# JniZstdKt/JniZstdCompressor/JniZstdDecompressor 的 private native 方法经上方
+# -keepclasseswithmembers native 规则保留, 资源 /jni/<arch>/ 原样复制 (ProGuard 不改资源)
+-keep,allowoptimization class com.squareup.zstd.** { public protected *; }
 
 ############################
 # Jsoup (书源 JS 解析 HTML, 反射调用)

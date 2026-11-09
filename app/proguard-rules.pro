@@ -193,8 +193,13 @@
 ############################
 -keep,allowoptimization class eu.kanade.** { *; }
 -keep,allowoptimization class androidx.preference.** { public protected *; }
-# okhttp3 子包: 上方只有单星 okhttp3.*, 不含 okhttp3.internal 等子包
+# okhttp3 子包: 上方只有单星 okhttp3.*, 不含 okhttp3.internal 等子包;
+# 覆盖 okhttp3.zstd.Zstd / okhttp3.brotli.Brotli(BrotliInterceptor) (官方 okhttp-zstd/okhttp-brotli 工件)
 -keep,allowoptimization class okhttp3.** { public protected *; }
+# com.squareup.zstd (zstd-kmp/zstd-kmp-okio): 扩展 dex 直调 OkioZstd.zstdCompress/zstdDecompress,
+# 宿主源码零直调, 不 keep 即被 R8 整包裁光 (debug 崩溃 NoClassDefFoundError 的 release 镜像);
+# 规则面与 Mihon 官方 proguard-rules.pro 扩展依赖保留段逐字同构
+-keep,allowoptimization class com.squareup.zstd.** { public protected *; }
 
 ############################
 # @file:JvmName 合成类跨模块引用加固（顶级 Kotlin 函数宿主类）
