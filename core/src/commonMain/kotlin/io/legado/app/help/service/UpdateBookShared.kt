@@ -10,10 +10,8 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.addType
-import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isUpError
-import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.closeIfCloseable
@@ -676,29 +674,23 @@ class UpdateBookShared(
     }
 
     /**
-     * 添加预下载任务 (对照 app 端 `MainViewModel.addDownload`, 不简化)。
+     * 添加预下载任务。
      *
-     * 流程与 app 端完全一致:
-     * 1. preDownloadNum == 0 时直接返回 (用户关闭预下载)
-     * 1.5. 音视频书直接返回 (有意偏离原版, 见下)
-     * 2. 计算结束 index = min(totalChapterNum - 1, durChapterIndex + preDownloadNum)
-     * 3. CacheBookShared.getOrCreate(source, book) 获取或创建下载模型
-     * 4. cacheBook.addDownload(durChapterIndex, endIndex) 入队
+     * preDownloadNum == 0 时关闭; 仅主内容类型为 text 的书籍进入
+     * (updateError/local/archive/notShelf 等状态位可附加)。
+     * 缓存范围 [durChapterIndex, endIndex], endIndex =
+     * min(totalChapterNum - 1, durChapterIndex + preDownloadNum), 两端包含;
+     * app/desktop/iOS/鸿蒙共用此准入。
      *
-     * @Synchronized 与 app 端一致, 保护 getOrCreate + addDownload 的原子性
-     * (避免两个并发调用同时 getOrCreate 同一本书产生两个 CacheBookModel)
-     *
-     * 平台差异: 直接调 [CacheBookShared.getOrCreate] (替代 app 端 `CacheBook.getOrCreate` /
-     * 桌面端 `DesktopCacheBook.getOrCreate`, 各端 CacheBook 单例都是 CacheBookShared 的薄壳)。
+     * getOrCreate + addDownload 由 [addDownloadLock] 保证原子性。
      */
     // KMP: @Synchronized 改 synchronized(addDownloadLock) (Native 端 @Synchronized 无效)
     // 保护 getOrCreate + addDownload 原子性, 避免并发产生两个 CacheBookModel
     private fun addDownload(source: BookSource, book: Book) {
         if (appConfig.preDownloadNum == 0) return
-        // 音视频章节的"正文"是带时效签名的播放直链, 播放侧一律现解析 (needSave=false) 从不读正文缓存,
-        // 拉下来只是把过期直链写成无效缓存文件 + 白耗流量。有意偏离原版 (原版 MainViewModel.addDownload
-        // 无类型过滤), 属修原版缺陷。直链复用走 BookChapter.resourceUrl, 不经这条正文缓存链路。
-        if (book.isAudio || book.isVideo) return
+        // 自动缓存只服务纯文本书籍: 主内容类型必须恰好是 text;
+        // updateError/local/archive/notShelf 等状态位不影响准入, text+其它内容类型混合则不允许。
+        if ((book.type and BookType.allBookType) != BookType.text) return
         synchronized(addDownloadLock) {
             // 结束章节 index (含): 不超过最后章节 - 1, 不超过当前阅读 + preDownloadNum
             val endIndex = min(
