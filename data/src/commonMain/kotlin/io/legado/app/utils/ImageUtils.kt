@@ -65,10 +65,10 @@ object ImageUtils {
     }
 
     /**
-     * 在图片脚本作用域内执行: 脚本用 `image.*` 建出的原生图在返回后立即释放, 不等 GC
-     * (见 [ImageOps.withScope]; 未注册 ImageOps 或平台无需回收时等价于直接执行)。
+     * 在图片脚本作用域内执行: 脚本用 `image.*` 建出的原生图在返回后释放, 不等 GC
+     * (见 [ImageOps.withScope]; 未注册 ImageOps 或平台无需提前释放时等价于直接执行)。
      *
-     * 进出都是 ByteArray, ImageRef 句柄不会逃出本作用域, 故可安全释放。
+     * 条件: 本函数进出均为 ByteArray, 作用域内产出的 [ImageRef] 不被作用域外的持有者使用。
      */
     private fun <T> imageScoped(block: () -> T): T {
         val ops = JsBindingInjector.imageOpsOrNull ?: return block()

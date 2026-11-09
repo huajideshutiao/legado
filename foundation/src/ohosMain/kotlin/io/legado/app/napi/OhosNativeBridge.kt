@@ -393,13 +393,14 @@ object OhosNativeBridge {
     // 调用链 (以 decode 为例):
     // KMP OhosImageOps.decode(bytes)
     //   → invokeImageSync("decode", json, bytes)
-    //   → 生成 requestId, 存入 imagePendingRequests (CompletableDeferred<OhosBinaryBridgeResponse>)
+    //   → 生成 requestId, 存入 imagePendingRequests (请求状态持有 CompletableDeferred<OhosBinaryBridgeResponse>)
     //   → imageTsfn(requestJson, bytes)  (fire-and-forget, dispatch 到 ArkTS 主线程)
     //   → runBlocking { deferred.await() }  (阻塞 JS 引擎线程等待结果)
     //   → [ArkTS 主线程] image callback 收到 (requestJson, bytesArrayBuffer)
     //   → image.createImageSource(bytes).createPixelMap() → 存入 pixelMaps Map<id, PixelMap>
     //   → legado.imageCallback(requestId, resultJson, packed?)  (napi → @CName legado_image_callback)
-    //   → onImageResult(requestId, resultJson, bodyBytes) → deferred.complete(OhosBinaryBridgeResponse)
+    //   → onImageResult(requestId, resultJson, bodyBytes) → 记录响应并唤醒等待方;
+    //      等待方超时/异常未取走时, 由桥对响应里的新 PixelMap 发起非阻塞释放
     //   → runBlocking 返回, OhosImageOps.decode 返回 ImageRef(pixelMapId)
     //
     // 线程安全: JS 引擎线程阻塞等待, ArkTS 主线程回调 complete, 不同线程无死锁。
@@ -408,12 +409,27 @@ object OhosNativeBridge {
     @Volatile
     private var imageTsfn: OhosBinaryTsfnCallback? = null
 
-    /** 待响应的图片同步请求 Map<requestId, CompletableDeferred<OhosBinaryBridgeResponse>>。 */
-    private val imagePendingRequests =
-        mutableMapOf<Long, CompletableDeferred<OhosBinaryBridgeResponse>>()
+    /**
+     * 单个图片同步请求的待响应状态。
+     *
+     * [result] 记录 [onImageResult] 收到的响应: 等待方超时/异常获胜时结果未被取走,
+     * 由 [invokeImageSync] 的 finally 按此判定并释放响应里新建的 PixelMap。
+     */
+    private class ImagePendingRequest(val deferred: CompletableDeferred<OhosBinaryBridgeResponse>) {
+        var result: OhosBinaryBridgeResponse? = null
+    }
+
+    /** 待响应的图片同步请求 Map<requestId, 状态>。 */
+    private val imagePendingRequests = mutableMapOf<Long, ImagePendingRequest>()
+
+    /** 已发送且不等待结果的资源释放请求 Map<requestId, pixelMapId> (回执独立识别)。 */
+    private val imageReleaseRequests = mutableMapOf<Long, Long>()
 
     /** 图片请求自增 ID (原子性由 [lock] 保护)。 */
     private var imageRequestCounter = 0L
+
+    /** 图片桥日志标签 (释放失败/迟到结果按具体 ID 记录)。 */
+    private const val IMAGE_LOG_TAG = "OhosImageBridge"
 
     /** 注入 image tsfn (由 legado_napi.cpp registerImageCallback 调用)。 */
     fun registerImageFn(tsfn: OhosBinaryTsfnCallback) {
@@ -433,20 +449,109 @@ object OhosNativeBridge {
      * @param bodyBytes 数据面裸字节 (encode 时非空; 其余操作/失败时为 null)
      */
     fun onImageResult(requestId: Long, resultJson: String, bodyBytes: ByteArray? = null) {
-        val deferred = synchronized(lock) { imagePendingRequests.remove(requestId) }
-        deferred?.complete(OhosBinaryBridgeResponse(resultJson, bodyBytes))
+        val response = OhosBinaryBridgeResponse(resultJson, bodyBytes)
+        val deferred = synchronized(lock) {
+            val state = imagePendingRequests[requestId]
+            if (state == null) null else {
+                state.result = response
+                state.deferred
+            }
+        }
+        if (deferred != null) {
+            deferred.complete(response)
+            return
+        }
+        // 资源释放请求的回执: 独立识别, 按真实结果记录成功/失败, 不递归当成图片结果
+        val releasedId = synchronized(lock) { imageReleaseRequests.remove(requestId) }
+        if (releasedId != null) {
+            logImageReleaseResult(releasedId, resultJson)
+            return
+        }
+        // 等待方已超时/异常放弃 (pending 已移除) 后到达的迟到结果: 新建的 PixelMap 无人持有,
+        // 必须在 ArkTS 主线程以非阻塞 threadsafe 消息发起释放 (不能回调阻塞的 invokeImageSync)
+        releaseImageResultResources(resultJson, "迟到图片结果 requestId=$requestId")
+    }
+
+    /**
+     * 发起 PixelMap 资源释放 (fire-and-forget, 不阻塞调用线程)。
+     *
+     * Cleaner 回调线程不固定且不能阻塞, 等待方未取走的迟到结果也可能在 ArkTS 主线程;
+     * 两者都只能向同一条 image tsfn 投递 release 请求, 回执由 [onImageResult] 独立识别。
+     * 发送失败或 SDK 释放失败按具体 pixelMapId 与真实错误记录, 不宣称已释放。
+     */
+    fun releaseImageResource(pixelMapId: Long) {
+        if (pixelMapId <= 0L) return
+        val tsfn = synchronized(lock) { imageTsfn }
+        if (tsfn == null) {
+            AppLog.put(
+                "图片资源释放失败 pixelMapId=$pixelMapId: 图片桥未注册",
+                null, false, IMAGE_LOG_TAG
+            )
+            return
+        }
+        val requestId = synchronized(lock) {
+            val id = ++imageRequestCounter
+            imageReleaseRequests[id] = pixelMapId
+            id
+        }
+        val requestJson = KS_JSON.encodeToString(
+            ImageBridgeRequest(
+                requestId = requestId,
+                action = "release",
+                payload = "{\"pixelMapId\":$pixelMapId}",
+            )
+        )
+        runCatching { tsfn(requestJson, null) }.onFailure {
+            synchronized(lock) { imageReleaseRequests.remove(requestId) }
+            AppLog.put(
+                "图片资源释放请求发送失败 pixelMapId=$pixelMapId",
+                it, false, IMAGE_LOG_TAG
+            )
+        }
+    }
+
+    /** 解析回执/迟到响应里的 pixelMap 资源 ID, 逐个发起释放。 */
+    private fun releaseImageResultResources(resultJson: String, reason: String) {
+        val json = runCatching { KS_JSON.parseToJsonElement(resultJson).jsonObject }.getOrNull()
+        if (json == null) {
+            AppLog.put("$reason: 回执解析失败, 未释放图片资源", null, false, IMAGE_LOG_TAG)
+            return
+        }
+        val ids = buildList {
+            json["pixelMapId"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()?.let { add(it) }
+            json["pixelMapIds"]?.jsonArray?.forEach { element ->
+                element.jsonPrimitive.contentOrNull?.toLongOrNull()?.let { add(it) }
+            }
+        }
+        ids.filter { it > 0L }.forEach { releaseImageResource(it) }
+    }
+
+    /** 记录 release 请求的真实回执: 失败带具体 ID 与 SDK 错误, 不把请求发出当成已释放。 */
+    private fun logImageReleaseResult(pixelMapId: Long, resultJson: String) {
+        val json = runCatching { KS_JSON.parseToJsonElement(resultJson).jsonObject }.getOrNull()
+        val ok = json?.get("ok")?.jsonPrimitive?.booleanOrNull == true
+        if (ok) {
+            AppLog.putDebug("图片资源已释放 pixelMapId=$pixelMapId", tag = IMAGE_LOG_TAG)
+            return
+        }
+        val error = json?.get("error")?.jsonPrimitive?.contentOrNull ?: "回执不可解析"
+        AppLog.put(
+            "图片资源释放失败 pixelMapId=$pixelMapId: $error",
+            null, false, IMAGE_LOG_TAG
+        )
     }
 
     /**
      * 同步调用图片操作 (阻塞等待 ArkTS 返回结果, 混合协议)。
      *
-     * @param action 操作类型: "decode" / "encode" / "size" / "crop" / "split" / "stitch" / "release"
+     * @param action 操作类型: "decode" / "encode" / "size" / "crop" / "split" / "stitch" / "rotate" / "flip"
+     *   (资源释放走不阻塞的 [releaseImageResource], 不经本同步入口)
      * @param payloadJson 操作参数 JSON (由调用方序列化, 控制面小字段; decode 的图片字节
      *   改走 [bytes] 裸参数, 不再 base64 进 JSON)
      * @param bytes 数据面裸字节 (仅 decode 传图片字节; 其余操作传 null)
      * @param timeoutMs 超时毫秒 (默认 15s, 防止 ArkTS 无响应永久阻塞)
      * @return ArkTS 返回的 [OhosBinaryBridgeResponse] (控制面 JSON + 数据面裸字节);
-     *         tsfn 未注册或超时返回 null (调用方降级处理)
+     *         tsfn 未注册或超时返回 null (调用方降级处理; 超时后到达的结果由桥释放其资源)
      */
     fun invokeImageSync(
         action: String,
@@ -454,9 +559,12 @@ object OhosNativeBridge {
         bytes: ByteArray? = null,
         timeoutMs: Long = 15000L,
     ): OhosBinaryBridgeResponse? {
-        val requestId = synchronized(lock) { ++imageRequestCounter }
-        val deferred = CompletableDeferred<OhosBinaryBridgeResponse>()
-        synchronized(lock) { imagePendingRequests[requestId] = deferred }
+        val state = ImagePendingRequest(CompletableDeferred())
+        val requestId = synchronized(lock) {
+            val id = ++imageRequestCounter
+            imagePendingRequests[id] = state
+            id
+        }
 
         val requestJson = KS_JSON.encodeToString(
             ImageBridgeRequest(requestId = requestId, action = action, payload = payloadJson)
@@ -473,10 +581,21 @@ object OhosNativeBridge {
             return null
         }
 
-        // 阻塞等待 ArkTS 回调 (JS 引擎线程阻塞, ArkTS 主线程回调 complete, 不同线程无死锁)
-        val result = runBlocking { withTimeoutOrNull(timeoutMs) { deferred.await() } }
-        synchronized(lock) { imagePendingRequests.remove(requestId) }
-        return result
+        // 阻塞等待 ArkTS 回调 (JS 引擎线程阻塞, ArkTS 主线程回调 complete, 不同线程无死锁)。
+        // 超时/异常获胜但回执随后到达时, 结果留在 state.result 中, 由 finally 释放其中资源。
+        var delivered: OhosBinaryBridgeResponse? = null
+        try {
+            delivered = runBlocking { withTimeoutOrNull(timeoutMs) { state.deferred.await() } }
+            return delivered
+        } finally {
+            val abandoned = synchronized(lock) {
+                imagePendingRequests.remove(requestId)
+                if (delivered == null) state.result else null
+            }
+            if (abandoned != null) {
+                releaseImageResultResources(abandoned.json, "未交付图片结果 requestId=$requestId")
+            }
+        }
     }
 
     /**

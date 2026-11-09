@@ -204,13 +204,21 @@ object QuickJsEngine {
             // 快照当前 objectMap 中的句柄,eval 后释放新增的 binding 句柄,
             // 避免 sharedScope 路径 objectMap 持续膨胀导致 OOM
             val handleSnapshot = JavaObjectBridge.snapshotScopeHandles(scope.scopeId)
-            enterBindings(scope, kvs)
+            // enterBindings 成功返回才代表子 scope 已压栈; 未压栈时不能调 exitBindings,
+            // 否则会弹掉外层调用者的 bindings 帧。
+            var bindingsEntered = false
             try {
+                enterBindings(scope, kvs)
+                bindingsEntered = true
                 return evalUserScript(scope, jsStr, coroutineContext)
             } finally {
-                exitBindings(scope)
-                // 释放本次 evalInSubScope 期间注册的 binding 句柄 (bytes 等大对象)
-                JavaObjectBridge.releaseNewHandles(scope.scopeId, handleSnapshot)
+                try {
+                    if (bindingsEntered) exitBindings(scope)
+                } finally {
+                    // 释放本次 evalInSubScope 期间注册的 binding 句柄 (bytes 等大对象);
+                    // 即使 enterBindings / exitBindings 抛错也必须到达
+                    JavaObjectBridge.releaseNewHandles(scope.scopeId, handleSnapshot)
+                }
             }
         } finally {
             QuickJsContext.threadLocalContext.set(previousThreadContext)

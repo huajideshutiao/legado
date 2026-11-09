@@ -175,12 +175,18 @@ object NativeJsExtensionsBridge {
     /**
      * 注册 dispatch 返回的新对象, 并把 handle 挂到当前 eval scope 上。
      *
-     * 只登记到全局表而不挂 scope 的 handle 在 eval 结束后无人注销 (强引用残留),
-     * 随每次脚本调用累积; 挂到 scope 后与 [NativeJsEngine] 的 scope 关闭回收同路。
+     * 必须先取得真实 owner scope 再注册: 无当前 scope 时直接报错, 不产生无人注销的强引用 handle。
      */
     fun registerScopedObject(obj: Any): Long {
+        val scope = NativeJsEngine.currentScope()
+            ?: error("registerScopedObject: 当前线程无 JS 执行 scope, 无法登记 handle 归属")
+        return registerOwnedObject(obj, scope)
+    }
+
+    /** 注册到调用方明确持有的 owner scope ([createJsObject] 的 scope 参数)。 */
+    private fun registerOwnedObject(obj: Any, scope: NativeJsScope): Long {
         val handle = registerObject(obj)
-        NativeJsEngine.currentScope()?.handles?.add(handle)
+        scope.handles.add(handle)
         return handle
     }
 
@@ -212,8 +218,7 @@ object NativeJsExtensionsBridge {
         ext: Any,
         scope: NativeJsScope
     ): CValue<JSValue> {
-        val handle = registerObject(ext)
-        scope.handles.add(handle)
+        val handle = registerOwnedObject(ext, scope)
         // 调用 JS 工厂函数 __createJavaObj(handle) 或 __createCryptoObj(handle)
         val factoryFn = when (ext) {
             is SymmetricCrypto -> "__createCryptoObj"
@@ -317,7 +322,7 @@ object NativeJsExtensionsBridge {
                 obj,
                 methodId,
                 jsArrayToList(ctx, argsArray),
-                ::registerObject
+                { registerScopedObject(it) }
             )
         if (generated !== NativeDispatchResult.NONE) return nativeResultToJs(ctx, generated)
         // 生成表段 (5000-5999) 未命中 = KSP 漏生成 / jsapi.nativeTargets 配置漂移 / 新增方法没重新生成。

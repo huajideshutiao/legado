@@ -5,6 +5,9 @@ import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.Base64Lenient
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
+import kotlin.experimental.ExperimentalNativeApi
+import kotlin.native.ref.Cleaner
+import kotlin.native.ref.createCleaner
 
 /**
  * 鸿蒙端 [ImageOps] 真实实现 (KP8+)。
@@ -23,6 +26,8 @@ import kotlinx.serialization.encodeToString
  * [OhosImageRef] 持有原始 [ByteArray] + ArkTS 侧 PixelMap 句柄 ID (`pixelMapId`)。
  * - [decode]: 通过桥接调 `image.createImageSource(bytes).createPixelMap()`, ArkTS 侧存入
  *   `Map<pixelMapId, PixelMap>`, 返回 ID 给 Kotlin; 同时保留原始 bytes 供降级/encode 回退。
+ *   每个新建 PixelMap 由一个 [OhosImageRef] 的资源 token 拥有, ref 不可达后经 Cleaner
+ *   向桥发送非阻塞 release 请求 (ArkTS 侧等待 PixelMap.release() 完成); 降级/借用 ref 不拥有资源。
  *   图片字节作为 invokeImageSync 数据面裸参数 (napi ArrayBuffer) 直传, 不经 base64
  * - [encode]: 通过桥接调 `image.createImagePacker().packing(pixelMap, {format, quality})`,
  *   ArkTS 侧把 packed 字节经 imageCallback 第三参数 ArrayBuffer 裸传, Kotlin 拷为 ByteArray
@@ -64,13 +69,38 @@ import kotlinx.serialization.encodeToString
 object OhosImageOps : ImageOps {
 
     /**
+     * ArkTS 侧 PixelMap 的资源归属 token。只持资源 ID (不持 [OhosImageRef], 也不持 this),
+     * 供 Cleaner 在 ref 不可达后仅凭 ID 发起释放。
+     */
+    private class OhosImageResource(val pixelMapId: Long)
+
+    /**
      * 鸿蒙端 [ImageRef] 真实实现: 持有原始 [ByteArray] + ArkTS 侧 PixelMap 句柄 ID。
      *
      * - [bytes]: 始终持有原始字节 (供降级 encode/回退使用)
      * - [pixelMapId]: ArkTS 侧 PixelMap 句柄 ID (decode 成功后非 null); null 表示桥接未就绪,
      *   操作降级为字节持有模式
+     * - [resource]: 仅本 ref 新建的 PixelMap 持有一个资源归属 token; 降级/借用 ref 为 null,
+     *   不对已有 ID 重复建 owner
      */
-    private class OhosImageRef(val bytes: ByteArray, val pixelMapId: Long? = null) : ImageRef
+    private class OhosImageRef(
+        val bytes: ByteArray,
+        val pixelMapId: Long? = null,
+        resource: OhosImageResource? = null,
+    ) : ImageRef {
+        /**
+         * 资源 token 的 Cleaner。cleanup 线程不固定且禁止访问 @ThreadLocal, 因此只把 token 里的
+         * ID 交给桥的非阻塞 threadsafe release 请求; 不捕获本 ref/this, 避免 cleaner 与资源互相引用。
+         */
+        @OptIn(ExperimentalNativeApi::class)
+        private val cleaner: Cleaner? = resource?.let { owned ->
+            createCleaner(owned) { it -> OhosNativeBridge.releaseImageResource(it.pixelMapId) }
+        }
+    }
+
+    /** 新建 PixelMap 的统一归属构造路径: ID 同时交给该 ref 的唯一资源 token。 */
+    private fun ownedRef(bytes: ByteArray, pixelMapId: Long): OhosImageRef =
+        OhosImageRef(bytes, pixelMapId, OhosImageResource(pixelMapId))
 
     override fun decode(bytes: ByteArray): ImageRef {
         // 桥接未就绪: 降级为字节持有 (不抛异常, 让 JS 调用链不崩)
@@ -96,7 +126,7 @@ object OhosImageOps : ImageOps {
                 "image.decode: 鸿蒙 PixelMap 解码失败(${bytes.size} bytes): ${resp?.error ?: "unknown"}"
             )
         }
-        return OhosImageRef(bytes, resp.pixelMapId)
+        return ownedRef(bytes, resp.pixelMapId)
     }
 
     override fun decode(base64: String): ImageRef {
@@ -146,7 +176,7 @@ object OhosImageOps : ImageOps {
             return listOf(img) // 降级
         }
         // 返回真实切分结果: 每个 pixelMapId 包装为 OhosImageRef (bytes 保留原图的, 仅供降级回退)
-        return resp.pixelMapIds.map { OhosImageRef(ref.bytes, it) }
+        return resp.pixelMapIds.map { ownedRef(ref.bytes, it) }
     }
 
     override fun stitch(imgs: List<ImageRef>, direction: String): ImageRef {
@@ -169,7 +199,7 @@ object OhosImageOps : ImageOps {
         if (resp == null || !resp.ok || resp.pixelMapId == null) {
             return imgs.first() // 降级
         }
-        return OhosImageRef(refs.first().bytes, resp.pixelMapId)
+        return ownedRef(refs.first().bytes, resp.pixelMapId)
     }
 
     override fun crop(img: ImageRef, x: Int, y: Int, w: Int, h: Int): ImageRef {
@@ -189,7 +219,7 @@ object OhosImageOps : ImageOps {
         if (resp == null || !resp.ok || resp.pixelMapId == null) {
             return img // 降级
         }
-        return OhosImageRef(ref.bytes, resp.pixelMapId)
+        return ownedRef(ref.bytes, resp.pixelMapId)
     }
 
     override fun rotate(img: ImageRef, deg: Int): ImageRef {
@@ -211,7 +241,7 @@ object OhosImageOps : ImageOps {
         if (resp == null || !resp.ok || resp.pixelMapId == null) {
             return img // 降级
         }
-        return OhosImageRef(ref.bytes, resp.pixelMapId)
+        return ownedRef(ref.bytes, resp.pixelMapId)
     }
 
     override fun flip(img: ImageRef, direction: String): ImageRef {
@@ -237,7 +267,7 @@ object OhosImageOps : ImageOps {
         if (resp == null || !resp.ok || resp.pixelMapId == null) {
             return img // 降级
         }
-        return OhosImageRef(ref.bytes, resp.pixelMapId)
+        return ownedRef(ref.bytes, resp.pixelMapId)
     }
 
     override fun size(img: ImageRef): Map<String, Int> {

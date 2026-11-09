@@ -7,7 +7,6 @@ import kotlinx.coroutines.ensureActive
 import java.lang.ref.PhantomReference
 import java.lang.ref.ReferenceQueue
 import java.lang.ref.WeakReference
-import java.util.IdentityHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.CoroutineContext
 
@@ -119,25 +118,6 @@ class QuickJsContext(
     var bootstrapGlobalsCached: Boolean = false
 
     /**
-     * Java 对象身份 → 句柄复用映射 (优化 3.2)。
-     *
-     * 同一 Java 对象多次跨 bridge 返回 JS 时,如果每次都 registerObject 新句柄,
-     * 会让 objectMap 不必要膨胀 (handle 累积只能等 [close] 释放),
-     * JS 侧也拿到不同 JavaObject (身份不一致)。
-     *
-     * 用 [IdentityHashMap] 按引用相等 (== 而非 equals) 去重:
-     * 避免"内容相等但身份不同"(如两个 "abc" 字符串)被错误地共享同一 handle。
-     *
-     * 仅在 [threadLocalContext] 设置时由 [JavaObjectBridge.getOrRegisterIdentityHandle] 使用。
-     * 线程模型: ctx 单线程顺序访问 (eval 与 binding handler 同线程),
-     * 不需要同步; 跨线程复用 ctx 时由调用方保证串行。
-     *
-     * 生命周期: 与 ctx 同生共死, [close] 时显式 clear 让强引用尽早释放;
-     * 句柄本体由 [JavaObjectBridge.releaseScope] 统一释放。
-     */
-    val identityHandles: IdentityHashMap<Any, Long> = IdentityHashMap()
-
-    /**
      * PhantomReference 兜底清理句柄。
      *
      * 持纯数值 (rtPtr/ctxPtr/scopeId), 不能持 [QuickJsContext] 实例引用 —
@@ -190,9 +170,6 @@ class QuickJsContext(
     }
 
     override fun close() {
-        // 清空身份去重映射, 让强引用尽早断开 (句柄本体由 releaseScope 统一释放)。
-        // 即使 cleanupOnce 已被守护线程跑过, 重复 clear 也无副作用。
-        identityHandles.clear()
         // 计时器: 释放回调函数句柄 + 取消 Android 主线程 Handler 唤醒回调。
         // 显式 close 路径在此处理; GC 路径由 releaseByCtx 统一释放句柄 + 弱引用
         // 唤醒回调自灭, 无需取消。
