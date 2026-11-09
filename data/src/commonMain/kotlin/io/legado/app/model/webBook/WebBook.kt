@@ -107,8 +107,9 @@ object WebBook {
         // 发现路径的 key 即 exploreUrl 分类的 url 段, 交委派自行分派取数面;
         // pluginFilters 是页面会话筛选实例, 两条路径均透传)
         PluginSourceDelegates.resolve(bookSource)?.let { delegate ->
-            return if (isSearch) delegate.getBookListAwait(bookSource, key, page ?: 1, pluginFilters)
-            else delegate.getExploreAwait(bookSource, key, page ?: 1, pluginFilters)
+            val page = if (isSearch) delegate.getBookListAwait(bookSource, key, page ?: 1, pluginFilters)
+                else delegate.getExploreAwait(bookSource, key, page ?: 1, pluginFilters)
+            return page.distinctByBookUrl()
         }
         var url = key
         if (isSearch) {
@@ -147,7 +148,7 @@ object WebBook {
             isRedirect = checkRedirect(bookSource, res),
             filter = filter,
             shouldBreak = shouldBreak,
-        )
+        ).distinctByBookUrl()
     }
 
     /**

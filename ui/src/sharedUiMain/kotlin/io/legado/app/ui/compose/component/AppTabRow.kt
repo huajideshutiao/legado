@@ -1,8 +1,9 @@
 package io.legado.app.ui.compose.component
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.layout.Box
@@ -29,78 +30,83 @@ import io.legado.app.ui.compose.theme.LocalEInk
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private data class TabPos(val x: Float = 0f, val w: Float = 0f)
 
 /**
- * 为横向滚动组件附加鼠标滚轮支持 (复用 AppScrollTabRow / 书架 tab 统一逻辑)。
+ * 一格滚轮位移换算成横向像素: 视口宽 / 20 为一行高, 每格滚轮走 3 行
+ * (对齐 WindowsWinUIConfig 每格 3 行惯例)。
+ */
+internal fun wheelScrollPixels(delta: Float, viewportWidthPx: Float): Float =
+    delta * viewportWidthPx / 20f * 3f
+
+/**
+ * 为横向滚动组件附加鼠标滚轮支持 (复用 AppScrollTabRow / 书架 tab / 首页封面行统一逻辑)。
  *
- * 鼠标滚轮向下 (delta.y > 0) = 向右滚动 (scrollBy 正值);
- * 滚轮向右 (delta.x > 0) = 向右滚动;
- * 倍率按视口宽 / 20 * 3 (对齐 WindowsWinUIConfig 每格 3 行惯例);
- * 优先消费滚轮事件, 阻止事件冒泡到外层垂直网格/外层 Pager。
+ * 鼠标滚轮向下 (delta.y > 0) = 向右滚动 (scrollBy 正值); 滚轮向右 (delta.x > 0) = 向右滚动;
+ * 到头不消费, 事件继续冒泡给外层垂直滚动。
  */
 @Composable
-fun Modifier.horizontalMouseWheel(scrollState: ScrollState): Modifier {
-    val scrollChannel = remember(scrollState) { Channel<Float>(Channel.UNLIMITED) }
-    LaunchedEffect(scrollChannel, scrollState) {
-        for (delta in scrollChannel) {
-            scrollState.scrollBy(delta)
-        }
-    }
-    return this.pointerInput(scrollState) {
-        awaitPointerEventScope {
-            while (true) {
-                val event = awaitPointerEvent()
-                if (event.type != PointerEventType.Scroll) continue
-                val change = event.changes.firstOrNull() ?: continue
-                val delta = if (change.scrollDelta.y != 0f) change.scrollDelta.y else change.scrollDelta.x
-                if (delta == 0f) continue
-                // 到头不吞事件, 放行给父级 (嵌在可竖滚页面里滚轮继续滚页面)
-                if (delta > 0f && !scrollState.canScrollForward) continue
-                if (delta < 0f && !scrollState.canScrollBackward) continue
-                val viewportW = scrollState.viewportSize.toFloat()
-                if (viewportW > 0f) {
-                    scrollChannel.trySend(delta * viewportW / 20f * 3f)
-                } else {
-                    scrollChannel.trySend(delta * 120f)
-                }
-                change.consume()
-            }
-        }
-    }
-}
+fun Modifier.horizontalMouseWheel(scrollState: ScrollState): Modifier =
+    verticalWheelToHorizontalScroll(scrollState) { scrollState.viewportSize.toFloat() }
 
 /**
  * [horizontalMouseWheel] 的 LazyRow 版: 倍率与"到头不吞事件"语义与 ScrollState 版一致。
- * 惰性横向列表无法用 horizontalScroll, 滚轮平移只能走 LazyListState.scrollBy。
+ * 惰性横向列表无法用 horizontalScroll, 滚轮平移走 LazyListState 自己的 scrollBy。
  */
 @Composable
-fun Modifier.horizontalMouseWheel(listState: LazyListState): Modifier {
-    val scrollChannel = remember(listState) { Channel<Float>(Channel.UNLIMITED) }
-    LaunchedEffect(scrollChannel, listState) {
-        for (delta in scrollChannel) {
-            listState.scrollBy(delta)
+fun Modifier.horizontalMouseWheel(listState: LazyListState): Modifier =
+    verticalWheelToHorizontalScroll(listState) { listState.layoutInfo.viewportSize.width.toFloat() }
+
+/**
+ * 竖向滚轮转横向滚动 (ScrollState 与 LazyListState 共用这一份手势与滚动调度)。
+ *
+ * 只转未消费的竖向分量: 框架自己的滚轮处理按角度判轴, 横向可滚动组件收到纯竖向滚轮位移时
+ * 判定结果是 0 (Scrollable.toSingleAxisDeltaFromAngle), 不会消费; 横向分量与框架能消费的
+ * 事件一律交给框架, 这边看到已消费就直接放行, 一格滚轮不会滚两次。
+ *
+ * 滚动走 [MutatePriority.UserInput]: 这是用户输入, 同优先级的程序滚动 (吸附/选中项居中)
+ * 由 MutatorMutex 的仲裁终止, 不会出现事件已消费但滚动被低优先级程序滚动挡住的丢步。
+ * 每次滚动单独起 Job: 抢占只取消这一次滚动, 收事件的循环与通道继续为后续滚轮服务。
+ */
+@Composable
+private fun Modifier.verticalWheelToHorizontalScroll(
+    state: ScrollableState,
+    viewportWidth: () -> Float,
+): Modifier {
+    val wheelDeltas = remember(state) { Channel<Float>(Channel.UNLIMITED) }
+    LaunchedEffect(wheelDeltas) {
+        for (first in wheelDeltas) {
+            var delta = first
+            // 连续滚轮合并成一次滚动 (与框架 MouseWheelScrollingLogic 合并待处理位移同口径),
+            // 避免逐格重启滚动而丢掉位移
+            while (true) {
+                val pending = wheelDeltas.tryReceive().getOrNull() ?: break
+                delta += pending
+            }
+            launch {
+                state.scroll(MutatePriority.UserInput) {
+                    scrollBy(delta)
+                }
+            }
         }
     }
-    return this.pointerInput(listState) {
+    return this.pointerInput(state) {
         awaitPointerEventScope {
             while (true) {
                 val event = awaitPointerEvent()
                 if (event.type != PointerEventType.Scroll) continue
                 val change = event.changes.firstOrNull() ?: continue
-                val delta = if (change.scrollDelta.y != 0f) change.scrollDelta.y else change.scrollDelta.x
+                if (change.isConsumed) continue
+                // 只接竖向分量: 纯横向滚轮交给框架自己的滚轮处理
+                val delta = change.scrollDelta.y
                 if (delta == 0f) continue
                 // 到头不吞事件, 放行给父级 (嵌在可竖滚页面里滚轮继续滚页面)
-                if (delta > 0f && !listState.canScrollForward) continue
-                if (delta < 0f && !listState.canScrollBackward) continue
-                val viewportW = listState.layoutInfo.viewportSize.width.toFloat()
-                if (viewportW > 0f) {
-                    scrollChannel.trySend(delta * viewportW / 20f * 3f)
-                } else {
-                    scrollChannel.trySend(delta * 120f)
-                }
+                if (delta > 0f && !state.canScrollForward) continue
+                if (delta < 0f && !state.canScrollBackward) continue
+                wheelDeltas.trySend(wheelScrollPixels(delta, viewportWidth()))
                 change.consume()
             }
         }

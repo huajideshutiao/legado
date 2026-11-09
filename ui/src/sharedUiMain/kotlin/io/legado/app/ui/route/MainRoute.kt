@@ -2,16 +2,15 @@ package io.legado.app.ui.route
 
 import androidx.compose.animation.core.Easing
 import androidx.compose.foundation.MutatePriority
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.gestures.ScrollScope
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,8 +21,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
@@ -156,10 +156,8 @@ import legado.ui.generated.resources.draw
 import legado.ui.generated.resources.empty
 import legado.ui.generated.resources.error
 import legado.ui.generated.resources.help
-import legado.ui.generated.resources.home_more
 import legado.ui.generated.resources.home_source_invalid
 import legado.ui.generated.resources.explore_option_invalidated
-import legado.ui.generated.resources.ic_arrow_right
 import legado.ui.generated.resources.ic_help
 import legado.ui.generated.resources.import_bookshelf
 import legado.ui.generated.resources.my
@@ -171,7 +169,6 @@ import legado.ui.generated.resources.web_service_desc
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
-import kotlin.math.floor
 import kotlin.math.roundToInt
 
 /**
@@ -775,10 +772,11 @@ private fun HomeRankList(
 }
 
 /**
- * 四行样式 (对照 FourColumnAdapter): 书籍按 4 本一列切块, 横向翻列,
+ * 四行样式 (对照 FourColumnAdapter): 书籍按 4 本一列切块, 横向翻列, 每列最多 4 本;
  * 每列内部走无序号的 [HomeRankItem] (原版 FourColumnVH 内嵌 RankBookAdapter(showRank=false))。
  * 列宽 220dp 对齐原版 FourColumnAdapter.onCreateViewHolder;
- * 滚动用 horizontalScroll + 自定义 [StartSnapFlingBehavior] + [ColumnSnapEffect] 对照原版
+ * 惰性横向列表一次只组合可见列, 不再按结果总条数切块并全部组合;
+ * fling 与吸附用 [StartSnapFlingBehavior] + [ColumnSnapEffect] 对照原版
  * Horizontal rv + StartSnapHelper(): fling 最多翻 ±1 列 + 90ms/inch 黏滞减速 +
  * 停止时半列规则吸附 (见 StartSnapHelper.findTargetSnapPosition / createScroller / findSnapView)。
  * 鼠标悬停支持滚轮横向平移。
@@ -792,20 +790,21 @@ private fun HomeFourRow(
 ) {
     val density = LocalDensity.current
     val itemWidthPx = with(density) { 220.dp.toPx() }
-    val columns = books.chunked(4)
-    val scrollState = rememberScrollState()
+    val columns = remember(books) { books.chunked(4) }
+    val listState = rememberLazyListState()
     // fling 限位/黏滞 (对照 StartSnapHelper): 依赖列数, 列数变化时重建
     val flingBehavior = remember(columns.size, itemWidthPx, density) {
-        StartSnapFlingBehavior(scrollState, itemWidthPx, columns.size - 1, density)
+        StartSnapFlingBehavior(listState, itemWidthPx, columns.size - 1, density)
     }
-    Row(
+    LazyRow(
+        state = listState,
+        flingBehavior = flingBehavior,
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(scrollState, flingBehavior = flingBehavior)
-            .horizontalMouseWheel(scrollState)
-            .padding(horizontal = DesignTokens.spacingDefault),
+            .horizontalMouseWheel(listState),
+        contentPadding = PaddingValues(horizontal = DesignTokens.spacingDefault),
     ) {
-        columns.forEach { column ->
+        items(columns) { column ->
             Column(Modifier.width(220.dp)) {
                 column.forEach { book ->
                     // 共享配对身份按条目下发 (被点的封面 = 出发端, token 由页面+区块+条目派生)
@@ -818,7 +817,7 @@ private fun HomeFourRow(
         }
     }
     // 停止吸附: 滚动/惯性滑动停止时吸最近列 (对照原版 StartSnapHelper.findSnapView)
-    ColumnSnapEffect(scrollState, itemWidthPx, columns.size - 1, density)
+    ColumnSnapEffect(listState, itemWidthPx, columns.size - 1, density)
 }
 
 /**
@@ -830,46 +829,27 @@ private fun HomeFourRow(
  *   这里用相同速率曲线把 fling 动画换成受限平滑滚动。
  */
 private class StartSnapFlingBehavior(
-    private val scrollState: ScrollState,
+    private val listState: LazyListState,
     private val itemWidthPx: Float,
     private val maxCol: Int,
     private val density: Density,
 ) : FlingBehavior {
 
     override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
-        if (maxCol <= 0) return 0f
-        // 第一列被起始边裁掉的宽度; 接近 0 表示当前已对齐到 firstPos (原版 aligned = clipped <= itemWidth/10)
-        val current = scrollState.value.toFloat()
-        val firstPos = floor(current / itemWidthPx).toInt()
-        val clipped = current - firstPos * itemWidthPx
+        if (maxCol <= 0 || initialVelocity == 0f) return 0f
+        // 首次布局未完成时没有可用的列位置, 不参与限位
+        if (listState.layoutInfo.visibleItemsInfo.isEmpty()) return 0f
+        // 列宽固定, 当前位移 = 首列索引×列宽 + 首列被起始边裁掉的宽度;
+        // 接近 0 表示当前已对齐到首列 (原版 aligned = clipped <= itemWidth/10)
+        val firstPos = listState.firstVisibleItemIndex
+        val clipped = listState.firstVisibleItemScrollOffset.toFloat()
+        val startPos = firstPos * itemWidthPx + clipped
         val aligned = clipped <= itemWidthPx / 10f
         val targetCol = when {
             initialVelocity > 0f -> firstPos + 1
-            initialVelocity < 0f -> if (aligned) firstPos - 1 else firstPos
-            else -> return 0f
+            else -> if (aligned) firstPos - 1 else firstPos
         }.coerceIn(0, maxCol)
-        // 目标像素 clamp 到最大滚动位置: 末列可能超出视口右缘 (maxValue = 内容宽 - 视口宽),
-        // 超出部分由 scrollBy 内部 clamp, 返回值须与实际滚动量一致
-        val target = (targetCol * itemWidthPx).coerceAtMost(scrollState.maxValue.toFloat())
-        if (target == current) return 0f
-        val dist = target - current
-        // 黏滞减速: 每英寸 90ms (原版 calculateSpeedPerPixel = 90 / densityDpi, 1 英寸 = 160dp)
-        val durationMs = (abs(dist) / (density.density * 160f) * 90f).toInt().coerceAtLeast(1)
-        val startTime = withFrameNanos { it }
-        var last = current
-        while (true) {
-            val now = withFrameNanos { it }
-            val t = ((now - startTime) / 1_000_000f / durationMs).coerceIn(0f, 1f)
-            val eased = STICKY_DECELERATE.transform(t)
-            val targetNow = current + dist * eased
-            val delta = targetNow - last
-            if (delta != 0f) {
-                last = targetNow
-                // ScrollScope.scrollBy 直接驱动状态 (CMP 1.11 新签名: performFling 带 ScrollScope receiver)
-                scrollBy(delta)
-            }
-            if (t >= 1f) break
-        }
+        stickyScrollTo(startPos, targetCol * itemWidthPx, density)
         // 限位滚动完全消费了 fling, 无剩余速度 (同 SnapFlingBehavior 的 NoVelocity = 0f)
         return 0f
     }
@@ -882,7 +862,7 @@ private class StartSnapFlingBehavior(
  * 语义对齐:
  * - round 取最近列 == 原版 findSnapView 的"首列露出不足半列切下一列"
  *   (首列露出 w/2 及以上 → round 吸回当前列, 不足 w/2 → round 切下一列);
- * - 已到末尾 (scrollState.value == maxValue, 末列完全可见) → 吸最后一列, 同原版末尾分支;
+ * - 已到末尾 (不能再向前滚, 末列已完全可见) 不做吸附: 最后一列顶不到起始边, 视为已就位;
  * - 吸附动画用同一黏滞曲线 (90ms/inch DecelerateInterpolator), 同 createScroller。
  *
  * snapshotFlow + distinctUntilChanged 天然防抖: 只在滚动停止 (true→false 下降沿)
@@ -890,52 +870,106 @@ private class StartSnapFlingBehavior(
  */
 @Composable
 private fun ColumnSnapEffect(
-    scrollState: ScrollState,
+    listState: LazyListState,
     itemWidthPx: Float,
     maxCol: Int,
     density: Density,
 ) {
-    LaunchedEffect(scrollState, itemWidthPx, maxCol, density) {
-        snapshotFlow { scrollState.isScrollInProgress }
+    LaunchedEffect(listState, itemWidthPx, maxCol, density) {
+        snapshotFlow { listState.isScrollInProgress }
             .distinctUntilChanged()
             .collect { scrolling ->
                 if (scrolling) return@collect
-                if (maxCol <= 0 || itemWidthPx <= 0f) return@collect
-                val current = scrollState.value.toFloat()
-                // 末列完全可见 (滚到底) → 吸最后一列 (滚动被 clamp 到末尾, 同原版末尾分支)
-                val atEnd = scrollState.value >= scrollState.maxValue
-                val nearest = if (atEnd) {
-                    maxCol
-                } else {
-                    // 滚动位置 = 起始边裁掉宽度, 最近列 = round(位置 / 列宽), round 边界恰在半列处
-                    (current / itemWidthPx).roundToInt().coerceIn(0, maxCol)
-                }
-                val target = (nearest * itemWidthPx).coerceAtMost(scrollState.maxValue.toFloat())
-                // 已在吸附位则跳过, 避免空动画自触发循环
-                if (abs(current - target) > 0.5f) {
-                    // 吸附动画: 同一黏滞曲线 (90ms/inch DecelerateInterpolator)
-                    val dist = target - current
-                    val durationMs =
-                        (abs(dist) / (density.density * 160f) * 90f).toInt().coerceAtLeast(1)
-                    val startTime = withFrameNanos { it }
-                    var last = current
-                    while (true) {
-                        val now = withFrameNanos { it }
-                        val t = ((now - startTime) / 1_000_000f / durationMs).coerceIn(0f, 1f)
-                        val eased = STICKY_DECELERATE.transform(t)
-                        val targetNow = current + dist * eased
-                        val delta = targetNow - last
-                        if (delta != 0f) {
-                            last = targetNow
-                            scrollState.scroll(scrollPriority = MutatePriority.Default) {
-                                scrollBy(delta)
-                            }
-                        }
-                        if (t >= 1f) break
+                // 预判有无吸附可做 (不做则不起任务); 真正的目标在持有 mutation 内重算
+                val hasWork = snapTargetPx(
+                    firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                    firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset,
+                    itemWidthPx = itemWidthPx,
+                    maxCol = maxCol,
+                    // 首次布局完成前 layoutInfo 为空且 canScrollForward 恒为 false, 不能据此判末尾
+                    layoutReady = listState.layoutInfo.visibleItemsInfo.isNotEmpty(),
+                    canScrollForward = listState.canScrollForward,
+                ) != null
+                if (!hasWork) return@collect
+                // 吸附动画单独起 Job, 且整段动画在一个 mutation 内走完:
+                // 用户输入抢占只终止本次完整动画, snapshotFlow 观察管线继续工作
+                launch {
+                    listState.scroll(scrollPriority = MutatePriority.Default) {
+                        val start =
+                            listState.firstVisibleItemIndex * itemWidthPx +
+                                listState.firstVisibleItemScrollOffset
+                        val target = snapTargetPx(
+                            firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                            firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset,
+                            itemWidthPx = itemWidthPx,
+                            maxCol = maxCol,
+                            layoutReady = listState.layoutInfo.visibleItemsInfo.isNotEmpty(),
+                            canScrollForward = listState.canScrollForward,
+                        ) ?: return@scroll
+                        stickyScrollTo(start, target, density)
                     }
                 }
             }
     }
+}
+
+/**
+ * 停止吸附的目标位移 (px); null = 本次不吸附。
+ *
+ * - 布局未就绪 (首次布局前 layoutInfo 为空): 不拿初态推断位置, 不吸附;
+ * - 已不能再向前滚 (末列已完全可见): 最后一列顶不到起始边, 视为已就位, 不吸附;
+ * - 已对齐 (半列以内): 不吸附, 避免空动画自触发循环。
+ *
+ * round 取最近列 == 原版 findSnapView 的"首列露出不足半列切下一列"。
+ */
+internal fun snapTargetPx(
+    firstVisibleItemIndex: Int,
+    firstVisibleItemScrollOffset: Int,
+    itemWidthPx: Float,
+    maxCol: Int,
+    layoutReady: Boolean,
+    canScrollForward: Boolean,
+): Float? {
+    if (!layoutReady || maxCol <= 0 || itemWidthPx <= 0f) return null
+    if (!canScrollForward) return null
+    val current = firstVisibleItemIndex * itemWidthPx + firstVisibleItemScrollOffset
+    val nearest = (current / itemWidthPx).roundToInt().coerceIn(0, maxCol)
+    val target = nearest * itemWidthPx
+    if (abs(current - target) <= 0.5f) return null
+    return target
+}
+
+/**
+ * 沿黏滞曲线把滚动位置从 [startPx] 走到 [targetPx], 返回实际被消费的位移。
+ *
+ * 调用方必须已持有一次 mutation (fling 由框架持有, 停止吸附由 `listState.scroll` 持有):
+ * 整段动画共用这次 mutation, 抢占时才只有本次动画被终止。
+ * 每帧的请求量按“目标位置 - 实际已走位置”算, 边界处被 clamp 后不会把请求距离当成已走距离。
+ */
+private suspend fun ScrollScope.stickyScrollTo(
+    startPx: Float,
+    targetPx: Float,
+    density: Density,
+): Float {
+    val dist = targetPx - startPx
+    if (dist == 0f) return 0f
+    // 黏滞减速: 每英寸 90ms (原版 calculateSpeedPerPixel = 90 / densityDpi, 1 英寸 = 160dp)
+    val durationMs = (abs(dist) / (density.density * 160f) * 90f).toInt().coerceAtLeast(1)
+    val startTime = withFrameNanos { it }
+    var moved = 0f
+    while (true) {
+        val now = withFrameNanos { it }
+        val t = ((now - startTime) / 1_000_000f / durationMs).coerceIn(0f, 1f)
+        val wanted = startPx + dist * STICKY_DECELERATE.transform(t) - (startPx + moved)
+        if (wanted != 0f) {
+            val consumed = scrollBy(wanted)
+            moved += consumed
+            // 已到边界: 请求不再被消费, 本次动画到此为止 (不空转, 也不把请求量当已走量)
+            if (consumed == 0f) return moved
+        }
+        if (t >= 1f) break
+    }
+    return moved
 }
 
 /** 复刻 android.view.animation.DecelerateInterpolator: f(t) = 1 - (1-t)^2 (同 LrcViewShared.DECELERATE) */
