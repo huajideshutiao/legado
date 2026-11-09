@@ -8,6 +8,8 @@ import com.script.jsdispatch.JsValueConverters
 import io.legado.app.data.entities.BookChapterLike
 import io.legado.app.data.entities.BookLike
 import io.legado.app.help.JsExtensionsCommon
+import io.legado.app.help.image.ImageOps
+import io.legado.app.help.image.ImageRef
 import io.legado.app.help.source.SourceCacheProvider
 import io.legado.app.help.source.SourceNetworkProvider
 import io.legado.app.napi.quickjs.JSContext
@@ -232,6 +234,12 @@ object NativeJsEngine : JsEngine {
         val scope = NativeJsScope(rt, ctx).apply {
             dangerousApi = bindings.dangerousApi
         }
+        try {
+            scope.imageBridgeState = initializeNativeImageBridge(rt)
+        } catch (t: Throwable) {
+            scope.close()
+            throw t
+        }
         // 注入 bindings 变量到 globalThis
         injectBindings(scope, bindings)
         return scope
@@ -244,7 +252,14 @@ object NativeJsEngine : JsEngine {
         evalInternal(ctx, BOOTSTRAP_CODE, "<bootstrap>", checkException = true)
         // 独立 scope 也需注册 __nativeDispatch (可能注入 java 变量)
         registerNativeDispatch(ctx)
-        return NativeJsScope(rt, ctx)
+        return NativeJsScope(rt, ctx).also { scope ->
+            try {
+                scope.imageBridgeState = initializeNativeImageBridge(rt)
+            } catch (t: Throwable) {
+                scope.close()
+                throw t
+            }
+        }
     }
 
     /**
@@ -595,7 +610,11 @@ object NativeJsEngine : JsEngine {
 
     /** 当前线程的 JS 执行上下文 (可空), 借用视图 (不拥有 rt/ctx, close 不释放)。 */
     override fun currentContext(): JsScope? =
-        threadLocalScope?.let { NativeJsScope(it.rt, it.ctx, ownsResources = false) }
+        threadLocalScope?.let { owner ->
+            NativeJsScope(owner.rt, owner.ctx, ownsResources = false).also { view ->
+                view.imageBridgeState = owner.imageBridgeState
+            }
+        }
 
     /** 当前线程的 JS 执行上下文 (非空), 无上下文时抛 [IllegalStateException]。 */
     override fun currentContextNonNull(): JsScope =
@@ -876,6 +895,10 @@ object NativeJsEngine : JsEngine {
             }
         }
         if (qjs_IsObject(v) != 0) {
+            // 新图片桥的 ImageRef 对象: opaque 持真实 Kotlin 图片, 直接解回
+            threadLocalScope?.imageBridgeState?.let { state ->
+                NativeImageBridge.unwrapImageRef(ctx, v, state)?.let { return it }
+            }
             // Uint8Array/TypedArray (解密脚本返回值): 直接拷回 ByteArray,
             // ImageUtils.decode 的 is ByteArray 分支直接消费, 无需 List 中间态
             tryGetUint8ArrayBytes(ctx, v)?.let { return it }
@@ -1015,6 +1038,14 @@ object NativeJsEngine : JsEngine {
             is String -> {
                 qjs_NewString(ctx, converted)
             }
+
+            // 把 ImageOps 绑定为真实 JS 对象: 八个方法直接调用现有平台实现。
+            is ImageOps -> NativeImageBridge.wrapImageOps(ctx, converted, imageBridgeState())
+
+            is ImageRef -> NativeImageBridge.wrapImageRef(
+                ctx, converted, imageBridgeState().refClassId
+            )
+
             is Map<*, *> -> {
                 @Suppress("UNCHECKED_CAST")
                 mapToJsObject(ctx, converted as Map<String, Any?>)
@@ -1087,7 +1118,7 @@ object NativeJsEngine : JsEngine {
      * 与原版 quickjs JavaObjectBridge 的 byte[] 语义一致 (length/索引可用),
      * 脚本 `result.length==undefined` 判断走主分支, 不会进 Packages 分支。
      */
-    private fun byteArrayToJsUint8Array(
+    internal fun byteArrayToJsUint8Array(
         ctx: CPointer<JSContext>,
         bytes: ByteArray
     ): CValue<JSValue> {
@@ -1096,8 +1127,20 @@ object NativeJsEngine : JsEngine {
         // 经 refTo(0) 传 CPointer (ByteArray 不能直接传 CValuesRef); 空数组 refTo(0) 返回 null
         // (copy 版 len=0 时内部 js_mallocz(1) 安全处理)
         val arr = qjs_NewUint8ArrayCopy(ctx, bytes.refTo(0), size.toULong())
-        return if (qjs_IsException(arr) != 0) jsNullValue() else arr
+        if (qjs_IsException(arr) != 0) {
+            JS_FreeValue(ctx, arr)
+            throw IllegalStateException("创建 Uint8Array 失败")
+        }
+        return arr
     }
+
+    /**
+     * 当前线程图片桥的 runtime 元数据 (类 ID 按 runtime 注册一次)。
+     * ImageOps/ImageRef 出现在无 scope 的转换路径时属于集成错误, 直接报错不静默跳过。
+     */
+    private fun imageBridgeState(): NativeImageBridgeState =
+        threadLocalScope?.imageBridgeState
+            ?: throw NativeScriptException("图片桥未初始化: 当前线程无 JS 运行时")
 
     /**
      * 判定 JS 值是否为 TypedArray (Uint8Array 等) 并拷回 ByteArray:
@@ -1106,7 +1149,7 @@ object NativeJsEngine : JsEngine {
      * 再按 `byteOffset`/`byteLength` 偏移拷回 (脚本 slice/subarray 返回的视图也支持)。
      * 非 TypedArray 返回 null (交由后续分支处理)。返回的 ByteArray 由调用方持有。
      */
-    private fun tryGetUint8ArrayBytes(ctx: CPointer<JSContext>, v: CValue<JSValue>): ByteArray? {
+    internal fun tryGetUint8ArrayBytes(ctx: CPointer<JSContext>, v: CValue<JSValue>): ByteArray? {
         val buf = JS_GetPropertyStr(ctx, v, "buffer")
         if (qjs_IsException(buf) != 0) {
             JS_FreeValue(ctx, buf)
@@ -1509,6 +1552,9 @@ class NativeJsScope internal constructor(
 
     /** native 上 dangerousApi 语义为 no-op (无 Java 反射可旁路), 保留字段仅为接口对齐 */
     var dangerousApi: Boolean = false
+
+    /** 本 runtime 的图片桥类 ID 等元数据; getRuntimeScope/createStandaloneScope 注册一次, 借用视图共享。 */
+    internal var imageBridgeState: NativeImageBridgeState? = null
 
     /** close 幂等保护: 摘取 rt/ctx 与清空句柄列表在同一临界区, 重复 close 只释放一次。 */
     private val closeLock = SynchronizedObject()

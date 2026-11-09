@@ -91,11 +91,13 @@ import kotlinx.atomicfu.locks.synchronized
  * 3. [NativeJsEngine.toJsValue] 识别 JsExtensionsCommon 时, 注册 handle, 调 `__createJavaObj(handle)` 得到 JS 对象;
  * 4. JS 调用 `java.md5Encode("str")` → JS 层 `__nativeDispatch(handle, 101, ["str"])` → C 回调 → Kotlin 分派。
  *
- * # 为什么不用 JSClassDef + opaque
+ * # 为什么 JsExtensionsCommon 桥不用 JSClassDef + opaque
  * JSClassDef + opaque + StableRef 是更"正规"的方案, 但实现复杂 (finalizer / StableRef 生命周期管理),
  * 且 cinterop 绑定 JSClassDef 结构体的 finalizer 函数指针类型映射容易出错。
  * 本方案用 handle 表 + JS 层闭包捕获 handle, 避免了 C 层面的上下文传递,
  * 只需 1 个 staticCFunction (C 函数不能捕获上下文), 所有方法分派在 Kotlin 层完成。
+ * ImageOps 需要脚本跨语句真实持有图片对象, 由 [NativeImageBridge] 单独用
+ * JSClassDef + opaque + func_data 承载, 不复用本桥的 eval 末尾数字 handle 协议。
  *
  * # handle 生命周期
  * - handleTable 用强引用, 防止 Kotlin 对象在 JS 使用期间被 GC;
@@ -1310,7 +1312,7 @@ function __createJsUrlObj(handle) {
      *
      * `JS_SetPropertyStr` 转移 value 所有权, 无需额外 JS_FreeValue。
      */
-    private fun jsThrowError(ctx: CPointer<JSContext>, message: String): CValue<JSValue> {
+    internal fun jsThrowError(ctx: CPointer<JSContext>, message: String): CValue<JSValue> {
         val err = JS_NewError(ctx)
         JS_SetPropertyStr(ctx, err, "message", qjs_NewString(ctx, message))
         return JS_Throw(ctx, err)
