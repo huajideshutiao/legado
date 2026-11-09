@@ -89,10 +89,12 @@ fun registerAndroidJsEngines() {
     // 恢复完整 JsExtensions 面 (createSymmetricCrypto 等) 并命中 KSP @JsApi 分派表。
     AnalyzeUrlFactories.register {
             rawUrl, baseUrl, source, ruleData, chapter, readTimeout, callTimeout,
-            coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables ->
+            coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables,
+            optionSelections ->
         AnalyzeUrl(
             rawUrl, baseUrl, source, ruleData, chapter, readTimeout, callTimeout,
-            coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables
+            coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables,
+            optionSelections
         )
     }
     SourceDebugLoggers.impl = object : SourceDebugLogger {

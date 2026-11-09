@@ -75,12 +75,14 @@ fun AppChipRowTitle(
 fun AppChipRowOption(
     text: String,
     selected: Boolean = true,
+    modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
     Spacer(Modifier.width(DesignTokens.spacingXs))
     AppFilletTextButton(
         text = text,
+        modifier = modifier,
         alpha = if (selected) 1f else 0.5f,
         onLongClick = onLongClick,
         onClick = onClick,

@@ -25,13 +25,17 @@ fun PluginFilterEntryRow(
     session: PluginFilterSession,
     onApplied: () -> Unit,
     onReset: () -> Unit,
+    onEditingChanged: (Boolean) -> Unit = {},
 ) {
     var dialogOpen by remember(session) { mutableStateOf(false) }
 
     AppChipRow {
         AppChipRowOption(
             text = stringResource(Res.string.manga_search_filters),
-            onClick = { dialogOpen = true },
+            onClick = {
+                dialogOpen = true
+                onEditingChanged(true)
+            },
         )
         AppChipRowOption(
             text = stringResource(Res.string.reset),
@@ -45,6 +49,7 @@ fun PluginFilterEntryRow(
             onDismiss = { changed ->
                 dialogOpen = false
                 if (changed) onApplied()
+                onEditingChanged(false)
             },
         )
     }

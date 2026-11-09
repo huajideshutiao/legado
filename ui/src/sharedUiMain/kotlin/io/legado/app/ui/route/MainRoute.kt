@@ -71,7 +71,7 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.showSourceLogin
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
-import io.legado.app.model.webBook.ExploreOption
+import io.legado.app.model.webBook.ExploreOptionUiState
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.group.GroupManageDialog
@@ -158,6 +158,7 @@ import legado.ui.generated.resources.error
 import legado.ui.generated.resources.help
 import legado.ui.generated.resources.home_more
 import legado.ui.generated.resources.home_source_invalid
+import legado.ui.generated.resources.explore_option_invalidated
 import legado.ui.generated.resources.ic_arrow_right
 import legado.ui.generated.resources.ic_help
 import legado.ui.generated.resources.import_bookshelf
@@ -494,9 +495,17 @@ private fun HomeTabContent(
                 books = state.sectionBooks[homeSectionKey(tabTitle, section.id)] ?: emptyList(),
                 loading = state.sectionLoading[homeSectionKey(tabTitle, section.id)] == true,
                 error = state.sectionError[homeSectionKey(tabTitle, section.id)] == true,
+                invalidated = state.sectionInvalidated[homeSectionKey(tabTitle, section.id)] == true,
                 options = state.sectionOptions[homeSectionKey(tabTitle, section.id)] ?: emptyList(),
-                optionsVersion = state.sectionOptionsVersion,
-                onOptionSelected = { screenModel.onSectionOptionSelected(tabTitle, section) },
+                onOptionSelect = { name, value ->
+                    screenModel.onSectionOptionSelect(tabTitle, section, name, value)
+                },
+                onOptionsSelect = { name, values ->
+                    screenModel.onSectionOptionsSelect(tabTitle, section, name, values)
+                },
+                onOptionReset = { name ->
+                    screenModel.onSectionOptionReset(tabTitle, section, name)
+                },
                 onBookClick = { book, token -> onBook(book, section, false, token) },
                 onBookLongClick = { book, token -> onBook(book, section, true, token) },
                 onMoreClick = { onMore(section) },
@@ -506,8 +515,17 @@ private fun HomeTabContent(
             HomeInfiniteHeader(
                 section = section,
                 options = state.sectionOptions[homeSectionKey(tabTitle, section.id)] ?: emptyList(),
-                optionsVersion = state.sectionOptionsVersion,
-                onOptionSelected = { screenModel.onSectionOptionSelected(tabTitle, section) },
+                invalidated = state.sectionInvalidated[homeSectionKey(tabTitle, section.id)] == true,
+                error = state.sectionError[homeSectionKey(tabTitle, section.id)] == true,
+                onOptionSelect = { name, value ->
+                    screenModel.onSectionOptionSelect(tabTitle, section, name, value)
+                },
+                onOptionsSelect = { name, values ->
+                    screenModel.onSectionOptionsSelect(tabTitle, section, name, values)
+                },
+                onOptionReset = { name ->
+                    screenModel.onSectionOptionReset(tabTitle, section, name)
+                },
                 onMoreClick = { onMore(section) },
             )
         },
@@ -599,9 +617,11 @@ private fun HomeSectionBlock(
     books: List<SearchBook>,
     loading: Boolean,
     error: Boolean,
-    options: List<ExploreOption>,
-    optionsVersion: Int,
-    onOptionSelected: () -> Unit,
+    invalidated: Boolean,
+    options: List<ExploreOptionUiState>,
+    onOptionSelect: (String, String) -> Unit,
+    onOptionsSelect: (String, Set<String>) -> Unit,
+    onOptionReset: (String) -> Unit,
     onBookClick: (SearchBook, String?) -> Unit,
     onBookLongClick: (SearchBook, String?) -> Unit,
     onMoreClick: () -> Unit,
@@ -609,8 +629,15 @@ private fun HomeSectionBlock(
     // 对照 LoadMoreView.showErrorDialog: 错误占位点击弹对话框 (原版无 retry 监听, 无按钮)
     var showErrorDialog by remember { mutableStateOf(false) }
     // 稳定化回调: 上层槽每次调用都新建 lambda 实例, 直接透传时数据未变也会全量重组本区块
-    val currentOnOptionSelected = rememberUpdatedState(onOptionSelected)
-    val stableOnOptionSelected: () -> Unit = remember { { currentOnOptionSelected.value() } }
+    val currentOnOptionSelect = rememberUpdatedState(onOptionSelect)
+    val stableOnOptionSelect: (String, String) -> Unit =
+        remember { { name, value -> currentOnOptionSelect.value(name, value) } }
+    val currentOnOptionsSelect = rememberUpdatedState(onOptionsSelect)
+    val stableOnOptionsSelect: (String, Set<String>) -> Unit =
+        remember { { name, values -> currentOnOptionsSelect.value(name, values) } }
+    val currentOnOptionReset = rememberUpdatedState(onOptionReset)
+    val stableOnOptionReset: (String) -> Unit =
+        remember { { name -> currentOnOptionReset.value(name) } }
     val currentOnBookClick = rememberUpdatedState(onBookClick)
     val stableOnBookClick: (SearchBook, String?) -> Unit =
         remember { { book, token -> currentOnBookClick.value(book, token) } }
@@ -624,8 +651,18 @@ private fun HomeSectionBlock(
     // 对照 SectionHolder.root: 每个展示项上下留白 (top default=8 / bottom xs=4)
     Column(Modifier.fillMaxWidth().padding(top = DesignTokens.spacingDefault, bottom = DesignTokens.spacingXs)) {
         SectionTitleRow(section.title, stableOnMoreClick)
-        ExploreOptionsRow(options, optionsVersion, stableOnOptionSelected)
+        ExploreOptionsRow(
+            options = options,
+            ownerKey = listOf(section.sourceUrl, section.exploreUrl, section.searchKey),
+            onSelect = stableOnOptionSelect,
+            onMultiSelect = stableOnOptionsSelect,
+            onReset = stableOnOptionReset,
+        )
         when {
+            invalidated -> SectionStateText(
+                text = stringResource(Res.string.explore_option_invalidated),
+            )
+
             error -> SectionStateText(
                 text = stringResource(Res.string.home_source_invalid),
                 onClick = { showErrorDialog = true },
@@ -988,20 +1025,41 @@ private fun HomeRankItem(
 @Composable
 private fun HomeInfiniteHeader(
     section: HomeSection,
-    options: List<ExploreOption>,
-    optionsVersion: Int,
-    onOptionSelected: () -> Unit,
+    options: List<ExploreOptionUiState>,
+    invalidated: Boolean,
+    error: Boolean,
+    onOptionSelect: (String, String) -> Unit,
+    onOptionsSelect: (String, Set<String>) -> Unit,
+    onOptionReset: (String) -> Unit,
     onMoreClick: () -> Unit,
 ) {
     // 稳定化回调: 同 HomeSectionBlock, 避免数据未变时全量重组
-    val currentOnOptionSelected = rememberUpdatedState(onOptionSelected)
-    val stableOnOptionSelected: () -> Unit = remember { { currentOnOptionSelected.value() } }
+    val currentOnOptionSelect = rememberUpdatedState(onOptionSelect)
+    val stableOnOptionSelect: (String, String) -> Unit =
+        remember { { name, value -> currentOnOptionSelect.value(name, value) } }
+    val currentOnOptionsSelect = rememberUpdatedState(onOptionsSelect)
+    val stableOnOptionsSelect: (String, Set<String>) -> Unit =
+        remember { { name, values -> currentOnOptionsSelect.value(name, values) } }
+    val currentOnOptionReset = rememberUpdatedState(onOptionReset)
+    val stableOnOptionReset: (String) -> Unit =
+        remember { { name -> currentOnOptionReset.value(name) } }
     val currentOnMoreClick = rememberUpdatedState(onMoreClick)
     val stableOnMoreClick: () -> Unit = remember { { currentOnMoreClick.value() } }
     // 对照 SectionHolder.root: 无限流头部同样有 top 8 / bottom 4 留白
     Column(Modifier.fillMaxWidth().padding(top = DesignTokens.spacingDefault, bottom = DesignTokens.spacingXs)) {
         SectionTitleRow(section.title, stableOnMoreClick)
-        ExploreOptionsRow(options, optionsVersion, stableOnOptionSelected)
+        ExploreOptionsRow(
+            options = options,
+            ownerKey = listOf(section.sourceUrl, section.exploreUrl, section.searchKey),
+            onSelect = stableOnOptionSelect,
+            onMultiSelect = stableOnOptionsSelect,
+            onReset = stableOnOptionReset,
+        )
+        if (invalidated) {
+            SectionStateText(text = stringResource(Res.string.explore_option_invalidated))
+        } else if (error) {
+            SectionStateText(text = stringResource(Res.string.home_source_invalid))
+        }
     }
 }
 

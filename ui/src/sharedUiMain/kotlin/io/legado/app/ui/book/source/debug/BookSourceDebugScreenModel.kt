@@ -9,6 +9,12 @@ import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.Debug
+import io.legado.app.model.webBook.ExploreOptionUiState
+import io.legado.app.model.webBook.mergeExploreOptionDefinitions
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
 import kotlinx.coroutines.CancellationException
@@ -27,7 +33,7 @@ import kotlinx.coroutines.withContext
 /**
  * 书源调试页 ScreenModel (shared sharedUiMain)。
  *
- * 调试状态机 (init/observe/startDebug) 与全部 mutableStateOf 状态从 app 端
+ * 调试状态机 (init/observe/startSearch) 与全部 mutableStateOf 状态从 app 端
  * [BookSourceDebugModel] / [BookSourceDebugActivity] 迁入本类:
  * - 持有 [BookSourceDebugUiState] 的 [MutableStateFlow], logs 透传 SnapshotStateList 引用
  * - 实现 [Debug.Callback], printLog 内更新 logs/loading 与各阶段源码字段
@@ -67,7 +73,14 @@ class BookSourceDebugScreenModel(
     var reviewSrc: String? = null
         private set
 
-    /** startDebug 出错 (如 bookSource 为 null) 时触发, 由 Activity 注入 toast 副作用 */
+    /** 当前调试目标与本次真实请求返回的定义/选择 (页面会话持有)。 */
+    private val stateLock = SynchronizedObject()
+    private var debugKey: String? = null
+    private var exploreOptionList: List<ExploreOptionUiState> = emptyList()
+    private var debugJob: Job? = null
+    private var debugRequestId = 0L
+
+    /** 启动调试出错 (如 bookSource 为 null) 时触发, 由 Activity 注入 toast 副作用 */
     var onError: (() -> Unit)? = null
 
     private val _uiState = MutableStateFlow(
@@ -79,6 +92,7 @@ class BookSourceDebugScreenModel(
             textMy = defaultTextMy,
             textFx = defaultTextFx,
             exploreKinds = emptyList(),
+            exploreOptions = emptyList(),
         )
     )
     val uiState: StateFlow<BookSourceDebugUiState> = _uiState.asStateFlow()
@@ -152,38 +166,180 @@ class BookSourceDebugScreenModel(
         }
     }
 
-    fun startDebug(key: String, start: (() -> Unit)? = null, error: (() -> Unit)? = null) {
+    /** 公开启动入口: 原有 key/start/error 签名与回调语义保留。 */
+    fun startDebug(
+        key: String,
+        start: (() -> Unit)? = null,
+        error: (() -> Unit)? = null,
+    ) {
+        startDebugInternal(
+            key = key,
+            transformOptions = null,
+            start = start,
+            error = error,
+        )
+    }
+
+    private fun startSearch(key: String) {
+        startDebug(key = key, error = { onError?.invoke() })
+    }
+
+    /**
+     * 唯一启动生命周期: 公开入口与参数选择共用。
+     * [key] 为 null 时取当前已提交目标; [transformOptions] 在锁内改写选择快照。
+     */
+    private fun startDebugInternal(
+        key: String?,
+        transformOptions: ((List<ExploreOptionUiState>) -> List<ExploreOptionUiState>?)?,
+        start: (() -> Unit)?,
+        error: (() -> Unit)?,
+    ) {
+        val requestId = Debug.newDebugRequestId()
+        var oldJob: Job? = null
+        val startedJob = synchronized(stateLock) {
+            oldJob = debugJob
+            val targetKey = key ?: debugKey ?: return
+            val baseOptions = if (debugKey == targetKey) exploreOptionList else emptyList()
+            val options = if (transformOptions == null) {
+                baseOptions
+            } else {
+                transformOptions(baseOptions) ?: return
+            }
+            createDebugJobLocked(
+                key = targetKey,
+                options = options,
+                requestId = requestId,
+                error = error,
+            ).also { debugJob = it }
+        }
         start?.invoke()
-        scope.launch(IoDispatcher) {
+        finishDebugStart(oldJob, startedJob, requestId)
+    }
+
+    /** 必须在 [stateLock] 内调用: 新请求身份、已提交目标、选择快照与本次展示清空一次提交。 */
+    private fun createDebugJobLocked(
+        key: String,
+        options: List<ExploreOptionUiState>,
+        requestId: Long,
+        error: (() -> Unit)?,
+    ): Job {
+        debugRequestId = requestId
+        debugKey = key
+        exploreOptionList = options
+        val selections = options.associate { it.name to it.selectionSnapshot() }
+            .takeIf { it.isNotEmpty() }
+        searchSrc = null
+        bookSrc = null
+        tocSrc = null
+        contentSrc = null
+        reviewSrc = null
+        logs.clear()
+        _uiState.update { it.copy(exploreOptions = options, loading = true) }
+        return scope.launch(IoDispatcher, start = CoroutineStart.LAZY) {
             try {
-                Debug.callback = this@BookSourceDebugScreenModel
-                Debug.startDebug(this, bookSource!!, key)
+                Debug.startDebug(
+                    this,
+                    bookSource!!,
+                    key,
+                    selections,
+                    requestId,
+                    this@BookSourceDebugScreenModel,
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                error?.invoke()
+                if (synchronized(stateLock) { debugRequestId == requestId && requestId != 0L }) {
+                    error?.invoke()
+                }
             }
         }
     }
 
+    /** 锁外取消旧 Job/注册新 completion, 避免 cancel 同步执行旧 completion 时重入 [stateLock]。 */
+    private fun finishDebugStart(oldJob: Job?, startedJob: Job, requestId: Long) {
+        oldJob?.cancel()
+        startedJob.invokeOnCompletion { _ ->
+            synchronized(stateLock) {
+                if (debugRequestId != requestId) return@synchronized
+                if (debugJob === startedJob) debugJob = null
+                _uiState.update { it.copy(loading = false) }
+            }
+        }
+        startedJob.start()
+    }
+
+    /** 参数弹窗身份: 已提交调试目标, 不含正在编辑的 query。 */
+    val optionsOwnerKey: Any
+        get() = synchronized(stateLock) {
+            Triple(bookSource?.bookSourceUrl.orEmpty(), "debug", debugKey.orEmpty())
+        }
+
+    override fun onExploreOptionsResolved(
+        options: List<io.legado.app.model.webBook.ExploreOption>,
+        invalidated: Boolean,
+        requestId: Long,
+    ) {
+        synchronized(stateLock) {
+            if (debugRequestId != requestId || requestId == 0L) return
+            val update = mergeExploreOptionDefinitions(
+                exploreOptionList,
+                options,
+                replaceAll = true,
+            )
+            exploreOptionList = if (invalidated) {
+                options.map { it.toUiState() }
+            } else {
+                update.options
+            }
+            // 定义与 UI 快照在同一提交边界发布, 不再先取旧快照再锁外 update。
+            _uiState.update { it.copy(exploreOptions = exploreOptionList) }
+        }
+    }
+
     override fun printLog(state: Int, msg: String) {
+        // 旧公开契约; 有身份的 Debug 日志走三参数重载。
+    }
+
+    override fun printLog(state: Int, msg: String, requestId: Long) {
         when (state) {
-            10 -> searchSrc = msg
-            20 -> bookSrc = msg
-            30 -> tocSrc = msg
-            40 -> contentSrc = msg
-            50 -> reviewSrc = msg
+            10 -> synchronized(stateLock) {
+                if (debugRequestId == requestId && requestId != 0L) searchSrc = msg
+            }
+
+            20 -> synchronized(stateLock) {
+                if (debugRequestId == requestId && requestId != 0L) bookSrc = msg
+            }
+
+            30 -> synchronized(stateLock) {
+                if (debugRequestId == requestId && requestId != 0L) tocSrc = msg
+            }
+
+            40 -> synchronized(stateLock) {
+                if (debugRequestId == requestId && requestId != 0L) contentSrc = msg
+            }
+
+            50 -> synchronized(stateLock) {
+                if (debugRequestId == requestId && requestId != 0L) reviewSrc = msg
+            }
+
             else -> scope.launch(mainDispatcher) {
-                logs.add(msg)
-                if (state == -1 || state == 1000) {
-                    _uiState.update { it.copy(loading = false) }
+                synchronized(stateLock) {
+                    if (debugRequestId != requestId || requestId == 0L) return@synchronized
+                    logs.add(msg)
+                    if (state == -1 || state == 1000) {
+                        _uiState.update { it.copy(loading = false) }
+                    }
                 }
             }
         }
     }
 
     override fun onCleared() {
-        Debug.cancelDebug(true)
+        val requestId = synchronized(stateLock) {
+            _uiState.update { it.copy(loading = false) }
+            debugRequestId
+        }
+        if (requestId != 0L) Debug.cancelDebug(true, requestId)
         scope.cancel()
     }
 
@@ -219,6 +375,41 @@ class BookSourceDebugScreenModel(
             }
 
             BookSourceDebugUiEvent.RefreshExplore -> refreshExplore()
+
+            is BookSourceDebugUiEvent.SelectOption -> updateExploreOption(
+                event.name,
+                transform = { option ->
+                    if (option.multiSelect || option.items.none { it.second == event.value }) null
+                    else if (option.selectedValue == event.value) null
+                    else option.copy(selectedValue = event.value)
+                },
+            )
+
+            is BookSourceDebugUiEvent.SelectOptions -> updateExploreOption(
+                event.name,
+                transform = { option ->
+                    if (!option.multiSelect) return@updateExploreOption null
+                    val allowed = option.items.asSequence()
+                        .map { it.second }
+                        .filter { it.isNotBlank() }
+                        .toHashSet()
+                    val accepted = event.values.filterTo(HashSet()) { it in allowed }
+                    if (accepted == option.selectedValues) null
+                    else option.copy(selectedValues = accepted)
+                },
+            )
+
+            is BookSourceDebugUiEvent.ResetOption -> updateExploreOption(
+                event.name,
+                transform = { option ->
+                    val updated = if (option.multiSelect) {
+                        option.copy(selectedValues = emptySet())
+                    } else {
+                        option.copy(selectedValue = option.items.firstOrNull()?.second.orEmpty())
+                    }
+                    if (updated == option) null else updated
+                },
+            )
         }
     }
 
@@ -245,11 +436,26 @@ class BookSourceDebugScreenModel(
         }
     }
 
-    private fun startSearch(key: String) {
-        logs.clear()
-        startDebug(
-            key = key,
-            start = { _uiState.update { it.copy(loading = true) } },
+    private fun updateExploreOption(
+        name: String,
+        transform: (ExploreOptionUiState) -> ExploreOptionUiState?,
+    ) {
+        startDebugInternal(
+            key = null,
+            transformOptions = { options ->
+                val index = options.indexOfFirst { it.name == name }
+                if (index < 0) {
+                    null
+                } else {
+                    val updated = transform(options[index])
+                    if (updated == null) {
+                        null
+                    } else {
+                        options.toMutableList().also { it[index] = updated }
+                    }
+                }
+            },
+            start = null,
             error = { onError?.invoke() },
         )
     }
@@ -277,4 +483,7 @@ sealed interface BookSourceDebugUiEvent {
     object ChipContentClick : BookSourceDebugUiEvent
     data class SelectExplore(val index: Int) : BookSourceDebugUiEvent
     object RefreshExplore : BookSourceDebugUiEvent
+    data class SelectOption(val name: String, val value: String) : BookSourceDebugUiEvent
+    data class SelectOptions(val name: String, val values: Set<String>) : BookSourceDebugUiEvent
+    data class ResetOption(val name: String) : BookSourceDebugUiEvent
 }

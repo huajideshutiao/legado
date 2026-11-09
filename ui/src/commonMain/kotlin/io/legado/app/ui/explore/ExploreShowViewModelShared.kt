@@ -12,25 +12,33 @@ import io.legado.app.data.entities.isTachiyomiPluginSource
 import io.legado.app.help.IntentData
 import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.book.isNotShelf
-import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.coroutine.SingleJobSlot
 import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.source.SearchBookFilter
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.webBook.BookListPager
-import io.legado.app.model.webBook.ExploreOption
+import io.legado.app.model.webBook.ExploreOptionSelection
+import io.legado.app.model.webBook.ExploreOptionUiState
+import io.legado.app.model.webBook.ExploreOptionSelectionInvalidatedException
 import io.legado.app.model.webBook.PluginFilterSession
 import io.legado.app.model.webBook.WebBook.getBookListAwait
+import io.legado.app.model.webBook.mergeExploreOptionDefinitions
 import io.legado.app.model.webBook.pluginFilterSessionOf
-import io.legado.app.model.webBook.parseExploreOptionsFromUrl
 import io.legado.app.utils.concurrent.newConcurrentSet
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.throttleLatest
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -40,7 +48,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+
+/** 发现页单一页面状态: 请求 id 与 books/loading/error/notice 一次提交。 */
+data class ExplorePageState(
+    val requestId: Long = 0L,
+    val books: List<SearchBook> = emptyList(),
+    val hasNextPage: Boolean = true,
+    val loading: Boolean = false,
+    val error: String? = null,
+    val notice: String? = null,
+)
 
 /**
  * 发现页展示 VM 共享核心 (commonMain)。
@@ -96,26 +116,17 @@ class ExploreShowViewModelShared(
     private val _upAdapterFlow = signalFlow<String>()
     val upAdapterFlow: SharedFlow<String> = _upAdapterFlow.asSharedFlow()
 
-    /**
-     * 当前发现结果列表 (对照原 `booksData: MutableLiveData<List<SearchBook>>`)。
-     *
-     * 每次成功加载都投递一次 (即便列表内容与上次相同), 与 [errorFlow] 构成
-     * "一次请求必出一个结果" 的配对, 保证 footer 转圈总能被关掉。
-     */
-    private val _booksFlow = signalFlow<List<SearchBook>>()
-    val booksFlow: SharedFlow<List<SearchBook>> = _booksFlow.asSharedFlow()
-
-    /** 加载错误信息 (对照原 `errorLiveData: MutableLiveData<String>`)。 */
-    private val _errorFlow = signalFlow<String>()
-    val errorFlow: SharedFlow<String> = _errorFlow.asSharedFlow()
-
     /** 书源就绪信号 (对照原 `sourceReadyLiveData: MutableLiveData<Unit>`)。 */
     private val _sourceReadyFlow = signalFlow<Unit>()
     val sourceReadyFlow: SharedFlow<Unit> = _sourceReadyFlow.asSharedFlow()
 
-    /** 参数 chip 就绪信号 (对照原 `optionsReadyLiveData: MutableLiveData<Unit>`)。 */
-    private val _optionsReadyFlow = signalFlow<Unit>()
-    val optionsReadyFlow: SharedFlow<Unit> = _optionsReadyFlow.asSharedFlow()
+    /** 当前请求的完整页面状态; 旧 requestId 的迟到结果不会写入。 */
+    private val _pageState = MutableStateFlow(ExplorePageState())
+    val pageState: StateFlow<ExplorePageState> = _pageState.asStateFlow()
+
+    /** 参数行只读快照: UI 只读它渲染, 不直接改模型实例。 */
+    private val _optionsFlow = MutableStateFlow<List<ExploreOptionUiState>>(emptyList())
+    val optionsFlow: StateFlow<List<ExploreOptionUiState>> = _optionsFlow.asStateFlow()
 
     /** 收藏状态变化信号 (对照原 `upStarLiveData: MutableLiveData<Boolean>`)。 */
     private val _upStarFlow = MutableStateFlow<Boolean?>(null)
@@ -169,19 +180,46 @@ class ExploreShowViewModelShared(
     /** 搜索模式的搜索词 (WebBook isSearch=true 时作为 key 传入)。 */
     private var searchKeyword: String? = null
 
-    /** URL 解析出的参数 chip 列表 (可被 onUrlResolved 回调追加)。 */
-    val exploreOptions = mutableListOf<ExploreOption>()
+    /** 页面会话唯一状态: 定义 + 原始选择 (快照即 UI 数据), 所有提交经 [stateLock] 串行。 */
+    private val stateLock = SynchronizedObject()
 
     /** 翻页游标: 页码 + 上一页解析出的下一页地址 (与主页无限流共用同一份裁决)。 */
     private val pager = BookListPager()
 
+    /** 单请求槽: 新请求取消旧请求, 旧请求不得再发布定义/结果/提示; 网络/JS 在 IO。 */
+    private val exploreSlot = SingleJobSlot(
+        CoroutineScope(scope.coroutineContext + IoDispatcher)
+    )
+
+    /** 初始化目标世代: DAO/筛选会话等挂起完成后必须仍属于本会话。 */
+    private var sessionId = 0L
+
+    /** 请求序号: 所有提交在 [stateLock] 内核对。 */
+    private var requestId = 0L
+
+    /** 筛选器编辑期间暂停翻页; 编辑不改动时恢复, 改动时从第 1 页重取。 */
+    private var paginationPaused = false
+
+    /** 暂停时是否取消了一个在飞页: 恢复时要重发该页, 否则 footer 会停在加载态。 */
+    private var paginationInterrupted = false
+
+    /** 参数选择弹窗身份: 页面/源/已提交目标作用域, 不含翻页游标。 */
+    val optionsOwnerKey: Any
+        get() = synchronized(stateLock) {
+            Triple(
+                bookSource?.bookSourceUrl.orEmpty(),
+                isSearchMode,
+                if (isSearchMode) searchKeyword.orEmpty() else rawExploreUrl.orEmpty(),
+            )
+        }
+
     /** 当前分页页码 (1-based, 成功加载一页后 +1)。 */
-    val page: Int get() = pager.page
+    val page: Int get() = synchronized(stateLock) { pager.page }
 
-    /** 最近一次拉取后, 是否还有下一页。书源配了 hasMoreRule 走 JS, 否则按"本页非空就当还有"。 */
-    val hasNextPage: Boolean get() = pager.hasNextPage
+    /** 最近一次拉取后, 是否还有下一页。 */
+    val hasNextPage: Boolean get() = synchronized(stateLock) { pager.hasNextPage }
 
-    /** 已加载的发现结果 (按 bookUrl 去重, values 暴露给 [booksFlow])。
+    /** 已加载的发现结果 (按 bookUrl 去重, values 进入 [pageState])。
      * 用 Map 而非 LinkedHashSet: SearchBook 已改结构相等, 而 time 是构造参数 (当前毫秒),
      * Set 去重恒不命中会让下游 items(key = bookUrl) 撞重复 key 崩溃, 且触底兜底失效。 */
     private val books = LinkedHashMap<String, SearchBook>()
@@ -223,7 +261,7 @@ class ExploreShowViewModelShared(
      * 1. 设置 [rawExploreUrl] / [exploreName]
      * 2. 若 [bookSource] 未初始化, 优先取 [IntentData.source], 否则按 sourceUrl 查 DAO
      * 3. 解析 [exploreOptions]
-     * 4. 推送 sourceReady / optionsReady / upStar 信号
+     * 4. 推送 sourceReady / upStar 信号; 参数定义由首次真实请求发布
      * 5. 触发首次 [explore]
      *
      * @param exploreName 发现分类名 (intent.getStringExtra("exploreName"))
@@ -232,23 +270,16 @@ class ExploreShowViewModelShared(
      *   为 null 时用此查 DAO; null 时直接返回 (与原 `return@execute` 一致)
      */
     fun initData(exploreName: String?, exploreUrl: String?, sourceUrl: String?) {
+        val session = beginSession()
         scope.launch(IoDispatcher) {
-            rawExploreUrl = exploreUrl
-            this@ExploreShowViewModelShared.exploreName = exploreName
-            if (bookSource == null) {
-                bookSource = (IntentData.source as? BookSource)
-                    ?: sourceUrl?.let { appDb.bookSourceDao.getBookSource(it) }
-                    ?: return@launch
+            val source = (IntentData.source as? BookSource)
+                ?: sourceUrl?.let { appDb.bookSourceDao.getBookSource(it) }
+            if (!isSessionCurrent(session)) return@launch
+            if (source == null) {
+                publishSessionError(session, "未找到书源")
+                return@launch
             }
-            parseExploreOptions()
-            _sourceReadyFlow.tryEmit(Unit)
-            if (exploreOptions.isNotEmpty()) {
-                _optionsReadyFlow.tryEmit(Unit)
-            }
-            _upStarFlow.value = isFavorite()
-            // 取数前建会话 (入口保证需要会话的地方都拿到会话; 等注册表就绪不挡首屏信号)
-            createPluginExploreFilters()
-            explore()
+            applySession(session, source, exploreName, exploreUrl, false, null)
         }
     }
 
@@ -257,25 +288,12 @@ class ExploreShowViewModelShared(
      *
      * 供桌面端等已有 source 对象的场景使用, 避免再走 [IntentData.source] / DAO 查询。
      * 行为与 [initData] (exploreName, exploreUrl, sourceUrl) 一致, 仅 bookSource 来源不同。
-     *
-     * @param source 发现目标书源 (直接赋值给 [bookSource], 不走 IntentData / DAO)
-     * @param exploreName 发现分类名
-     * @param exploreUrl 发现 URL
      */
     fun initData(source: BookSource, exploreName: String?, exploreUrl: String?) {
+        val session = beginSession()
         scope.launch(IoDispatcher) {
-            rawExploreUrl = exploreUrl
-            this@ExploreShowViewModelShared.exploreName = exploreName
-            bookSource = source
-            parseExploreOptions()
-            _sourceReadyFlow.tryEmit(Unit)
-            if (exploreOptions.isNotEmpty()) {
-                _optionsReadyFlow.tryEmit(Unit)
-            }
-            _upStarFlow.value = isFavorite()
-            // 取数前建会话 (入口保证需要会话的地方都拿到会话; 等注册表就绪不挡首屏信号)
-            createPluginExploreFilters()
-            explore()
+            if (!isSessionCurrent(session)) return@launch
+            applySession(session, source, exploreName, exploreUrl, false, null)
         }
     }
 
@@ -283,33 +301,79 @@ class ExploreShowViewModelShared(
      * 初始化数据 (搜索模式重载, AppRoute.SourceSearchShow 入口)。
      *
      * 与发现模式差异: [explore] 走搜索规则 (isSearch=true); [rawExploreUrl] 存书源
-     * searchUrl (收藏 PinnedExplore.categoryUrl 的标识); [exploreName] 存搜索词
-     * (收藏分类名)。
+     * searchUrl; [exploreName] 存搜索词。
      */
     fun initDataSearch(source: BookSource, keyword: String) {
+        val session = beginSession()
         scope.launch(IoDispatcher) {
-            isSearchMode = true
-            searchKeyword = keyword
-            rawExploreUrl = source.searchUrl
-            exploreName = keyword
-            bookSource = source
-            parseExploreOptions()
-            _sourceReadyFlow.tryEmit(Unit)
-            if (exploreOptions.isNotEmpty()) {
-                _optionsReadyFlow.tryEmit(Unit)
-            }
-            _upStarFlow.value = isFavorite()
-            // 单源搜索页同样要带筛选会话取数 (没有筛选 UI 也走同一入口拿源默认实例)
-            createPluginExploreFilters()
-            explore()
+            if (!isSessionCurrent(session)) return@launch
+            applySession(session, source, keyword, source.searchUrl, true, keyword)
         }
     }
 
-    /**
-     * 当前发现是否已收藏 (对照原 isFavorite)。
-     *
-     * 按 sourceUrl + rawExploreUrl 在 [PinnedExploreHelp.getPinnedExplores] 中查找。
-     */
+    /** 建立新页面会话: 旧请求/旧初始化在锁内立即作废, 新目标准备完成前不启动请求。 */
+    private fun beginSession(): Long {
+        var session = 0L
+        synchronized(stateLock) {
+            sessionId++
+            session = sessionId
+            requestId++
+            _optionsFlow.value = emptyList()
+            pager.reset()
+            books.clear()
+            paginationPaused = false
+            paginationInterrupted = false
+            pluginExploreFilters = null
+            bookSource = null
+            rawExploreUrl = null
+            exploreName = null
+            isSearchMode = false
+            searchKeyword = null
+            exploreSlot.cancel()
+            _pageState.value = ExplorePageState(requestId = requestId, loading = true)
+        }
+        _pluginFiltersVersion.update { it + 1 }
+        return session
+    }
+
+    private fun isSessionCurrent(session: Long): Boolean = synchronized(stateLock) {
+        sessionId == session
+    }
+
+    private suspend fun applySession(
+        session: Long,
+        source: BookSource,
+        name: String?,
+        url: String?,
+        searchMode: Boolean,
+        keyword: String?,
+    ) {
+        synchronized(stateLock) {
+            if (sessionId != session) return
+            bookSource = source
+            exploreName = name
+            rawExploreUrl = url
+            isSearchMode = searchMode
+            searchKeyword = keyword
+        }
+        _sourceReadyFlow.tryEmit(Unit)
+        _upStarFlow.value = isFavorite()
+        createPluginExploreFilters(session)
+        if (isSessionCurrent(session)) explore()
+    }
+
+    private fun publishSessionError(session: Long, message: String) {
+        synchronized(stateLock) {
+            if (sessionId != session) return
+            _pageState.value = ExplorePageState(
+                requestId = requestId,
+                loading = false,
+                error = message,
+                hasNextPage = false,
+            )
+        }
+    }
+
     fun isFavorite(): Boolean {
         val sourceUrl = bookSource?.bookSourceUrl ?: return false
         val url = rawExploreUrl ?: return false
@@ -357,97 +421,253 @@ class ExploreShowViewModelShared(
      * 筛选不持久化: 实例为源默认筛选的新建件 (源 getFilterList 每次全新实例),
      * 挂本 VM (页面会话) 随页面销毁即丢; 每次进入均为全新默认。
      */
-    private suspend fun createPluginExploreFilters() {
-        val source = bookSource ?: return
+    private suspend fun createPluginExploreFilters(session: Long) {
+        val source = synchronized(stateLock) { bookSource } ?: return
         if (!isPluginFilterKind && !isSearchMode) return
-        pluginFilterSessionOf(source)?.let { pluginExploreFilters = it }
-        _pluginFiltersVersion.value++
+        val filter = pluginFilterSessionOf(source)
+        synchronized(stateLock) {
+            if (sessionId != session) return
+            pluginExploreFilters = filter
+        }
+        _pluginFiltersVersion.update { it + 1 }
     }
 
     /**
      * 重置到源默认筛选: 换新会话实例并返回 (拿不到新实例返回 null, 保留原实例)。
      * 入口行"重置"调用, 调用方换实例后重载第 1 页。
-     *
-     * 部分扩展的档位靠首次请求的拦截器异步抓站点表单写入插件偏好, 抓取完成前 getFilterList 只
-     * 返回兜底档位 (如 hanime1 的「發佈年份/發佈月份」仅「全部」); 重置与退出重进页面都会重新
-     * 新建会话 (见 [createPluginExploreFilters]), 据那时已就绪的档位刷新。
      */
     suspend fun resetPluginExploreFilters(): PluginFilterSession? {
-        val source = bookSource ?: return null
-        val session = pluginFilterSessionOf(source) ?: return null
-        pluginExploreFilters = session
-        _pluginFiltersVersion.value++
-        return session
+        var session = 0L
+        var source: BookSource? = null
+        synchronized(stateLock) {
+            session = sessionId
+            source = bookSource
+            if (source == null) return null
+            requestId++
+            paginationPaused = false
+            paginationInterrupted = false
+            exploreSlot.cancel()
+        }
+        val filter = pluginFilterSessionOf(source!!) ?: return null
+        synchronized(stateLock) {
+            if (sessionId != session) return null
+            pluginExploreFilters = filter
+        }
+        _pluginFiltersVersion.update { it + 1 }
+        return filter
+    }
+
+    /** 单选换值; 返回是否实际变化 (调用方据此决定是否重载)。 */
+    fun selectOption(name: String, value: String): Boolean {
+        var changed = false
+        synchronized(stateLock) {
+            val options = _optionsFlow.value
+            val index = options.indexOfFirst { it.name == name && !it.multiSelect }
+            if (index < 0) return false
+            val old = options[index]
+            if (old.selectedValue == value || old.items.none { it.second == value }) return false
+            _optionsFlow.value = options.toMutableList().also {
+                it[index] = old.copy(selectedValue = value)
+            }
+            requestId++
+            exploreSlot.cancel()
+            changed = true
+        }
+        return changed
+    }
+
+    /** 多选整份换值; 返回是否实际变化。 */
+    fun selectOptions(name: String, values: Set<String>): Boolean {
+        var changed = false
+        synchronized(stateLock) {
+            val options = _optionsFlow.value
+            val index = options.indexOfFirst { it.name == name && it.multiSelect }
+            if (index < 0) return false
+            val old = options[index]
+            val allowed = old.items.asSequence()
+                .map { it.second }
+                .filter { it.isNotBlank() }
+                .toHashSet()
+            val accepted = values.filterTo(HashSet()) { it in allowed }
+            if (accepted == old.selectedValues) return false
+            _optionsFlow.value = options.toMutableList().also {
+                it[index] = old.copy(selectedValues = accepted)
+            }
+            requestId++
+            exploreSlot.cancel()
+            changed = true
+        }
+        return changed
+    }
+
+    /** 参数行重置; 返回是否实际变化。 */
+    fun resetOption(name: String): Boolean {
+        var changed = false
+        synchronized(stateLock) {
+            val options = _optionsFlow.value
+            val index = options.indexOfFirst { it.name == name }
+            if (index < 0) return false
+            val old = options[index]
+            val updated = if (old.multiSelect) {
+                old.copy(selectedValues = emptySet())
+            } else {
+                old.copy(selectedValue = old.items.firstOrNull()?.second.orEmpty())
+            }
+            if (updated == old) return false
+            _optionsFlow.value = options.toMutableList().also { it[index] = updated }
+            requestId++
+            exploreSlot.cancel()
+            changed = true
+        }
+        return changed
     }
 
     /**
-     * 解析 rawExploreUrl 中的参数 chip 填入 [exploreOptions] (对照原 parseExploreOptions)。
+     * 筛选器编辑开始: 暂停翻页并作废在飞页, 避免旧筛选条件的结果混入。
      */
-    private fun parseExploreOptions() {
-        val url = rawExploreUrl ?: return
-        exploreOptions.clear()
-        mergeOptions(parseExploreOptionsFromUrl(url))
-    }
-
-    /**
-     * 合并新参数 chip (按 name 去重, 对照原 mergeOptions)。
-     */
-    private fun mergeOptions(newOptions: List<ExploreOption>) {
-        newOptions.forEach { newOpt ->
-            if (exploreOptions.any { it.name == newOpt.name }) return@forEach
-            exploreOptions.add(newOpt)
+    fun pausePagination() {
+        synchronized(stateLock) {
+            val wasActive = exploreSlot.isActive
+            paginationInterrupted = wasActive
+            paginationPaused = true
+            requestId++
+            if (wasActive) _pageState.value = _pageState.value.copy(loading = false)
+            exploreSlot.cancel()
         }
     }
 
+    /** 筛选器编辑结束且未改动: 恢复后续翻页并补发被取消的那页。 */
+    fun resumePagination() {
+        val interrupted = synchronized(stateLock) {
+            paginationPaused = false
+            paginationInterrupted.also { paginationInterrupted = false }
+        }
+        if (interrupted) explore()
+    }
+
     /**
-     * 加载一页发现结果 (对照原 explore)。
+     * 加载一页发现结果。
      *
      * - `resetPage=true`: 重置 page=1 + 清 books (参数 chip 变化用)
      * - `resetPage=false`: 加载下一页 (page 不变, 成功后 page++)
      *
-     * 原 `Coroutine.async(viewModelScope) { getBookListAwait(...) }
-     *        .timeout(if (BuildConfig.DEBUG) 0L else timeLimit)
-     *        .onSuccess(IO) { pageResult -> ... }
-     *        .onError { ... }`
-     * 下沉后 [Coroutine] 已 commonMain, 直接复用;
-     * `BuildConfig.DEBUG` 用 `false` 兜底 (桌面端无 BuildConfig), 故 timeout 永远走 timeLimit 分支,
-     * 简化为 `.timeout(timeLimit)` (与 `if (false) 0L else timeLimit` 等价)。
+     * 请求发出前固定源/选择/页码/下一页地址/筛选会话快照; 新请求取消旧请求,
+     * 只有当前请求能发布定义/结果/错误。
      *
-     * 成功时: 过滤命中源过滤规则的结果 (toast 提示过滤条数) + 合并去重 + 推送 [booksFlow] + page++。
-     * 失败时: 推送 [errorFlow] (stackTraceStr)。
+     * 成功时: 过滤命中源过滤规则的结果 (toast 提示过滤条数) + 合并去重 + 发布 [pageState] + page++。
+     * 失败时: 在同一 [pageState] 里发布 error, 不再另开错误流。
      *
      * @param resetPage true=重置 page + 清 books (参数 chip 变化 / 错误重试用)
      */
     fun explore(resetPage: Boolean = false) {
-        val source = bookSource ?: return
-        if (resetPage) {
-            pager.reset()
-            books.clear()
-        }
-        val selectedOptions = exploreOptions.associate { it.name to it.resolvedValue }
-        // 搜索模式 key=搜索词 (WebBook 内部 url 取 searchUrl + 注入 KEY 变量), 发现模式 key=exploreUrl
-        val key = if (isSearchMode) {
-            searchKeyword ?: return
-        } else {
-            rawExploreUrl ?: return
-        }
-        Coroutine.async(scope) {
-            getBookListAwait(
-                source, key, pager.page, isSearch = isSearchMode,
-                pluginFilters = pluginExploreFilters,
+        synchronized(stateLock) {
+            if (paginationPaused && !resetPage) return
+            if (resetPage) {
+                paginationPaused = false
+                paginationInterrupted = false
+                pager.reset()
+                books.clear()
+            }
+            val source = bookSource
+            if (source == null) {
+                publishErrorLocked("未找到书源")
+                return
+            }
+            val key = if (isSearchMode) {
+                searchKeyword ?: run {
+                    publishErrorLocked("搜索词为空")
+                    return
+                }
+            } else {
+                rawExploreUrl ?: run {
+                    publishErrorLocked("发现地址为空")
+                    return
+                }
+            }
+            val request = ExploreRequest(
+                id = ++requestId,
+                source = source,
+                key = key,
+                page = pager.page,
                 nextPageUrl = pager.nextPageUrl,
-                onUrlResolved = { analyzeUrl: AnalyzeUrlCore ->
-                    val oldSize = exploreOptions.size
-                    mergeOptions(parseExploreOptionsFromUrl(analyzeUrl.ruleUrl))
-                    if (exploreOptions.size > oldSize) {
-                        _optionsReadyFlow.tryEmit(Unit)
-                    }
+                replaceAll = pager.nextPageUrl == null,
+                fresh = pager.page == 1 && pager.nextPageUrl == null,
+                isSearch = isSearchMode,
+                filters = pluginExploreFilters,
+                selections = _optionsFlow.value.associate {
+                    it.name to it.selectionSnapshot()
                 },
-                selectedOptions = selectedOptions,
             )
-        }.timeout(timeLimit).onSuccess(IoDispatcher) { pageResult ->
-            val prevSize = books.size
+            _pageState.value = ExplorePageState(
+                requestId = request.id,
+                books = books.values.toList(),
+                hasNextPage = pager.hasNextPage,
+                loading = true,
+            )
+            // 请求登记与清屏/选择提交在同一锁域; 旧请求的 restart 无法在它之后复活。
+            exploreSlot.restart { runExplore(request) }
+        }
+    }
+
+    private fun publishErrorLocked(message: String) {
+        _pageState.value = ExplorePageState(
+            requestId = requestId,
+            books = books.values.toList(),
+            hasNextPage = pager.hasNextPage,
+            loading = false,
+            error = message,
+        )
+    }
+
+    private suspend fun runExplore(request: ExploreRequest) {
+        var freshInvalidated = false
+        try {
+            val pageResult = withTimeout(timeLimit) {
+                getBookListAwait(
+                    request.source, request.key, request.page,
+                    isSearch = request.isSearch,
+                    pluginFilters = request.filters,
+                    nextPageUrl = request.nextPageUrl,
+                    allowFreshInvalidatedOptions = request.fresh,
+                    onUrlResolved = { analyzeUrl: AnalyzeUrlCore ->
+                        synchronized(stateLock) {
+                            if (requestId != request.id) return@synchronized
+                            val update = mergeExploreOptionDefinitions(
+                                _optionsFlow.value,
+                                analyzeUrl.resolvedExploreOptions,
+                                request.replaceAll,
+                            )
+                            _optionsFlow.value = update.options
+                            val invalidated = analyzeUrl.optionSelectionsInvalidated ||
+                                update.selectionInvalidated
+                            if (invalidated && !request.fresh) {
+                                throw ExploreOptionSelectionInvalidatedException()
+                            }
+                            if (invalidated) freshInvalidated = true
+                        }
+                    },
+                    optionSelections = request.selections,
+                )
+            }
             val (items, filteredCount) = SearchBookFilter.apply(pageResult.books)
+            synchronized(stateLock) {
+                if (requestId != request.id) return
+                val prevSize = books.size
+                items.forEach { b -> books.getOrPut(b.bookUrl) { b } }
+                pager.advance(pageResult, prevSize, books.size)
+                _pageState.value = ExplorePageState(
+                    requestId = request.id,
+                    books = books.values.toList(),
+                    hasNextPage = pager.hasNextPage,
+                    loading = false,
+                    error = null,
+                    notice = if (freshInvalidated) {
+                        "参数选择已失效，已按默认值刷新"
+                    } else {
+                        null
+                    },
+                )
+            }
             if (filteredCount > 0) {
                 runCatching {
                     Toasters.get().toast(
@@ -455,15 +675,66 @@ class ExploreShowViewModelShared(
                     )
                 }
             }
-            items.forEach { b -> books.getOrPut(b.bookUrl) { b } }
-            // 兜底: 翻到第二页起, 去重后整体未增长则视为到底; 防止 hasMoreRule 缺失或配错时无限触底
-            pager.advance(pageResult, prevSize, books.size)
-            _booksFlow.tryEmit(books.values.toList())
-        }.onError {
-            it.printStackTraceOnDebug()
-            _errorFlow.tryEmit(it.stackTraceStr)
+        } catch (e: ExploreOptionSelectionInvalidatedException) {
+            currentCoroutineContext().ensureActive()
+            synchronized(stateLock) {
+                if (requestId != request.id) return
+                val message = "参数选择已失效，请刷新或重新选择"
+                books.clear()
+                pager.reset()
+                _pageState.value = ExplorePageState(
+                    requestId = request.id,
+                    books = emptyList(),
+                    hasNextPage = false,
+                    loading = false,
+                    error = message,
+                    notice = null,
+                )
+            }
+        } catch (e: TimeoutCancellationException) {
+            currentCoroutineContext().ensureActive()
+            synchronized(stateLock) {
+                if (requestId != request.id) return
+                _pageState.value = _pageState.value.copy(
+                    requestId = request.id,
+                    books = books.values.toList(),
+                    hasNextPage = pager.hasNextPage,
+                    loading = false,
+                    error = "请求超时",
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            currentCoroutineContext().ensureActive()
+            synchronized(stateLock) {
+                if (requestId != request.id) return
+                e.printStackTraceOnDebug()
+                _pageState.value = _pageState.value.copy(
+                    requestId = request.id,
+                    books = books.values.toList(),
+                    hasNextPage = pager.hasNextPage,
+                    loading = false,
+                    error = e.stackTraceStr,
+                )
+            }
         }
     }
+
+    private data class ExploreRequest(
+        val id: Long,
+        val source: BookSource,
+        val key: String,
+        val page: Int,
+        val nextPageUrl: String?,
+        /** 本次用主模板, 定义可完整替换 (按页码的 page2 也是主模板)。 */
+        val replaceAll: Boolean,
+        /** 本次是从第 1 页重新取数; 只有 fresh 允许旧选择失效后按默认继续。 */
+        val fresh: Boolean,
+        val isSearch: Boolean,
+        val filters: PluginFilterSession?,
+        val selections: Map<String, ExploreOptionSelection>,
+    )
 
     /**
      * 判断书籍是否在书架 (对照原 isInBookShelf)。

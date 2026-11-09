@@ -1,81 +1,86 @@
 package io.legado.app.ui.compose.component
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import io.legado.app.model.webBook.ExploreOption
+import io.legado.app.model.webBook.ExploreOptionUiState
 
 /**
- * 参数筛选行 (下沉 app 端 `ExploreOptionView.setUpExploreOptions`)。
+ * 参数筛选行。
  *
- * 主页展示项 (HomeSectionAdapter.updateOptions)、发现结果页 (ExploreShowActivity) 与搜索页单源
- * 搜索选项共用同一视图, 故三处都消费本组件。全部选项一次交给 [AppMixedChoiceRowGroup],
- * 相邻同类聚段由组件内单点裁决:
- * - 单选段: 选项数 > 4 出横向滚动 chip 行, 否则下拉按可用宽度并排 (放不下换行);
- *   标题可点重置默认 (对齐原版点标题 chip 重置), 菜单热区占标题以外整行。
- * - 多选段: 只列已选标签, 点按整行打开带搜索的选择弹窗 (对齐原版), 确认时一次写回
- *   并只重搜一次。
- * - 长按整行 / 整行鼠标右键在任何行上都能打开同一个可搜索选择弹窗。
+ * 只读 [options] 快照渲染, 选择事件交回页面会话: 组件不修改选项实例, 也不保存选中态。
+ * 名称不是操作入口; 单选重置在选择弹窗底栏, 多选保持确认/取消/清空的一次提交语义。
+ * 单选/多选都可用长按或鼠标右键打开可搜索选择弹窗。
  *
- * [ExploreOption] 的 selectedValue / selectedValues 是普通可变字段, 不被 Compose 跟踪;
- * 点击后 bump 本地 revision 重取快照刷新选中态。
- *
- * @param optionsVersion 结构变化信号 (新解析出 options 时 bump)
+ * @param onSelect 单选换值; 调用方在会话内判断是否实际变化并决定重载
+ * @param onMultiSelect 多选整份换值
+ * @param onReset 重置该行 (弹窗底栏)
  */
 @Composable
 fun ExploreOptionsRow(
-    options: List<ExploreOption>,
-    optionsVersion: Int,
-    onOptionSelected: () -> Unit,
+    options: List<ExploreOptionUiState>,
+    /** 页面/源/已提交逻辑目标作用域; 不包含翻页游标与正在编辑的 query。 */
+    ownerKey: Any,
+    onSelect: (name: String, value: String) -> Unit,
+    onMultiSelect: (name: String, values: Set<String>) -> Unit,
+    onReset: (name: String) -> Unit,
 ) {
     if (options.isEmpty()) return
-    var revision by remember { mutableIntStateOf(0) }
-    @Suppress("UNUSED_EXPRESSION") optionsVersion
-    val onChanged = {
-        revision++
-        onOptionSelected()
-    }
-    @Suppress("UNUSED_EXPRESSION") revision
     AppMixedChoiceRowGroup(
         fields = options.map { option ->
-            if (option.multiSelect) option.toMultiChoiceField(onChanged)
-            else option.toChoiceField(onChanged)
+            if (option.multiSelect) {
+                option.toMultiChoiceField(
+                    ownerKey = ownerKey,
+                    onSelectionChange = { name, values -> onMultiSelect(name, values) },
+                )
+            } else {
+                option.toChoiceField(
+                    ownerKey = ownerKey,
+                    onSelect = { name, value -> onSelect(name, value) },
+                    onReset = { name -> onReset(name) },
+                )
+            }
         }
     )
 }
 
-private fun ExploreOption.toChoiceField(onChanged: () -> Unit) = AppChoiceField(
+private fun ExploreOptionUiState.toChoiceField(
+    ownerKey: Any,
+    onSelect: (String, String) -> Unit,
+    onReset: (String) -> Unit,
+) = AppChoiceField(
+    fieldKey = ownerKey to name,
+    definitionKey = items,
     title = name,
-    options = options.map { it.first },
-    selectedIndex = options.indexOfFirst { it.second == selectedValue },
-    onSelect = { index ->
-        val value = options[index].second
-        if (selectedValue != value) {
-            selectedValue = value
-            onChanged()
-        }
-    },
-    onReset = {
-        if (resetToDefault()) onChanged()
-    },
+    options = items.map { it.first },
+    selectedIndex = items.indexOfFirst { it.second == selectedValue },
+    onSelect = { index -> onSelect(name, items[index].second) },
+    onReset = { onReset(name) },
+    selectedIndexes = selectedIndexes,
 )
 
-private fun ExploreOption.toMultiChoiceField(onChanged: () -> Unit) = AppMultiChoiceField(
-    title = name,
-    options = options.map { it.first },
-    selectedIndexes = options.indices.filter { options[it].second in selectedValues }.toSet(),
-    // 弹窗确认时整份写回, 只触发一次重搜 (逐项回调会让每个勾选都发一轮请求)
-    onSelectionChange = { indexes ->
-        val values = indexes.mapTo(mutableSetOf()) { options[it].second }
-        if (values != selectedValues) {
-            selectedValues.clear()
-            selectedValues.addAll(values)
-            onChanged()
+private fun ExploreOptionUiState.toMultiChoiceField(
+    ownerKey: Any,
+    onSelectionChange: (String, Set<String>) -> Unit,
+): AppMultiChoiceField {
+    val aliases = items.withIndex().groupBy { it.value.second }
+        .filterKeys { it.isNotBlank() }
+        .values
+        .flatMap { group ->
+            val indexes = group.mapTo(LinkedHashSet()) { it.index }
+            group.map { it.index to indexes }
         }
-    },
-    // 取值是空的选项没有可提交的内容, 在弹窗里当分组标题: 只做分段显示, 不可勾选
-    headerIndexes = options.indices.filter { options[it].second.isBlank() }.toSet(),
-)
+        .toMap()
+    return AppMultiChoiceField(
+        fieldKey = ownerKey to name,
+        definitionKey = items,
+        title = name,
+        options = items.map { it.first },
+        selectedIndexes = selectedIndexes,
+        // 弹窗确认时整份写回, 只触发一次重搜
+        onSelectionChange = { indexes ->
+            val values = indexes.mapTo(mutableSetOf()) { items[it].second }
+            if (values != selectedValues) onSelectionChange(name, values)
+        },
+        headerIndexes = headerIndexes,
+        aliasIndexes = aliases,
+    )
+}

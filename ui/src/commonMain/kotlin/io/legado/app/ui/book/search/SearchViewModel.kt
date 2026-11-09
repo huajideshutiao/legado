@@ -14,15 +14,20 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.model.webBook.ExploreOption
+import io.legado.app.model.webBook.ExploreOptionSelection
+import io.legado.app.model.webBook.ExploreOptionUiState
 import io.legado.app.model.webBook.PluginFilterSession
 import io.legado.app.model.webBook.SearchModel
 import io.legado.app.model.webBook.SourceSearchGroup
+import io.legado.app.model.webBook.mergeExploreOptionDefinitions
 import io.legado.app.model.webBook.pluginFilterSessionOf
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.concurrent.newConcurrentMap
 import io.legado.app.utils.concurrent.newConcurrentSet
 import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.utils.throttleLatest
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -32,6 +37,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
@@ -44,7 +50,10 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * 搜索 ViewModel (KMP 版)。
@@ -122,30 +131,90 @@ class SearchViewModel {
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
 
-    /** 搜索选项结构版本号, UI 监听此变化以重组选项行。 */
-    private val _searchOptionsVersion = MutableStateFlow(0)
-    val searchOptionsVersion = _searchOptionsVersion.asStateFlow()
+    /** 按源参数定义 + 原始选择: 页面会话唯一状态, UI 快照直接由它派生。 */
+    private val _sourceSearchOptions =
+        MutableStateFlow<Map<String, List<ExploreOptionUiState>>>(emptyMap())
+    val sourceSearchOptionsFlow: StateFlow<Map<String, List<ExploreOptionUiState>>> =
+        _sourceSearchOptions.asStateFlow()
 
-    /**
-     * 聚簇布局顶部选项行内容: 仅本轮只有一个搜索源时才返回该源选项 (多源不展示, 对齐原版
-     * 只解析单源选项)。选项实例与 [sourceSearchOptions] 同一仞, 点击直改实例。
-     */
-    fun getTopOptions(): List<ExploreOption> =
-        if (searchModel.isSingleSource) sourceSearchOptions.values.firstOrNull().orEmpty()
-        else emptyList()
-
-    /** 按源分类区块选项行: 取该源已声明选项 (无声明为空, UI 零行)。 */
-    fun getSourceOptions(sourceUrl: String): List<ExploreOption> =
-        sourceSearchOptions[sourceUrl] ?: emptyList()
-
-    /** 区块内选项 chip 变化: 只重搜该源 (其余源结果不动)。 */
-    fun onSourceOptionChanged(sourceUrl: String) {
-        searchModel.restartSource(sourceUrl)
+    private fun updateSourceOptions(
+        transform: (Map<String, List<ExploreOptionUiState>>) -> Map<String, List<ExploreOptionUiState>>,
+    ): Boolean {
+        while (true) {
+            val old = _sourceSearchOptions.value
+            val new = transform(old)
+            if (new == old) return false
+            if (_sourceSearchOptions.compareAndSet(old, new)) return true
+        }
     }
 
-    /** 重搜指定源 (筛选改动后调用, 其余源结果不动)。 */
+    /** 单选换值; 返回是否实际变化, 调用方据此只重搜变化的源。 */
+    fun selectSourceOption(sourceUrl: String, name: String, value: String): Boolean {
+        return searchModel.commitSourceSelection(sourceUrl) {
+            updateSourceOption(sourceUrl, name) { option ->
+                if (option.multiSelect || option.items.none { it.second == value }) null
+                else if (option.selectedValue == value) null
+                else option.copy(selectedValue = value)
+            }
+        }
+    }
+
+    /** 多选整份换值。 */
+    fun selectSourceOptions(sourceUrl: String, name: String, values: Set<String>): Boolean {
+        return searchModel.commitSourceSelection(sourceUrl) {
+            updateSourceOption(sourceUrl, name) { option ->
+                if (!option.multiSelect) return@updateSourceOption null
+                val allowed = option.items.asSequence()
+                    .map { it.second }
+                    .filter { it.isNotBlank() }
+                    .toHashSet()
+                val accepted = values.filterTo(HashSet()) { it in allowed }
+                if (accepted == option.selectedValues) null
+                else option.copy(selectedValues = accepted)
+            }
+        }
+    }
+
+    /** 重置指定源参数; 返回是否实际变化。 */
+    fun resetSourceOption(sourceUrl: String, name: String): Boolean {
+        return searchModel.commitSourceSelection(sourceUrl) {
+            updateSourceOption(sourceUrl, name) { option ->
+                val updated = if (option.multiSelect) {
+                    option.copy(selectedValues = emptySet())
+                } else {
+                    option.copy(selectedValue = option.items.firstOrNull()?.second.orEmpty())
+                }
+                if (updated == option) null else updated
+            }
+        }
+    }
+
+    private fun updateSourceOption(
+        sourceUrl: String,
+        name: String,
+        transform: (ExploreOptionUiState) -> ExploreOptionUiState?,
+    ): Boolean = updateSourceOptions { map ->
+        val options = map[sourceUrl] ?: return@updateSourceOptions map
+        val index = options.indexOfFirst { it.name == name }
+        if (index < 0) return@updateSourceOptions map
+        val updated = transform(options[index]) ?: return@updateSourceOptions map
+        map + (sourceUrl to options.toMutableList().also { it[index] = updated })
+    }
+
+    /** 重搜指定源 (筛选/参数改动后调用, 其余源结果不动)。 */
     fun restartSourceSearch(source: BookSource) {
+        // restartSource 自己会清 paused 并推进世代，不能先 resume 补发旧页。
         searchModel.restartSource(source.bookSourceUrl)
+    }
+
+    /** 筛选器编辑开始: 暂停该源分页并作废在飞请求。 */
+    fun pauseSourcePagination(sourceUrl: String) {
+        searchModel.pauseSource(sourceUrl)
+    }
+
+    /** 筛选器编辑结束且未改动: 恢复该源后续分页。 */
+    fun resumeSourcePagination(sourceUrl: String) {
+        searchModel.resumeSource(sourceUrl)
     }
 
     /** 重置指定源筛选会话为源默认并重搜该源 (入口行"重置")。 */
@@ -158,21 +227,23 @@ class SearchViewModel {
 
     /**
      * 页面会话的插件源筛选实例 (key=bookSourceUrl): 同一实例同时供筛选 UI 与取数委派使用,
-     * 随本 VM (页面) 销毁即丢, 不经任何全局缓存 (对齐 Mihon 筛选随浏览页 VM 生命周期)。
+     * 随本 VM (页面) 销毁即丢, 不经任何全局缓存。
      */
     private val pluginFilterSessions = newConcurrentMap<String, PluginFilterSession>()
 
-    /**
-     * 已探测确认不出筛选入口的插件源 (免得每次请求/重组重复新建默认实例):
-     * 源本身答出空筛选器, 或本端没有该源的插件实例。
-     */
-    private val noFilterPluginSources = newConcurrentSet<String>()
+    /** 同源会话新建互斥: 页面内多个入口同时等待时只建一份。 */
+    private val filterSessionMutexes = newConcurrentMap<String, Mutex>()
+    private val filterSessionMutexLock = SynchronizedObject()
+
+    private fun filterMutex(url: String): Mutex = synchronized(filterSessionMutexLock) {
+        filterSessionMutexes.getOrPut(url) { Mutex() }
+    }
 
     /** 筛选会话建立/替换版本 (面板据此重读实例)。 */
     private val _pluginFiltersVersion = MutableStateFlow(0)
     val pluginFiltersVersion = _pluginFiltersVersion.asStateFlow()
 
-    /** 取该源已建立的筛选会话; 未建立返回 null (UI 据此触发就地建立)。 */
+    /** 取该源已建立的筛选会话; 未建立返回 null。 */
     fun getPluginFilterSession(sourceUrl: String): PluginFilterSession? =
         pluginFilterSessions[sourceUrl]
 
@@ -183,18 +254,19 @@ class SearchViewModel {
     private val _searchSources = MutableStateFlow<List<BookSource>>(emptyList())
     val searchSources = _searchSources.asStateFlow()
 
-    /** 取/建该源筛选会话; 没有可用插件源实例或未声明筛选器的源返回 null (不出筛选入口)。 */
+    /**
+     * 取/建该源筛选会话。空筛选器也是合法会话 (取数委派要求携带实例), 由 UI 按 isEmpty
+     * 决定是否显示入口; 本端没有插件实例时返回 null, 不缓存为"没有筛选器"。
+     */
     suspend fun ensurePluginFilterSession(source: BookSource): PluginFilterSession? {
         val url = source.bookSourceUrl
-        pluginFilterSessions[url]?.let { return it }
-        if (url in noFilterPluginSources) return null
-        val session = pluginFilterSessionOf(source)?.takeIf { !it.isEmpty }
-        if (session == null) {
-            noFilterPluginSources.add(url)
-            return null
+        val mutex = filterMutex(url)
+        return mutex.withLock {
+            pluginFilterSessions[url] ?: pluginFilterSessionOf(source)?.also {
+                pluginFilterSessions[url] = it
+                _pluginFiltersVersion.update { it + 1 }
+            }
         }
-        pluginFilterSessions[url] = session
-        return session
     }
 
     /**
@@ -202,19 +274,32 @@ class SearchViewModel {
      * 入口行"重置"调用; 调用方随后重搜该源。
      */
     suspend fun resetPluginFilterSession(source: BookSource): PluginFilterSession? {
-        pluginFilterSessions.remove(source.bookSourceUrl)
-        noFilterPluginSources.remove(source.bookSourceUrl)
-        val session = ensurePluginFilterSession(source)
-        _pluginFiltersVersion.value++
-        return session
+        val url = source.bookSourceUrl
+        val mutex = filterMutex(url)
+        return mutex.withLock {
+            pluginFilterSessions.remove(url)
+            val session = pluginFilterSessionOf(source)
+            if (session != null) pluginFilterSessions[url] = session
+            _pluginFiltersVersion.update { it + 1 }
+            session
+        }
     }
 
-    /**
-     * 按源隔离的搜索 URL 声明可选项 (key=bookSourceUrl)。
-     * 同源每轮只回调一次 (串行), 异源并发但异 key, 无锁安全;
-     * 聚簇顶部行与按源分类区块行都从这里派生。
-     */
-    private val sourceSearchOptions = newConcurrentMap<String, List<ExploreOption>>()
+    /** 按源参数定义 (key=bookSourceUrl): 定义与选择变化都经单一状态 CAS 发布。 */
+    private fun mergeSourceOptions(
+        sourceUrl: String,
+        parsed: List<ExploreOption>,
+        replaceAll: Boolean,
+    ): Boolean {
+        while (true) {
+            val old = _sourceSearchOptions.value
+            val existing = old[sourceUrl].orEmpty()
+            val update = mergeExploreOptionDefinitions(existing, parsed, replaceAll)
+            val new = if (update.options == existing) old else old + (sourceUrl to update.options)
+            if (new == old) return update.selectionInvalidated
+            if (_sourceSearchOptions.compareAndSet(old, new)) return update.selectionInvalidated
+        }
+    }
 
     /** 当前搜索关键词 (空字符串表示未开始, 触底续搜时沿用)。 */
     var searchKey: String = ""
@@ -317,27 +402,31 @@ class SearchViewModel {
             }
         }
 
-        override fun onSearchOptionsResolved(sourceUrl: String, options: List<ExploreOption>) {
-            val existing = sourceSearchOptions[sourceUrl]
-            val structureUnchanged = existing != null && existing.size == options.size &&
-                existing.zip(options).all { (a, b) ->
-                    a.name == b.name && a.options == b.options
-                }
-            if (structureUnchanged) {
-                // 结构未变: 保留原实例 (用户选中态在实例上), UI 无需刷新
-                return
-            }
-            val merged = options.map { newOpt ->
-                existing?.find { it.name == newOpt.name }
-                    ?.let { old -> newOpt.apply { copySelectionFrom(old) } }
-                    ?: newOpt
-            }
-            sourceSearchOptions[sourceUrl] = merged
-            _searchOptionsVersion.value++
+        override fun onSearchOptionsResolved(
+            sourceUrl: String,
+            options: List<ExploreOption>,
+            replaceAll: Boolean,
+        ): Boolean = mergeSourceOptions(sourceUrl, options, replaceAll)
+
+        override fun onSearchOptionsInvalidated(sourceUrl: String) {
+            runCatching { Toasters.get().toast("参数选择已失效，请重新选择") }
         }
 
-        override fun getSearchOptions(sourceUrl: String): List<ExploreOption> =
-            sourceSearchOptions[sourceUrl] ?: emptyList()
+        override fun onSearchOptionsRefreshed(sourceUrl: String) {
+            runCatching { Toasters.get().toast("参数选择已失效，已按默认值刷新") }
+        }
+
+        override fun onSearchSourceError(sourceUrl: String, error: Throwable) {
+            runCatching { Toasters.get().toast(error.message ?: "书源搜索出错") }
+        }
+
+        override fun onSearchHasMoreChanged(hasMore: Boolean) {
+            _hasMore.value = hasMore
+        }
+
+        override fun getSearchOptions(sourceUrl: String): Map<String, ExploreOptionSelection> =
+            _sourceSearchOptions.value[sourceUrl].orEmpty()
+                .associate { it.name to it.selectionSnapshot() }
 
         override suspend fun getPluginFilters(source: BookSource): PluginFilterSession? =
             ensurePluginFilterSession(source)
@@ -532,9 +621,8 @@ class SearchViewModel {
                 restartSearchBooksCollector()
                 searchKey = key
                 _hasMore.value = true
-                if (resetOptions && sourceSearchOptions.isNotEmpty()) {
-                    sourceSearchOptions.clear()
-                    _searchOptionsVersion.value++
+                if (resetOptions && _sourceSearchOptions.value.isNotEmpty()) {
+                    _sourceSearchOptions.value = emptyMap()
                 }
             }
             if (searchKey.isEmpty()) {

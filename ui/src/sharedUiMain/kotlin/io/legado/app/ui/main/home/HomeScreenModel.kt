@@ -3,6 +3,8 @@ package io.legado.app.ui.main.home
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.HomeSection
 import io.legado.app.help.HomeTabHelpShared
+import io.legado.app.help.toast.Toasters
+import io.legado.app.model.webBook.ExploreOptionUiState
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
@@ -45,8 +47,8 @@ class HomeScreenModel : ScreenModel, HomeUiActions {
             sectionBooks = emptyMap(),
             sectionLoading = emptyMap(),
             sectionError = emptyMap(),
+            sectionInvalidated = emptyMap(),
             sectionOptions = emptyMap(),
-            sectionOptionsVersion = 0,
             infiniteHasMore = emptyMap(),
         )
     )
@@ -133,19 +135,33 @@ class HomeScreenModel : ScreenModel, HomeUiActions {
     }
 
     /**
-     * sectionOptionsChangedFlow: 该展示项的参数选项已就绪/重解析 (对照 HomeSectionAdapter.updateSectionOptions)。
-     * ExploreOption 就地可变且相等性忽略选中态, 靠 version 递增保证 StateFlow 一定发射。
+     * sectionOptionsChangedFlow: 该展示项的参数定义或选择已更新。
+     * 页面会话发布只读快照, UI 直接替换该展示项的行。
      */
     private fun observeSectionOptions() = scope.launch {
         viewModelShared.sectionOptionsChangedFlow.collect { (tabTitle, sectionId) ->
             val key = homeSectionKey(tabTitle, sectionId)
             val options = viewModelShared.sectionOptions(tabTitle, sectionId)
             _state.update {
-                it.copy(
-                    sectionOptions = it.sectionOptions + (key to options),
-                    sectionOptionsVersion = it.sectionOptionsVersion + 1,
-                )
+                it.copy(sectionOptions = it.sectionOptions + (key to options))
             }
+        }
+    }
+
+    /** sectionInvalidatedFlow: 定义变化使已选值失效/恢复, 与书源坏区分展示。 */
+    private fun observeSectionInvalidated() = scope.launch {
+        viewModelShared.sectionInvalidatedFlow.collect { (tabTitle, sectionId) ->
+            val key = homeSectionKey(tabTitle, sectionId)
+            val invalidated = viewModelShared.isSectionInvalidated(tabTitle, sectionId)
+            _state.update {
+                it.copy(sectionInvalidated = it.sectionInvalidated + (key to invalidated))
+            }
+        }
+    }
+
+    private fun observeSectionNotice() = scope.launch {
+        viewModelShared.sectionNoticeFlow.collect {
+            runCatching { Toasters.get().toast("参数选择已失效，已按默认值刷新") }
         }
     }
 
@@ -156,6 +172,8 @@ class HomeScreenModel : ScreenModel, HomeUiActions {
         observeSectionLoading()
         observeSectionError()
         observeSectionOptions()
+        observeSectionInvalidated()
+        observeSectionNotice()
     }
 
     /**
@@ -246,9 +264,41 @@ class HomeScreenModel : ScreenModel, HomeUiActions {
         scope.launch { viewModelShared.loadInfinite(tabTitle) }
     }
 
-    /** 参数 chip 切换: 清旧 books 并重载第 1 页 (对照 HomeTabFragment.sectionCallback.onOptionSelected) */
+    /** 参数 chip 切换: 清旧 books 并重载第 1 页。 */
     override fun onSectionOptionSelected(tabTitle: String, section: HomeSection) {
         scope.launch { viewModelShared.onSectionOptionSelected(tabTitle, section) }
+    }
+
+    /** 单选换值, 仅在实际变化时重载该展示项。 */
+    fun onSectionOptionSelect(tabTitle: String, section: HomeSection, name: String, value: String) {
+        scope.launch {
+            if (viewModelShared.selectSectionOption(tabTitle, section, name, value)) {
+                viewModelShared.onSectionOptionSelected(tabTitle, section)
+            }
+        }
+    }
+
+    /** 多选整份换值, 仅在实际变化时重载该展示项。 */
+    fun onSectionOptionsSelect(
+        tabTitle: String,
+        section: HomeSection,
+        name: String,
+        values: Set<String>,
+    ) {
+        scope.launch {
+            if (viewModelShared.selectSectionOptions(tabTitle, section, name, values)) {
+                viewModelShared.onSectionOptionSelected(tabTitle, section)
+            }
+        }
+    }
+
+    /** 重置展示项参数, 仅在实际变化时重载该展示项。 */
+    fun onSectionOptionReset(tabTitle: String, section: HomeSection, name: String) {
+        scope.launch {
+            if (viewModelShared.resetSectionOption(tabTitle, section, name)) {
+                viewModelShared.onSectionOptionSelected(tabTitle, section)
+            }
+        }
     }
 
     /** 当前选中 tab 的标题; 用于"管理展示项"快捷入口 (对照 HomeTabState.currentTabTitle) */

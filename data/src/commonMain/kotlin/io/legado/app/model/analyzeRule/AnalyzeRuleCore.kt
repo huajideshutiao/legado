@@ -121,7 +121,7 @@ open class AnalyzeRuleCore(
         try {
             redirectUrl = URL(url)
         } catch (e: Exception) {
-            SourceDebugLoggers.impl?.log("URL($url) error\n${e.message}")
+            SourceDebugLoggers.log(coroutineContext, "URL($url) error\n${e.message}")
         }
         return redirectUrl
     }
@@ -480,7 +480,7 @@ open class AnalyzeRuleCore(
             val lenientMap = decodeStringMapOrNull(putJsonStr)
             if (lenientMap != null) {
                 if (!loggedNonStandardJSON) {
-                    SourceDebugLoggers.impl?.log("≡@put 规则 JSON 格式不规范，请改为规范格式")
+                    SourceDebugLoggers.log(coroutineContext, "≡@put 规则 JSON 格式不规范，请改为规范格式")
                     loggedNonStandardJSON = true
                 }
                 putMap.putAll(lenientMap)
@@ -830,7 +830,7 @@ open class AnalyzeRuleCore(
      */
     fun put(key: String, value: String): String {
         if (key == "bookName" || key == "title") {
-            SourceDebugLoggers.impl?.log("≡变量 $key 在特定情况下会被覆盖，建议使用其他键名")
+            SourceDebugLoggers.log(coroutineContext, "≡变量 $key 在特定情况下会被覆盖，建议使用其他键名")
         }
         chapter?.putVariable(key, value)
             ?: ruleData?.putVariable(key, value)
@@ -928,7 +928,7 @@ open class AnalyzeRuleCore(
             analyzeUrl.getStrResponse().body
         }.onFailure {
             coroutineContext.ensureActive()
-            SourceDebugLoggers.impl?.log("ajax(${urlStr}) error\n${it.stackTraceToString()}")
+            SourceDebugLoggers.log(coroutineContext, "ajax(${urlStr}) error\n${it.stackTraceToString()}")
             it.printStackTraceOnDebug()
         }.getOrElse {
             it.stackTraceStr

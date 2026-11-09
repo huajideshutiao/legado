@@ -27,6 +27,7 @@ fun interface AnalyzeUrlFactory {
         hasLoginHeader: Boolean,
         selectedOptions: Map<String, String>?,
         variables: Map<AppConst.JsVarName, Any>?,
+        optionSelections: Map<String, io.legado.app.model.webBook.ExploreOptionSelection>?,
     ): AnalyzeUrlCore
 }
 
@@ -36,10 +37,12 @@ object AnalyzeUrlFactories {
     @Volatile
     private var impl: AnalyzeUrlFactory = AnalyzeUrlFactory {
             rawUrl, baseUrl, source, ruleData, chapter, readTimeout, callTimeout,
-            coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables ->
+            coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables,
+            optionSelections ->
         AnalyzeUrlCore(
             rawUrl, baseUrl, source, ruleData, chapter, readTimeout, callTimeout,
-            coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables
+            coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables,
+            optionSelections
         )
     }
 
@@ -61,8 +64,10 @@ object AnalyzeUrlFactories {
         hasLoginHeader: Boolean = true,
         selectedOptions: Map<String, String>? = null,
         variables: Map<AppConst.JsVarName, Any>? = null,
+        optionSelections: Map<String, io.legado.app.model.webBook.ExploreOptionSelection>? = null,
     ): AnalyzeUrlCore = impl.create(
         rawUrl, baseUrl, source, ruleData, chapter, readTimeout, callTimeout,
-        coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables
+        coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables,
+        optionSelections
     )
 }

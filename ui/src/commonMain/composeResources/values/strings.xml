@@ -1659,6 +1659,7 @@
     <string name="source_filter_rule_filtered_count">Filtered %1$d books</string>
     <string name="explore_style_normal">Normal</string>
     <string name="home_source_invalid">Source is invalid</string>
+    <string name="explore_option_invalidated">Options changed. Refresh or choose again.</string>
     <string name="bottom_nav_items_order">Bottom bar items order</string>
     <string name="debug_error">Debug error</string>
     <string name="select_explore_kind">Select explore kind</string>

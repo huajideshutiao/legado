@@ -1,6 +1,7 @@
 package io.legado.app.ui.compose.component
 
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,8 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -28,6 +31,9 @@ import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -41,6 +47,7 @@ import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.clear
 import legado.ui.generated.resources.ok
+import legado.ui.generated.resources.reset
 import legado.ui.generated.resources.search
 import org.jetbrains.compose.resources.stringResource
 
@@ -50,12 +57,11 @@ import org.jetbrains.compose.resources.stringResource
  * 单选行: 选项数超过 [OptionChipThreshold] 出横向滚动 chip 行, 否则出下拉; 相邻下拉按可用宽度
  * 并排 (放不下的换行), 一行的下拉等分宽度。
  *
- * 多选行: 对齐原版 setUpExploreOptions, 只有一种形态 —— 标题 + 已选标签 (未选项不占位),
- * 点按/长按整行打开带搜索的选择弹窗, 确认时一次写回。分类动辄上百项时不会撑成超长滚动带,
- * 也不会每点一项就重搜一次。
+ * 多选行: 标题 + 已选标签 (未选项不占位), 点按/长按整行打开带搜索的选择弹窗,
+ * 确认时一次写回。分类动辄上百项时不会撑成超长滚动带, 也不会每点一项就重搜一次。
  *
  * 入口统一: 整行长按 (chip 内与 chip 间空白)、整行鼠标右键、多选行的整行点按都打开同一个
- * 可搜索选择弹窗; 单选行的点按语义不变 (点标题重置默认、点选项切换)。
+ * 可搜索选择弹窗。名称本身不承担重置。
  */
 const val OptionChipThreshold = 4
 
@@ -69,13 +75,18 @@ private val ChoiceFontSize = 14.sp
  */
 sealed interface AppOptionField
 
-/** 单选筛选行 (onReset 非空时标题可点重置到默认, 对齐原版点标题 chip 重置); selectedIndex 为 -1 表示当前值不在选项内, 下拉如实留空而不是预选第一档。 */
+/** 单选筛选行。selectedIndex 为 -1 表示当前值不在选项内, 下拉如实留空而不是预选第一档。
+ * 名称不承担重置, 重置在弹窗底栏。 */
 data class AppChoiceField(
     val title: String,
     val options: List<String>,
     val selectedIndex: Int,
     val onSelect: (Int) -> Unit,
     val onReset: (() -> Unit)? = null,
+    val selectedIndexes: Set<Int>? = null,
+    val fieldKey: Any,
+    /** 完整声明身份 (Explore 传 items(label,value)); 缺省用 labels。 */
+    val definitionKey: Any? = null,
 ) : AppOptionField
 
 /**
@@ -93,6 +104,10 @@ data class AppMultiChoiceField(
     val selectedIndexes: Set<Int>,
     val onSelectionChange: (Set<Int>) -> Unit,
     val headerIndexes: Set<Int> = emptySet(),
+    /** 同取值别名组: 勾选/取消一个下标时整组一起变。 */
+    val aliasIndexes: Map<Int, Set<Int>> = emptyMap(),
+    val fieldKey: Any,
+    val definitionKey: Any? = null,
 ) : AppOptionField
 
 @Composable
@@ -133,7 +148,18 @@ fun AppMixedChoiceRowGroup(
  * 回调各归一边: 单选行用 [onSelect] (逐项) 与 [onReset], 多选行用 [onSelectionChange]
  * (弹窗确认时整份写回), 对方那一组回调为空。
  */
+private data class ChoiceDefinition(
+    val source: Any,
+    val multiSelect: Boolean,
+    val title: String,
+    val options: List<String>,
+    val headerIndexes: Set<Int>,
+    val aliasIndexes: Map<Int, Set<Int>>,
+)
+
 private data class ChoiceRow(
+    val fieldKey: Any,
+    val definition: ChoiceDefinition,
     val title: String,
     val options: List<String>,
     val selectedIndexes: Set<Int>,
@@ -142,6 +168,7 @@ private data class ChoiceRow(
     val onSelectionChange: (Set<Int>) -> Unit,
     val onReset: (() -> Unit)?,
     val headerIndexes: Set<Int> = emptySet(),
+    val aliasIndexes: Map<Int, Set<Int>> = emptyMap(),
 ) {
     val displayValue: String
         get() = options.filterIndexed { index, _ -> index in selectedIndexes }
@@ -154,9 +181,18 @@ private data class ChoiceRow(
 }
 
 private fun AppChoiceField.toChoiceRow() = ChoiceRow(
+    fieldKey = fieldKey,
+    definition = ChoiceDefinition(
+        source = definitionKey ?: options,
+        multiSelect = false,
+        title = title,
+        options = options,
+        headerIndexes = emptySet(),
+        aliasIndexes = emptyMap(),
+    ),
     title = title,
     options = options,
-    selectedIndexes = setOf(selectedIndex),
+    selectedIndexes = selectedIndexes ?: setOf(selectedIndex),
     multiSelect = false,
     onSelect = onSelect,
     onSelectionChange = {},
@@ -164,6 +200,15 @@ private fun AppChoiceField.toChoiceRow() = ChoiceRow(
 )
 
 private fun AppMultiChoiceField.toChoiceRow() = ChoiceRow(
+    fieldKey = fieldKey,
+    definition = ChoiceDefinition(
+        source = definitionKey ?: options,
+        multiSelect = true,
+        title = title,
+        options = options,
+        headerIndexes = headerIndexes,
+        aliasIndexes = aliasIndexes,
+    ),
     title = title,
     options = options,
     selectedIndexes = selectedIndexes,
@@ -172,6 +217,12 @@ private fun AppMultiChoiceField.toChoiceRow() = ChoiceRow(
     onSelectionChange = onSelectionChange,
     onReset = null,
     headerIndexes = headerIndexes,
+    aliasIndexes = aliasIndexes,
+)
+
+private data class PickerTarget(
+    val fieldKey: Any,
+    val definition: ChoiceDefinition,
 )
 
 @Composable
@@ -180,14 +231,33 @@ private fun ChoiceRows(
     modifier: Modifier,
 ) {
     if (rows.isEmpty()) return
+    var pickerTarget by remember { mutableStateOf<PickerTarget?>(null) }
+    val openRow = pickerTarget?.let { target ->
+        rows.firstOrNull {
+            it.fieldKey == target.fieldKey && it.definition == target.definition
+        }
+    }
+    LaunchedEffect(pickerTarget, rows) {
+        if (pickerTarget != null && openRow == null) pickerTarget = null
+    }
     Column(modifier.fillMaxWidth()) {
         buildChoiceGroups(rows).forEach { group ->
             val row = group.first()
-            when {
-                row.multiSelect -> MultiChoiceChipRow(row)
-                row.isChipRow() -> SingleChoiceChipRow(row)
-                else -> ChoiceDropdownLines(group)
+            key(row.fieldKey, row.definition) {
+                val open: (ChoiceRow) -> Unit = { target ->
+                    pickerTarget = PickerTarget(target.fieldKey, target.definition)
+                }
+                when {
+                    row.multiSelect -> MultiChoiceChipRow(row) { open(row) }
+                    row.isChipRow() -> SingleChoiceChipRow(row) { open(row) }
+                    else -> ChoiceDropdownLines(group, open)
+                }
             }
+        }
+    }
+    if (openRow != null) {
+        key(openRow.fieldKey, openRow.definition) {
+            ChoicePickerDialog(openRow, onDismiss = { pickerTarget = null })
         }
     }
 }
@@ -207,15 +277,12 @@ private fun buildChoiceGroups(rows: List<ChoiceRow>): List<List<ChoiceRow>> {
     return groups
 }
 
-/** 单选 chip 行: 标题点按重置默认; 选项 chip 点按即切换; 长按整行打开弹窗。
+/** 单选 chip 行: 选项 chip 点按即切换; 长按整行或右键打开选择弹窗。
  *
- * 长按热区覆盖整行: chip 自己带长按 (子节点会消费按下事件, 外层收不到), 空白与横向滚动
- * 外层再兜 chip 之间的空白与内容右侧空白, 鼠标右键同样包在外层。
+ * 名称不绑定重置; 重置在弹窗底栏显式提供。长按热区覆盖整行。
  */
 @Composable
-private fun SingleChoiceChipRow(row: ChoiceRow) {
-    var pickerOpen by remember { mutableStateOf(false) }
-    val open = { pickerOpen = true }
+private fun SingleChoiceChipRow(row: ChoiceRow, open: () -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -230,20 +297,24 @@ private fun SingleChoiceChipRow(row: ChoiceRow) {
         AppChipRow {
             AppChipRowTitle(
                 text = row.title,
-                onClick = row.onReset,
+                onClick = null,
                 onLongClick = open,
             )
             row.options.forEachIndexed { index, label ->
+                val isSelected = index in row.selectedIndexes
                 AppChipRowOption(
                     text = label,
-                    selected = index in row.selectedIndexes,
+                    selected = isSelected,
+                    modifier = Modifier.semantics {
+                        selected = isSelected
+                        role = Role.RadioButton
+                    },
                     onLongClick = open,
                     onClick = { row.onSelect(index) },
                 )
             }
         }
     }
-    if (pickerOpen) ChoicePickerDialog(row, onDismiss = { pickerOpen = false })
 }
 
 /**
@@ -252,9 +323,7 @@ private fun SingleChoiceChipRow(row: ChoiceRow) {
  * 热区包在横向滚动外层, 覆盖整行宽度 (内容窄时右侧空白也能点)。
  */
 @Composable
-private fun MultiChoiceChipRow(row: ChoiceRow) {
-    var pickerOpen by remember { mutableStateOf(false) }
-    val open = { pickerOpen = true }
+private fun MultiChoiceChipRow(row: ChoiceRow, open: () -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -275,11 +344,10 @@ private fun MultiChoiceChipRow(row: ChoiceRow) {
             }
         }
     }
-    if (pickerOpen) ChoicePickerDialog(row, onDismiss = { pickerOpen = false })
 }
 
 @Composable
-private fun ChoiceDropdownLines(rows: List<ChoiceRow>) {
+private fun ChoiceDropdownLines(rows: List<ChoiceRow>, onOpen: (ChoiceRow) -> Unit) {
     BoxWithConstraints(
         Modifier
             .fillMaxWidth()
@@ -302,7 +370,9 @@ private fun ChoiceDropdownLines(rows: List<ChoiceRow>) {
                 ) {
                     line.forEachIndexed { index, row ->
                         if (index > 0) Spacer(Modifier.width(gap))
-                        ChoiceDropdown(row, Modifier.weight(1f))
+                        key(row.fieldKey, row.definition) {
+                            ChoiceDropdown(row, Modifier.weight(1f)) { onOpen(row) }
+                        }
                     }
                 }
             }
@@ -358,52 +428,33 @@ private fun ChoiceRow.intrinsicWidth(
 }
 
 /**
- * 单行下拉: 菜单热区占满标题以外的整行 (不再只圈住值 + ▾, 行内不留死区);
- * 标题本身有重置语义 ([ChoiceRow.onReset] 非空, 对齐原版点标题 chip 重置) 时留作重置钮,
- * 否则标题并入热区, 点标题也开菜单。整行长按与整行鼠标右键都打开选择弹窗。
+ * 单行下拉: 名称是纯文本, 值区点按开菜单; 整行长按与右键打开选择弹窗。
+ * 名称不承担重置; 重置在弹窗底栏显式提供。
  */
 @Composable
-private fun ChoiceDropdown(row: ChoiceRow, modifier: Modifier) {
+private fun ChoiceDropdown(row: ChoiceRow, modifier: Modifier, open: () -> Unit) {
     val colors = AppTheme.colors
-    var pickerOpen by remember { mutableStateOf(false) }
-    val open = { pickerOpen = true }
-    val onReset = row.onReset
     val rowModifier = modifier.then(rememberSecondaryClickModifier(open))
-    if (onReset == null) {
-        AppDropdownAnchor(
-            valueText = row.displayValue,
-            modifier = rowModifier,
-            leading = {
-                Text(
-                    text = row.title,
-                    color = colors.primaryText,
-                    fontSize = ChoiceFontSize,
-                    modifier = Modifier.weight(1f),
-                )
-            },
-            onLongClick = open,
-            menuContent = { dismiss -> AppSingleChoiceMenu(row.options, row.onSelect, dismiss) },
-        )
-    } else {
-        Row(rowModifier, verticalAlignment = Alignment.CenterVertically) {
+    AppDropdownAnchor(
+        valueText = row.displayValue,
+        modifier = rowModifier,
+        leading = {
             Text(
                 text = row.title,
                 color = colors.primaryText,
                 fontSize = ChoiceFontSize,
-                modifier = Modifier.combinedClickable(
-                    onClick = onReset,
-                    onLongClick = open,
-                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .pointerInput(Unit) {
+                        detectTapGestures(onLongPress = { open() })
+                    },
             )
-            AppDropdownAnchor(
-                valueText = row.displayValue,
-                modifier = Modifier.weight(1f),
-                onLongClick = open,
-                menuContent = { dismiss -> AppSingleChoiceMenu(row.options, row.onSelect, dismiss) },
-            )
-        }
-    }
-    if (pickerOpen) ChoicePickerDialog(row, onDismiss = { pickerOpen = false })
+        },
+        onLongClick = open,
+        menuContent = { dismiss ->
+            AppSingleChoiceMenu(row.options, row.onSelect, dismiss)
+        },
+    )
 }
 
 /**
@@ -430,31 +481,55 @@ private fun ChoicePickerDialog(row: ChoiceRow, onDismiss: () -> Unit) {
             it.index in row.selectedIndexes
         }.coerceAtLeast(0),
     )
-    var working by remember(row.selectedIndexes) { mutableStateOf(row.selectedIndexes) }
+    var working by remember(
+        row.fieldKey,
+        row.definition,
+        row.title,
+        row.options,
+        row.multiSelect,
+        row.selectedIndexes,
+    ) {
+        mutableStateOf(row.selectedIndexes)
+    }
     AppPickDialog(
         onDismissRequest = onDismiss,
         title = row.title,
         searchState = searchState,
         searchHint = stringResource(Res.string.search),
         properties = AppDialogSizes.properties(),
-        bottomBar = if (row.multiSelect) {
-            {
-                AppTextButton(text = stringResource(Res.string.clear)) {
-                    if (row.selectedIndexes.isNotEmpty()) row.onSelectionChange(emptySet())
-                    onDismiss()
-                }
-                Spacer(Modifier.weight(1f))
-                AppTextButton(
-                    text = stringResource(Res.string.cancel),
-                    color = colors.secondaryText,
-                    onClick = onDismiss,
-                )
-                AppTextButton(text = stringResource(Res.string.ok)) {
-                    if (working != row.selectedIndexes) row.onSelectionChange(working)
-                    onDismiss()
+        bottomBar = when {
+            row.multiSelect -> {
+                {
+                    AppTextButton(text = stringResource(Res.string.clear)) {
+                        if (row.selectedIndexes.isNotEmpty()) row.onSelectionChange(emptySet())
+                        onDismiss()
+                    }
+                    Spacer(Modifier.weight(1f))
+                    AppTextButton(
+                        text = stringResource(Res.string.cancel),
+                        color = colors.secondaryText,
+                        onClick = onDismiss,
+                    )
+                    AppTextButton(text = stringResource(Res.string.ok)) {
+                        if (working != row.selectedIndexes) row.onSelectionChange(working)
+                        onDismiss()
+                    }
                 }
             }
-        } else null,
+
+            row.onReset != null -> {
+                val reset = row.onReset
+                {
+                    Spacer(Modifier.weight(1f))
+                    AppTextButton(text = stringResource(Res.string.reset)) {
+                        reset()
+                        onDismiss()
+                    }
+                }
+            }
+
+            else -> null
+        },
     ) {
         FastScrollLazyColumn(
             state = listState,
@@ -487,11 +562,9 @@ private fun ChoicePickerDialog(row: ChoiceRow, onDismiss: () -> Unit) {
                                 value = checked,
                                 role = Role.Checkbox,
                             ) { isChecked ->
-                                working = if (isChecked) {
-                                    working + entry.index
-                                } else {
-                                    working - entry.index
-                                }
+                                val group = row.aliasIndexes[entry.index]
+                                    ?: setOf(entry.index)
+                                working = if (isChecked) working + group else working - group
                             }
                             .padding(
                                 horizontal = DesignTokens.spacingLg,

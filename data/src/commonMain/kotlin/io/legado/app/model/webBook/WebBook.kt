@@ -97,8 +97,11 @@ object WebBook {
         isSearch: Boolean = true,
         onUrlResolved: ((AnalyzeUrlCore) -> Unit)? = null,
         selectedOptions: Map<String, String>? = null,
+        optionSelections: Map<String, ExploreOptionSelection>? = null,
         pluginFilters: PluginFilterSession? = null,
         nextPageUrl: String? = null,
+        /** 主模板第 1 页: 声明变化时按本次解析出的有效默认继续请求，而不是把整轮停住。 */
+        allowFreshInvalidatedOptions: Boolean = false,
     ): BookListPage {
         // 插件虚拟源无规则可解析, 命中即转交委派 (搜索走 isSearch=true, 发现走 isSearch=false;
         // 发现路径的 key 即 exploreUrl 分类的 url 段, 交委派自行分派取数面;
@@ -126,9 +129,13 @@ object WebBook {
             ruleData = ruleData,
             coroutineContext = currentCoroutineContext(),
             selectedOptions = selectedOptions,
+            optionSelections = optionSelections,
             variables = variables
         )
         onUrlResolved?.invoke(analyzeUrl)
+        if (analyzeUrl.optionSelectionsInvalidated && !allowFreshInvalidatedOptions) {
+            throw ExploreOptionSelectionInvalidatedException()
+        }
         val res = checkLogin(analyzeUrl, bookSource)
         return BookList.analyzeBookList(
             bookSource = bookSource,
@@ -475,7 +482,7 @@ object WebBook {
         }
         analyzeRule.setContent("")
         val res = analyzeRule.evalJS(countRule)
-        BookReview.analyzeReviewCount(bookSource, res)
+        BookReview.analyzeReviewCount(bookSource, res, currentCoroutineContext())
     }.onFailure {
         currentCoroutineContext().ensureActive()
     }

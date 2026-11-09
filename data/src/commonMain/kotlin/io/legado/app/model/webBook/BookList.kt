@@ -29,7 +29,7 @@ import kotlinx.coroutines.ensureActive
  *
  * W3-e: 从 app 下沉到 shared jvmAndAndroidMain, 现下沉到 commonMain。
  * - bookSource 参数类型直接用 shared commonMain 的 BookSource 实体 (webBook 编排层与实体同模块)
- * - Debug.log(key, msg, state) → SourceDebugLoggers.impl?.log(key, msg, state)
+ * - Debug.log(key, msg, state) → SourceDebugLoggers.log(key, msg, state)
  * - AnalyzeRule → AnalyzeRuleFactories.create (各端注册工厂返回平台子类补全 JsExtensions 面, 未注册端裸 AnalyzeRuleCore)
  * - analyzeUrl 参数类型 AnalyzeUrl → AnalyzeUrlCore (app 端 AnalyzeUrl 继承 AnalyzeUrlCore, 调用方传 AnalyzeUrl 实例向上转型)
  * - WebBook.parseRulePrefix/parseBoolean → WebBookRuleUtils (解除对 WebBook object 的直接依赖)
@@ -53,14 +53,14 @@ object BookList {
             appString(AppStringKey.error_get_web_content, analyzeUrl.ruleUrl)
         )
         val bookList = ArrayList<SearchBook>()
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "≡获取成功:${analyzeUrl.ruleUrl}")
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, body, state = 10, showTime = false)
+        SourceDebugLoggers.log(bookSource.bookSourceUrl, "≡获取成功:${analyzeUrl.ruleUrl}")
+        SourceDebugLoggers.log(bookSource.bookSourceUrl, body, state = 10, showTime = false)
         val analyzeRule = AnalyzeRuleFactories.create(ruleData, bookSource)
         analyzeRule.setContent(body).setBaseUrl(baseUrl)
         analyzeRule.setRedirectUrl(baseUrl)
         analyzeRule.coroutineContext = currentCoroutineContext()
         if (!isSearch) {
-            checkExploreJson(bookSource)
+            checkExploreJson(bookSource, currentCoroutineContext())
         }
         if (isSearch) bookSource.bookUrlPattern?.let {
             currentCoroutineContext().ensureActive()
@@ -72,7 +72,7 @@ object BookList {
                 false
             }
             if (m) {
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "≡链接为详情页")
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "≡链接为详情页")
                 getInfoItem(
                     bookSource,
                     analyzeRule,
@@ -96,11 +96,11 @@ object BookList {
             else -> bookSource.exploreRule
         }
         val (ruleList, reverse) = WebBookRuleUtils.parseRulePrefix(bookListRule.bookList)
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取书籍列表")
+        SourceDebugLoggers.log(bookSource.bookSourceUrl, "┌获取书籍列表")
         collections = analyzeRule.getElements(ruleList)
         currentCoroutineContext().ensureActive()
         if (collections.isEmpty() && bookSource.bookUrlPattern.isNullOrEmpty()) {
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└列表为空,按详情页解析")
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "└列表为空,按详情页解析")
             getInfoItem(
                 bookSource, analyzeRule, analyzeUrl, body, baseUrl, ruleData.getVariable(),
                 isRedirect, filter
@@ -117,7 +117,7 @@ object BookList {
             val ruleKind = analyzeRule.splitSourceRule(bookListRule.kind)
             val ruleLastChapter = analyzeRule.splitSourceRule(bookListRule.lastChapter)
             val ruleWordCount = analyzeRule.splitSourceRule(bookListRule.wordCount)
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└列表大小:${collections.size}")
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "└列表大小:${collections.size}")
             for ((index, item) in collections.withIndex()) {
                 getSearchItem(
                     bookSource, analyzeRule, item, baseUrl, ruleData.getVariable(),
@@ -150,16 +150,16 @@ object BookList {
                 bookList.reverse()
             }
         }
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "◇书籍总数:${bookList.size}")
+        SourceDebugLoggers.log(bookSource.bookSourceUrl, "◇书籍总数:${bookList.size}")
         val hasMoreRuleStr = bookListRule.hasMoreRule
         val hasNextPage = if (hasMoreRuleStr.isNullOrBlank()) {
             // 未配置：保守按"列表非空就当还有下一页"，与历史行为一致
             bookList.isNotEmpty()
         } else {
             analyzeRule.setContent(body)
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌判断是否有下一页")
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "┌判断是否有下一页")
             val raw = runCatching { analyzeRule.evalJS(hasMoreRuleStr, body) }.getOrNull()
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└$raw")
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "└$raw")
             WebBookRuleUtils.parseBoolean(raw)
         }
         // 下一页地址规则 (对照原版订阅源列表的下一页规则): 从当前页响应里取链接,
@@ -169,9 +169,9 @@ object BookList {
             null
         } else {
             analyzeRule.setContent(body)
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取下一页地址")
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "┌获取下一页地址")
             val raw = runCatching { analyzeRule.getString(nextPageUrlRule) }.getOrNull()
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└$raw")
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "└$raw")
             // 先在原字符串上挡掉空锚点/脚本链接 (各端地址拼接实现不同, 拼完再比会漏)
             raw?.trim()
                 ?.takeIf {
@@ -256,80 +256,80 @@ object BookList {
         analyzeRule.ruleData = searchBook
         analyzeRule.setContent(item)
         currentCoroutineContext().ensureActive()
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取书名", log)
+        SourceDebugLoggers.log(bookSource.bookSourceUrl, "┌获取书名", log)
         searchBook.name = analyzeRule.getString(ruleName)
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${searchBook.name}", log)
+        SourceDebugLoggers.log(bookSource.bookSourceUrl, "└${searchBook.name}", log)
         if (searchBook.name.isNotEmpty()) {
             currentCoroutineContext().ensureActive()
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取作者", log)
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "┌获取作者", log)
             searchBook.author = analyzeRule.getString(ruleAuthor)
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${searchBook.author}", log)
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "└${searchBook.author}", log)
             if (filter?.invoke(searchBook.name, searchBook.author) == false) {
                 return null
             }
             currentCoroutineContext().ensureActive()
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取分类", log)
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "┌获取分类", log)
             try {
                 searchBook.kind = analyzeRule.getStringList(ruleKind)?.joinToString(",")
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${searchBook.kind ?: ""}", log)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "└${searchBook.kind ?: ""}", log)
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.message}", log)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "└${e.message}", log)
             }
             currentCoroutineContext().ensureActive()
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取字数", log)
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "┌获取字数", log)
             try {
                 searchBook.wordCount = analyzeRule.getStringList(ruleWordCount)
                     ?.joinToString(",") { wordCountFormat(it) }
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${searchBook.wordCount}", log)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "└${searchBook.wordCount}", log)
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.message}", log)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "└${e.message}", log)
             }
             currentCoroutineContext().ensureActive()
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取最新章节", log)
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "┌获取最新章节", log)
             try {
                 searchBook.latestChapterTitle = analyzeRule.getString(ruleLastChapter)
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${searchBook.latestChapterTitle}", log)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "└${searchBook.latestChapterTitle}", log)
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.message}", log)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "└${e.message}", log)
             }
             currentCoroutineContext().ensureActive()
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取简介", log)
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "┌获取简介", log)
             try {
                 searchBook.intro = HtmlFormatter.format(analyzeRule.getString(ruleIntro))
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${searchBook.intro}", log)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "└${searchBook.intro}", log)
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.message}", log)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "└${e.message}", log)
             }
             currentCoroutineContext().ensureActive()
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取封面链接", log)
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "┌获取封面链接", log)
             try {
                 analyzeRule.getString(ruleCoverUrl).let {
                     if (it.isNotEmpty()) {
                         searchBook.coverUrl = NetworkUtils.getAbsoluteURL(baseUrl, it)
                     }
                 }
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${searchBook.coverUrl ?: ""}", log)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "└${searchBook.coverUrl ?: ""}", log)
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.message}", log)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "└${e.message}", log)
             }
             currentCoroutineContext().ensureActive()
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取详情页链接", log)
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "┌获取详情页链接", log)
             searchBook.bookUrl = analyzeRule.getString(ruleBookUrl, isUrl = true)
             if (searchBook.bookUrl.isEmpty()) {
                 searchBook.bookUrl = baseUrl
             }
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${searchBook.bookUrl}", log)
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "└${searchBook.bookUrl}", log)
             return searchBook
         }
         return null
     }
 
-    private fun checkExploreJson(bookSource: BookSource) {
+    private fun checkExploreJson(bookSource: BookSource, context: kotlin.coroutines.CoroutineContext) {
         // 仅调试窗口打开时才做严格 JSON 校验; Debug.callback 常驻为 null, 用它而非
         // SourceDebugLoggers.impl (宿主常驻注册, 会让每次发现页解析都白跑一遍双栈解析)
         if (Debug.callback == null) {
@@ -343,7 +343,7 @@ object BookList {
         // decodeListWithFallbackOrNull 复刻: 先严格, 严格失败但宽松成功才提示格式不规范
         // 仅为校验/打日志, 解析结果不消费 (原代码也只是 getOrNull()?.let { log(...) })
         decodeListWithFallbackOrNull<ExploreKind>(json) {
-            SourceDebugLoggers.impl?.log("≡发现地址规则 JSON 格式不规范，请改为规范格式")
+            SourceDebugLoggers.log(context, "≡发现地址规则 JSON 格式不规范，请改为规范格式")
         }
     }
 

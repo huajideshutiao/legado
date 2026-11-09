@@ -6,6 +6,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -40,6 +41,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -129,10 +131,21 @@ fun AppFilletTextButton(
             .background(normalBg)
             .then(if (focusable) Modifier else Modifier.focusProperties { canFocus = false })
             .then(
-                if (onClick != null || onLongClick != null) Modifier.combinedClickable(
-                    onClick = { onClick?.invoke() },
-                    onLongClick = onLongClick,
-                ) else Modifier
+                when {
+                    onClick != null -> Modifier.combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                    )
+
+                    onLongClick != null -> {
+                        val longClick = onLongClick
+                        Modifier.pointerInput(longClick) {
+                            detectTapGestures(onLongPress = { longClick() })
+                        }
+                    }
+
+                    else -> Modifier
+                }
             )
             .padding(
                 horizontal = filletChipPaddingH - DesignTokens.spacingXs,

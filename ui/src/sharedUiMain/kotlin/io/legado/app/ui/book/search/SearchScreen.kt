@@ -63,7 +63,8 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.help.config.AppConfigProviders
-import io.legado.app.model.webBook.ExploreOption
+import io.legado.app.model.webBook.ExploreOptionUiState
+import io.legado.app.model.webBook.PluginFilterSession
 import io.legado.app.model.webBook.SEARCH_LAYOUT_SOURCE_GROUP
 import io.legado.app.model.webBook.SourceSearchGroup
 import io.legado.app.ui.main.home.SectionCoverRow
@@ -275,10 +276,8 @@ fun SearchScreen(
         }.collect { scrolling -> if (scrolling) focusManager.clearFocus() }
     }
 
-    val searchOptionsVersion by viewModel.searchOptionsVersion.collectAsState()
+    val sourceOptionsMap by viewModel.sourceSearchOptionsFlow.collectAsState()
     val pluginFiltersVersion by viewModel.pluginFiltersVersion.collectAsState()
-    // 聚簇顶部选项行快照: 仅单源时非空 (多源选项在各源区块内); 点击直改实例, 版本号驱动重读
-    val topSearchOptions = remember(searchOptionsVersion) { viewModel.getTopOptions() }
     // 本轮搜索源快照: 单源聚簇顶部筛选入口据此取源 (多源聚簇不展示筛选)
     val searchSources by viewModel.searchSources.collectAsState()
 
@@ -372,13 +371,39 @@ fun SearchScreen(
                 } else {
                     // 聚簇布局顶部选项行 (单源搜索): 按源分类布局下选项在各源区块内显示, 不重复
                     if (!isSourceGroupLayout) {
-                        ExploreOptionsRow(
-                            options = topSearchOptions,
-                            optionsVersion = searchOptionsVersion,
-                            onOptionSelected = {
-                                viewModel.search(viewModel.searchKey, resetOptions = false)
-                            },
-                        )
+                        val topSource = searchSources.singleOrNull()
+                        val topOptions = remember(sourceOptionsMap, topSource) {
+                            topSource?.let { source ->
+                                sourceOptionsMap[source.bookSourceUrl].orEmpty()
+                            }.orEmpty()
+                        }
+                        if (topSource != null) {
+                            ExploreOptionsRow(
+                                options = topOptions,
+                                ownerKey = topSource.bookSourceUrl to viewModel.searchKey,
+                                onSelect = { name, value ->
+                                    if (viewModel.selectSourceOption(
+                                            topSource.bookSourceUrl, name, value
+                                        )
+                                    ) {
+                                        viewModel.restartSourceSearch(topSource)
+                                    }
+                                },
+                                onMultiSelect = { name, values ->
+                                    if (viewModel.selectSourceOptions(
+                                            topSource.bookSourceUrl, name, values
+                                        )
+                                    ) {
+                                        viewModel.restartSourceSearch(topSource)
+                                    }
+                                },
+                                onReset = { name ->
+                                    if (viewModel.resetSourceOption(topSource.bookSourceUrl, name)) {
+                                        viewModel.restartSourceSearch(topSource)
+                                    }
+                                },
+                            )
+                        }
                     }
                     // 插件源筛选入口: 仅聚簇布局且本轮只有一个源时在顶部; 多源聚簇不展示
                     // (按源分类布局下入口在各源区块内)。会话实例由本页 VM 持有, 随页面销毁即丢。
@@ -387,9 +412,12 @@ fun SearchScreen(
                             source = searchSources.singleOrNull(),
                             sessionVersion = pluginFiltersVersion,
                             getSession = viewModel::getPluginFilterSession,
-                            ensureFilterSession = { viewModel.ensurePluginFilterSession(it) },
                             onFiltersChanged = { source -> viewModel.restartSourceSearch(source) },
                             onResetFilters = { source -> viewModel.resetSourceFilters(source) },
+                            onEditingChanged = { url, editing ->
+                                if (editing) viewModel.pauseSourcePagination(url)
+                                else viewModel.resumeSourcePagination(url)
+                            },
                         )
                     }
                     ResultArea(
@@ -397,6 +425,9 @@ fun SearchScreen(
                         navCallbacks = navCallbacks,
                         books = resultBooks,
                         groups = searchGroups,
+                        sourceOptions = sourceOptionsMap,
+                        searchSources = searchSources,
+                        getPluginFilterSession = viewModel::getPluginFilterSession,
                         isSourceGroupLayout = isSourceGroupLayout,
                         spanCount = spanCount,
                         styleIsVideo = styleIsVideo,
@@ -684,6 +715,9 @@ private fun ColumnScope.ResultArea(
     navCallbacks: SearchNavCallbacks,
     books: List<SearchBook>,
     groups: List<SourceSearchGroup>,
+    sourceOptions: Map<String, List<ExploreOptionUiState>>,
+    searchSources: List<BookSource>,
+    getPluginFilterSession: (String) -> PluginFilterSession?,
     isSourceGroupLayout: Boolean,
     spanCount: Int,
     styleIsVideo: Boolean,
@@ -698,6 +732,9 @@ private fun ColumnScope.ResultArea(
             viewModel,
             navCallbacks,
             groups,
+            sourceOptions,
+            searchSources,
+            getPluginFilterSession,
             styleIsVideo,
             pluginFiltersVersion,
             bookshelfVersion,
@@ -864,16 +901,20 @@ private fun ColumnScope.ResultArea(
 
 // ===== 结果区 (按源分类布局) =====
 
-/**
- * 按源分类结果区: 一个书源一个区块 (源名标题行 + 该源结果横向封面行),
- * 视觉同主页展示项区块 (SectionTitleRow + SectionCoverRow); 组顺序 = 源完成顺序。
- * 标题行整行可点 → 单源搜索结果页 (AppRoute.SourceSearchShow, 发现 show 界面 + 搜索 url)。
- */
+/** 按源分类区块的渲染数据: 有结果用结果组, 无结果但可配置的源也要保留控制入口。 */
+private data class SourceSectionState(
+    val source: BookSource,
+    val books: List<SearchBook>,
+)
+
 @Composable
 private fun ColumnScope.SourceGroupResultArea(
     viewModel: SearchViewModel,
     navCallbacks: SearchNavCallbacks,
     groups: List<SourceSearchGroup>,
+    sourceOptions: Map<String, List<ExploreOptionUiState>>,
+    searchSources: List<BookSource>,
+    getPluginFilterSession: (String) -> PluginFilterSession?,
     styleIsVideo: Boolean,
     pluginFiltersVersion: Int,
     bookshelfVersion: Int,
@@ -889,17 +930,30 @@ private fun ColumnScope.SourceGroupResultArea(
                 if (count > 0 && !forward) viewModel.scrollToBottom()
             }
     }
+    val sections = remember(groups, searchSources, sourceOptions, pluginFiltersVersion) {
+        val grouped = groups.map { SourceSectionState(it.source, it.books) }
+        val withGroup = groups.mapTo(HashSet()) { it.source.bookSourceUrl }
+        // 零结果源只在仍有可配置入口时保留区块; 无可配置能力的普通零结果源不铺空占位
+        val configurable = searchSources.filter { source ->
+            source.bookSourceUrl !in withGroup && (
+                sourceOptions[source.bookSourceUrl]?.isNotEmpty() == true ||
+                    getPluginFilterSession(source.bookSourceUrl)?.isEmpty == false
+                )
+        }
+        grouped + configurable.map { SourceSectionState(it, emptyList()) }
+    }
     LazyColumn(
         state = state,
         modifier = Modifier
             .fillMaxWidth()
             .weight(1f),
     ) {
-        items(groups, key = { it.source.bookSourceUrl }) { group ->
+        items(sections, key = { it.source.bookSourceUrl }) { section ->
             SourceSection(
                 viewModel,
                 navCallbacks,
-                group,
+                section,
+                sourceOptions[section.source.bookSourceUrl].orEmpty(),
                 styleIsVideo,
                 pluginFiltersVersion,
                 coverSlot,
@@ -912,47 +966,62 @@ private fun ColumnScope.SourceGroupResultArea(
 private fun SourceSection(
     viewModel: SearchViewModel,
     navCallbacks: SearchNavCallbacks,
-    group: SourceSearchGroup,
+    section: SourceSectionState,
+    options: List<ExploreOptionUiState>,
     styleIsVideo: Boolean,
     pluginFiltersVersion: Int,
     coverSlot: @Composable (SearchBook, Modifier, CoverSlotRatio) -> Unit,
 ) {
+    val source = section.source
     // 区块留白对照主页展示项 (SectionHolder.root: top default=8 / bottom xs=4)
     Column(
         Modifier
             .fillMaxWidth()
             .padding(top = DesignTokens.spacingDefault, bottom = DesignTokens.spacingXs),
     ) {
-        SectionTitleRow(group.source.bookSourceName) {
-            navCallbacks.onSourceSectionClick(group.source, viewModel.searchKey)
+        SectionTitleRow(source.bookSourceName) {
+            navCallbacks.onSourceSectionClick(source, viewModel.searchKey)
         }
         // 插件源筛选入口 (仅插件源声明了筛选器时一行): 紧跟源标题, 在参数选项行之上
         PluginSearchFilterRow(
-            source = group.source,
+            source = source,
             sessionVersion = pluginFiltersVersion,
             getSession = viewModel::getPluginFilterSession,
-            ensureFilterSession = { viewModel.ensurePluginFilterSession(it) },
             onFiltersChanged = { viewModel.restartSourceSearch(it) },
             onResetFilters = { viewModel.resetSourceFilters(it) },
+            onEditingChanged = { url, editing ->
+                if (editing) viewModel.pauseSourcePagination(url)
+                else viewModel.resumeSourcePagination(url)
+            },
         )
         // 该源搜索 url 声明的可配置项 chip 行 (无声明为零行): 点选只重搜该源
-        val optionsVersion by viewModel.searchOptionsVersion.collectAsState()
-        val sourceOptions = remember(group.source.bookSourceUrl, optionsVersion) {
-            viewModel.getSourceOptions(group.source.bookSourceUrl)
-        }
         ExploreOptionsRow(
-            options = sourceOptions,
-            optionsVersion = optionsVersion,
-            onOptionSelected = { viewModel.onSourceOptionChanged(group.source.bookSourceUrl) },
+            options = options,
+            ownerKey = source.bookSourceUrl to viewModel.searchKey,
+            onSelect = { name, value ->
+                if (viewModel.selectSourceOption(source.bookSourceUrl, name, value)) {
+                    viewModel.restartSourceSearch(source)
+                }
+            },
+            onMultiSelect = { name, values ->
+                if (viewModel.selectSourceOptions(source.bookSourceUrl, name, values)) {
+                    viewModel.restartSourceSearch(source)
+                }
+            },
+            onReset = { name ->
+                if (viewModel.resetSourceOption(source.bookSourceUrl, name)) {
+                    viewModel.restartSourceSearch(source)
+                }
+            },
         )
         // 横向行: 视频位跟搜索布局 (同 home 区块视频封面卡); 封面渲染走与聚簇模式
         // 同款 coverSlot (书架命中分流缓存区); 书架标记按搜索结果语义显示 (同聚簇模式)
         SectionCoverRow(
-            books = group.books,
+            books = section.books,
             onBookClick = { book, token -> navCallbacks.onBookClick(book, sharedToken = token) },
             onBookLongClick = { book, token -> navCallbacks.onBookClick(book, true, token) },
             isVideoStyle = styleIsVideo,
-            blockId = "search-source-${group.source.bookSourceUrl}",
+            blockId = "search-source-${source.bookSourceUrl}",
             coverSlot = coverSlot,
             inBookshelf = viewModel::isInBookShelf,
         )

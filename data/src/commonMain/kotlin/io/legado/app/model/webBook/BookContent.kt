@@ -35,7 +35,7 @@ import kotlinx.coroutines.flow.flow
  * - AppConfig.threadCount → AppConfigProviders.get().threadCount
  * - AnalyzeRule → AnalyzeRuleFactories.create (各端注册工厂返回平台子类补全 JsExtensions 面, 未注册端裸 AnalyzeRuleCore)
  * - AnalyzeUrl → AnalyzeUrlCore (app 端 AnalyzeUrl 继承 AnalyzeUrlCore, 调用方传 AnalyzeUrl 实例向上转型)
- * - Debug.log(key, msg, state) → SourceDebugLoggers.impl?.log(key, msg, state)
+ * - Debug.log(key, msg, state) → SourceDebugLoggers.log(key, msg, state)
  * - mapAsync 扩展已下沉到 shared FlowExtensionsShared.kt, 包名不变
  * - isVideo/isAudio/isRss 扩展已下沉到 shared BookExtensionsShared.kt, 包名不变
  *
@@ -57,8 +57,8 @@ object BookContent {
         body ?: throw NoStackTraceException(
             appString(AppStringKey.error_get_web_content, baseUrl)
         )
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "≡获取成功:${baseUrl}")
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, body, state = 40, showTime = false)
+        SourceDebugLoggers.log(bookSource.bookSourceUrl, "≡获取成功:${baseUrl}")
+        SourceDebugLoggers.log(bookSource.bookSourceUrl, body, state = 40, showTime = false)
         val mNextChapterUrl = if (nextChapterUrl.isNullOrEmpty()) {
             AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, bookChapter.index + 1)?.url
         } else {
@@ -79,7 +79,7 @@ object BookContent {
             val title = analyzeRule.runCatching {
                 getString(titleRule)
             }.onFailure {
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "获取标题出错, ${it.message}")
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "获取标题出错, ${it.message}")
             }.getOrNull()
             if (!title.isNullOrBlank()) {
                 bookChapter.title = title
@@ -129,12 +129,12 @@ object BookContent {
                     )
                     nextUrl = if (contentData.second.isNotEmpty()) contentData.second[0] else ""
                     contentList.add(contentData.first)
-                    SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "第${contentList.size}页完成")
+                    SourceDebugLoggers.log(bookSource.bookSourceUrl, "第${contentList.size}页完成")
                 }
             }
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "◇本章总页数:${nextUrlList.size}")
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "◇本章总页数:${nextUrlList.size}")
         } else if (contentData.second.size > 1) {
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "◇并发解析正文,总页数:${contentData.second.size}")
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "◇并发解析正文,总页数:${contentData.second.size}")
             flow {
                 for (urlStr in contentData.second) {
                     emit(urlStr)
@@ -173,10 +173,10 @@ object BookContent {
             contentStr = analyzeRule.getString(replaceRegex, contentStr)
             contentStr = contentStr.split(AppPattern.LFRegex).joinToString("\n") { "　　$it" }
         }
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取章节名称")
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${bookChapter.title}")
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取正文内容")
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└\n$contentStr")
+        SourceDebugLoggers.log(bookSource.bookSourceUrl, "┌获取章节名称")
+        SourceDebugLoggers.log(bookSource.bookSourceUrl, "└${bookChapter.title}")
+        SourceDebugLoggers.log(bookSource.bookSourceUrl, "┌获取正文内容")
+        SourceDebugLoggers.log(bookSource.bookSourceUrl, "└\n$contentStr")
         if (!bookChapter.isVolume && contentStr.isBlank()) {
             throw ContentEmptyException("内容为空")
         }
@@ -210,11 +210,11 @@ object BookContent {
         if (getNextPageUrl) {
             val nextUrlRule = contentRule.nextContentUrl
             if (!nextUrlRule.isNullOrEmpty()) {
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取正文下一页链接", printLog)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "┌获取正文下一页链接", printLog)
                 analyzeRule.getStringList(nextUrlRule, isUrl = true)?.let {
                     nextUrlList.addAll(it)
                 }
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└" + nextUrlList.joinToString("，"), printLog)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "└" + nextUrlList.joinToString("，"), printLog)
             }
         }
         return Pair(content, nextUrlList)

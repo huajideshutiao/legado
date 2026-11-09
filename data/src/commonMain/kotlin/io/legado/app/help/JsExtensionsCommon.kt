@@ -21,10 +21,10 @@ import io.legado.app.help.http.BackstageWebViewProviders
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.help.http.StrResponse
 import io.legado.app.help.http.cookieJarHeader
+import io.legado.app.help.source.SourceDebugLoggers
 import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.ui.OpenUrlProviders
-import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.analyzeRule.QueryTTF
 import io.legado.app.model.script.jsContext
@@ -630,10 +630,12 @@ interface JsExtensionsCommon {
      * 调试日志输出
      */
     fun log(msg: Any?): Any? {
-        jsContextOrNull?.ensureActive()
+        val js = jsContextOrNull
+        js?.ensureActive()
+        val loggerContext = js?.coroutineContext ?: EmptyCoroutineContext
         getSource()?.let {
-            Debug.log(it.getKey(), msg.toString())
-        } ?: Debug.log(msg.toString())
+            SourceDebugLoggers.log(loggerContext, it.getKey(), msg.toString())
+        } ?: SourceDebugLoggers.log(loggerContext, msg.toString())
         AppLog.putDebug("${getSource()?.getTag() ?: "源"}调试输出: $msg")
         return msg
     }

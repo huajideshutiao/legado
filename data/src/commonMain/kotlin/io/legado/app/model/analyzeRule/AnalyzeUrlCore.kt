@@ -38,7 +38,14 @@ import io.legado.app.help.source.SourceNetworkProviders
 import io.legado.app.help.source.getShareScope
 import io.legado.app.model.script.buildScriptBindings
 import io.legado.app.model.script.evalUserScript
+import io.legado.app.model.webBook.ExploreOption
+import io.legado.app.model.webBook.ExploreOptionSelection
+import io.legado.app.model.webBook.ExploreOptionResolution
+import io.legado.app.model.webBook.scanExploreOptionsSegments
+import io.legado.app.model.webBook.ExploreOptionSegment
 import io.legado.app.model.webBook.replaceExploreOptionsInUrl
+import io.legado.app.model.webBook.replaceExploreOptionsWithSelection
+import io.legado.app.model.webBook.resolveExploreOptionSelections
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MimeBase64Decoder
 import io.legado.app.utils.NetworkUtils
@@ -90,7 +97,9 @@ open class AnalyzeUrlCore(
     hasLoginHeader: Boolean = true,
     private val selectedOptions: Map<String, String>? = null,
     /** 额外注入到 evalJS 作用域的键值对，例如 key、page */
-    private val variables: Map<AppConst.JsVarName, Any>? = null
+    private val variables: Map<AppConst.JsVarName, Any>? = null,
+    /** 同名参数共享的原始选择；非空时优先于 [selectedOptions] 的最终文本 */
+    private val optionSelections: Map<String, ExploreOptionSelection>? = null
 ) : JsExtensionsCommon {
 
     private var tmpUrl = rawUrl
@@ -102,6 +111,12 @@ open class AnalyzeUrlCore(
     var ruleUrl = ""
         protected set
     var url: String = ""
+
+    /** 本次真实声明 (已按选择校验) 与有效原始选择, 供调用方在取数前发布。 */
+    var resolvedExploreOptions: List<ExploreOption> = emptyList()
+        private set
+    var optionSelectionsInvalidated: Boolean = false
+        private set
     val headerMap = LinkedHashMap<String, String>()
     var urlNoQuery: String = ""
     var encodedParams: String? = null
@@ -156,14 +171,33 @@ open class AnalyzeUrlCore(
         //执行@js,<js></js>
         analyzeJs()
         ruleUrl = tmpUrl
-        //替换参数
-        tmpUrl = replaceKeyPageJs(replaceDynamicOptions(tmpUrl))
+        val segments = scanExploreOptionsSegments(ruleUrl)
+        val resolution = resolveExploreOptionSelections(
+            segments.map { it.option }.distinctBy { it.name },
+            optionSelections,
+        )
+        resolvedExploreOptions = resolution.options
+        optionSelectionsInvalidated = resolution.selectionInvalidated
+        //替换参数: 复用同一次扫描的段边界，不再从每个声明重扫全文。
+        tmpUrl = replaceKeyPageJs(replaceDynamicOptions(tmpUrl, resolution, segments))
         //处理URL
         analyzeUrl()
     }
 
-    private fun replaceDynamicOptions(curRuleUrl: String): String =
-        replaceExploreOptionsInUrl(curRuleUrl) { name -> selectedOptions?.get(name) }
+    private fun replaceDynamicOptions(
+        curRuleUrl: String,
+        resolution: ExploreOptionResolution,
+        segments: List<ExploreOptionSegment>,
+    ): String {
+        if (optionSelections == null) {
+            return replaceExploreOptionsInUrl(curRuleUrl) { name ->
+                selectedOptions?.get(name)
+            }
+        }
+        return replaceExploreOptionsWithSelection(curRuleUrl, segments) { name ->
+            resolution.selections[name]
+        }
+    }
 
     /**
      * 执行@js,<js></js>
@@ -227,7 +261,7 @@ open class AnalyzeUrlCore(
             // 对齐原版 GSONStrict.fromJsonObject<UrlOption>(...) ?: GSON.fromJsonObject<UrlOption>(...) 双栈语义:
             // 严格解析失败则降级到宽松 (流式状态机容错单引号及非标语法, 并记录格式不规范日志)
             option = decodeWithFallbackOrNull(UrlOptionSerializer, urlOptionStr) {
-                SourceDebugLoggers.impl?.log("链接参数 JSON 格式不规范，请改为规范格式")
+                SourceDebugLoggers.log(coroutineContext, "链接参数 JSON 格式不规范，请改为规范格式")
             }
             option?.let { opt ->
                 opt.headers?.forEach { (k, v) -> headerMap[k] = v.toString() }
@@ -291,7 +325,7 @@ open class AnalyzeUrlCore(
 
     fun put(key: String, value: String): String {
         if (key == "bookName" || key == "title") {
-            SourceDebugLoggers.impl?.log("≡变量 $key 在特定情况下会被覆盖，建议使用其他键名")
+            SourceDebugLoggers.log(coroutineContext, "≡变量 $key 在特定情况下会被覆盖，建议使用其他键名")
         }
         chapter?.putVariable(key, value)
             ?: ruleData?.putVariable(key, value)

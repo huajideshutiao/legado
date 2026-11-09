@@ -31,7 +31,7 @@ import kotlinx.coroutines.flow.flow
  * - AppConfig.threadCount/tocCountWords → AppConfigProviders.get().threadCount/tocCountWords
  * - AnalyzeRule → AnalyzeRuleFactories.create (各端注册工厂返回平台子类补全 JsExtensions 面, 未注册端裸 AnalyzeRuleCore)
  * - AnalyzeUrl → AnalyzeUrlCore (app 端 AnalyzeUrl 继承 AnalyzeUrlCore, 调用方传 AnalyzeUrl 实例向上转型)
- * - Debug.log(key, msg, state) → SourceDebugLoggers.impl?.log(key, msg, state)
+ * - Debug.log(key, msg, state) → SourceDebugLoggers.log(key, msg, state)
  * - WebBook.parseRulePrefix → WebBookRuleUtils.parseRulePrefix (已抽到独立工具)
  * - mapAsync 扩展已下沉到 shared FlowExtensionsShared.kt, 包名不变
  * - getDisplayTitle/getUseReplaceRule/simulatedTotalChapterNum 扩展已下沉到 shared
@@ -53,8 +53,8 @@ object BookChapterList {
             appString(AppStringKey.error_get_web_content, baseUrl)
         )
         val chapterList = ArrayList<BookChapter>()
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "≡获取成功:${baseUrl}")
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, body, state = 30, showTime = false)
+        SourceDebugLoggers.log(bookSource.bookSourceUrl, "≡获取成功:${baseUrl}")
+        SourceDebugLoggers.log(bookSource.bookSourceUrl, body, state = 30, showTime = false)
         val tocRule = bookSource.tocRule
         val nextUrlList = arrayListOf(redirectUrl)
         val (listRule, reverse) = WebBookRuleUtils.parseRulePrefix(tocRule.chapterList)
@@ -86,11 +86,11 @@ object BookChapterList {
                         chapterList.addAll(chapterData.first)
                     }
                 }
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "◇目录总页数:${nextUrlList.size}")
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "◇目录总页数:${nextUrlList.size}")
             }
 
             else -> {
-                SourceDebugLoggers.impl?.log(
+                SourceDebugLoggers.log(
                     bookSource.bookSourceUrl,
                     "◇并发解析目录,总页数:${chapterData.second.size}"
                 )
@@ -132,7 +132,7 @@ object BookChapterList {
         if (!book.config.reverseToc) {
             list.reverse()
         }
-        SourceDebugLoggers.impl?.log(book.origin, "◇目录总数:${list.size}")
+        SourceDebugLoggers.log(book.origin, "◇目录总数:${list.size}")
         currentCoroutineContext().ensureActive()
         list.forEachIndexed { index, bookChapter ->
             bookChapter.index = index
@@ -171,14 +171,14 @@ object BookChapterList {
         analyzeRule.coroutineContext = currentCoroutineContext()
         //获取目录列表
         val chapterList = arrayListOf<BookChapter>()
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取目录列表", log)
+        SourceDebugLoggers.log(bookSource.bookSourceUrl, "┌获取目录列表", log)
         val elements = analyzeRule.getElements(listRule)
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└列表大小:${elements.size}", log)
+        SourceDebugLoggers.log(bookSource.bookSourceUrl, "└列表大小:${elements.size}", log)
         //获取下一页链接
         val nextUrlList = arrayListOf<String>()
         val nextTocRule = tocRule.nextTocUrl
         if (getNextUrl && !nextTocRule.isNullOrEmpty()) {
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取目录下一页列表", log)
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "┌获取目录下一页列表", log)
             analyzeRule.getStringList(nextTocRule, isUrl = true)?.let {
                 for (item in it) {
                     if (item != redirectUrl) {
@@ -186,7 +186,7 @@ object BookChapterList {
                     }
                 }
             }
-            SourceDebugLoggers.impl?.log(
+            SourceDebugLoggers.log(
                 bookSource.bookSourceUrl,
                 "└" + nextUrlList.joinToString("，\n"),
                 log
@@ -194,7 +194,7 @@ object BookChapterList {
         }
         currentCoroutineContext().ensureActive()
         if (elements.isNotEmpty()) {
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌解析目录列表", log)
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "┌解析目录列表", log)
             val nameRule = analyzeRule.splitSourceRule(tocRule.chapterName)
             val urlRule = analyzeRule.splitSourceRule(tocRule.chapterUrl)
             val vipRule = analyzeRule.splitSourceRule(tocRule.isVip)
@@ -214,13 +214,13 @@ object BookChapterList {
                 if (bookChapter.url.isEmpty()) {
                     if (bookChapter.isVolume) {
                         bookChapter.url = bookChapter.title + index
-                        SourceDebugLoggers.impl?.log(
+                        SourceDebugLoggers.log(
                             bookSource.bookSourceUrl,
                             "⇒一级目录${index}未获取到url,使用标题替代"
                         )
                     } else {
                         bookChapter.url = baseUrl
-                        SourceDebugLoggers.impl?.log(
+                        SourceDebugLoggers.log(
                             bookSource.bookSourceUrl,
                             "⇒目录${index}未获取到url,使用baseUrl替代"
                         )
@@ -236,16 +236,16 @@ object BookChapterList {
                     chapterList.add(bookChapter)
                 }
             }
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└目录列表解析完成", log)
+            SourceDebugLoggers.log(bookSource.bookSourceUrl, "└目录列表解析完成", log)
             if (chapterList.isEmpty()) {
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "◇章节列表为空", log)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "◇章节列表为空", log)
             } else {
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "≡首章信息", log)
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "◇章节名称:${chapterList[0].title}", log)
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "◇章节链接:${chapterList[0].url}", log)
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "◇章节信息:${chapterList[0].tag}", log)
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "◇是否VIP:${chapterList[0].isVip}", log)
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "◇是否购买:${chapterList[0].isPay}", log)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "≡首章信息", log)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "◇章节名称:${chapterList[0].title}", log)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "◇章节链接:${chapterList[0].url}", log)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "◇章节信息:${chapterList[0].tag}", log)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "◇是否VIP:${chapterList[0].isVip}", log)
+                SourceDebugLoggers.log(bookSource.bookSourceUrl, "◇是否购买:${chapterList[0].isPay}", log)
             }
         }
         return Pair(chapterList, nextUrlList)

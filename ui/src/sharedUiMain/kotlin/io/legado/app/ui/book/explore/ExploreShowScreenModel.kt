@@ -25,7 +25,6 @@ class ExploreShowScreenModel : ScreenModel {
             isFavorite = false,
             canLogin = false,
             bookshelfVersion = 0,
-            optionsVersion = 0,
             scrollTopEpoch = 0,
             footerLoading = false,
             footerText = null,
@@ -42,7 +41,11 @@ class ExploreShowScreenModel : ScreenModel {
     fun dispatch(event: ExploreShowUiEvent) {
         when (event) {
             is ExploreShowUiEvent.TitleChanged -> _state.update { it.copy(title = event.title) }
-            ExploreShowUiEvent.StartLoad -> _state.update { it.copy(footerLoading = true) }
+            ExploreShowUiEvent.StartLoad -> {
+                footerHasMore = true
+                errorMsg = ""
+                _state.update { it.copy(footerLoading = true, footerText = null) }
+            }
             is ExploreShowUiEvent.BooksLoaded -> handleBooksLoaded(event)
             is ExploreShowUiEvent.ErrorLoaded -> handleErrorLoaded(event)
             ExploreShowUiEvent.LoadMore -> handleLoadMore()
@@ -54,10 +57,6 @@ class ExploreShowScreenModel : ScreenModel {
             }
             ExploreShowUiEvent.BookshelfVersionBump -> _state.update {
                 it.copy(bookshelfVersion = it.bookshelfVersion + 1)
-            }
-
-            ExploreShowUiEvent.OptionsVersionBump -> _state.update {
-                it.copy(optionsVersion = it.optionsVersion + 1)
             }
 
             ExploreShowUiEvent.ScrollTopBump -> _state.update {
@@ -72,19 +71,19 @@ class ExploreShowScreenModel : ScreenModel {
 
     // 对照 Activity.upData: stopLoad + 条件 noMore + books 更新
     private fun handleBooksLoaded(event: ExploreShowUiEvent.BooksLoaded) {
-        _state.update { it.copy(footerLoading = false) }
-        val currentBooks = _state.value.books
-        if (event.books.isEmpty() && currentBooks.isEmpty()) {
-            footerHasMore = false
-            errorMsg = ""
-            _state.update { it.copy(footerText = event.emptyText) }
-        } else if (currentBooks.size < event.books.size) {
-            _state.update { it.copy(books = event.books) }
+        errorMsg = ""
+        footerHasMore = event.hasNextPage
+        val text = when {
+            event.books.isEmpty() -> event.emptyText
+            !event.hasNextPage -> event.bottomLineText
+            else -> null
         }
-        if (!event.hasNextPage) {
-            footerHasMore = false
-            errorMsg = ""
-            _state.update { it.copy(footerText = event.bottomLineText) }
+        _state.update {
+            it.copy(
+                books = event.books,
+                footerLoading = false,
+                footerText = text,
+            )
         }
     }
 
@@ -99,14 +98,14 @@ class ExploreShowScreenModel : ScreenModel {
     private fun handleLoadMore() {
         errorMsg = ""
         footerHasMore = true
-        _state.update { it.copy(footerLoading = true) }
+        _state.update { it.copy(footerLoading = true, footerText = null) }
     }
 
     // 对照 Activity.onExploreOptionChangedImpl: 清空 books + hasMoreLoad
     private fun handleClearBooks() {
         errorMsg = ""
         footerHasMore = true
-        _state.update { it.copy(books = emptyList(), footerLoading = true) }
+        _state.update { it.copy(books = emptyList(), footerLoading = true, footerText = null) }
     }
 }
 
@@ -145,9 +144,6 @@ sealed interface ExploreShowUiEvent {
 
     /** 书架集合变化信号 (upAdapterLiveData) */
     object BookshelfVersionBump : ExploreShowUiEvent
-
-    /** 参数 chip 结构变化信号 (optionsReadyLiveData) */
-    object OptionsVersionBump : ExploreShowUiEvent
 
     /** 标题栏点击回顶信号 */
     object ScrollTopBump : ExploreShowUiEvent

@@ -234,6 +234,8 @@ fun MangaExtensionScreen(
                     }
                     add(
                         AppChoiceField(
+                            fieldKey = "manga-extension-language",
+                            definitionKey = languages,
                             title = languagesTitle,
                             options = languages.map { if (it == "all") allText else it },
                             selectedIndex = languages.indexOf(chosen ?: "all"),
@@ -250,6 +252,8 @@ fun MangaExtensionScreen(
                 }
                 add(
                     AppChoiceField(
+                        fieldKey = "manga-extension-kind",
+                        definitionKey = MangaExtensionKindFilter.entries,
                         title = kindTitle,
                         options = MangaExtensionKindFilter.entries.map { filter ->
                             when (filter) {
@@ -267,6 +271,8 @@ fun MangaExtensionScreen(
                 )
                 add(
                     AppChoiceField(
+                        fieldKey = "manga-extension-content",
+                        definitionKey = MangaContentFilter.entries,
                         title = contentTitle,
                         options = MangaContentFilter.entries.map { filter ->
                             when (filter) {

@@ -181,12 +181,25 @@ fun BookSourceDebugRoute(
             override fun onShowHelp() {
                 showHelp = true
             }
+
+            override fun onSelectOption(name: String, value: String) {
+                screenModel.dispatch(BookSourceDebugUiEvent.SelectOption(name, value))
+            }
+
+            override fun onSelectOptions(name: String, values: Set<String>) {
+                screenModel.dispatch(BookSourceDebugUiEvent.SelectOptions(name, values))
+            }
+
+            override fun onResetOption(name: String) {
+                screenModel.dispatch(BookSourceDebugUiEvent.ResetOption(name))
+            }
         }
     }
 
     BookSourceDebugScreen(
         state = state,
         actions = actions,
+        optionsOwnerKey = screenModel.optionsOwnerKey,
         clearFocusSignal = screenModel.clearFocusFlow,
     )
 

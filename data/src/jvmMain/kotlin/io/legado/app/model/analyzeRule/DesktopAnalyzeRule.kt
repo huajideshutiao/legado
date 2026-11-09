@@ -53,10 +53,11 @@ class DesktopAnalyzeUrl(
     headerMapF: Map<String, String>? = null,
     hasLoginHeader: Boolean = true,
     selectedOptions: Map<String, String>? = null,
-    variables: Map<AppConst.JsVarName, Any>? = null
+    variables: Map<AppConst.JsVarName, Any>? = null,
+    optionSelections: Map<String, io.legado.app.model.webBook.ExploreOptionSelection>? = null
 ) : AnalyzeUrlCore(
     rawUrl, baseUrl, source, ruleData, chapter, readTimeout, callTimeout,
-    coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables
+    coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables, optionSelections
 ) {
 }
 
@@ -67,10 +68,12 @@ fun registerDesktopAnalyzeRuleFactory() {
     }
     AnalyzeUrlFactories.register {
             rawUrl, baseUrl, source, ruleData, chapter, readTimeout, callTimeout,
-            coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables ->
+            coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables,
+            optionSelections ->
         DesktopAnalyzeUrl(
             rawUrl, baseUrl, source, ruleData, chapter, readTimeout, callTimeout,
-            coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables
+            coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables,
+            optionSelections
         )
     }
 }

@@ -37,9 +37,11 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.rule.ExploreKind
+import io.legado.app.model.webBook.ExploreOptionUiState
 import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.ExploreOptionsRow
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.linkifyText
 import io.legado.app.ui.compose.theme.AppTheme
@@ -91,6 +93,8 @@ data class BookSourceDebugUiState(
     val textFx: String,
     /** 异步解析出的发现分类，随 StateFlow 更新主动触发界面重组。 */
     val exploreKinds: List<ExploreKind> = emptyList(),
+    /** 本次调试地址里的只读参数行快照 (无声明为空)。 */
+    val exploreOptions: List<ExploreOptionUiState> = emptyList(),
 )
 
 /**
@@ -133,6 +137,9 @@ interface BookSourceDebugUiActions {
     fun onShowReviewSrc()
     fun onRefreshExplore()
     fun onShowHelp()
+    fun onSelectOption(name: String, value: String)
+    fun onSelectOptions(name: String, values: Set<String>)
+    fun onResetOption(name: String)
 }
 
 // ===== BookSourceDebugScreen =====
@@ -151,6 +158,7 @@ interface BookSourceDebugUiActions {
 fun BookSourceDebugScreen(
     state: BookSourceDebugUiState,
     actions: BookSourceDebugUiActions,
+    optionsOwnerKey: Any,
     clearFocusSignal: Flow<Unit> = emptyFlow(),
 ) {
     val colors = AppTheme.colors
@@ -197,7 +205,16 @@ fun BookSourceDebugScreen(
             },
             actions = { DebugActions(actions) },
         )
-        Box(Modifier.fillMaxSize()) {
+        if (state.exploreOptions.isNotEmpty()) {
+            ExploreOptionsRow(
+                options = state.exploreOptions,
+                ownerKey = optionsOwnerKey,
+                onSelect = { name, value -> actions.onSelectOption(name, value) },
+                onMultiSelect = { name, values -> actions.onSelectOptions(name, values) },
+                onReset = { name -> actions.onResetOption(name) },
+            )
+        }
+        Box(Modifier.fillMaxWidth().weight(1f)) {
             // 调试日志流：SelectionContainer 包住整个列表, 选区可跨可见日志行延伸
             // (滚出屏幕未组合的行不参与复制/全选, SelectionContainer 官方语义)
             // - Text 内 LinkAnnotation.Url 短按打开链接, 与长按选择手势不冲突

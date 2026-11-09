@@ -62,6 +62,8 @@ internal fun LazyListScope.animeFilterItems(
                     modifier = filterIndent(depth),
                     fields = node.items.map { filter ->
                         AppChoiceField(
+                            fieldKey = filter,
+                            definitionKey = filter.values.toList(),
                             title = filter.name,
                             options = filter.values.map { it.toString() },
                             selectedIndex = filter.state,

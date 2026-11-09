@@ -1,9 +1,48 @@
 package io.legado.app.help.source
 
 import kotlin.concurrent.Volatile
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext.Key
+import kotlinx.coroutines.currentCoroutineContext
+
+/** 调试页本次请求绑定的 logger: 旧会话日志带旧 token, 不读取全局最新 active。 */
+class SourceDebugLoggerElement(
+    val logger: SourceDebugLogger,
+) : AbstractCoroutineContextElement(Key) {
+    companion object Key : CoroutineContext.Key<SourceDebugLoggerElement>
+}
 
 object SourceDebugLoggers {
     @Volatile var impl: SourceDebugLogger? = null
+
+    fun loggerFor(context: CoroutineContext): SourceDebugLogger? =
+        context[SourceDebugLoggerElement]?.logger ?: impl
+
+    suspend fun log(
+        key: String,
+        msg: String,
+        print: Boolean = true,
+        state: Int = 1,
+        showTime: Boolean = true,
+    ) {
+        loggerFor(currentCoroutineContext())?.log(key, msg, print, state, showTime)
+    }
+
+    fun log(context: CoroutineContext, msg: String) {
+        loggerFor(context)?.log(msg)
+    }
+
+    fun log(
+        context: CoroutineContext,
+        key: String,
+        msg: String,
+        print: Boolean = true,
+        state: Int = 1,
+        showTime: Boolean = true,
+    ) {
+        loggerFor(context)?.log(key, msg, print, state, showTime)
+    }
 }
 
 /**

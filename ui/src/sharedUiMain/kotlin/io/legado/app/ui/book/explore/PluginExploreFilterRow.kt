@@ -19,6 +19,7 @@ fun PluginExploreFilterRow(
     filters: PluginFilterSession?,
     onFiltersApplied: () -> Unit,
     onResetFilters: () -> Unit,
+    onEditingChanged: (Boolean) -> Unit = {},
 ) {
     if (target == null) return
     val session = filters ?: return
@@ -26,5 +27,6 @@ fun PluginExploreFilterRow(
         session = session,
         onApplied = onFiltersApplied,
         onReset = onResetFilters,
+        onEditingChanged = onEditingChanged,
     )
 }

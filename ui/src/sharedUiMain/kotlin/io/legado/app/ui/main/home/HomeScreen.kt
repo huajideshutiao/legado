@@ -38,7 +38,7 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.HomeSection
 import io.legado.app.data.entities.HomeTab
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.model.webBook.ExploreOption
+import io.legado.app.model.webBook.ExploreOptionUiState
 import io.legado.app.ui.compose.component.AppScrollTabRow
 import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.PullToRefreshDefaults
@@ -115,8 +115,7 @@ import org.jetbrains.compose.resources.stringResource
  * - [sectionBooks]: sectionKey(tabTitle + " " + sectionId) -> 该展示项的书籍列表
  * - [sectionLoading]: 同 key -> 该展示项是否加载中
  * - [sectionError]: 同 key -> 该展示项是否加载出错
- * - [sectionOptions]: 同 key -> 该展示项发现地址的可选参数 (可变 ExploreOption 实例, 点 chip 就地改)
- * - [sectionOptionsVersion]: options 结构变化信号 (ExploreOption 就地可变, 单靠 map 相等性检测不到重解析)
+ * - [sectionOptions]: 同 key -> 该展示项的只读参数行快照
  * - [infiniteHasMore]: tabTitle -> 该 tab 的无限流是否还有更多
  *
  * 注: [sectionBooks] / [sectionLoading] / [sectionError] 的 key 由 [homeSectionKey]
@@ -129,8 +128,8 @@ data class HomeUiState(
     val sectionBooks: Map<String, List<SearchBook>>,
     val sectionLoading: Map<String, Boolean>,
     val sectionError: Map<String, Boolean>,
-    val sectionOptions: Map<String, List<ExploreOption>>,
-    val sectionOptionsVersion: Int,
+    val sectionInvalidated: Map<String, Boolean>,
+    val sectionOptions: Map<String, List<ExploreOptionUiState>>,
     val infiniteHasMore: Map<String, Boolean>,
 )
 
