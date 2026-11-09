@@ -80,19 +80,26 @@ fun BookInfoBlurCoverBg(
     val paintedState = LocalBlurCoverPainted.current
     // 封面取色入口 (详情页宿主提供): 本端绘制的是变换后的图, 不能直接采样, 另取原图小样上报
     val onCoverLoaded = LocalCoverLoaded.current
-    // 容器尺寸测量后触发加载, 变化时按新尺寸重解 (渐变蒙版比例须与容器一致,
+    // 容器尺寸测量后触发加载; 变化时按**量化档位**重解 (渐变蒙版比例须与容器一致,
     // 见 BookInfoBgTransformation.cropToAspect)
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
-    LaunchedEffect(cover, coverTick, isEInkMode, land, containerSize) {
+    // 请求尺寸按档位钉死: 同一页面在布局微变 (分屏/折叠/旋转/滚动条出现) 时不再逐次重解。
+    // 变换后的位图在 Coil 内存缓存里按尺寸分 key, 每种尺寸各存一份, 只能等预算淘汰。
+    // 宽高比仍取容器真实比例 —— 竖屏的 cropToAspect 依赖它, 比例不一致会让渐变上下错位。
+    val requestSize = remember(containerSize) {
+        if (containerSize == IntSize.Zero) IntSize.Zero
+        else quantizeBgRequestSize(containerSize)
+    }
+    LaunchedEffect(cover, coverTick, isEInkMode, land, requestSize) {
         // book 为 null 时 cover 必为 null, 故先取 b 与后置判断等价; 放在 cover 判断前
         // 可避开 K2 的“cover 非空已蕴含 book 非空”推断造成的冗余告警
         val b = book ?: return@LaunchedEffect
-        if (isEInkMode || cover.isNullOrBlank() || containerSize == IntSize.Zero) {
+        if (isEInkMode || cover.isNullOrBlank() || requestSize == IntSize.Zero) {
             return@LaunchedEffect
         }
         val request = ImageRequest.Builder(context)
             .data(cover)
-            .size(containerSize.width, containerSize.height)
+            .size(requestSize.width, requestSize.height)
             .scale(Scale.FILL)
             .blurConfig(
                 seed = b.name,
@@ -125,6 +132,32 @@ fun BookInfoBlurCoverBg(
             )
         }
     }
+}
+
+/**
+ * 详情页模糊背景的请求尺寸档位。
+ *
+ * 变换后的位图在 Coil 内存缓存里按请求尺寸分 key, 尺寸每变一次就多存一份软件位图
+ * (带 transformation 的请求被 coil3 从 HARDWARE 降级为 ARGB_8888, 像素进 native 堆)。
+ * 宽度按本档位向上取整, 使同一页面在布局微变时复用同一张缓存图。
+ */
+private const val BG_WIDTH_STEP = 64
+
+/** 请求宽度上限: 竖屏渐变蒙版无高频细节, 超过此宽度再解只是徒增像素。 */
+private const val BG_BAKE_MAX_LONG_SIDE = 1600
+
+/**
+ * 按 [BG_WIDTH_STEP] 量化宽度、按容器真实比例反推高度, 并把宽度限在 [BG_BAKE_MAX_LONG_SIDE]。
+ *
+ * 高度必须随容器比例 —— 竖屏的 `BookInfoBgTransformation.cropToAspect` 用请求尺寸的宽高比
+ * 裁剪出渐变载体, 比例不一致会让渐变上下错位 (底部收不到全透明)。
+ */
+private fun quantizeBgRequestSize(containerSize: IntSize): IntSize {
+    val width = ((containerSize.width + BG_WIDTH_STEP - 1) / BG_WIDTH_STEP) * BG_WIDTH_STEP
+    val capped = width.coerceAtMost(BG_BAKE_MAX_LONG_SIDE)
+    val height = (capped.toFloat() * containerSize.height / containerSize.width)
+        .toInt().coerceAtLeast(1)
+    return IntSize(capped, height)
 }
 
 /**
