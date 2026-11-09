@@ -25,6 +25,7 @@ import io.legado.app.ui.book.manga.extension.MangaNotLoadedReason
 import io.legado.app.ui.book.manga.extension.MangaPrefItem
 import io.legado.app.ui.book.manga.extension.MangaPrefValue
 import io.legado.app.ui.book.manga.extension.MangaRepoItem
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -234,10 +235,11 @@ open class SharedMangaExtensionPlatform(
             MangaRepoItem(it.name, it.indexUrl, it.signingKeyFingerprint)
         }
 
-    override suspend fun removeRepo(indexUrl: String) {
+    override suspend fun removeRepo(indexUrl: String): Result<Unit> = runCatching {
         MangaExtensionManager.removeRepo(indexUrl)
         MangaExtensionManager.findAvailableExtensions()
-    }
+    }.map { }
+        .onFailure { if (it is CancellationException) throw it }
 
     // region 插件自带配置 (ConfigurableSource/ConfigurableAnimeSource)
 

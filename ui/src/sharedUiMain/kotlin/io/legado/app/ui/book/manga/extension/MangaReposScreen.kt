@@ -81,7 +81,10 @@ class MangaReposScreenModel(
 
     fun removeRepo(indexUrl: String) {
         val svc = service ?: return
-        scope.launch { svc.removeRepo(indexUrl) }
+        scope.launch {
+            svc.removeRepo(indexUrl)
+                .onFailure { toast(it.message ?: it.toString()) }
+        }
     }
 }
 

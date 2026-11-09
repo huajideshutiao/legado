@@ -67,8 +67,8 @@ interface MangaExtensionService {
     /** 添加插件仓库 (名称与指纹由仓库索引元数据带回)。 */
     suspend fun addRepo(url: String): Result<MangaRepoItem>
 
-    /** 删除插件仓库 (按仓库索引地址 indexUrl)。 */
-    suspend fun removeRepo(indexUrl: String)
+    /** 删除插件仓库 (按仓库索引地址 indexUrl); 删除后重拉剩余仓库索引, 失败经结果报给调用方。 */
+    suspend fun removeRepo(indexUrl: String): Result<Unit>
 
     /**
      * 该插件是否提供自带配置界面 (源实例实现 `eu.kanade.tachiyomi.source.ConfigurableSource`
