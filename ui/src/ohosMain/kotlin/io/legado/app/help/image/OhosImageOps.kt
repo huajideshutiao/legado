@@ -173,6 +173,9 @@ object OhosImageOps : ImageOps {
                 reply.json
             )
         }.getOrNull()
+        if (resp?.invalidArgument == true) {
+            throw IllegalArgumentException(resp.error)
+        }
         if (resp == null || !resp.ok || resp.pixelMapIds == null) {
             return listOf(img) // 降级
         }
@@ -197,6 +200,9 @@ object OhosImageOps : ImageOps {
                 reply.json
             )
         }.getOrNull()
+        if (resp?.invalidArgument == true) {
+            throw IllegalArgumentException(resp.error)
+        }
         if (resp == null || !resp.ok || resp.pixelMapId == null) {
             return imgs.first() // 降级
         }
@@ -217,6 +223,9 @@ object OhosImageOps : ImageOps {
                 reply.json
             )
         }.getOrNull()
+        if (resp?.invalidArgument == true) {
+            throw IllegalArgumentException(resp.error)
+        }
         if (resp == null || !resp.ok || resp.pixelMapId == null) {
             return img // 降级
         }
@@ -337,5 +346,6 @@ object OhosImageOps : ImageOps {
         val width: Int? = null,
         val height: Int? = null,
         val error: String? = null,
+        val invalidArgument: Boolean? = null,
     )
 }

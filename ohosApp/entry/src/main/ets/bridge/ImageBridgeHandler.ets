@@ -26,7 +26,7 @@ import image from '@ohos.multimedia.image';
  * ```
  * imageCallback(requestId, resultJson, bodyArrayBuffer)
  * ```
- * - 控制面 resultJson: `{ ok, pixelMapId?, pixelMapIds?, width?, height?, error? }`
+ * - 控制面 resultJson: `{ ok, pixelMapId?, pixelMapIds?, width?, height?, error?, invalidArgument? }`
  *   (encode 的 packed 字节不走 JSON, 见下)
  * - 数据面 bodyArrayBuffer: encode 的 packed 图片字节裸传 (不经 base64, 二进制保真)
  *
@@ -70,6 +70,7 @@ interface ImageResponse {
   height?: number;
   error?: string;
   release?: boolean;
+  invalidArgument?: boolean;
 }
 
 // Payload 各 action 的参数结构 (encode 的 packed 字节走回调 body 裸参, 不在 JSON)
@@ -313,6 +314,16 @@ async function handleCrop(payload: string): Promise<ImageResponse> {
     if (entry == undefined) {
       return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
     }
+    const info = entry.pixelMap.getImageInfoSync();
+    if (p.x < 0 || p.y < 0 || p.w <= 0 || p.h <= 0 ||
+      p.x + p.w > info.size.width || p.y + p.h > info.size.height) {
+      return {
+        ok: false,
+        invalidArgument: true,
+        error: 'invalid crop region: (' + p.x + ',' + p.y + ',' + p.w + ',' + p.h +
+          ') image ' + info.size.width + 'x' + info.size.height,
+      };
+    }
     // 创建独立副本后裁剪 (crop 修改 in-place, 不能直接操作原图)
     const croppedMap = await createCroppedCopy(entry.pixelMap, p.x, p.y, p.w, p.h);
     const id = nextPixelMapId++;
@@ -338,12 +349,19 @@ async function handleSplit(payload: string): Promise<ImageResponse> {
       return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
     }
     if (p.rows <= 0 || p.cols <= 0) {
-      return { ok: false, error: 'invalid rows/cols: ' + p.rows + 'x' + p.cols };
+      return { ok: false, invalidArgument: true, error: 'invalid rows/cols: ' + p.rows + 'x' + p.cols };
     }
 
     const info = entry.pixelMap.getImageInfoSync();
     const totalW = info.size.width;
     const totalH = info.size.height;
+    if (p.rows > totalH || p.cols > totalW) {
+      return {
+        ok: false,
+        invalidArgument: true,
+        error: 'rows/cols exceed image: ' + p.rows + 'x' + p.cols + ' image ' + totalW + 'x' + totalH,
+      };
+    }
     const cellW = Math.floor(totalW / p.cols);
     const cellH = Math.floor(totalH / p.rows);
 
@@ -356,7 +374,11 @@ async function handleSplit(payload: string): Promise<ImageResponse> {
       for (let col = 0; col < p.cols; col++) {
         const x = col * cellW;
         const y = row * cellH;
-        const cellMap = await createPixelMapFromSubRegion(srcBuffer, totalW, totalH, x, y, cellW, cellH);
+        const cellWidth = col === p.cols - 1 ? totalW - x : cellW;
+        const cellHeight = row === p.rows - 1 ? totalH - y : cellH;
+        const cellMap = await createPixelMapFromSubRegion(
+          srcBuffer, totalW, x, y, cellWidth, cellHeight
+        );
         const id = nextPixelMapId++;
         pixelMaps.set(id, newPixelMapEntry(id, cellMap));
         createdIds.push(id);
@@ -381,6 +403,10 @@ async function handleStitch(payload: string): Promise<ImageResponse> {
     if (p.pixelMapIds.length === 0) {
       return { ok: false, error: 'empty pixelMapIds' };
     }
+    const direction = p.direction.toLowerCase();
+    if (direction !== 'h' && direction !== 'v') {
+      return { ok: false, invalidArgument: true, error: 'invalid stitch direction: ' + p.direction };
+    }
 
     // 逐个借用源 PixelMap; 中途缺图时 finally 归还已借用的部分
     for (const id of p.pixelMapIds) {
@@ -402,7 +428,7 @@ async function handleStitch(payload: string): Promise<ImageResponse> {
     }
 
     // 计算合并后画布尺寸
-    const isHorizontal = p.direction === 'horizontal';
+    const isHorizontal = direction === 'h';
     let totalW: number;
     let totalH: number;
     if (isHorizontal) {
@@ -556,7 +582,7 @@ async function createCroppedCopy(
     const srcH = info.size.height;
     const srcBuffer = new ArrayBuffer(srcW * srcH * 4);
     await srcMap.readPixelsToBuffer(srcBuffer);
-    return await createPixelMapFromSubRegion(srcBuffer, srcW, srcH, x, y, w, h);
+    return await createPixelMapFromSubRegion(srcBuffer, srcW, x, y, w, h);
   } catch (e) {
     console.error('[ImageBridge] createCroppedCopy failed: ' + JSON.stringify(e));
     throw e as Error;
@@ -588,37 +614,23 @@ async function createEditableCopy(srcMap: image.PixelMap): Promise<image.PixelMa
 
 /**
  * 从源像素 buffer 中提取 (x, y, w, h) 子区域, 创建新 PixelMap。
- * 逐行拷贝子区域像素到新 buffer, 再用新 buffer 创建 PixelMap。
+ * 逐行拷贝子区域像素到新 buffer, 再用新 buffer 创建 PixelMap; 调用方已完成边界校验。
  */
 async function createPixelMapFromSubRegion(
-  srcBuffer: ArrayBuffer, srcW: number, srcH: number,
+  srcBuffer: ArrayBuffer, srcW: number,
   x: number, y: number, w: number, h: number
 ): Promise<image.PixelMap> {
-  // 边界裁断 (防止越界)
-  const clampedW = Math.min(w, srcW - x);
-  const clampedH = Math.min(h, srcH - y);
-  if (clampedW <= 0 || clampedH <= 0) {
-    // 空区域: 返回 1x1 透明 PixelMap
-    const emptyBuf = new ArrayBuffer(4);
-    return await image.createPixelMap(emptyBuf, {
-      size: { width: 1, height: 1 },
-      pixelFormat: image.PixelMapFormat.RGBA_8888,
-      editable: true,
-      alphaType: image.AlphaType.PREMUL,
-    });
-  }
-
-  const subBuffer = new ArrayBuffer(clampedW * clampedH * 4);
+  const subBuffer = new ArrayBuffer(w * h * 4);
   const srcView = new Uint8Array(srcBuffer);
   const dstView = new Uint8Array(subBuffer);
-  for (let row = 0; row < clampedH; row++) {
+  for (let row = 0; row < h; row++) {
     const srcStart = ((y + row) * srcW + x) * 4;
-    const dstStart = row * clampedW * 4;
-    dstView.set(srcView.subarray(srcStart, srcStart + clampedW * 4), dstStart);
+    const dstStart = row * w * 4;
+    dstView.set(srcView.subarray(srcStart, srcStart + w * 4), dstStart);
   }
 
   return await image.createPixelMap(subBuffer, {
-    size: { width: clampedW, height: clampedH },
+    size: { width: w, height: h },
     pixelFormat: image.PixelMapFormat.RGBA_8888,
     editable: true,
     alphaType: image.AlphaType.PREMUL,

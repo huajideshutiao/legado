@@ -159,8 +159,15 @@ object IosImageOps : ImageOps {
     }
 
     override fun crop(img: ImageRef, x: Int, y: Int, w: Int, h: Int): ImageRef {
-        // 用 renderSubImage 裁剪 (x,y) 起点的 w×h 区域
+        // 用 renderSubImage 裁剪 (x,y) 起点的 w×h 区域; decode 的 UIImage scale=1.0, size 即像素尺寸
         val image = uiImageOf(img)
+        val (width, height) = image.size.useContents { width.toDouble() to height.toDouble() }
+        require(
+            x >= 0 && y >= 0 && w > 0 && h > 0 &&
+                x.toDouble() + w.toDouble() <= width && y.toDouble() + h.toDouble() <= height
+        ) {
+            "image.crop: 区域 ($x,$y,$w,$h) 超出图片 ${width}x${height}"
+        }
         return IosImageRef(renderSubImage(image, x.toDouble(), y.toDouble(), w.toDouble(), h.toDouble()))
     }
 
