@@ -308,7 +308,11 @@ open class SharedMangaExtensionPlatform(
                     MangaExtensionSourceEntry(
                         id = source.id,
                         name = source.name,
-                        homeUrl = (source as? HttpSource)?.getHomeUrl().orEmpty(),
+                        // getHomeUrl 是插件源实例方法, 覆写体可抛任意异常; 在状态流里漏出会
+                        // 终结整条流并进入全局未捕获通道, 收敛口径与 readExtensionIcon 一致,
+                        // 取不到按无地址呈现 (websiteUrl 逐条目取首个非空)
+                        homeUrl = runCatching { (source as? HttpSource)?.getHomeUrl() }
+                            .getOrNull().orEmpty(),
                     )
                 )
             }
@@ -317,7 +321,8 @@ open class SharedMangaExtensionPlatform(
                     MangaExtensionSourceEntry(
                         id = source.id,
                         name = source.name,
-                        homeUrl = (source as? AnimeHttpSource)?.getHomeUrl().orEmpty(),
+                        homeUrl = runCatching { (source as? AnimeHttpSource)?.getHomeUrl() }
+                            .getOrNull().orEmpty(),
                     )
                 )
             }
