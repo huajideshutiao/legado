@@ -21,7 +21,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -274,8 +273,8 @@ internal sealed interface PhotoLoadState {
  * 全部失败走 [defaultCoverState]（用户自定义默认封面集优先，空集回落内置占位图，
  * 对齐原版 glide error(newDefaultDrawable()) 兜底）。
  *
- * 整链在 [IoDispatcher] 上跑: 磁盘读/文件 stat/解码都是阻塞的, 缓存命中时若留在
- * produceState 的组合效应上下文 (主线程) 就是主线程 IO + 解码。
+ * 整链在 [IoDispatcher] 上跑: 磁盘读/文件 stat/解码都是阻塞的, 留在组合效应上下文
+ * (主线程) 就是主线程 IO + 解码。
  */
 private suspend fun loadPhotoState(
     src: String,
@@ -309,7 +308,7 @@ private suspend fun loadPhotoState(
  * 大图解码结果回填 [DecodedBitmapCache] 主表。
  *
  * 主表原先只有 `ImageBitmapLoader.loadBitmap` 会写, 而大图走的是 loadBytes + decodeBytesSampled
- * (只解码、不写表), 真封面又只进封面小表 ([DecodedBitmapCache.recordCover]) —— 于是查看器"首帧同步
+ * (只解码、不写表), 真封面只进封面用途登记 ([DecodedBitmapCache.recordCover]) —— 于是查看器"首帧同步
  * 取回现成位图"的 [DecodedBitmapCache.findByUrl] 在封面链上是死路, 连同一张图第二次打开都不命中。
  * 回填后二次打开才是真的 0 延迟起飞。
  */
@@ -440,24 +439,30 @@ private fun rememberPhotoLoadState(
     // heightPixels*2 语义, 给放大留余量; 组合期取一次, 窗口 resize 不重启加载)
     val containerSize = LocalWindowInfo.current.containerSize
     val photoMaxDim = max(containerSize.width, containerSize.height) * 2
-    // 首帧尝试同步命中内存中的位图 (阅读页 Peek → 大图主缓存 → 封面小表):
+    // 首帧尝试同步命中内存中的位图 (阅读页 Peek → 大图主缓存 → 已登记封面复用):
     // 命中时首帧即为 Success 态, 共享元素直接携带真实图像零延迟起飞, 彻底杜绝起飞前顿挫与微闪。
-    // 第三档 [DecodedBitmapCache.peekCover] 是按封面/列表尺寸解的糊图, 只用来撑住接管那一帧 (官方
+    // 第三档按已知书源来源、分区未知 (跨分区只读) 查询已登记封面, 只用来撑住接管那一帧 (官方
     // sharedBounds 把内容按终态布局整体缩放到动画盒, 飞行期间看不出分辨率), 高清图就绪后替换。
-    val initialCached = remember(src) {
-        ReaderImageCache.peek(src)
+    // 来源: 本次书源优先, 其次书籍自身来源原字段; 两者都没有时才按 URL 级只读查询
+    // (不把"来源未知"谎称"没有来源", 分区一律未知 = 跨分区只读)。
+    val coverOrigin = bookSource?.bookSourceUrl ?: book?.origin
+    // 一份显示 state 在创建时同步查询并持初值; 换资源 (src/来源) 时整份换代,
+    // 正常加载只更新这一份 state, 不另存首帧位图。
+    var photoState by remember(src, coverOrigin) {
+        val cached = ReaderImageCache.peek(src)
             ?: DecodedBitmapCache.findByUrl(src)
-            ?: DecodedBitmapCache.peekCover(src)
-    }
-    val initialValue = remember(initialCached) {
-        if (initialCached != null) PhotoLoadState.Success(initialCached, null)
-        else PhotoLoadState.Loading
+            ?: if (coverOrigin != null) {
+                DecodedBitmapCache.peekCover(src, coverOrigin, null)
+            } else {
+                DecodedBitmapCache.peekCover(src)
+            }
+        mutableStateOf(if (cached != null) PhotoLoadState.Success(cached, null) else PhotoLoadState.Loading)
     }
     // 三态: 加载中 / 成功 / 失败 (失败走默认封面占位, 对齐原版 PhotoDialog 的 glide error 兜底)
-    // key 只能位置传: produceState 的重载是 key1/key2/key3 + vararg keys, 具名 key4 对 vararg 非法
-    return produceState<PhotoLoadState>(initialValue, src, chapter, book, bookSource) {
-        value = loadPhotoState(src, book, bookSource, chapter, photoMaxDim)
-    }.value
+    LaunchedEffect(src, coverOrigin, chapter, book, bookSource) {
+        photoState = loadPhotoState(src, book, bookSource, chapter, photoMaxDim)
+    }
+    return photoState
 }
 
 /**
@@ -552,7 +557,7 @@ fun PhotoViewOverlayDialog(
     LaunchedEffect(closing, photoToken, placeholder == null) {
         if (closing || photoToken == null) return@LaunchedEffect
         // 进入时不等后台大图解码完成就接管共享元素: 首帧的图由 rememberPhotoLoadState 的三级同步兜底
-        // (阅读页位图 → 大图主缓存 → 封面小表) 保证, 所以既不用等也不会空一帧; 高清图就绪后中途替换。
+        // (阅读页位图 → 大图主缓存 → 已登记封面复用) 保证, 所以既不用等也不会空一帧; 高清图就绪后中途替换。
         // 前置占位 (书源身份查询中) 时先不接管
         if (placeholder == null) photoShared.viewerToken = photoToken
     }

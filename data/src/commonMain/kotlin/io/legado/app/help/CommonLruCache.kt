@@ -19,7 +19,7 @@ import kotlinx.atomicfu.locks.synchronized
  *   （对应 AppCacheManager.clearSourceVariables 的遍历删除模式）。
  */
 class CommonLruCache<K, V>(
-    private val maxSize: Int,
+    maxSize: Int,
     private val sizeOf: (K, V) -> Int = { _, _ -> 1 }
 ) {
     private val lock = SynchronizedObject()
@@ -28,6 +28,7 @@ class CommonLruCache<K, V>(
     // 迭代顺序仍为 LRU(最久未使用) -> MRU(最近使用)
     private val map = LinkedHashMap<K, V>(16, 0.75f)
     private var size = 0
+    private var limit = maxSize
 
     fun put(key: K, value: V): V? = synchronized(lock) {
         val oldValue = map.remove(key)
@@ -61,9 +62,20 @@ class CommonLruCache<K, V>(
     /** 返回当前已用大小 (按 sizeOf 累加)。 */
     fun size(): Int = synchronized(lock) { size }
 
+    /** 当前上限。 */
+    fun maxSize(): Int = synchronized(lock) { limit }
+
+    /** 调整上限并立即裁剪 (放宽时保留现有条目, 收紧时从最久未使用一端淘汰)。 */
+    fun resize(maxSize: Int) {
+        synchronized(lock) {
+            limit = maxSize
+            trimToSize()
+        }
+    }
+
     private fun trimToSize() {
         val iter = map.iterator()
-        while (size > maxSize && iter.hasNext()) {
+        while (size > limit && iter.hasNext()) {
             val (k, v) = iter.next()
             iter.remove()
             size -= sizeOf(k, v)

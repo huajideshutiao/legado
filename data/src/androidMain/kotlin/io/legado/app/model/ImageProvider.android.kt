@@ -12,12 +12,14 @@ import androidx.collection.LruCache
 import com.caverock.androidsvg.SVG
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelpProviders
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.copyToFileAtomically
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.i18n.AppStringKey
@@ -25,11 +27,9 @@ import io.legado.app.help.i18n.appString
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.File
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.FileInputStream
 import kotlin.math.max
-import kotlin.math.min
 
 // 平台类型别名 (与 commonMain expect 对齐)
 actual typealias ImageProviderBitmap = Bitmap
@@ -37,41 +37,22 @@ actual typealias ImageProviderSize = Size
 
 /**
  * 缓存bitmap LruCache实现 (原版 BitmapLruCache, 继承 androidx.collection.LruCache)。
- * 1:1 复刻 app 端原版: sizeOf 按字节估算, entryRemoved 累计手动 remove 次数。
+ * sizeOf 按字节计, 上限由使用方在设置项变化时 `resize` 落实。
  */
 actual class ImageProviderLruCache actual constructor() :
     LruCache<String, Bitmap>(ImageProvider.cacheSize) {
-
-    private var removeCount = 0
 
     /**
      * 当前条目数。
      *
      * 不能用 LruCache 的累计统计推算 (putCount + createCount - evictionCount - removeCount):
-     * 同一 key 覆盖写入会令 putCount 增长而条目数不变, 该式只增不减, 与"条目数"无关。
+     * 同一 key 覆盖写入会同时增加 putCount 与 remove 类计数, 与"条目数"无关。
      */
     val count: Int
         get() = snapshot().size
 
     override fun sizeOf(key: String, value: Bitmap): Int {
         return value.byteCount
-    }
-
-    override fun entryRemoved(
-        evicted: Boolean,
-        key: String,
-        oldValue: Bitmap,
-        newValue: Bitmap?
-    ) {
-        if (!evicted) {
-            synchronized(this) {
-                removeCount++
-            }
-        }
-        // 记录渲染导致recycle后不能再绘制,交给gc回收,错误图片不能释放
-        /* if (oldValue != errorBitmap) {
-            oldValue.recycle()
-        } */
     }
 
 }
@@ -105,8 +86,11 @@ actual object ImageProvider {
     }
 
     /**
-     * 缓存bitmap LruCache实现
+     * 缓存上限 (字节)。
      * filePath bitmap
+     *
+     * 读取时修正设置越界值; 容量只由预算订阅方在设置变化时 `resize`,
+     * 图片写入只按当前上限裁剪, 不抬回旧上限。
      */
     private const val M = 1024 * 1024
 
@@ -121,8 +105,26 @@ actual object ImageProvider {
 
     actual val bitmapLruCache: ImageProviderLruCache = ImageProviderLruCache()
 
+    init {
+        // 预算归本表 (真实缓存所有者): 先注册监听再同步读一次当前设置,
+        // 否则另一线程在“读→注册”之间改设置会漏事件。
+        // web 出图这类无界面路径直接用本对象, 因此不靠界面入口先跑过。
+        val prefs = PreferenceProviders.get()
+        prefs.addPreferenceChangeListener { key ->
+            if (key.isEmpty() || key == PreferKey.bitmapCacheSize) {
+                bitmapLruCache.resize(cacheSize)
+            }
+        }
+        bitmapLruCache.resize(cacheSize)
+    }
+
     actual fun put(key: String, bitmap: Bitmap) {
-        ensureLruCacheSize(bitmap)
+        // 容量只由预算所有者改: 写入只服从库当前上限。
+        // 单张超上限不写入也不留旧值, 当前显示方仍持有该位图
+        if (bitmap.byteCount > bitmapLruCache.maxSize()) {
+            bitmapLruCache.remove(key)
+            return
+        }
         bitmapLruCache.put(key, bitmap)
     }
 
@@ -141,23 +143,6 @@ actual object ImageProvider {
             return null
         }
         return bitmap
-    }
-
-    private fun ensureLruCacheSize(bitmap: Bitmap) {
-        val configured = cacheSize
-        val lruMaxSize = bitmapLruCache.maxSize()
-        val lruSize = bitmapLruCache.size()
-        val byteCount = bitmap.byteCount
-        val size = if (byteCount > configured) {
-            min(256 * M, max(configured, (byteCount * 1.3).toInt()))
-        } else if (lruSize + byteCount > lruMaxSize && bitmapLruCache.count < 5) {
-            min(256 * M, max(configured, (lruSize + byteCount * 1.3).toInt()))
-        } else {
-            configured
-        }
-        if (size != lruMaxSize) {
-            bitmapLruCache.resize(size)
-        }
     }
 
     /**

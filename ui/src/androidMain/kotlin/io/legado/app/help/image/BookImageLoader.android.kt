@@ -16,6 +16,7 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.size.Precision
 import coil3.size.Scale
+import coil3.memory.MemoryCache
 import coil3.toBitmap
 import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.config.resolveImagePath
@@ -51,6 +52,30 @@ class AndroidBookImageLoader(
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private val imageLoader: ImageLoader by lazy { androidBookImageLoader(context) }
+
+    /** 本加载器真实请求所用的内存缓存 (封面复用与请求共用同一份)。 */
+    internal val requestMemoryCache: MemoryCache? get() = imageLoader.memoryCache
+
+
+    override fun peekRegisteredCoverByUrl(url: String): ImageBitmap? =
+        currentCoverReuseStore()?.let { CoverReuseEntry.peekByUrl(it, url) }
+
+    override fun peekRegisteredCover(url: String, origin: String?, persistent: Boolean?): ImageBitmap? =
+        currentCoverReuseStore()?.let { CoverReuseEntry.peekQualified(it, url, origin, persistent) }
+
+    override fun recordRegisteredCoverByUrl(url: String, bitmap: ImageBitmap) {
+        val store = coverReuseStoreForWrite(context)
+        CoverReuseEntry.recordByUrl(store, url, bitmap)
+    }
+
+    override fun recordRegisteredCover(url: String, origin: String?, persistent: Boolean, bitmap: ImageBitmap) {
+        val store = coverReuseStoreForWrite(context)
+        CoverReuseEntry.recordQualified(store, url, origin, persistent, bitmap)
+    }
+
+    override fun clearRegisteredCovers() {
+        currentCoverReuseStore()?.clearCoverEntries()
+    }
 
     override fun loadImage(
         url: String,
@@ -200,6 +225,14 @@ fun androidBookImageLoader(context: Context): ImageLoader =
     }
 
 /**
+ * 读取已建立的请求单例指针 (封面缓存取用所需): 只读现指针, 不建库、不取 Context。
+ *
+ * 与 [BookImageLoaders] 是否注册无关: 通过 [androidBookImageLoader] 或
+ * SingletonImageLoader.Factory 建立的都是这一个实例。
+ */
+internal fun existingAndroidBookImageLoader(): ImageLoader? = sharedImageLoader
+
+/**
  * 安卓宿主启动早期注册 [BookImageLoader] 的 actual 实现。
  *
  * 调用时机: App.onCreate, 在任何 Composable 图片加载之前。
@@ -233,7 +266,6 @@ internal fun buildBookImageLoader(
     context: Context,
     additionalComponents: ComponentRegistry.Builder.() -> Unit = {},
 ): ImageLoader {
-    val sharedClient = OkHttpClientProviders.get().okHttpClient
     return ImageLoader.Builder(context)
         .components {
             // 防盗链 header + URL 重写 + 解密 + 网络层守卫: 书源 header 与 header 规则 JS
@@ -248,7 +280,8 @@ internal fun buildBookImageLoader(
                     networkClient = {
                         ImageGuardNetworkClient(
                             SourceHeaderNetworkClient(
-                                sharedClient.asNetworkClient(),
+                                // 只在实际建网络客户端时取共享实例: 纯缓存用途不初始化网络
+                                OkHttpClientProviders.get().okHttpClient.asNetworkClient(),
                                 ::resolveSourceRequest,
                                 keepCookieJarMarker = true,
                             )

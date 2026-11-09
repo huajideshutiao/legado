@@ -54,7 +54,9 @@ import io.legado.app.ui.compose.platform.readerSystemBarPadding
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.merge
 import legado.ui.generated.resources.Res
@@ -803,6 +805,19 @@ fun ScrollPageView(
             Res.readBytes("drawable/image_loading_error.png").decodeToImageBitmap()
         }.getOrNull()
     }
+    // 连续滚动模式一个画布连排三页: 图片由本渲染位持有, 按真实可见矩形 (滚动偏移 +
+    // 各页高累加 + 行的可见判据) 取集合; 集合一变即释放离开的图,
+    // collectLatest 同时取消它们的未完成加载。
+    val pageImages = rememberRenderedPageImages()
+    LaunchedEffect(scrollDelegate, ReaderImageCache.sessionToken) {
+        visibleImageSourceFlow(
+            renderVersion = { scrollDelegate.renderVersion },
+            pages = { (0..2).map { scrollDelegate.renderPage(it) } },
+            contentOffset = { scrollDelegate.contentOffset },
+        )
+            .distinctUntilChanged()
+            .collectLatest { sources -> syncRenderedImages(sources, pageImages) }
+    }
 
     Box(
         modifier = modifier
@@ -902,6 +917,9 @@ fun ScrollPageView(
                                 searchHighlight = selection?.searchHighlight,
                                 chapterHighlights = chapterHighlights,
                                 pagePos = i,
+                                renderedImages = { src ->
+                                    ReaderImageCache.renderKey(src)?.let { pageImages[it] }
+                                },
                             )
                             offsetY += page.height
                         }

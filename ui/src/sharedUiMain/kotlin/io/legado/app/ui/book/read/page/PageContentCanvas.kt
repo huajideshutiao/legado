@@ -2,9 +2,13 @@ package io.legado.app.ui.book.read.page
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -36,6 +40,7 @@ import io.legado.app.ui.book.read.page.overlay.HighlightLineStyle
 import io.legado.app.ui.book.read.page.overlay.PageOverlayProjector
 import io.legado.app.ui.book.read.page.overlay.SearchHighlightOverlay
 import io.legado.app.ui.book.read.page.overlay.TTSHighlightOverlay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.yield
 import legado.ui.generated.resources.Res
 import org.jetbrains.compose.resources.decodeToImageBitmap
@@ -52,7 +57,7 @@ import org.jetbrains.compose.resources.decodeToImageBitmap
  * 1. 遍历 `textPage.lines`，每行 `line.lineTop` 作为 y 偏移（drawText topLeft.y = lineBase - baselineOffset）
  * 2. 遍历 `line.columns`，按 [BaseColumn] 实际类型分发：
  *    - [TextColumn]: drawText(charData)（选中/搜索高亮底色由 [drawOverlayLayers] 独立叠加）
- *    - [ImageColumn]: drawImage(renderCache as? ImageBitmap, srcSize, dstSize)
+ *    - [ImageColumn]: drawImage(渲染位持有的位图 / 正文图片表命中, srcSize, dstSize)
  *    - [ReviewColumn]: drawCircle + drawText(countText)
  * 3. 朗读/搜索下划线（E-Ink）与 `ReadBookConfig.underline` 下划线：drawLine
  *
@@ -108,6 +113,12 @@ fun PageContentCanvas(
     val failedImage by produceState<ImageBitmap?>(null) {
         value = runCatching { Res.readBytes("drawable/image_loading_error.png").decodeToImageBitmap() }.getOrNull()
     }
+    // 本页的图片引用: 本渲染位持有当前可见的每一张图 (含来自字节表的), 字节表只是复用池。
+    // 生命周期 = 本页在本渲染窗口内的可见期, 页切走/槽销毁/会话变化即重新同步。
+    val pageImages = rememberRenderedPageImages()
+    LaunchedEffect(textPage, ReaderImageCache.sessionToken) {
+        syncRenderedImages(visibleImageSources(listOf(textPage), contentOffset = 0f), pageImages)
+    }
 
     Canvas(modifier = modifier) {
         // 读位图就绪计数建立快照订阅：图片异步加载完成后本页自动重绘（值本身不参与绘制）
@@ -118,6 +129,8 @@ fun PageContentCanvas(
         if (drawTick < 0) return@Canvas
         // 文字选择起止变化：draw 阶段读 tick 建立订阅，只重绘不重组（拖拽热路径）
         if (selection != null && selection.tick < 0) return@Canvas
+        // 读本页图片状态建立快照订阅: 新图就绪只重绘本页
+        val images = pageImages
         drawPageContent(
             textPage = textPage,
             style = style,
@@ -128,9 +141,77 @@ fun PageContentCanvas(
             searchHighlight = searchHighlight,
             chapterHighlights = chapterHighlights,
             pagePos = pagePos,
+            renderedImages = { src -> ReaderImageCache.renderKey(src)?.let { images[it] } },
         )
     }
 }
+
+/**
+ * 渲染窗口内的正文图持有: 只保留当前可见的图。
+ *
+ * 字节表 (BodyImageStore) 是复用池, 会被缩容/其他消费者驱逐; 正在显示的图必须由渲染位
+ * 自己拿一份引用, 不论它是否在表里。图离开可见区即从持有里移除, 未完成的加载随之取消。
+ */
+@Composable
+fun rememberRenderedPageImages(): SnapshotStateMap<String, ImageBitmap> =
+    remember { mutableStateMapOf() }
+
+/**
+ * 当前实际可见的图片源: 逐页按页内相对偏移用 [TextLine.isVisible] 判可见行,
+ * 只扫渲染窗口内的这几页, 不扫整章。
+ *
+ * 判据与 [io.legado.app.ui.book.read.page.delegate.ScrollPageDelegateCompose.curVisiblePage]
+ * 同一套 (相对偏移 = 滚动偏移 + 前面页高累加)。
+ *
+ * @param contentOffset 滚动偏移 (恒 ≤ 0), 分页槽传 0
+ */
+fun visibleImageSources(
+    pages: List<TextPage?>,
+    contentOffset: Float,
+): Set<String> {
+    val sources = LinkedHashSet<String>()
+    var rel = contentOffset
+    for (page in pages) {
+        if (page == null) continue
+        for (line in page.lines) {
+            if (!line.isVisible(rel)) continue
+            for (column in line.columns) {
+                if (column is ImageColumn && column.src.isNotBlank()) sources.add(column.src)
+            }
+        }
+        rel += page.height
+    }
+    return sources
+}
+
+/**
+ * 可见图片集合的订阅源: 页数据换代与真实滚动偏移都是依赖。
+ *
+ * 读 [renderVersion] 而不是只读页对象: 分页数据是普通字段, 只有它是快照状态 ——
+ * 外部换页/重排且偏移仍为 0 时, 不读它就不会重算, 新页图片永远不请求、旧持有也不释放。
+ * 两个依赖同源共同订阅, 不是用偏移替代换代信号。
+ */
+fun visibleImageSourceFlow(
+    renderVersion: () -> Int,
+    pages: () -> List<TextPage?>,
+    contentOffset: () -> Float,
+): Flow<Set<String>> = snapshotFlow {
+    renderVersion()
+    visibleImageSources(pages(), contentOffset())
+}
+
+/**
+ * 把 [sources] (当前可见图) 的引用同步到 [into]。
+ *
+ * 会话身份只在缓存内部捕获一次并贯穿 wanted 键、实际加载与发布核验,
+ * 因此不会出现「旧键装新书的图」或「失效键留新图」。
+ * 集合变化时先解除离开项的引用, 再为仍可见的每个源取一份自己的引用(含缓存命中);
+ * 各图并行加载, 单张失败不阻塞其余可见图。
+ */
+suspend fun syncRenderedImages(
+    sources: Set<String>,
+    into: SnapshotStateMap<String, ImageBitmap>,
+) = ReaderImageCache.syncVisible(sources, into)
 
 /**
  * 字符/字素 TextLayoutResult 享元缓存（组合阶段构建, 相同字符+样式只 measure 一次/页）。
@@ -426,6 +507,7 @@ internal fun DrawScope.drawPageContent(
     searchHighlight: SearchHighlightOverlay? = null,
     chapterHighlights: List<HighlightOverlay> = emptyList(),
     pagePos: Int = 0,
+    renderedImages: (String) -> ImageBitmap? = { null },
 ) {
     if (offsetY == 0f) {
         drawPageContentInner(
@@ -437,7 +519,8 @@ internal fun DrawScope.drawPageContent(
             ttsHighlight,
             searchHighlight,
             chapterHighlights,
-            pagePos
+            pagePos,
+            renderedImages,
         )
     } else {
         translate(left = 0f, top = offsetY) {
@@ -450,7 +533,8 @@ internal fun DrawScope.drawPageContent(
                 ttsHighlight,
                 searchHighlight,
                 chapterHighlights,
-                pagePos
+                pagePos,
+                renderedImages,
             )
         }
     }
@@ -458,6 +542,9 @@ internal fun DrawScope.drawPageContent(
 
 /**
  * [drawPageContent] 的零平移主体。
+ *
+ * @param renderedImages 本渲染位实际持有的图（超出字节预算的图不存缓存, 由当前可见
+ *   渲染位持有到离开可见区）
  */
 private fun DrawScope.drawPageContentInner(
     textPage: TextPage,
@@ -469,6 +556,7 @@ private fun DrawScope.drawPageContentInner(
     searchHighlight: SearchHighlightOverlay? = null,
     chapterHighlights: List<HighlightOverlay> = emptyList(),
     pagePos: Int = 0,
+    renderedImages: (String) -> ImageBitmap? = { null },
 ) {
     // 1. 基础不可变内容层（文字、图片、段评气泡、基础下划线、朗读/搜索高亮文字色）
     val ttsLines = ttsHighlight?.let { PageOverlayProjector.projectTTS(textPage, it) } ?: IntRange.EMPTY
@@ -480,6 +568,7 @@ private fun DrawScope.drawPageContentInner(
         ttsLines,
         searchHighlight,
         chapterHighlights,
+        renderedImages,
     )
 
     // 2. 独立叠加绘制层（Overlay 几何投影高亮）
@@ -503,6 +592,7 @@ private fun DrawScope.drawBasePageContent(
     ttsLines: IntRange,
     searchHighlight: SearchHighlightOverlay?,
     chapterHighlights: List<HighlightOverlay>,
+    renderedImages: (String) -> ImageBitmap?,
 ) {
     // 基线折算/字间距补偿/字符享元 TextLayoutResult 均已在 [TextLayoutCache] 构建时缓存,
     // 每帧只重放绘制 (drawText(layoutResult, topLeft = Offset(x, y)) 零 measure)。
@@ -553,6 +643,7 @@ private fun DrawScope.drawBasePageContent(
                     lineHeight = lineHeight,
                     placeholderColor = style.textColor,
                     failedImage = failedImage,
+                    renderedImage = renderedImages(column.src),
                 )
                 is ReviewColumn -> drawReviewColumn(
                     column = column,
@@ -775,8 +866,9 @@ private fun DrawScope.drawTextColumn(
  * 绘制图片列：对应 app 端 `ColumnRender.drawImageColumn`。
  *
  * 位图取自 [ReaderImageCache]（排版时 `ImageResolver.getImageSize` 已解码入缓存），
- * 被 LRU 淘汰时就地发起异步补加载，加载完成自增 version 触发本页重绘。
- * app 端 actual 侧填过 [ImageColumn.renderCache] 时优先用它。
+ * 被 LRU 淘汰时由本渲染位在组合阶段经单飞重新取图，新图进表后自增 version 触发重绘。
+ * 超出字节预算的图不进表, 由本渲染位（组合内的持有）自己持有, 随页/槽离开即释放;
+ * 多个同时可见的图各持各的，不会互相顶掉。
  *
  * 加载中画灰色占位块，取图失败绘制 image_loading_error 错误图
  * （对照 app 端 ImageProvider 的 errorBitmap，按原图占位矩形等比居中）。
@@ -790,13 +882,14 @@ private fun DrawScope.drawImageColumn(
     lineHeight: Float,
     placeholderColor: Color,
     failedImage: ImageBitmap?,
+    renderedImage: ImageBitmap?,
 ) {
     val containerW = column.end - column.start
     val containerH = lineHeight
-    val bitmap = column.renderCache as? ImageBitmap ?: ReaderImageCache.peek(column.src)
+    // 先取本渲染位实际持有的图（超出字节预算、未进缓存的由它持有）
+    val bitmap = renderedImage ?: ReaderImageCache.peek(column.src)
     if (bitmap == null) {
         val failed = ReaderImageCache.isFailed(column.src)
-        if (!failed && column.src.isNotBlank()) ReaderImageCache.requestAsync(column.src)
         drawImagePlaceholder(column.start, lineTop, containerW, containerH, placeholderColor, failed, failedImage)
         return
     }

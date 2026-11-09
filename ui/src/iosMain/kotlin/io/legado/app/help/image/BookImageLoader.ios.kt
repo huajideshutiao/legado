@@ -43,6 +43,27 @@ class IosBookImageLoader : BookImageLoader {
 
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+
+    override fun peekRegisteredCoverByUrl(url: String): ImageBitmap? =
+        currentCoverReuseStore()?.let { CoverReuseEntry.peekByUrl(it, url) }
+
+    override fun peekRegisteredCover(url: String, origin: String?, persistent: Boolean?): ImageBitmap? =
+        currentCoverReuseStore()?.let { CoverReuseEntry.peekQualified(it, url, origin, persistent) }
+
+    override fun recordRegisteredCoverByUrl(url: String, bitmap: ImageBitmap) {
+        val store = coverReuseStoreForWrite()
+        CoverReuseEntry.recordByUrl(store, url, bitmap)
+    }
+
+    override fun recordRegisteredCover(url: String, origin: String?, persistent: Boolean, bitmap: ImageBitmap) {
+        val store = coverReuseStoreForWrite()
+        CoverReuseEntry.recordQualified(store, url, origin, persistent, bitmap)
+    }
+
+    override fun clearRegisteredCovers() {
+        currentCoverReuseStore()?.clearCoverEntries()
+    }
+
     override fun loadImage(
         url: String,
         sourceOrigin: String?,

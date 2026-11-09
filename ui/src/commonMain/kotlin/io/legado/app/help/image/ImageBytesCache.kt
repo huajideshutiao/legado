@@ -1,5 +1,6 @@
 package io.legado.app.help.image
 
+import io.legado.app.help.CommonLruCache
 import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.deleteOrphanAtomicWriteTempFile
 import io.legado.app.help.storage.DataStorageProviders
@@ -56,9 +57,11 @@ internal object ImageBytesCache {
 
     private val mutex = Mutex()
 
-    // 无 accessOrder 构造 (native 无 (Int, Float, Boolean) 重载), 手动维护 LRU:
-    // get/put 时 remove+put 刷新访问序, 首元素即最久未用 (与 JVM accessOrder=true 等效)
-    private val memory = LinkedHashMap<String, ByteArray>()
+    /**
+     * 进程内字节表: 按条数上限的统一 LRU ([MAX_MEMORY_ENTRIES])。
+     * 磁盘回填与写入都走同一个入口, 磁盘命中逐页回填不会突破上限。
+     */
+    private val memory = CommonLruCache<String, ByteArray>(MAX_MEMORY_ENTRIES)
 
     /** 书源维度 key (origin 为空时与旧版格式一致, 无源缓存不受维度改动影响)。 */
     private fun cacheKey(url: String, origin: String?, isCover: Boolean): String =
@@ -98,18 +101,12 @@ internal object ImageBytesCache {
         persistent: Boolean = false,
     ): ByteArray? {
         val k = cacheKey(url, origin, isCover)
-        mutex.withLock {
-            // remove+put 刷新访问序 (手写 LRU, 见 memory 注释)
-            memory.remove(k)?.let { value ->
-                memory[k] = value
-                return value
-            }
-        }
+        // 命中即刷新访问序
+        memory[k]?.let { return it }
         val path = FileUtilsCommon.getPath(diskDir(persistent), diskFileName(url, origin, isCover, persistent))
         val bytes = FileUtilsCommon.readBytes(path)?.takeIf { it.isNotEmpty() } ?: return null
-        mutex.withLock {
-            memory[k] = bytes
-        }
+        // 磁盘回填与写入同走一个限额入口
+        memory.put(k, bytes)
         return bytes
     }
 
@@ -122,13 +119,7 @@ internal object ImageBytesCache {
     ) {
         if (bytes.isEmpty()) return
         val k = cacheKey(url, origin, isCover)
-        mutex.withLock {
-            memory.remove(k)
-            memory[k] = bytes
-            while (memory.size > MAX_MEMORY_ENTRIES) {
-                memory.remove(memory.entries.first().key)
-            }
-        }
+        memory.put(k, bytes)
         val dir = diskDir(persistent)
         if (!FileUtilsCommon.createFolderIfNotExist(dir)) return
         // 整份落盘 (同目录临时件 + 改名就位): 图片字节按同一路径整读, 直接覆盖写会在写完之前

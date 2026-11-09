@@ -21,6 +21,31 @@ class OhosBookImageLoader : BookImageLoader {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+    /**
+     * 本端封面复用落在现解码主表: 真封面经 [ImageBitmapLoader.loadCoverBitmap] 已写入该表,
+     * 登记/查询都按同一 owner 锁与同一批条目进行, 不另存规范副本、不改解码粒度。
+     */
+
+    override fun peekRegisteredCoverByUrl(url: String): ImageBitmap? =
+        currentCoverReuseStore()?.let { CoverReuseEntry.peekByUrl(it, url) }
+
+    override fun peekRegisteredCover(url: String, origin: String?, persistent: Boolean?): ImageBitmap? =
+        currentCoverReuseStore()?.let { CoverReuseEntry.peekQualified(it, url, origin, persistent) }
+
+    override fun recordRegisteredCoverByUrl(url: String, bitmap: ImageBitmap) {
+        val store = coverReuseStoreForWrite()
+        CoverReuseEntry.recordByUrl(store, url, bitmap)
+    }
+
+    override fun recordRegisteredCover(url: String, origin: String?, persistent: Boolean, bitmap: ImageBitmap) {
+        val store = coverReuseStoreForWrite()
+        CoverReuseEntry.recordQualified(store, url, origin, persistent, bitmap)
+    }
+
+    override fun clearRegisteredCovers() {
+        currentCoverReuseStore()?.clearCoverEntries()
+    }
+
     override fun loadImage(
         url: String,
         sourceOrigin: String?,

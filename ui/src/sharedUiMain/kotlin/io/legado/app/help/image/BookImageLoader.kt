@@ -105,6 +105,36 @@ interface BookImageLoader {
         url: String,
         sourceOrigin: String?,
     ): ByteArray? = null
+
+    /**
+     * URL 级封面查询: 调用方不知道来源与分区, 只读本端已登记的封面用途条目。
+     *
+     * 未实现的端直接报错, 不静默当成"该端没有封面复用"。
+     */
+    fun peekRegisteredCoverByUrl(url: String): ImageBitmap? =
+        error("本端未提供封面复用 owner: ${this::class}")
+
+    /**
+     * 身份级封面查询: [origin] 由调用方明确给出 (null = 明确没有来源);
+     * [persistent] 为 null 表示分区未知, 按跨分区只读处理。
+     */
+    fun peekRegisteredCover(url: String, origin: String?, persistent: Boolean?): ImageBitmap? =
+        error("本端未提供封面复用 owner: ${this::class}")
+
+    /** URL 级封面登记: 来源与分区都未给出, 按未知范围登记。 */
+    fun recordRegisteredCoverByUrl(url: String, bitmap: ImageBitmap) {
+        error("本端未提供封面复用 owner: ${this::class}")
+    }
+
+    /** 身份级实际封面登记: 逻辑地址 + 真实来源 (null = 无来源) + 真实分区。 */
+    fun recordRegisteredCover(url: String, origin: String?, persistent: Boolean, bitmap: ImageBitmap) {
+        error("本端未提供封面复用 owner: ${this::class}")
+    }
+
+    /** 清掉本端已登记的封面用途条目 (设置页清缓存); 不动普通图片条目与磁盘内容。 */
+    fun clearRegisteredCovers() {
+        error("本端未提供封面复用 owner: ${this::class}")
+    }
 }
 
 /**

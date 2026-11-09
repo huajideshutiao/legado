@@ -614,7 +614,7 @@ internal fun DefaultBookshelfActions(
  * 书籍封面 (加载与渲染管线见 [SharedCoverContent])。
  *
  * 书籍特有的输入: 默认封面选图 seed = 书名 (无书名回落封面路径), 与详情/搜索/发现共用
- * [DecodedBitmapCache] 的已解码封面小表, 默认封面上叠竖排书名/作者, 挂共享元素转场端点。
+ * [DecodedBitmapCache] 的已登记封面复用, 默认封面上叠竖排书名/作者, 挂共享元素转场端点。
  *
  * 尺寸按 [coverRatio] 选 16:9 / 3:4, 由调用方给出的那一个维度反算另一个维度 (对齐原 View 版
  * `CoverImageView.onMeasure` 按 coverRatio 自适应)。

@@ -25,6 +25,19 @@ class AndroidPreferenceProvider : PreferenceProvider {
     }
 
     /**
+     * 每次注册的包装实体: SharedPreferences 不持有监听器强引用 (内部是 WeakHashMap),
+     * 只靠返回的注销闭包持有时会被 GC 回收后静默失效。
+     *
+     * 按**每次注册的包装实体**持有 (默认引用相等), 不以回调函数为 key:
+     * 同一个回调注册两次是两次独立注册, 取消其一不影响另一次的有效性。
+     */
+    private class SpListenerRegistration(
+        val listener: SharedPreferences.OnSharedPreferenceChangeListener,
+    )
+
+    private val spListeners = mutableSetOf<SpListenerRegistration>()
+
+    /**
      * 包装 [SharedPreferences.OnSharedPreferenceChangeListener]: 设置界面的 Compose 组件
      * 据此在别的入口改同一个 key 时刷新显示 (见 sharedUiMain 的 rememberPrefState)。
      * SP 自带监听同步回调, 无需三端那套写入自通知。
@@ -33,8 +46,13 @@ class AndroidPreferenceProvider : PreferenceProvider {
         val spListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             listener(key.orEmpty())
         }
+        val registration = SpListenerRegistration(spListener)
+        synchronized(spListeners) { spListeners.add(registration) }
         prefs.registerOnSharedPreferenceChangeListener(spListener)
-        return { prefs.unregisterOnSharedPreferenceChangeListener(spListener) }
+        return {
+            synchronized(spListeners) { spListeners.remove(registration) }
+            prefs.unregisterOnSharedPreferenceChangeListener(spListener)
+        }
     }
 
     override fun getString(key: String, default: String): String =

@@ -3,6 +3,7 @@ package io.legado.app.help.image
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.graphics.ImageBitmap
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
@@ -22,7 +23,9 @@ import io.legado.app.ui.book.read.page.provider.ImageSize
 import io.legado.app.utils.readAllAndClose
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -32,10 +35,11 @@ import org.jetbrains.compose.resources.decodeToImageBitmap
  * 阅读页内嵌图片的位图缓存（对照 app 端 `ImageProvider.bitmapLruCache`）。
  *
  * 排版只经 [sizeOf] 取宽高（先读图片头，读不出才整解码，对照原版 `inJustDecodeBounds`），
- * 位图在绘制时按需加载并留在 LRU 里，上限沿用 `AppConfig.bitmapCacheSize`（MB，默认 50）。
+ * 位图在绘制时按需加载，存放与字节预算归 [BodyImageStore] 所有（Android 与 web 出图共用同一
+ * 份位图 LRU，其余三端是进程内字节 LRU）；设置改动由预算订阅即时裁剪。
  *
- * 单本书作用域：[bind] 传入新的 bookUrl 时清空，避免 PDF 这类以页码（`0`/`1`…）作 src
- * 的书跨书撞 key。
+ * 单本书作用域：store 的 key 带 bookUrl 前缀，换书时只清本书条目，PDF 这类以页码（`0`/`1`…）
+ * 作 src 的书不会跨书撞 key。
  */
 object ReaderImageCache {
 
@@ -51,138 +55,288 @@ object ReaderImageCache {
 
     private val lock = SynchronizedObject()
 
-    /** 手写 LRU：命中时先 remove 再 put 把条目挪到队尾，超预算从队首淘汰。 */
-    private val bitmaps = LinkedHashMap<String, ImageBitmap>()
-    private var cachedBytes = 0L
     private val sizes = HashMap<String, ImageSize>()
     private val failed = HashSet<String>()
-    private val inFlight = HashSet<String>()
 
     private var boundBookUrl: String? = null
     private var loader: (suspend (String) -> ByteArray?)? = null
 
+    /** 会话代号: 换书或清空时递增, 旧会话的请求结果一律作废。 */
+    private var boundGeneration = 0
+
+    /** [requestAsync] 的加载作用域: 与 [load] 同一加载与预算机制, 只是不等结果。 */
     private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)
 
     /**
      * 位图就绪计数：绘制层（`PageContentCanvas`）在 Canvas 里读它建立快照订阅，
-     * 异步加载完成后自增触发该页重绘。
+     * 新图进字节表后自增触发重绘。
      */
     var version by mutableIntStateOf(0)
         private set
 
     /**
-     * 绑定当前书的字节加载器；换书时清空缓存。
-     * 同一本书三章滑窗会各建一个 resolver 重复绑定，取图路径只由 book + src 决定，覆盖无副作用。
+     * 会话代号快照：换书/清空后自增。渲染位用它做 effect 键，
+     * 会话一变就重新同步自己持有的图 (旧代的持有全部作废)。
+     */
+    var sessionToken by mutableIntStateOf(0)
+        private set
+
+    /**
+     * 一次取图的身份: 请求开始时的书、字节加载器与会话代号。
+     * 取数、解码、单飞、键、发布都受它约束, 换书/清空后的旧任务不能写进新书。
+     */
+    private class Session(
+        val bookUrl: String,
+        val loader: suspend (String) -> ByteArray?,
+        val generation: Int,
+    ) {
+        val storePrefix: String get() = "$bookUrl\u0000"
+        fun storeKey(src: String): String = "$storePrefix$src"
+
+        /** 单飞键带会话代号: 同书 clear 后的新请求不会 await 旧会话的单飞结果。 */
+        fun flightKey(src: String): String = "reader\u0000${generation}\u0000$storePrefix$src"
+
+        /** 渲染持有集合的键: 带书、会话代号与 src, 换书/清空/PDF 页码 0 同 src 不会串图。 */
+        fun renderKey(src: String): String = "${generation}\u0000$storePrefix$src"
+
+        fun matches(boundBookUrl: String?, boundGeneration: Int): Boolean =
+            bookUrl == boundBookUrl && generation == boundGeneration
+    }
+
+    private fun session(): Session? = synchronized(lock) {
+        val bookUrl = boundBookUrl ?: return null
+        val load = loader ?: return null
+        Session(bookUrl, load, boundGeneration)
+    }
+
+    /** 调用方持锁: 该身份是否仍是当前会话。 */
+    private fun isCurrentLocked(session: Session): Boolean =
+        session.matches(boundBookUrl, boundGeneration)
+
+    /**
+     * 绑定当前书的字节加载器；换书时清掉本书的尺寸/失败记录与本书位图。
+     * 同一本书三章滑窗会各建一个 resolver 重复绑定: 同书不换会话代号, 在途请求继续有效。
+     *
+     * 旧书条目的清理与换代在同一把锁内完成: 新代请求不可能拿到旧代条目,
+     * A→B→A 的交错也不会误删新的 A 条目。
      */
     fun bind(bookUrl: String, loader: suspend (String) -> ByteArray?) {
         synchronized(lock) {
             if (boundBookUrl != bookUrl) {
-                bitmaps.clear()
+                val previous = boundBookUrl
                 sizes.clear()
                 failed.clear()
-                cachedBytes = 0
+                boundGeneration++
+                sessionToken++
                 boundBookUrl = bookUrl
+                this.loader = loader
+                if (previous != null) bodyImageStore().clearBook("$previous\u0000")
+                return
             }
             this.loader = loader
         }
     }
 
-    /** 已就绪位图；未加载 / 已淘汰返回 null。 */
+    /**
+     * 已进字节表的位图；未加载 / 已淘汰返回 null。
+     *
+     * 会话取得与正文表读取在同一把锁内: 换书/同书清空插不进两者之间, 不会读到旧书键下的图。
+     */
     fun peek(src: String): ImageBitmap? = synchronized(lock) {
-        bitmaps.remove(src)?.also { bitmaps[src] = it }
+        val session = session() ?: return null
+        bodyImageStore().peek(session.storeKey(src))
     }
+
+    /**
+     * 渲染持有集合用的键 (书 + 会话代号 + src); 未绑定书时返回 null。
+     * 渲染位用它在持有集合里存/查自己的引用。
+     */
+    fun renderKey(src: String): String? = session()?.renderKey(src)
 
     /** 取图失败（画错误占位，不再重试）。 */
     fun isFailed(src: String): Boolean = synchronized(lock) { failed.contains(src) }
 
     /**
      * 排版取尺寸：命中尺寸缓存直接返回；否则取字节，先解析图片头，
-     * 头解析不出（如 SVG / 少见格式）才整解码并把位图留在 LRU。
-     * 取不到图返回 [PLACEHOLDER_SIZE] 方块（对照原版 errorBitmap 尺寸）。
+     * 头解析不出（如 SVG / 少见格式）才整解码取尺寸。
+     *
+     * 尺寸按捕获到的会话身份存取: 命中读取与发布都在同一把锁内先核该身份仍是当前会话,
+     * 清空换代插不进核验与取用之间, 旧排版不会拿新书/新代同 src 的尺寸。
+     * 这里解出的图不交给任何显示位, 也不因它挂起等显示。
      */
     suspend fun sizeOf(src: String): ImageSize {
-        synchronized(lock) { sizes[src] }?.let { return it }
-        val size = resolveSize(src) ?: ImageSize(PLACEHOLDER_SIZE, PLACEHOLDER_SIZE)
-        synchronized(lock) { sizes[src] = size }
+        val session = session() ?: return ImageSize(PLACEHOLDER_SIZE, PLACEHOLDER_SIZE)
+        val key = session.storeKey(src)
+        // 身份核验与尺寸/位图读取在同一原子窗口: 清空换代插不进两者之间,
+        // 旧需求不会拿到新代刚发布的尺寸或位图
+        synchronized(lock) {
+            if (!isCurrentLocked(session)) return ImageSize(PLACEHOLDER_SIZE, PLACEHOLDER_SIZE)
+            sizes[key]?.let { return it }
+            bodyImageStore().peek(key)?.let { cached ->
+                val size = ImageSize(cached.width, cached.height)
+                sizes[key] = size
+                return size
+            }
+        }
+        val size = resolveSize(session, src) ?: return ImageSize(PLACEHOLDER_SIZE, PLACEHOLDER_SIZE)
+        // 尺寸发布同样受捕获身份约束: 取数期间换代就不发布、也不交给旧需求
+        synchronized(lock) {
+            if (!isCurrentLocked(session)) return ImageSize(PLACEHOLDER_SIZE, PLACEHOLDER_SIZE)
+            sizes[key] = size
+        }
         return size
     }
 
-    private suspend fun resolveSize(src: String): ImageSize? {
-        peek(src)?.let { return ImageSize(it.width, it.height) }
-        val bytes = loadBytes(src) ?: return null
+    private suspend fun resolveSize(session: Session, src: String): ImageSize? {
+        val bytes = loadBytes(session, src) ?: return null
         probeImageSize(bytes)?.let { return it }
-        val bitmap = decode(src, bytes) ?: return null
+        val bitmap = decodeImage(bytes) ?: return null
         return ImageSize(bitmap.width, bitmap.height)
     }
 
-    /** 绘制层发现位图未就绪时异步加载，完成后自增 [version] 触发重绘。 */
-    fun requestAsync(src: String) {
+    /**
+     * 取一张正文图供当前渲染位使用。
+     *
+     * 命中字节表直接返回；未命中经单飞解码（多个渲染位要同一张图只解一次）。
+     * 返回的位图由调用方（当前渲染位）自己持有到离开可见区, 不论它是否在字节表里:
+     * 字节表只是复用池, 会被缩容/其他消费者驱逐, 不能当显示引用。
+     *
+     * 请求身份在开始处固定：换书/清空后旧请求不写表、不通知、也不会把新书的同名图挡住。
+     */
+    suspend fun load(src: String): ImageBitmap? {
+        val session = session() ?: return null
+        return load(session, src)
+    }
+
+    /**
+     * 按指定（已捕获）会话身份取图: 键、单飞、取数、发布全部用同一个身份。
+     *
+     * 正常取不到（loader 返回 null / 解码全部失败）在当前会话的原子边界内记成失败终态
+     * 并通知重绘（显示位转错误图）, 不是“未就绪”的灰块状态。
+     * 取消不是失败: 原样上抛。
+     */
+    private suspend fun load(session: Session, src: String): ImageBitmap? {
+        if (src.isBlank()) return null
+        val storeKey = session.storeKey(src)
+        // 身份核验与缓存命中读取在同一原子窗口: 会话已变就不读 (也不把新代条目拿去用),
+        // 清空换代插不进核验与取用之间
         synchronized(lock) {
-            if (bitmaps.containsKey(src) || failed.contains(src) || inFlight.contains(src)) return
-            inFlight.add(src)
+            if (!isCurrentLocked(session)) return null
+            if (failed.contains(src)) return null
+            bodyImageStore().peek(storeKey)?.let { return it }
         }
-        scope.launch {
-            try {
-                val bytes = loadBytes(src)
-                if (bytes == null) {
-                    synchronized(lock) { failed.add(src) }
-                } else {
-                    decode(src, bytes)
+        val bitmap = BookImageLoadDedup.singleFlight(session.flightKey(src)) {
+            synchronized(lock) {
+                if (!isCurrentLocked(session)) return@singleFlight null
+                if (failed.contains(src)) return@singleFlight null
+                bodyImageStore().peek(storeKey)?.let { return@singleFlight it }
+            }
+            val bytes = loadBytes(session, src)
+            val decoded = bytes?.let { decodeImage(it) }
+            if (decoded == null) {
+                markFailed(session, src)
+                return@singleFlight null
+            }
+            // 核验身份与写失败表/写缓存/自增版本在同一个原子边界里完成,
+            // bind/clear 插不进来, 旧结果不会复活到已清的表上
+            synchronized(lock) {
+                if (!isCurrentLocked(session)) return@singleFlight null
+                failed.remove(src)
+                if (bodyImageStore().put(storeKey, decoded)) version++
+            }
+            decoded
+        }
+        if (bitmap == null) return null
+        // 公共返回边界: 等待者可能等到胜者的结果后才被换代, 不能把旧代图交给新持有
+        synchronized(lock) { return if (isCurrentLocked(session)) bitmap else null }
+    }
+
+    /** 取不到图的终态: 只对仍在的会话生效, 并通知显示位转错误图。 */
+    private fun markFailed(session: Session, src: String) {
+        synchronized(lock) {
+            if (!isCurrentLocked(session)) return
+            failed.add(src)
+            version++
+        }
+    }
+
+    /**
+     * 把当前可见图集合同步到渲染位持有里。
+     *
+     * 会话身份只捕获一次: wanted 键、实际加载、发布核验用同一个身份,
+     * 因此不会出现“旧 key 装新书的图”或“失效 key 留新图”。
+     * 集合变化时先解除离开项的引用, 再为仍可见的源取引用（缓存命中也取）。
+     */
+    suspend fun syncVisible(
+        sources: Set<String>,
+        into: SnapshotStateMap<String, ImageBitmap>,
+    ) = coroutineScope {
+        val session = session() ?: return@coroutineScope
+        val demands = sources.map { src -> session to src }
+        val wanted = demands.mapTo(HashSet()) { (s, src) -> s.renderKey(src) }
+        // 释放离开可见区的引用也只能落在同代: 旧代同步不得删新代的持有
+        synchronized(lock) {
+            if (!isCurrentLocked(session)) return@coroutineScope
+            into.keys.retainAll(wanted)
+        }
+        for ((captured, src) in demands) {
+            val key = captured.renderKey(src)
+            if (into.containsKey(key)) continue
+            launch {
+                val bitmap = load(captured, src) ?: return@launch
+                // 需求归属核验与写入显示持有必须在同一原子边界内,
+                // 否则 clear/bind 能插在两者之间把旧图写进新持有
+                synchronized(lock) {
+                    if (isCurrentLocked(captured)) into[key] = bitmap
                 }
-            } finally {
-                synchronized(lock) { inFlight.remove(src) }
             }
         }
     }
 
-    private suspend fun loadBytes(src: String): ByteArray? {
-        val load = synchronized(lock) { loader } ?: return null
-        return runCatching { load(src) }.onFailure {
-            AppLog.put("阅读页图片加载失败 $src\n${it.message}", it)
-        }.getOrNull()
+    /**
+     * 请求把一张正文图加载进字节表 (原公开入口, 保持 Unit 签名)。
+     * 与 [load] 同一个加载/预算机制, 只是不等结果: 结果进表后经 [version] 触发重绘。
+     */
+    fun requestAsync(src: String) {
+        if (src.isBlank()) return
+        scope.launch { load(src) }
     }
 
-    private fun decode(src: String, bytes: ByteArray): ImageBitmap? {
-        // I2: 先按目标尺寸采样解码 (解码前采样才有峰值内存收益), 失败依次回落 SVG 兜底
+    /**
+     * 加载字节。
+     *
+     * 调用方被取消 (如滚出可见区) 时必须原样重抛: 正常取消不是“取图失败”,
+     * 不能进失败表把该图永久拉黑。真实 IO 失败才返回 null 交给调用方记失败。
+     */
+    private suspend fun loadBytes(session: Session, src: String): ByteArray? {
+        try {
+            return session.loader(src)
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (e: Exception) {
+            AppLog.put("阅读页图片加载失败 $src\n${e.message}", e)
+            return null
+        }
+    }
+
+    private fun decodeImage(bytes: ByteArray): ImageBitmap? {
+        // 按目标长边 [SAMPLE_MAX_DIM] 降采样解码 (各端采样点不同, 见 [decodeBytesSampled]),
+        // 失败依次回落 SVG 兜底
         // (对齐原版 `decodeBitmap ?: SvgUtils.createBitmap`; 矢量按目标长边渲染) 与全尺寸
         // 解码 (格式兜底, 如桌面 ImageIO 无 reader 的 WEBP 走 skia decodeToImageBitmap)。
-        val bitmap = runCatching { decodeBytesSampled(bytes, SAMPLE_MAX_DIM) }.getOrNull()
+        return runCatching { decodeBytesSampled(bytes, SAMPLE_MAX_DIM) }.getOrNull()
             ?: runCatching { decodeSvgFallback(bytes, SAMPLE_MAX_DIM) }.getOrNull()
             ?: runCatching { bytes.decodeToImageBitmap() }.getOrNull()
-        synchronized(lock) {
-            if (bitmap == null) {
-                failed.add(src)
-            } else {
-                failed.remove(src)
-                put(src, bitmap)
-            }
-        }
-        if (bitmap != null) version++
-        return bitmap
     }
 
-    /** 调用方持锁。 */
-    private fun put(src: String, bitmap: ImageBitmap) {
-        bitmaps.remove(src)?.let { cachedBytes -= it.byteSize() }
-        bitmaps[src] = bitmap
-        cachedBytes += bitmap.byteSize()
-        val limit = readerImageCacheMaxBytes
-        val iterator = bitmaps.entries.iterator()
-        // 单张图超预算时保留自身（原版 ensureLruCacheSize 同样扩容而非丢弃当前图）
-        while (cachedBytes > limit && bitmaps.size > 1 && iterator.hasNext()) {
-            val entry = iterator.next()
-            if (entry.key == src) continue
-            cachedBytes -= entry.value.byteSize()
-            iterator.remove()
-        }
-    }
-
+    /** 清本书的正文图与尺寸/失败记录; 同时作废在途请求。清理与换代同锁完成。 */
     fun clear() {
         synchronized(lock) {
-            bitmaps.clear()
             sizes.clear()
             failed.clear()
-            cachedBytes = 0
+            boundGeneration++
+            sessionToken++
+            boundBookUrl?.let { bodyImageStore().clearBook("$it\u0000") }
         }
     }
 }
@@ -346,9 +500,10 @@ class ReaderImageResolver(
     }
 }
 
-/** 宿主启动时注册共享图片解析器（desktop `Main.kt` / Android `MainActivity`）。 */
+/** 宿主启动时注册共享图片解析器（desktop `Main.kt` / Android `MainActivity`）并安装图片缓存预算订阅。 */
 fun registerReaderImageResolver() {
     ImageResolverProviders.register { book, chapter, bookSource ->
         ReaderImageResolver(book, chapter, bookSource)
     }
+    observeBitmapCacheBudget()
 }

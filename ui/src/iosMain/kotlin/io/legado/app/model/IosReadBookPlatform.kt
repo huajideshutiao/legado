@@ -1,7 +1,7 @@
 package io.legado.app.model
 
 import io.legado.app.help.image.DecodedBitmapCache
-import io.legado.app.help.image.iosCoilImageLoader
+import io.legado.app.help.image.coverReuseStoreForWrite
 import io.legado.app.help.service.IosBackgroundTasks
 import io.legado.app.help.tts.IosReadAloudHost
 import io.legado.app.model.fileBook.TextFile
@@ -32,11 +32,13 @@ private object IosReadBookPlatform : ReadBookPlatform {
     // iOS 无 CacheBookService, 运行态取 IosBackgroundTasks 的调度/后台任务标记
     override val isCacheBookServiceRun: Boolean get() = IosBackgroundTasks.isCacheBookRunning
 
-    // 对照 app 端 ImageProvider.clear(): 释放 Coil3 内存缓存 (磁盘缓存保留) +
+    // 对照 app 端 ImageProvider.clear(): 释放内存里的普通图片 (磁盘缓存保留) +
     // 解码位图进程级 LRU 主表 (PhotoDialog/阅读背景等, I1)。
-    // 只清主表不清封面小表: 退出阅读与封面链无关, 清了会让书架/详情首帧真封面失效
+    // 已登记的封面用途条目跨页面存活, 清了会让书架/详情首帧真封面失效。
     override fun clearImageCache() {
-        runCatching { iosCoilImageLoader.memoryCache?.clear() }
+        // 普通图片清理要覆盖"封面登记尚未建立"的情形: 这里按现库正常取得路径执行,
+        // 与原先直接访问该内存缓存同一依赖; 已登记的封面用途条目保留。
+        coverReuseStoreForWrite().clearNonCoverEntries()
         DecodedBitmapCache.clearDecoded()
     }
 

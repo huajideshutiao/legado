@@ -18,7 +18,7 @@ import io.legado.app.data.entities.BookSource
  *
  * # 解码位图进程级 LRU (2026 图片加载深度优化 I1)
  *
- * [loadBitmap] 解码结果进 [DecodedBitmapCache] (进程级 LRU, 容量沿 AppConfig.bitmapCacheSize,
+ * [loadBitmap] 解码结果进 [DecodedBitmapCache] (进程级 LRU, 上限见其 KDoc,
  * key 含 url+书源+isCover+采样尺寸), 同 URL 二次打开零重复解码; 验证码等同 URL 每次返回
  * 新图的场景传 `useBitmapCache=false` 同时绕过位图和网络原始字节缓存; 统一清缓存入口见 [DecodedBitmapCache] KDoc。
  *
